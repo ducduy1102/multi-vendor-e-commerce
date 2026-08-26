@@ -28,6 +28,9 @@ pnpm-debug.log*
 # claude code local overrides (per-machine, không share)
 .claude/settings.local.json
 
+# internal planning docs (không public lên repo)
+.claude/docs/*.md
+
 # os
 .DS_Store
 Thumbs.db
