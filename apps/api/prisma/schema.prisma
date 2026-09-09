@@ -5,6 +5,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Xuất schema sang DBML để import vào dbdiagram.io lấy ảnh ERD auto-layout.
+// Chạy lại `npx prisma generate` sau mỗi lần đổi schema để cập nhật file.
+generator dbml {
+  provider = "prisma-dbml-generator"
+  output   = "../generated/dbml"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
