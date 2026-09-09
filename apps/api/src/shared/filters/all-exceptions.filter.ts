@@ -44,10 +44,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       typeof body === 'object' &&
       body !== null &&
       'message' in body &&
-      typeof (body as { message: unknown }).message !== 'undefined'
+      typeof body.message !== 'undefined'
     ) {
-      const msg = (body as { message: unknown }).message;
-      return Array.isArray(msg) ? msg.join('; ') : String(msg);
+      const msg: unknown = body.message;
+      if (Array.isArray(msg)) return msg.map(String).join('; ');
+      if (typeof msg === 'string') return msg;
     }
     return exception.message;
   }

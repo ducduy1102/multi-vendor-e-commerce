@@ -2,12 +2,12 @@ import { BadRequestException, Injectable, PipeTransform } from '@nestjs/common';
 import { ZodSchema } from 'zod';
 
 // Dùng cho DTO khai báo bằng Zod (rules/backend.md mục 2) thay vì class-validator.
-// Áp dụng qua @UsePipes(new ZodValidationPipe(someSchema)) trên từng route.
+// Áp dụng qua @Body(new ZodValidationPipe(someSchema)) trên từng route.
 @Injectable()
-export class ZodValidationPipe implements PipeTransform {
-  constructor(private readonly schema: ZodSchema) {}
+export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
+  constructor(private readonly schema: ZodSchema<T>) {}
 
-  transform(value: unknown) {
+  transform(value: unknown): T {
     const result = this.schema.safeParse(value);
     if (!result.success) {
       // Gộp thành 1 chuỗi để khớp response envelope { success, data, message }

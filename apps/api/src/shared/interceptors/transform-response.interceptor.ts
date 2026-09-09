@@ -16,9 +16,10 @@ export interface ApiSuccessResponse<T> {
 // (rules/backend.md mục 3) — đăng ký global ở main.ts, controller không tự
 // bọc response thủ công.
 @Injectable()
-export class TransformResponseInterceptor<T>
-  implements NestInterceptor<T, ApiSuccessResponse<T>>
-{
+export class TransformResponseInterceptor<T> implements NestInterceptor<
+  T,
+  ApiSuccessResponse<T>
+> {
   intercept(
     _context: ExecutionContext,
     next: CallHandler<T>,

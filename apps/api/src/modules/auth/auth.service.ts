@@ -121,12 +121,12 @@ export class AuthService {
     );
   }
 
-  private sanitizeUser(user: User) {
-    const {
-      passwordHash: _passwordHash,
-      refreshTokenHash: _refreshTokenHash,
-      ...safe
-    } = user;
-    return safe;
+  private sanitizeUser(
+    user: User,
+  ): Omit<User, 'passwordHash' | 'refreshTokenHash'> {
+    const safe: Partial<User> = { ...user };
+    delete safe.passwordHash;
+    delete safe.refreshTokenHash;
+    return safe as Omit<User, 'passwordHash' | 'refreshTokenHash'>;
   }
 }
