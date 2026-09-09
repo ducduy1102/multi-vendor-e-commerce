@@ -21,8 +21,7 @@ modules/<domain>/
   dto/
     create-<domain>.dto.ts
     update-<domain>.dto.ts
-  __tests__/
-    <domain>.service.spec.ts
+  <domain>.service.spec.ts   # cạnh file gốc, không để trong __tests__/ riêng
 ```
 4. Controller chỉ nhận request, gọi service, trả response — **không** viết logic nghiệp vụ trong controller (đúng `rules/backend.md` mục 1).
 5. Thiết kế route/method/status code theo **checklist RESTful API** bên dưới.

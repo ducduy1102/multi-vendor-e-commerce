@@ -14,7 +14,7 @@ apps/api/src/
       dto/
         create-<domain>.dto.ts
         update-<domain>.dto.ts
-      __tests__/
+      <domain>.service.spec.ts   # cạnh file gốc, không để trong __tests__/ riêng (rules/general.md mục 5)
   shared/
     guards/                # AuthGuard, RolesGuard...
     interceptors/          # response transform, logging

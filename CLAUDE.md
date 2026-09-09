@@ -30,6 +30,7 @@
 - Khi hoàn thành 1 module, tự kiểm tra theo checklist "Definition of Done" trong `rules/general.md` trước khi báo hoàn thành.
 - Nếu phát sinh quyết định kỹ trọng ảnh hưởng kiến trúc (đổi schema, đổi thư viện, đổi convention), hỏi lại trước khi thực hiện thay vì tự quyết.
 - Mọi thay đổi liên quan tới lệnh hệ thống nguy hiểm (xóa dữ liệu, force push, reset DB...) đã bị chặn ở `.claude/settings.json` — không cố gắng bypass.
+- **Không tự ý `git commit`** sau khi code xong, kể cả khi đang làm trên 1 nhánh feature đã tạo từ trước hoặc đã commit nhiều lần trước đó trong cùng phiên làm việc. Luôn để người dùng tự review code trước, chỉ commit khi được yêu cầu rõ ràng ở lượt trao đổi đó (không suy ra từ pattern các lượt trước).
 
 ## Ghi chú
 
