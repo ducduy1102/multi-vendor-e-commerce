@@ -10,7 +10,12 @@ export class ZodValidationPipe implements PipeTransform {
   transform(value: unknown) {
     const result = this.schema.safeParse(value);
     if (!result.success) {
-      throw new BadRequestException(result.error.flatten());
+      // Gộp thành 1 chuỗi để khớp response envelope { success, data, message }
+      // — dự án chưa có field riêng cho lỗi validate theo từng field.
+      const message = result.error.issues
+        .map((issue) => `${issue.path.join('.') || 'value'}: ${issue.message}`)
+        .join('; ');
+      throw new BadRequestException(message);
     }
     return result.data;
   }

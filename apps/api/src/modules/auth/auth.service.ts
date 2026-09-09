@@ -6,13 +6,14 @@ import {
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { createHash, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
 
 const SALT_ROUNDS = 10;
 
-interface TokenPair {
+export interface TokenPair {
   accessToken: string;
   refreshToken: string;
 }
@@ -62,8 +63,7 @@ export class AuthService {
       throw new UnauthorizedException();
     }
 
-    const matches = await bcrypt.compare(refreshToken, user.refreshTokenHash);
-    if (!matches) {
+    if (!this.tokensMatch(refreshToken, user.refreshTokenHash)) {
       throw new UnauthorizedException();
     }
 
@@ -93,13 +93,32 @@ export class AuthService {
         '7d') as JwtSignOptions['expiresIn'],
     });
 
-    const refreshTokenHash = await bcrypt.hash(refreshToken, SALT_ROUNDS);
+    const refreshTokenHash = this.hashToken(refreshToken);
     await this.prisma.user.update({
       where: { id: userId },
       data: { refreshTokenHash },
     });
 
     return { accessToken, refreshToken };
+  }
+
+  // Refresh token là secret entropy cao do server tự sinh (khác password
+  // người dùng chọn) — dùng SHA-256 thay vì bcrypt để hash/so khớp.
+  // bcrypt chỉ đọc 72 byte đầu input: JWT của cùng 1 user luôn trùng phần
+  // đầu (header + sub + role), phần khác nhau thật sự (iat/exp/chữ ký) nằm
+  // sau byte 72 — bcrypt.compare sẽ báo khớp nhầm giữa các token khác nhau,
+  // khiến refresh token cũ (đã rotate) vẫn dùng lại được (đã phát hiện qua
+  // test tay POST /auth/refresh 2 lần liên tiếp).
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private tokensMatch(rawToken: string, storedHash: string): boolean {
+    const candidate = Buffer.from(this.hashToken(rawToken));
+    const stored = Buffer.from(storedHash);
+    return (
+      candidate.length === stored.length && timingSafeEqual(candidate, stored)
+    );
   }
 
   private sanitizeUser(user: User) {
