@@ -15,3 +15,15 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Vui lòng nhập mật khẩu'),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
+
+// Field của User trả về sau register/login/refresh (accessToken/refreshToken
+// không nằm trong response body — set qua httpOnly cookie, xem AuthController).
+// Role hiện chỉ có USER/ADMIN theo enum Role thật trong schema.prisma — SELLER
+// sẽ thêm khi làm luồng onboarding Seller (Phase 1, roadmap Tuần 3).
+export const authUserSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  role: z.enum(['USER', 'ADMIN']),
+});
+export type AuthUser = z.infer<typeof authUserSchema>;
