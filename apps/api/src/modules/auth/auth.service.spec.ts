@@ -246,4 +246,24 @@ describe('AuthService', () => {
       });
     });
   });
+
+  describe('me', () => {
+    it('trả user hiện tại, không lộ passwordHash/refreshTokenHash', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...baseUser });
+
+      const result = await service.me(baseUser.id);
+
+      expect(result.user.id).toBe(baseUser.id);
+      expect(result.user).not.toHaveProperty('passwordHash');
+      expect(result.user).not.toHaveProperty('refreshTokenHash');
+    });
+
+    it('báo lỗi 401 nếu user không còn tồn tại (đã bị xoá sau khi token issue)', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.me('deleted-user-id')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+  });
 });

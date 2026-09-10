@@ -1,7 +1,12 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import {
+  ACCESS_TOKEN_COOKIE,
+  REFRESH_TOKEN_COOKIE,
+} from './modules/auth/auth.constants';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from './shared/interceptors/transform-response.interceptor';
 
@@ -19,6 +24,28 @@ async function bootstrap() {
   });
   app.useGlobalInterceptors(new TransformResponseInterceptor());
   app.useGlobalFilters(new AllExceptionsFilter());
+
+  // DTO validate bằng Zod (không phải class-validator) nên @nestjs/swagger
+  // không tự suy ra schema từ class được — mỗi route tự khai @ApiBody/
+  // @ApiResponse thủ công (xem auth.controller.ts).
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('E-commerce Multi-Vendor API')
+    .setDescription('API docs — bắt đầu từ module auth (Tuần 2)')
+    .setVersion('0.1')
+    .addCookieAuth(
+      ACCESS_TOKEN_COOKIE,
+      { type: 'apiKey', in: 'cookie' },
+      ACCESS_TOKEN_COOKIE,
+    )
+    .addCookieAuth(
+      REFRESH_TOKEN_COOKIE,
+      { type: 'apiKey', in: 'cookie' },
+      REFRESH_TOKEN_COOKIE,
+    )
+    .build();
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, swaggerDocument);
+
   await app.listen(process.env.PORT ?? 3000);
 }
 void bootstrap();

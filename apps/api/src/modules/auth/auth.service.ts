@@ -78,6 +78,18 @@ export class AuthService {
     });
   }
 
+  // JWT payload (Bước 2.5) chỉ có sub/role, không có email/name — phải query
+  // lại DB. Coi user không còn tồn tại (đã bị xoá sau khi token issue) là
+  // hết phiên, không phải lỗi hệ thống.
+  async me(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    return { user: this.sanitizeUser(user) };
+  }
+
   private async issueTokens(userId: string, role: Role): Promise<TokenPair> {
     const payload = { sub: userId, role };
 

@@ -1,12 +1,20 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
   Res,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiBody,
+  ApiCookieAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
@@ -23,6 +31,19 @@ import { loginSchema, type LoginDto } from './dto/login.dto';
 import { registerSchema, type RegisterDto } from './dto/register.dto';
 import type { AuthenticatedUser } from './types/jwt-payload.type';
 
+// DTO validate bằng Zod (không phải class), @nestjs/swagger không tự suy ra
+// schema từ class được nên khai @ApiBody bằng example thủ công thay vì
+// @ApiBody({ type: RegisterDto }).
+const USER_EXAMPLE = {
+  id: 'b3f1c2e0-1234-4a5b-8c9d-abcdef123456',
+  email: 'user@example.com',
+  name: 'Nguyen Van A',
+  role: 'USER',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -30,6 +51,25 @@ export class AuthController {
   // 201: tạo mới User — không issue token/set cookie (không auto-login),
   // FE điều hướng người dùng sang /login sau khi đăng ký xong.
   @Post('register')
+  @ApiOperation({ summary: 'Đăng ký tài khoản mới — không tự đăng nhập' })
+  @ApiBody({
+    schema: {
+      example: {
+        email: 'user@example.com',
+        password: 'password123',
+        name: 'Nguyen Van A',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Tạo user thành công',
+    schema: { example: { success: true, data: { user: USER_EXAMPLE } } },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Email đã được sử dụng, hoặc dữ liệu không hợp lệ',
+  })
   register(@Body(new ZodValidationPipe(registerSchema)) dto: RegisterDto) {
     return this.authService.register(dto);
   }
@@ -38,6 +78,20 @@ export class AuthController {
   // không tạo resource mới, nên ép về 200 (đúng checklist RESTful mục 2).
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Đăng nhập — set access_token/refresh_token qua httpOnly cookie',
+  })
+  @ApiBody({
+    schema: {
+      example: { email: 'user@example.com', password: 'password123' },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Đăng nhập thành công',
+    schema: { example: { success: true, data: { user: USER_EXAMPLE } } },
+  })
+  @ApiResponse({ status: 401, description: 'Email hoặc mật khẩu không đúng' })
   async login(
     @Body(new ZodValidationPipe(loginSchema)) dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
@@ -51,6 +105,19 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @UseGuards(RefreshTokenGuard)
+  @ApiCookieAuth(REFRESH_TOKEN_COOKIE)
+  @ApiOperation({ summary: 'Làm mới access/refresh token, rotate cả 2 cookie' })
+  @ApiResponse({
+    status: 200,
+    description: 'Token đã được làm mới',
+    schema: {
+      example: { success: true, data: { message: 'Token đã được làm mới' } },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'refresh_token không hợp lệ hoặc hết hạn',
+  })
   async refresh(
     @CurrentUser() user: AuthenticatedUser & { refreshToken: string },
     @Res({ passthrough: true }) res: Response,
@@ -66,6 +133,16 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @ApiOperation({ summary: 'Đăng xuất — clear cả 2 cookie' })
+  @ApiResponse({
+    status: 200,
+    description: 'Đăng xuất thành công',
+    schema: {
+      example: { success: true, data: { message: 'Đăng xuất thành công' } },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   async logout(
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true }) res: Response,
@@ -74,6 +151,24 @@ export class AuthController {
     res.clearCookie(ACCESS_TOKEN_COOKIE, accessTokenCookieOptions());
     res.clearCookie(REFRESH_TOKEN_COOKIE, refreshTokenCookieOptions());
     return { message: 'Đăng xuất thành công' };
+  }
+
+  // FE dùng httpOnly cookie nên JS không đọc được token để biết ai đang đăng
+  // nhập — endpoint này cho phép hydrate lại state (vd sau khi F5 trang).
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @ApiOperation({ summary: 'Lấy thông tin user hiện tại từ session' })
+  @ApiResponse({
+    status: 200,
+    schema: { example: { success: true, data: { user: USER_EXAMPLE } } },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Chưa đăng nhập hoặc session hết hạn',
+  })
+  me(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.me(user.userId);
   }
 
   // accessToken/refreshToken không đưa vào response body (interceptor sẽ bọc
