@@ -38,8 +38,9 @@ export class AuthService {
       data: { email: dto.email, passwordHash, name: dto.name },
     });
 
-    const tokens = await this.issueTokens(user.id, user.role);
-    return { user: this.sanitizeUser(user), ...tokens };
+    // Không tự issue token/tạo session sau khi đăng ký — bắt người dùng đăng
+    // nhập lại (FE điều hướng sang /login), không auto-login thẳng vào app.
+    return { user: this.sanitizeUser(user) };
   }
 
   async login(dto: LoginDto) {

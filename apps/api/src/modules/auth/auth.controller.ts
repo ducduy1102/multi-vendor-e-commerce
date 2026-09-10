@@ -27,16 +27,11 @@ import type { AuthenticatedUser } from './types/jwt-payload.type';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  // 201: tạo mới User
+  // 201: tạo mới User — không issue token/set cookie (không auto-login),
+  // FE điều hướng người dùng sang /login sau khi đăng ký xong.
   @Post('register')
-  async register(
-    @Body(new ZodValidationPipe(registerSchema)) dto: RegisterDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const { accessToken, refreshToken, ...rest } =
-      await this.authService.register(dto);
-    this.setTokenCookies(res, { accessToken, refreshToken });
-    return rest;
+  register(@Body(new ZodValidationPipe(registerSchema)) dto: RegisterDto) {
+    return this.authService.register(dto);
   }
 
   // Mặc định NestJS trả 201 cho POST — login/refresh/logout là action,
