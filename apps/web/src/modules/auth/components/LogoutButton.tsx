@@ -10,8 +10,15 @@ import { useAuthStore } from "../store/auth.store";
 
 export function LogoutButton() {
   const router = useRouter();
+  const user = useAuthStore((state) => state.user);
   const clearUser = useAuthStore((state) => state.clearUser);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Chỉ hiện khi đã đăng nhập — trước đây hiện luôn dù chưa có user, gây
+  // hiểu nhầm (bấm vào sẽ chỉ nhận 401 vì /auth/logout cần JwtAuthGuard).
+  if (!user) {
+    return null;
+  }
 
   async function handleLogout() {
     setIsLoading(true);

@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-import { CurrentUserBadge, LogoutButton } from "@/modules/auth";
+import { CurrentUserBadge, GuestAuthLinks, LogoutButton } from "@/modules/auth";
 
 export default function Home() {
   return (
@@ -10,6 +10,7 @@ export default function Home() {
         <div className="flex items-center gap-3">
           <CurrentUserBadge />
           <LogoutButton />
+          <GuestAuthLinks />
         </div>
         <Image
           className="dark:invert h-5 w-[100px]"

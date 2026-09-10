@@ -18,8 +18,10 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 // Field của User trả về sau register/login/refresh (accessToken/refreshToken
 // không nằm trong response body — set qua httpOnly cookie, xem AuthController).
-// Role hiện chỉ có USER/ADMIN theo enum Role thật trong schema.prisma — SELLER
-// sẽ thêm khi làm luồng onboarding Seller (Phase 1, roadmap Tuần 3).
+// Role chỉ có USER/ADMIN — quyết định cố định (xem note-db.md mục 4), KHÔNG
+// thêm SELLER: "có phải seller không" suy ra từ việc user đó sở hữu ít nhất 1
+// Shop (User 1-n Shop), không model bằng role riêng (1 tài khoản vừa mua vừa
+// bán được cùng lúc, giống Shopee/Lazada/Tiki thật).
 export const authUserSchema = z.object({
   id: z.string(),
   email: z.string(),
