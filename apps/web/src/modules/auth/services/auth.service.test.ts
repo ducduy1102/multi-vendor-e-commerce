@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/shared/lib/api-client";
 
-import { login, logout, refresh, register } from "./auth.service";
+import { login, logout, me, refresh, register } from "./auth.service";
 
 const mockUser = {
   id: "user-1",
@@ -68,5 +68,23 @@ describe("auth.service", () => {
 
     mockFetchOnce({ success: true, data: { message: "ok" } });
     await expect(logout()).resolves.toBeUndefined();
+  });
+
+  it("me returns the parsed user when there is a valid session", async () => {
+    mockFetchOnce({ success: true, data: { user: mockUser } });
+
+    const result = await me();
+
+    expect(result).toEqual(mockUser);
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/me"),
+      expect.objectContaining({ method: "GET", credentials: "include" }),
+    );
+  });
+
+  it("me throws ApiError when there is no session (401)", async () => {
+    mockFetchOnce({ success: false, data: null, message: "Unauthorized" }, 401);
+
+    await expect(me()).rejects.toMatchObject(new ApiError("Unauthorized", 401));
   });
 });

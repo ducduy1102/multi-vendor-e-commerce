@@ -20,6 +20,11 @@ export async function register(values: RegisterInput): Promise<AuthUser> {
   return authUserSchema.parse(data.user);
 }
 
+export async function me(): Promise<AuthUser> {
+  const data = await apiFetch<{ user: unknown }>("/auth/me", { method: "GET" });
+  return authUserSchema.parse(data.user);
+}
+
 export async function refresh(): Promise<void> {
   await apiFetch<{ message: string }>("/auth/refresh", { method: "POST" });
 }
