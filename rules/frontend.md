@@ -13,7 +13,6 @@ apps/web/src/
       services/            # gọi API, không chứa logic UI
       schemas/             # Zod schema validate form/response của module
       types.ts
-      __tests__/
   shared/
     components/           # UI dùng chung (Button, Modal, Skeleton...)
     hooks/                 # hook dùng chung (useDebounce, useMediaQuery...)
@@ -66,6 +65,7 @@ Không đưa server data vào Zustand store — TanStack Query đã lo cache/ref
 ## 8. Testing FE
 
 - Vitest + React Testing Library.
+- Test file đặt cạnh file gốc theo `rules/general.md` mục 5, hậu tố `.test.ts`/`.test.tsx` (vd `useCart.ts` → `useCart.test.ts`), không dùng thư mục `__tests__/` riêng.
 - Ưu tiên test: hook có logic (useCart, useVariantSelector), component có nhiều nhánh điều kiện (variant selector, voucher input).
 - Không bắt buộc test UI thuần trình bày (component chỉ render props).
 
