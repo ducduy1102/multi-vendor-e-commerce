@@ -20,9 +20,9 @@ modules/<domain>/
   services/
   schemas/
   types.ts
-  __tests__/
   index.ts          # barrel export những gì module này expose ra ngoài
 ```
+Test file đặt cạnh file gốc (`useCart.ts` → `useCart.test.ts`), không tạo thư mục `__tests__/` riêng — đúng `rules/general.md` mục 5.
 4. Tạo file mẫu tối thiểu:
    - `services/<domain>.service.ts`: các hàm gọi API (dùng fetch wrapper từ `shared/lib/api-client`), KHÔNG chứa logic UI.
    - `schemas/<domain>.schema.ts`: Zod schema cho form/response chính của module.
