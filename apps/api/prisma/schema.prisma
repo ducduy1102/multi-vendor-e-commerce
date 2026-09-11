@@ -77,6 +77,17 @@ model User {
   name             String
   role             Role     @default(USER)
   refreshTokenHash String?  @map("refresh_token_hash")
+
+  // Email verification (Tuần 2, Bước 2.10) — token dùng 1 lần, hash bằng SHA-256
+  // giống refreshTokenHash (không dùng bcrypt, lý do xem AuthService.hashToken).
+  // emailVerificationTokenHash null nghĩa là không có token verify nào đang chờ
+  // xử lý (đã verify xong hoặc chưa từng gửi) — không suy ra được đã verify hay
+  // chưa từ riêng field này, phải check emailVerifiedAt.
+  emailVerifiedAt            DateTime? @map("email_verified_at")
+  emailVerificationTokenHash String?   @unique @map("email_verification_token_hash")
+  emailVerificationExpiresAt DateTime? @map("email_verification_expires_at")
+  emailVerificationSentAt    DateTime? @map("email_verification_sent_at")
+
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 

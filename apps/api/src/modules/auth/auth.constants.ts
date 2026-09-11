@@ -24,3 +24,9 @@ export function accessTokenCookieOptions(): CookieOptions {
 export function refreshTokenCookieOptions(): CookieOptions {
   return { ...baseCookieOptions(), maxAge: REFRESH_TOKEN_MAX_AGE_MS };
 }
+
+// Token verify email dùng 1 lần, hết hạn sau 24h. Cooldown chống spam bấm
+// "gửi lại" liên tục — không phải rate-limit toàn hệ thống (việc đó thuộc
+// Phase 5), chỉ là safeguard tối thiểu cho riêng flow này.
+export const EMAIL_VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+export const EMAIL_VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;

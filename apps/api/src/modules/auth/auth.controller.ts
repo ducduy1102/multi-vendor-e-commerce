@@ -29,6 +29,7 @@ import {
 import { AuthService, type TokenPair } from './auth.service';
 import { loginSchema, type LoginDto } from './dto/login.dto';
 import { registerSchema, type RegisterDto } from './dto/register.dto';
+import { verifyEmailSchema, type VerifyEmailDto } from './dto/verify-email.dto';
 import type { AuthenticatedUser } from './types/jwt-payload.type';
 
 // DTO validate bằng Zod (không phải class), @nestjs/swagger không tự suy ra
@@ -169,6 +170,53 @@ export class AuthController {
   })
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.me(user.userId);
+  }
+
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Xác thực email qua token gửi trong mail' })
+  @ApiBody({ schema: { example: { token: 'a1b2c3...' } } })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        success: true,
+        data: { message: 'Xác thực email thành công' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Token không hợp lệ hoặc đã hết hạn',
+  })
+  verifyEmail(
+    @Body(new ZodValidationPipe(verifyEmailSchema)) dto: VerifyEmailDto,
+  ) {
+    return this.authService.verifyEmail(dto.token);
+  }
+
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @ApiOperation({ summary: 'Gửi lại email xác thực — cần đăng nhập' })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        success: true,
+        data: { message: 'Đã gửi lại email xác thực' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Email đã được xác thực' })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
+  @ApiResponse({
+    status: 429,
+    description: 'Gửi quá nhanh, vui lòng đợi rồi thử lại',
+  })
+  resendVerification(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.resendVerification(user.userId);
   }
 
   // accessToken/refreshToken không đưa vào response body (interceptor sẽ bọc

@@ -29,3 +29,8 @@ export const authUserSchema = z.object({
   role: z.enum(['USER', 'ADMIN']),
 });
 export type AuthUser = z.infer<typeof authUserSchema>;
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(1, 'Token không hợp lệ'),
+});
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
