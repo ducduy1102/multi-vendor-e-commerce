@@ -4,23 +4,37 @@ import { Test } from '@nestjs/testing';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
+import { MailService } from '../../shared/mail/mail.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { EMAIL_VERIFICATION_RESEND_COOLDOWN_MS } from './auth.constants';
 import { AuthService } from './auth.service';
 
 describe('AuthService', () => {
   let service: AuthService;
   let jwtService: JwtService;
   interface CreateUserArgs {
-    data: { email: string; passwordHash: string; name: string };
+    data: {
+      email: string;
+      passwordHash: string;
+      name: string;
+      emailVerificationTokenHash?: string | null;
+      emailVerificationExpiresAt?: Date | null;
+      emailVerificationSentAt?: Date | null;
+    };
+  }
+  interface UpdateUserArgs {
+    where: { id: string };
+    data: Record<string, unknown>;
   }
 
   let prisma: {
     user: {
       findUnique: jest.Mock;
       create: jest.Mock<unknown, [CreateUserArgs]>;
-      update: jest.Mock;
+      update: jest.Mock<unknown, [UpdateUserArgs]>;
     };
   };
+  let mailService: { sendVerificationEmail: jest.Mock };
 
   const baseUser = {
     id: 'user-1',
@@ -29,6 +43,10 @@ describe('AuthService', () => {
     name: 'Test User',
     role: Role.USER,
     refreshTokenHash: null as string | null,
+    emailVerifiedAt: null as Date | null,
+    emailVerificationTokenHash: null as string | null,
+    emailVerificationExpiresAt: null as Date | null,
+    emailVerificationSentAt: null as Date | null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -45,13 +63,20 @@ describe('AuthService', () => {
       user: {
         findUnique: jest.fn(),
         create: jest.fn<unknown, [CreateUserArgs]>(),
-        update: jest.fn(),
+        update: jest.fn<unknown, [UpdateUserArgs]>(),
       },
+    };
+    mailService = {
+      sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
     };
 
     const moduleRef = await Test.createTestingModule({
       imports: [JwtModule.register({})],
-      providers: [AuthService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: MailService, useValue: mailService },
+      ],
     }).compile();
 
     service = moduleRef.get(AuthService);
@@ -95,6 +120,54 @@ describe('AuthService', () => {
 
       expect(result.user).not.toHaveProperty('passwordHash');
       expect(result.user).not.toHaveProperty('refreshTokenHash');
+    });
+
+    it('tạo token verify email (hash lưu DB, không lộ ra ngoài) và gửi mail xác thực', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockImplementation(({ data }) =>
+        Promise.resolve({ ...baseUser, ...data }),
+      );
+
+      const result = await service.register({
+        email: 'new@example.com',
+        password: 'password123',
+        name: 'New User',
+      });
+
+      const createArgs = prisma.user.create.mock.calls[0][0];
+      expect(createArgs.data.emailVerificationTokenHash).toEqual(
+        expect.any(String),
+      );
+      expect(createArgs.data.emailVerificationExpiresAt).toBeInstanceOf(Date);
+      expect(result.user).not.toHaveProperty('emailVerificationTokenHash');
+      expect(mailService.sendVerificationEmail).toHaveBeenCalledWith(
+        'new@example.com',
+        'New User',
+        expect.stringContaining('/verify-email?token='),
+      );
+    });
+
+    // Regression test: user đã tạo thành công trong DB trước khi gửi mail —
+    // nếu provider mail lỗi (Resend down/sai key/hết quota), register() vẫn
+    // phải trả thành công (chỉ log lỗi), không được để cả request thất bại
+    // trong khi user thực ra đã được tạo (lần đăng ký lại sau sẽ báo nhầm
+    // "email đã tồn tại").
+    it('vẫn trả user thành công dù gửi mail xác thực thất bại', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockImplementation(({ data }) =>
+        Promise.resolve({ ...baseUser, ...data }),
+      );
+      mailService.sendVerificationEmail.mockRejectedValue(
+        new Error('Resend API lỗi'),
+      );
+
+      const result = await service.register({
+        email: 'new@example.com',
+        password: 'password123',
+        name: 'New User',
+      });
+
+      expect(result.user.email).toBe('new@example.com');
     });
 
     it('không issue token/tạo session (không auto-login sau khi đăng ký)', async () => {
@@ -264,6 +337,125 @@ describe('AuthService', () => {
       await expect(service.me('deleted-user-id')).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
+    });
+  });
+
+  describe('verifyEmail', () => {
+    it('xác thực thành công: set emailVerifiedAt, xoá token hash/expiry', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        emailVerificationTokenHash: createHash('sha256')
+          .update('valid-raw-token')
+          .digest('hex'),
+        emailVerificationExpiresAt: new Date(Date.now() + 60_000),
+      });
+      prisma.user.update.mockResolvedValue({});
+
+      const result = await service.verifyEmail('valid-raw-token');
+
+      expect(result.message).toBeDefined();
+      expect(prisma.user.update).toHaveBeenCalledTimes(1);
+      const updateArgs = prisma.user.update.mock.calls[0][0];
+      expect(updateArgs.where).toEqual({ id: baseUser.id });
+      expect(updateArgs.data.emailVerifiedAt).toBeInstanceOf(Date);
+      expect(updateArgs.data.emailVerificationTokenHash).toBeNull();
+      expect(updateArgs.data.emailVerificationExpiresAt).toBeNull();
+    });
+
+    it('báo lỗi 400 nếu token không khớp user nào', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.verifyEmail('token-khong-ton-tai'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('báo lỗi 400 nếu token đã hết hạn', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        emailVerificationTokenHash: createHash('sha256')
+          .update('expired-raw-token')
+          .digest('hex'),
+        emailVerificationExpiresAt: new Date(Date.now() - 1000),
+      });
+
+      await expect(
+        service.verifyEmail('expired-raw-token'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resendVerification', () => {
+    it('báo lỗi 400 nếu email đã được xác thực', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        emailVerifiedAt: new Date(),
+      });
+
+      await expect(
+        service.resendVerification(baseUser.id),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mailService.sendVerificationEmail).not.toHaveBeenCalled();
+    });
+
+    it('báo lỗi 429 nếu gửi lại quá nhanh (còn trong cooldown)', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        emailVerificationSentAt: new Date(
+          Date.now() - EMAIL_VERIFICATION_RESEND_COOLDOWN_MS / 2,
+        ),
+      });
+
+      await expect(
+        service.resendVerification(baseUser.id),
+      ).rejects.toMatchObject({ status: 429 });
+      expect(mailService.sendVerificationEmail).not.toHaveBeenCalled();
+    });
+
+    it('gửi lại thành công: tạo token mới, cập nhật sentAt, gọi mailService', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        emailVerificationSentAt: new Date(
+          Date.now() - EMAIL_VERIFICATION_RESEND_COOLDOWN_MS * 2,
+        ),
+      });
+      prisma.user.update.mockResolvedValue({});
+
+      const result = await service.resendVerification(baseUser.id);
+
+      expect(result.message).toBeDefined();
+      expect(prisma.user.update).toHaveBeenCalledTimes(1);
+      const updateArgs = prisma.user.update.mock.calls[0][0];
+      expect(updateArgs.where).toEqual({ id: baseUser.id });
+      expect(updateArgs.data.emailVerificationTokenHash).toEqual(
+        expect.any(String),
+      );
+      expect(updateArgs.data.emailVerificationExpiresAt).toBeInstanceOf(Date);
+      expect(updateArgs.data.emailVerificationSentAt).toBeInstanceOf(Date);
+      expect(mailService.sendVerificationEmail).toHaveBeenCalledWith(
+        baseUser.email,
+        baseUser.name,
+        expect.stringContaining('/verify-email?token='),
+      );
+    });
+
+    it('vẫn trả thành công dù gửi mail xác thực thất bại (đã cập nhật token mới trong DB)', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        emailVerificationSentAt: new Date(
+          Date.now() - EMAIL_VERIFICATION_RESEND_COOLDOWN_MS * 2,
+        ),
+      });
+      prisma.user.update.mockResolvedValue({});
+      mailService.sendVerificationEmail.mockRejectedValue(
+        new Error('Resend API lỗi'),
+      );
+
+      const result = await service.resendVerification(baseUser.id);
+
+      expect(result.message).toBeDefined();
     });
   });
 });
