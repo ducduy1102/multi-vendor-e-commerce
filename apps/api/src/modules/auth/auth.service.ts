@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
-import { Role, User } from '@prisma/client';
+import { AccountStatus, Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { MailService } from '../../shared/mail/mail.service';
@@ -168,6 +168,11 @@ export class AuthService {
     });
     if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
+    }
+    // Check sau khi xác minh mật khẩu — không lộ việc tài khoản bị khoá cho
+    // request sai mật khẩu (giữ nguyên message chung ở nhánh trên).
+    if (user.accountStatus !== AccountStatus.ACTIVE) {
+      throw new UnauthorizedException('ACCOUNT_NOT_ACTIVE');
     }
 
     const tokens = await this.issueTokens(user.id, user.role);

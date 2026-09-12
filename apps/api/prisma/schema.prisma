@@ -26,6 +26,16 @@ enum Role {
   ADMIN
 }
 
+// Session-level: tài khoản có được phép dùng hệ thống hay không (khác
+// emailVerifiedAt — feature-level, xem User.emailVerifiedAt). Chi tiết thiết
+// kế: .claude/docs/auth-shop-status-architecture.md.
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DEACTIVATED
+}
+
 enum ShopStatus {
   PENDING
   APPROVED
@@ -76,6 +86,7 @@ model User {
   passwordHash     String   @map("password_hash")
   name             String
   role             Role     @default(USER)
+  accountStatus    AccountStatus @default(ACTIVE) @map("account_status")
   refreshTokenHash String?  @map("refresh_token_hash")
 
   // Email verification (Tuần 2, Bước 2.10) — token dùng 1 lần, hash bằng SHA-256
