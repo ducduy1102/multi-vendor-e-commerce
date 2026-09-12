@@ -36,6 +36,11 @@ enum AccountStatus {
   DEACTIVATED
 }
 
+// Seller-level (tầng thứ 3, khác User.accountStatus/emailVerifiedAt): shop có
+// được phép đăng bán hay không. Đủ dùng cho "xác minh cơ bản" — không tạo
+// bảng SellerVerification/KYC riêng trừ khi phát sinh yêu cầu thật (giấy phép
+// kinh doanh, ngân hàng nhận tiền...). Chi tiết:
+// .claude/docs/auth-shop-status-architecture.md.
 enum ShopStatus {
   PENDING
   APPROVED
