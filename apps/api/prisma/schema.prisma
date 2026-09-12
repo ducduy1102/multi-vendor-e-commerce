@@ -172,6 +172,14 @@ model Address {
 // Shop
 // =========================================================
 
+// Business rule Tuần 3 Bước 1.6: 1 user tối đa 1 shop cho MVP hiện tại,
+// nhưng KHÔNG khoá bằng @unique — TikTok Shop thật có tính năng "Multi-Store"
+// cho 1 số seller (cross-border/agency), tức schema thật của họ vẫn cho 1
+// User sở hữu nhiều Shop. Giữ quan hệ "User 1-n Shop" thuần, giới hạn "tối
+// đa 1" chỉ là business rule enforce ở ShopService (check trước khi create,
+// 409 nếu đã có) — xem shop-ownership-mvp-note.md. Đánh đổi: chấp nhận 1
+// khe hở race hiếm gặp (2 request POST /shops gần như đồng thời) để không
+// giả định cứng "sẽ không bao giờ cần multi-shop".
 model Shop {
   id          String     @id @default(uuid())
   ownerId     String     @map("owner_id")
