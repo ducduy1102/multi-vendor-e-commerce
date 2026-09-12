@@ -30,3 +30,10 @@ export function refreshTokenCookieOptions(): CookieOptions {
 // Phase 5), chỉ là safeguard tối thiểu cho riêng flow này.
 export const EMAIL_VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 export const EMAIL_VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
+
+// Dùng chung ở cả AuthService (build link verify email) và AuthController
+// (redirect sau Google OAuth callback) — 1 chỗ duy nhất để không lặp lại
+// cùng 1 fallback expression ở 2 nơi.
+export function getFrontendUrl(): string {
+  return process.env.FRONTEND_URL?.trim() || 'http://localhost:3000';
+}

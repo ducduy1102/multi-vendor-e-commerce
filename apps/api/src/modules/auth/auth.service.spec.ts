@@ -1,7 +1,7 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { AccountStatus, Role } from '@prisma/client';
+import { AccountStatus, OAuthProvider, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
 import { MailService } from '../../shared/mail/mail.service';
@@ -15,11 +15,15 @@ describe('AuthService', () => {
   interface CreateUserArgs {
     data: {
       email: string;
-      passwordHash: string;
+      passwordHash: string | null;
       name: string;
       emailVerificationTokenHash?: string | null;
       emailVerificationExpiresAt?: Date | null;
       emailVerificationSentAt?: Date | null;
+      emailVerifiedAt?: Date | null;
+      oauthAccounts?: {
+        create: { provider: OAuthProvider; providerUserId: string };
+      };
     };
   }
   interface UpdateUserArgs {
@@ -32,6 +36,10 @@ describe('AuthService', () => {
       findUnique: jest.Mock;
       create: jest.Mock<unknown, [CreateUserArgs]>;
       update: jest.Mock<unknown, [UpdateUserArgs]>;
+    };
+    oAuthAccount: {
+      findUnique: jest.Mock;
+      create: jest.Mock;
     };
   };
   let mailService: { sendVerificationEmail: jest.Mock };
@@ -65,6 +73,10 @@ describe('AuthService', () => {
         findUnique: jest.fn(),
         create: jest.fn<unknown, [CreateUserArgs]>(),
         update: jest.fn<unknown, [UpdateUserArgs]>(),
+      },
+      oAuthAccount: {
+        findUnique: jest.fn(),
+        create: jest.fn(),
       },
     };
     mailService = {
@@ -115,8 +127,11 @@ describe('AuthService', () => {
 
       const createArgs = prisma.user.create.mock.calls[0][0];
       expect(createArgs.data.passwordHash).not.toBe('password123');
+      // register() luôn tạo passwordHash thật (khác loginWithGoogle, nơi nó
+      // null) — non-null assertion an toàn ở đây, chỉ để khớp type sau khi
+      // nới `CreateUserArgs.data.passwordHash` thành `string | null`.
       expect(
-        await bcrypt.compare('password123', createArgs.data.passwordHash),
+        await bcrypt.compare('password123', createArgs.data.passwordHash!),
       ).toBe(true);
 
       expect(result.user).not.toHaveProperty('passwordHash');
@@ -254,6 +269,120 @@ describe('AuthService', () => {
         expect(prisma.user.update).not.toHaveBeenCalled();
       },
     );
+
+    // Tài khoản chỉ đăng ký qua Google (loginWithGoogle) có passwordHash =
+    // null — cố login bằng password phải báo lỗi giống hệt sai mật khẩu
+    // thường, không được lộ ra rằng tài khoản này dùng OAuth.
+    it('báo lỗi 401 (message giống sai mật khẩu) nếu tài khoản chỉ đăng ký qua OAuth (passwordHash null)', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        passwordHash: null,
+      });
+
+      await expect(
+        service.login({ email: baseUser.email, password: 'any-password' }),
+      ).rejects.toMatchObject(
+        new UnauthorizedException('Email hoặc mật khẩu không đúng'),
+      );
+    });
+  });
+
+  describe('loginWithGoogle', () => {
+    const googleProfile = {
+      googleId: 'google-sub-123',
+      email: 'new-google-user@example.com',
+      name: 'Google User',
+    };
+
+    it('tạo user mới + OAuthAccount nếu chưa từng đăng nhập Google và email chưa tồn tại', async () => {
+      prisma.oAuthAccount.findUnique.mockResolvedValue(null);
+      prisma.user.findUnique.mockResolvedValue(null); // check email đã tồn tại chưa
+      prisma.user.create.mockResolvedValue({
+        ...baseUser,
+        id: 'new-user-id',
+        email: googleProfile.email,
+        name: googleProfile.name,
+        passwordHash: null,
+        emailVerifiedAt: new Date(),
+      });
+      prisma.user.update.mockResolvedValue({});
+
+      const result = await service.loginWithGoogle(googleProfile);
+
+      const createArgs = prisma.user.create.mock.calls[0][0];
+      expect(createArgs.data.email).toBe(googleProfile.email);
+      expect(createArgs.data.name).toBe(googleProfile.name);
+      expect(createArgs.data.passwordHash).toBeNull();
+      expect(createArgs.data.emailVerifiedAt).toBeInstanceOf(Date);
+      expect(createArgs.data.oauthAccounts).toEqual({
+        create: {
+          provider: OAuthProvider.GOOGLE,
+          providerUserId: googleProfile.googleId,
+        },
+      });
+      expect(result.accessToken).toBeDefined();
+      expect(result.user).not.toHaveProperty('passwordHash');
+    });
+
+    it('đăng nhập thẳng nếu OAuthAccount đã tồn tại (không tạo user/account mới)', async () => {
+      prisma.oAuthAccount.findUnique.mockResolvedValue({
+        id: 'oauth-1',
+        provider: OAuthProvider.GOOGLE,
+        providerUserId: googleProfile.googleId,
+        userId: baseUser.id,
+        user: { ...baseUser },
+      });
+      prisma.user.update.mockResolvedValue({});
+
+      const result = await service.loginWithGoogle(googleProfile);
+
+      expect(prisma.user.create).not.toHaveBeenCalled();
+      expect(prisma.oAuthAccount.create).not.toHaveBeenCalled();
+      expect(result.accessToken).toBeDefined();
+    });
+
+    it('liên kết Google vào user đã tồn tại theo email (đăng ký bằng password trước đó), tự set emailVerifiedAt nếu chưa verify', async () => {
+      prisma.oAuthAccount.findUnique.mockResolvedValue(null);
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        emailVerifiedAt: null,
+      });
+      prisma.oAuthAccount.create.mockResolvedValue({});
+      prisma.user.update.mockResolvedValue({
+        ...baseUser,
+        emailVerifiedAt: new Date(),
+      });
+
+      await service.loginWithGoogle({
+        ...googleProfile,
+        email: baseUser.email,
+      });
+
+      expect(prisma.oAuthAccount.create).toHaveBeenCalledWith({
+        data: {
+          userId: baseUser.id,
+          provider: OAuthProvider.GOOGLE,
+          providerUserId: googleProfile.googleId,
+        },
+      });
+      const updateArgs = prisma.user.update.mock.calls[0][0];
+      expect(updateArgs.where).toEqual({ id: baseUser.id });
+      expect(updateArgs.data.emailVerifiedAt).toBeInstanceOf(Date);
+    });
+
+    it('báo lỗi 401 ACCOUNT_NOT_ACTIVE nếu tài khoản Google liên kết tới đã bị khoá', async () => {
+      prisma.oAuthAccount.findUnique.mockResolvedValue({
+        id: 'oauth-1',
+        provider: OAuthProvider.GOOGLE,
+        providerUserId: googleProfile.googleId,
+        userId: baseUser.id,
+        user: { ...baseUser, accountStatus: AccountStatus.SUSPENDED },
+      });
+
+      await expect(
+        service.loginWithGoogle(googleProfile),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
   });
 
   describe('refreshTokens', () => {

@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
-import { AccountStatus, Role, User } from '@prisma/client';
+import { AccountStatus, OAuthProvider, Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { MailService } from '../../shared/mail/mail.service';
@@ -15,9 +15,11 @@ import { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
   EMAIL_VERIFICATION_TOKEN_TTL_MS,
+  getFrontendUrl,
 } from './auth.constants';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
+import type { GoogleProfile } from './types/google-profile.type';
 
 const SALT_ROUNDS = 10;
 
@@ -166,11 +168,83 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
+    // user.passwordHash null nghĩa là tài khoản chỉ đăng ký qua OAuth (xem
+    // loginWithGoogle) — không lộ chi tiết đó ra ngoài, trả cùng 1 message
+    // chung với sai mật khẩu để tránh lộ phương thức đăng nhập của 1 email.
+    if (
+      !user ||
+      !user.passwordHash ||
+      !(await bcrypt.compare(dto.password, user.passwordHash))
+    ) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     }
     // Check sau khi xác minh mật khẩu — không lộ việc tài khoản bị khoá cho
     // request sai mật khẩu (giữ nguyên message chung ở nhánh trên).
+    if (user.accountStatus !== AccountStatus.ACTIVE) {
+      throw new UnauthorizedException('ACCOUNT_NOT_ACTIVE');
+    }
+
+    const tokens = await this.issueTokens(user.id, user.role);
+    return { user: this.sanitizeUser(user), ...tokens };
+  }
+
+  // Gọi từ AuthController.googleCallback() sau khi GoogleStrategy xác thực
+  // xong với Google — profile.email do Google trả về, coi như đã verify sẵn
+  // (Google chỉ cho OAuth với email đã xác thực), không cần luồng verify
+  // token riêng như đăng ký bằng password (Bước 2.10).
+  async loginWithGoogle(profile: GoogleProfile) {
+    const existingAccount = await this.prisma.oAuthAccount.findUnique({
+      where: {
+        provider_providerUserId: {
+          provider: OAuthProvider.GOOGLE,
+          providerUserId: profile.googleId,
+        },
+      },
+      include: { user: true },
+    });
+
+    let user: User;
+    if (existingAccount) {
+      user = existingAccount.user;
+    } else {
+      const existingUser = await this.prisma.user.findUnique({
+        where: { email: profile.email },
+      });
+      if (existingUser) {
+        // Email đã có tài khoản (đăng ký bằng password trước đó) — liên kết
+        // thêm Google vào đúng user này thay vì tạo user trùng email (email
+        // là @unique trong DB nên tạo mới chắc chắn lỗi).
+        await this.prisma.oAuthAccount.create({
+          data: {
+            userId: existingUser.id,
+            provider: OAuthProvider.GOOGLE,
+            providerUserId: profile.googleId,
+          },
+        });
+        user = existingUser.emailVerifiedAt
+          ? existingUser
+          : await this.prisma.user.update({
+              where: { id: existingUser.id },
+              data: { emailVerifiedAt: new Date() },
+            });
+      } else {
+        user = await this.prisma.user.create({
+          data: {
+            email: profile.email,
+            name: profile.name,
+            passwordHash: null,
+            emailVerifiedAt: new Date(),
+            oauthAccounts: {
+              create: {
+                provider: OAuthProvider.GOOGLE,
+                providerUserId: profile.googleId,
+              },
+            },
+          },
+        });
+      }
+    }
+
     if (user.accountStatus !== AccountStatus.ACTIVE) {
       throw new UnauthorizedException('ACCOUNT_NOT_ACTIVE');
     }
@@ -287,7 +361,6 @@ export class AuthService {
   }
 
   private buildVerifyEmailUrl(rawToken: string): string {
-    const base = process.env.FRONTEND_URL?.trim() || 'http://localhost:3000';
-    return `${base}/verify-email?token=${rawToken}`;
+    return `${getFrontendUrl()}/verify-email?token=${rawToken}`;
   }
 }
