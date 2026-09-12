@@ -1,6 +1,11 @@
 // Export để dùng cho những chỗ điều hướng thẳng trình duyệt (không qua
 // apiFetch) — vd GoogleLoginButton trỏ <a href> thẳng tới BE.
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:4000";
+
+// BE version từ endpoint đầu tiên (Tuần 3 Bước 1.5, app.setGlobalPrefix('api/v1')
+// ở apps/api/src/main.ts) — khai 1 chỗ duy nhất, cả apiFetch lẫn chỗ điều
+// hướng thẳng trình duyệt (GoogleLoginButton) đều phải tự nối thêm.
+export const API_PREFIX = "/api/v1";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -23,7 +28,7 @@ export class ApiError extends Error {
 // bên apps/api) tự động đính kèm, và luôn bóc theo envelope { success, data,
 // message } đúng rules/backend.md mục 3.
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
     ...init,
     credentials: "include",
     headers: {

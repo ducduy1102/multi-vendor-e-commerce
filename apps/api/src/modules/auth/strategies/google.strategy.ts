@@ -8,7 +8,8 @@ import {
 import type { GoogleProfile } from '../types/google-profile.type';
 
 // Đăng ký trong AuthModule với tên mặc định 'google', dùng qua GoogleAuthGuard
-// cho cả GET /auth/google (redirect sang Google) lẫn GET /auth/google/callback.
+// cho cả GET /api/v1/auth/google (redirect sang Google) lẫn GET
+// /api/v1/auth/google/callback.
 //
 // clientID/clientSecret fallback về chuỗi giả khi thiếu ENV thay vì để
 // constructor throw — thư viện passport-oauth2 (nền của lib này) throw ngay
@@ -27,7 +28,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
         process.env.GOOGLE_CLIENT_SECRET?.trim() || 'not-configured',
       callbackURL:
         process.env.GOOGLE_CALLBACK_URL?.trim() ||
-        'http://localhost:4000/auth/google/callback',
+        'http://localhost:4000/api/v1/auth/google/callback',
       scope: ['email', 'profile'],
     });
   }

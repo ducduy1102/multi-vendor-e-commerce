@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/shared/components/ui/button";
-import { API_BASE_URL } from "@/shared/lib/api-client";
+import { API_BASE_URL, API_PREFIX } from "@/shared/lib/api-client";
 
 // "use client" dù component thuần tĩnh (không state/effect) — nơi duy nhất
 // dùng component này là LoginFormContainer/RegisterFormContainer, cả 2 đều
@@ -14,8 +14,8 @@ import { API_BASE_URL } from "@/shared/lib/api-client";
 //
 // Điều hướng cả trang (thẻ <a>, KHÔNG phải fetch) — OAuth là flow redirect
 // dựa trên trình duyệt, không gọi được qua JS/fetch bình thường. BE
-// (GET /auth/google) tự redirect sang Google, rồi Google redirect lại
-// BE (/auth/google/callback) set cookie xong redirect thẳng về FE.
+// (GET /api/v1/auth/google) tự redirect sang Google, rồi Google redirect lại
+// BE (/api/v1/auth/google/callback) set cookie xong redirect thẳng về FE.
 export function GoogleLoginButton() {
   const t = useTranslations("auth");
 
@@ -25,7 +25,7 @@ export function GoogleLoginButton() {
       variant="outline"
       className="w-full"
       nativeButton={false}
-      render={<a href={`${API_BASE_URL}/auth/google`} />}
+      render={<a href={`${API_BASE_URL}${API_PREFIX}/auth/google`} />}
     >
       {t("googleSignIn")}
     </Button>
