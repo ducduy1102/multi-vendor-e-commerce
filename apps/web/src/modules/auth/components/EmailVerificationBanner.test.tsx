@@ -1,6 +1,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { withIntl } from "@/shared/lib/test-i18n";
+
 import { useAuthStore } from "../store/auth.store";
 import { EmailVerificationBanner } from "./EmailVerificationBanner";
 
@@ -15,7 +17,7 @@ describe("EmailVerificationBanner", () => {
   });
 
   it("không hiện gì khi chưa đăng nhập", () => {
-    render(<EmailVerificationBanner />);
+    render(withIntl(<EmailVerificationBanner />));
 
     expect(screen.queryByText(/chưa được xác thực/)).not.toBeInTheDocument();
   });
@@ -29,7 +31,7 @@ describe("EmailVerificationBanner", () => {
       emailVerifiedAt: "2026-01-01T00:00:00.000Z",
     });
 
-    render(<EmailVerificationBanner />);
+    render(withIntl(<EmailVerificationBanner />));
 
     expect(screen.queryByText(/chưa được xác thực/)).not.toBeInTheDocument();
   });
@@ -43,7 +45,7 @@ describe("EmailVerificationBanner", () => {
       emailVerifiedAt: null,
     });
 
-    render(<EmailVerificationBanner />);
+    render(withIntl(<EmailVerificationBanner />));
 
     expect(screen.getByText(/chưa được xác thực/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Gửi lại email xác thực" })).toBeInTheDocument();

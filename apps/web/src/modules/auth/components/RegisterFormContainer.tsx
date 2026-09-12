@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { useRouter } from "@/i18n/navigation";
@@ -16,6 +17,8 @@ import { RegisterForm } from "./RegisterForm";
 // (BE cũng không issue token ở /register) — điều hướng sang /login để người
 // dùng tự đăng nhập.
 export function RegisterFormContainer() {
+  const t = useTranslations("auth");
+  const tCommon = useTranslations("common");
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,9 +35,7 @@ export function RegisterFormContainer() {
       });
       router.push("/login");
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Đăng ký thất bại, vui lòng thử lại",
-      );
+      setError(err instanceof ApiError ? err.message : t("registerGenericError"));
     } finally {
       setIsSubmitting(false);
     }
@@ -46,7 +47,7 @@ export function RegisterFormContainer() {
       <RegisterForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <div className="h-px flex-1 bg-border" />
-        hoặc
+        {tCommon("or")}
         <div className="h-px flex-1 bg-border" />
       </div>
       <GoogleLoginButton />

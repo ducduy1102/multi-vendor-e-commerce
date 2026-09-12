@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { useAuthStore } from "../store/auth.store";
 import { ResendVerificationButton } from "./ResendVerificationButton";
 
@@ -10,6 +12,7 @@ import { ResendVerificationButton } from "./ResendVerificationButton";
 // 2.10, checkout/tạo shop chưa tồn tại); sẽ cân nhắc gắn theo action cụ thể
 // khi các feature đó ra đời.
 export function EmailVerificationBanner() {
+  const t = useTranslations("auth");
   const user = useAuthStore((state) => state.user);
 
   if (!user || user.emailVerifiedAt) {
@@ -18,7 +21,7 @@ export function EmailVerificationBanner() {
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-3 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-      <span>Email của bạn chưa được xác thực.</span>
+      <span>{t("emailVerificationBannerMessage")}</span>
       <ResendVerificationButton size="sm" />
     </div>
   );

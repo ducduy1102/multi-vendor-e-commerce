@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 
 import { Button } from "@/shared/components/ui/button";
@@ -18,6 +19,7 @@ interface RegisterFormProps {
 // Chỉ lo UI + validate — gọi API (Bước 3.5) và lưu user vào store (Bước 3.4)
 // do component cha truyền onSubmit vào, form không tự biết về service/store.
 export function RegisterForm({ onSubmit, isSubmitting }: RegisterFormProps) {
+  const t = useTranslations("auth");
   const {
     register,
     handleSubmit,
@@ -29,7 +31,7 @@ export function RegisterForm({ onSubmit, isSubmitting }: RegisterFormProps) {
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="register-name">Họ tên</Label>
+        <Label htmlFor="register-name">{t("registerNameLabel")}</Label>
         <Input
           id="register-name"
           type="text"
@@ -41,7 +43,7 @@ export function RegisterForm({ onSubmit, isSubmitting }: RegisterFormProps) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="register-email">Email</Label>
+        <Label htmlFor="register-email">{t("registerEmailLabel")}</Label>
         <Input
           id="register-email"
           type="email"
@@ -53,7 +55,7 @@ export function RegisterForm({ onSubmit, isSubmitting }: RegisterFormProps) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="register-password">Mật khẩu</Label>
+        <Label htmlFor="register-password">{t("registerPasswordLabel")}</Label>
         <Input
           id="register-password"
           type="password"
@@ -67,7 +69,7 @@ export function RegisterForm({ onSubmit, isSubmitting }: RegisterFormProps) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="register-confirm-password">Nhập lại mật khẩu</Label>
+        <Label htmlFor="register-confirm-password">{t("registerConfirmPasswordLabel")}</Label>
         <Input
           id="register-confirm-password"
           type="password"
@@ -81,7 +83,7 @@ export function RegisterForm({ onSubmit, isSubmitting }: RegisterFormProps) {
       </div>
 
       <Button type="submit" disabled={isSubmitting} className="mt-2">
-        {isSubmitting ? "Đang đăng ký..." : "Đăng ký"}
+        {isSubmitting ? t("registerSubmitting") : t("registerSubmit")}
       </Button>
     </form>
   );
