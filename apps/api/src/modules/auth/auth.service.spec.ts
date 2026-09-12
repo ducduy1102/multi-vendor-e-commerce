@@ -1,7 +1,7 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { Role } from '@prisma/client';
+import { AccountStatus, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
 import { MailService } from '../../shared/mail/mail.service';
@@ -42,6 +42,7 @@ describe('AuthService', () => {
     passwordHash: '',
     name: 'Test User',
     role: Role.USER,
+    accountStatus: AccountStatus.ACTIVE,
     refreshTokenHash: null as string | null,
     emailVerifiedAt: null as Date | null,
     emailVerificationTokenHash: null as string | null,
@@ -226,6 +227,33 @@ describe('AuthService', () => {
       expect(payload.sub).toBe(baseUser.id);
       expect(payload.role).toBe(Role.ADMIN);
     });
+
+    // accountStatus là session-level (khác emailVerifiedAt) — tài khoản bị
+    // khoá không được cấp JWT mới dù đúng mật khẩu. Xem
+    // .claude/docs/auth-shop-status-architecture.md.
+    it.each([
+      AccountStatus.SUSPENDED,
+      AccountStatus.BANNED,
+      AccountStatus.DEACTIVATED,
+    ])(
+      'báo lỗi 401 ACCOUNT_NOT_ACTIVE nếu accountStatus là %s',
+      async (accountStatus: AccountStatus) => {
+        const passwordHash = await bcrypt.hash('correct-password', 10);
+        prisma.user.findUnique.mockResolvedValue({
+          ...baseUser,
+          accountStatus,
+          passwordHash,
+        });
+
+        await expect(
+          service.login({
+            email: baseUser.email,
+            password: 'correct-password',
+          }),
+        ).rejects.toBeInstanceOf(UnauthorizedException);
+        expect(prisma.user.update).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('refreshTokens', () => {

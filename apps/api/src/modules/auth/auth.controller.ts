@@ -40,6 +40,7 @@ const USER_EXAMPLE = {
   email: 'user@example.com',
   name: 'Nguyen Van A',
   role: 'USER',
+  accountStatus: 'ACTIVE',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
@@ -92,7 +93,11 @@ export class AuthController {
     description: 'Đăng nhập thành công',
     schema: { example: { success: true, data: { user: USER_EXAMPLE } } },
   })
-  @ApiResponse({ status: 401, description: 'Email hoặc mật khẩu không đúng' })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Email hoặc mật khẩu không đúng, hoặc tài khoản không ở trạng thái ACTIVE (message: "ACCOUNT_NOT_ACTIVE")',
+  })
   async login(
     @Body(new ZodValidationPipe(loginSchema)) dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
@@ -166,7 +171,8 @@ export class AuthController {
   })
   @ApiResponse({
     status: 401,
-    description: 'Chưa đăng nhập hoặc session hết hạn',
+    description:
+      'Chưa đăng nhập, session hết hạn, hoặc tài khoản không còn ACTIVE (message: "ACCOUNT_NOT_ACTIVE")',
   })
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.me(user.userId);

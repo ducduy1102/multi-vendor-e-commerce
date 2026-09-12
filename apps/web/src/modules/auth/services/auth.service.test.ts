@@ -2,13 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/shared/lib/api-client";
 
-import { login, logout, me, refresh, register } from "./auth.service";
+import { login, logout, me, refresh, register, resendVerification, verifyEmail } from "./auth.service";
 
 const mockUser = {
   id: "user-1",
   email: "user@example.com",
   name: "Nguyen Van A",
   role: "USER",
+  emailVerifiedAt: null,
 };
 
 function mockFetchOnce(body: unknown, status = 200) {
@@ -86,5 +87,37 @@ describe("auth.service", () => {
     mockFetchOnce({ success: false, data: null, message: "Unauthorized" }, 401);
 
     await expect(me()).rejects.toMatchObject(new ApiError("Unauthorized", 401));
+  });
+
+  it("verifyEmail posts the token and returns the BE message", async () => {
+    mockFetchOnce({ success: true, data: { message: "Xác thực email thành công" } });
+
+    const result = await verifyEmail("raw-token");
+
+    expect(result).toEqual({ message: "Xác thực email thành công" });
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/verify-email"),
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ token: "raw-token" }) }),
+    );
+  });
+
+  it("verifyEmail throws ApiError when the token is invalid/expired", async () => {
+    mockFetchOnce({ success: false, data: null, message: "Token xác thực đã hết hạn" }, 400);
+
+    await expect(verifyEmail("expired-token")).rejects.toMatchObject(
+      new ApiError("Token xác thực đã hết hạn", 400),
+    );
+  });
+
+  it("resendVerification returns the BE message on success", async () => {
+    mockFetchOnce({ success: true, data: { message: "Đã gửi lại email xác thực" } });
+
+    const result = await resendVerification();
+
+    expect(result).toEqual({ message: "Đã gửi lại email xác thực" });
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/resend-verification"),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
-import { AuthHydrator } from "@/modules/auth";
+import { AuthHydrator, EmailVerificationBanner } from "@/modules/auth";
 
 import "./globals.css";
 
@@ -28,6 +28,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <AuthHydrator />
+        <EmailVerificationBanner />
         {children}
       </body>
     </html>
