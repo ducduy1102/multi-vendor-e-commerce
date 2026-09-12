@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { useRouter } from "@/i18n/navigation";
 import { ApiError } from "@/shared/lib/api-client";
 
 import { login } from "../services/auth.service";

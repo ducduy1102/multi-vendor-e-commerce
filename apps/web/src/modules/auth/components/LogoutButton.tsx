@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { useRouter } from "@/i18n/navigation";
 import { Button } from "@/shared/components/ui/button";
 
 import { logout } from "../services/auth.service";

@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/shared/lib/api-client";
+import { withIntl } from "@/shared/lib/test-i18n";
 
 import { useAuthStore } from "../store/auth.store";
 import { VerifyEmailStatus } from "./VerifyEmailStatus";
@@ -20,7 +21,7 @@ describe("VerifyEmailStatus", () => {
   });
 
   it("báo thiếu token nếu không có token trong URL", async () => {
-    render(<VerifyEmailStatus token={null} />);
+    render(withIntl(<VerifyEmailStatus token={null} />));
 
     expect(
       await screen.findByText("Thiếu token xác thực trong đường dẫn"),
@@ -31,7 +32,7 @@ describe("VerifyEmailStatus", () => {
     const { verifyEmail } = await import("../services/auth.service");
     vi.mocked(verifyEmail).mockResolvedValue({ message: "Xác thực email thành công" });
 
-    render(<VerifyEmailStatus token="valid-token" />);
+    render(withIntl(<VerifyEmailStatus token="valid-token" />));
 
     expect(await screen.findByText("Xác thực email thành công")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đăng nhập" })).toHaveAttribute("href", "/login");
@@ -41,7 +42,7 @@ describe("VerifyEmailStatus", () => {
     const { verifyEmail } = await import("../services/auth.service");
     vi.mocked(verifyEmail).mockRejectedValue(new ApiError("Token xác thực đã hết hạn", 400));
 
-    render(<VerifyEmailStatus token="expired-token" />);
+    render(withIntl(<VerifyEmailStatus token="expired-token" />));
 
     expect(await screen.findByText("Token xác thực đã hết hạn")).toBeInTheDocument();
     expect(
@@ -60,7 +61,7 @@ describe("VerifyEmailStatus", () => {
       emailVerifiedAt: null,
     });
 
-    render(<VerifyEmailStatus token="expired-token" />);
+    render(withIntl(<VerifyEmailStatus token="expired-token" />));
 
     expect(await screen.findByText("Token xác thực đã hết hạn")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Gửi lại email xác thực" })).toBeInTheDocument();
@@ -74,9 +75,11 @@ describe("VerifyEmailStatus", () => {
     vi.mocked(verifyEmail).mockResolvedValue({ message: "Xác thực email thành công" });
 
     render(
-      <StrictMode>
-        <VerifyEmailStatus token="valid-token" />
-      </StrictMode>,
+      withIntl(
+        <StrictMode>
+          <VerifyEmailStatus token="valid-token" />
+        </StrictMode>,
+      ),
     );
 
     await waitFor(() =>

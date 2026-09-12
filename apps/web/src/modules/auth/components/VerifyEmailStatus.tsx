@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { Link } from "@/i18n/navigation";
 import { Button } from "@/shared/components/ui/button";
 import { ApiError } from "@/shared/lib/api-client";
 
