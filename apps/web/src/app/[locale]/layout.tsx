@@ -6,6 +6,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 
 import { routing } from "@/i18n/routing";
 import { AuthHydrator, EmailVerificationBanner } from "@/modules/auth";
+import { LocaleSwitcher } from "@/shared/components/LocaleSwitcher";
 
 import "../globals.css";
 
@@ -54,6 +55,7 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
         <NextIntlClientProvider>
           <AuthHydrator />
           <EmailVerificationBanner />
+          <LocaleSwitcher />
           {children}
         </NextIntlClientProvider>
       </body>
