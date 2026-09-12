@@ -81,6 +81,10 @@ enum VoucherType {
   FIXED
 }
 
+enum OAuthProvider {
+  GOOGLE
+}
+
 // =========================================================
 // User & Auth
 // =========================================================
@@ -88,7 +92,10 @@ enum VoucherType {
 model User {
   id               String   @id @default(uuid())
   email            String   @unique
-  passwordHash     String   @map("password_hash")
+  // Nullable — user tạo qua OAuth (xem OAuthAccount) không có mật khẩu.
+  // AuthService.login() báo lỗi rõ ràng nếu user chỉ có OAuth mà cố login
+  // bằng password.
+  passwordHash     String?  @map("password_hash")
   name             String
   role             Role     @default(USER)
   accountStatus    AccountStatus @default(ACTIVE) @map("account_status")
@@ -115,8 +122,27 @@ model User {
   wishlists     Wishlist[]
   conversations Conversation[] @relation("BuyerConversations")
   messages      Message[]
+  oauthAccounts OAuthAccount[]
 
   @@map("users")
+}
+
+// 1 User có thể liên kết nhiều provider OAuth (Google, sau này Facebook...)
+// — tách bảng riêng thay vì thêm field googleId/facebookId thẳng vào User để
+// không phải đổi schema mỗi lần thêm provider mới, và cho phép 1 user link
+// nhiều provider cùng lúc (đăng ký bằng password, sau đó "liên kết Google").
+model OAuthAccount {
+  id             String        @id @default(uuid())
+  userId         String        @map("user_id")
+  provider       OAuthProvider
+  providerUserId String        @map("provider_user_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("oauth_accounts")
 }
 
 // Sổ địa chỉ dùng chung: đúng 1 trong 2 FK (userId/shopId) có giá trị,

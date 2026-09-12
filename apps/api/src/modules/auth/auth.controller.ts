@@ -5,7 +5,9 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -15,8 +17,9 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
+import { GoogleAuthGuard } from '../../shared/guards/google-auth.guard';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { RefreshTokenGuard } from '../../shared/guards/refresh-token.guard';
 import { ZodValidationPipe } from '../../shared/pipes/zod-validation.pipe';
@@ -24,12 +27,14 @@ import {
   ACCESS_TOKEN_COOKIE,
   REFRESH_TOKEN_COOKIE,
   accessTokenCookieOptions,
+  getFrontendUrl,
   refreshTokenCookieOptions,
 } from './auth.constants';
 import { AuthService, type TokenPair } from './auth.service';
 import { loginSchema, type LoginDto } from './dto/login.dto';
 import { registerSchema, type RegisterDto } from './dto/register.dto';
 import { verifyEmailSchema, type VerifyEmailDto } from './dto/verify-email.dto';
+import type { GoogleProfile } from './types/google-profile.type';
 import type { AuthenticatedUser } from './types/jwt-payload.type';
 
 // DTO validate bằng Zod (không phải class), @nestjs/swagger không tự suy ra
@@ -157,6 +162,54 @@ export class AuthController {
     res.clearCookie(ACCESS_TOKEN_COOKIE, accessTokenCookieOptions());
     res.clearCookie(REFRESH_TOKEN_COOKIE, refreshTokenCookieOptions());
     return { message: 'Đăng xuất thành công' };
+  }
+
+  // Browser điều hướng thẳng tới URL này (thẻ <a>, không phải fetch) —
+  // GoogleAuthGuard (passport-google-oauth20) tự redirect sang trang đồng ý
+  // của Google, không cần code gì thêm ở đây.
+  @Get('google')
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({
+    summary: 'Redirect sang Google để đăng nhập/đăng ký bằng tài khoản Google',
+  })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect sang trang đăng nhập Google',
+  })
+  googleAuth(): void {}
+
+  // Google redirect trình duyệt về đây sau khi user đồng ý — không phải API
+  // JSON thông thường nên KHÔNG dùng TransformResponseInterceptor (đăng ký
+  // route bằng @Res() không passthrough), set cookie xong redirect thẳng về
+  // FE, lỗi cũng redirect kèm query param thay vì trả JSON (không ai đọc
+  // được JSON giữa 1 lần điều hướng trình duyệt).
+  @Get('google/callback')
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({
+    summary:
+      'Google redirect lại sau khi đồng ý — set cookie rồi redirect về FE',
+  })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect về FE, đã set cookie access_token/refresh_token',
+  })
+  async googleCallback(
+    @Req() req: Request & { user: GoogleProfile },
+    @Res() res: Response,
+  ): Promise<void> {
+    try {
+      const { accessToken, refreshToken } =
+        await this.authService.loginWithGoogle(req.user);
+      this.setTokenCookies(res, { accessToken, refreshToken });
+      res.redirect(getFrontendUrl());
+    } catch (error) {
+      const reason =
+        error instanceof UnauthorizedException &&
+        error.message === 'ACCOUNT_NOT_ACTIVE'
+          ? 'account_not_active'
+          : 'google_login_failed';
+      res.redirect(`${getFrontendUrl()}/login?error=${reason}`);
+    }
   }
 
   // FE dùng httpOnly cookie nên JS không đọc được token để biết ai đang đăng

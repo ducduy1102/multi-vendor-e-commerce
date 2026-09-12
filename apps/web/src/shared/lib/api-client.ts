@@ -1,4 +1,6 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+// Export để dùng cho những chỗ điều hướng thẳng trình duyệt (không qua
+// apiFetch) — vd GoogleLoginButton trỏ <a href> thẳng tới BE.
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 interface ApiEnvelope<T> {
   success: boolean;
