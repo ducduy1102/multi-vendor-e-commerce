@@ -7,7 +7,13 @@ import type { MailMessage, MailProvider } from './mail-provider.interface';
 @Injectable()
 export class ResendMailProvider implements MailProvider {
   private readonly logger = new Logger(ResendMailProvider.name);
-  private readonly from = process.env.MAIL_FROM ?? 'onboarding@resend.dev';
+  // "?? " chỉ fallback khi undefined/null, không fallback khi ENV được khai
+  // rỗng (vd ".env" có dòng "MAIL_FROM=" không giá trị) — lúc đó
+  // process.env.MAIL_FROM là "" (falsy nhưng không nullish), Resend sẽ báo
+  // "domain is invalid" vì from rỗng. Dùng "|| " sau khi trim để bắt cả case
+  // rỗng/toàn khoảng trắng.
+  private readonly from =
+    process.env.MAIL_FROM?.trim() || 'onboarding@resend.dev';
   private client: Resend | null = null;
 
   // Khởi tạo lazy (không phải ở field initializer/constructor) — SDK Resend

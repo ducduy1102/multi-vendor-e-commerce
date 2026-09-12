@@ -219,14 +219,17 @@ export class AuthService {
 
     // expiresIn của @nestjs/jwt yêu cầu kiểu StringValue (vd "15m") chứ không
     // phải string thường — env var luôn là string nên cần ép kiểu tường minh.
+    // "|| " (không phải "??") để fallback cả khi ENV khai rỗng (vd ".env" có
+    // dòng không giá trị) — "??" chỉ fallback khi undefined/null, không bắt
+    // được chuỗi rỗng (xem bug thật ở ResendMailProvider.from).
     const accessToken = await this.jwtService.signAsync(payload, {
       secret: process.env.JWT_ACCESS_SECRET,
-      expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN ??
+      expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN?.trim() ||
         '15m') as JwtSignOptions['expiresIn'],
     });
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: process.env.JWT_REFRESH_SECRET,
-      expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ??
+      expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN?.trim() ||
         '7d') as JwtSignOptions['expiresIn'],
     });
 
@@ -284,7 +287,7 @@ export class AuthService {
   }
 
   private buildVerifyEmailUrl(rawToken: string): string {
-    const base = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    const base = process.env.FRONTEND_URL?.trim() || 'http://localhost:3000';
     return `${base}/verify-email?token=${rawToken}`;
   }
 }
