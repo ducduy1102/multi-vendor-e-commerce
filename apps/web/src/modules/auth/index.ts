@@ -2,6 +2,7 @@
 export { AuthHydrator } from './components/AuthHydrator';
 export { CurrentUserBadge } from './components/CurrentUserBadge';
 export { EmailVerificationBanner } from './components/EmailVerificationBanner';
+export { GoogleLoginButton } from './components/GoogleLoginButton';
 export { GuestAuthLinks } from './components/GuestAuthLinks';
 export { LoginForm } from './components/LoginForm';
 export { LoginFormContainer } from './components/LoginFormContainer';

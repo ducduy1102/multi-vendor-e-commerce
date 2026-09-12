@@ -7,6 +7,7 @@ import { ApiError } from "@/shared/lib/api-client";
 
 import { register } from "../services/auth.service";
 import type { RegisterFormInput } from "../types";
+import { GoogleLoginButton } from "./GoogleLoginButton";
 import { RegisterForm } from "./RegisterForm";
 
 // Nối RegisterForm (UI + validate, Bước 3.3) với service gọi API (Bước 3.5)
@@ -43,6 +44,12 @@ export function RegisterFormContainer() {
     <div className="flex flex-col gap-4">
       {error && <p className="text-sm text-destructive">{error}</p>}
       <RegisterForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="h-px flex-1 bg-border" />
+        hoặc
+        <div className="h-px flex-1 bg-border" />
+      </div>
+      <GoogleLoginButton />
     </div>
   );
 }
