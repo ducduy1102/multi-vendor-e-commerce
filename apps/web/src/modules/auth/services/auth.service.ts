@@ -32,3 +32,18 @@ export async function refresh(): Promise<void> {
 export async function logout(): Promise<void> {
   await apiFetch<{ message: string }>("/auth/logout", { method: "POST" });
 }
+
+export async function verifyEmail(token: string): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>("/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
+// Yêu cầu đã đăng nhập (JwtAuthGuard) — BE tránh nhận email qua body để
+// không lộ email nào tồn tại trong hệ thống (xem AuthService.resendVerification).
+export async function resendVerification(): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>("/auth/resend-verification", {
+    method: "POST",
+  });
+}

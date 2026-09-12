@@ -7,6 +7,7 @@ const mockUser = {
   email: "user@example.com",
   name: "Nguyen Van A",
   role: "USER" as const,
+  emailVerifiedAt: null,
 };
 
 describe("useAuthStore", () => {

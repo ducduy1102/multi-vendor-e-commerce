@@ -24,6 +24,7 @@ describe("CurrentUserBadge", () => {
       email: "user@example.com",
       name: "Nguyen Van A",
       role: "ADMIN",
+      emailVerifiedAt: null,
     });
 
     render(<CurrentUserBadge />);

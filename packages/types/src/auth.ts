@@ -27,6 +27,9 @@ export const authUserSchema = z.object({
   email: z.string(),
   name: z.string(),
   role: z.enum(['USER', 'ADMIN']),
+  // null = chưa xác thực email (vẫn cho login/browse — feature-level, xem
+  // auth-shop-status-architecture.md), FE dùng field này để hiện nhắc nhở.
+  emailVerifiedAt: z.string().nullable(),
 });
 export type AuthUser = z.infer<typeof authUserSchema>;
 
