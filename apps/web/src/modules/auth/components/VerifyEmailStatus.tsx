@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
+import { Link } from "@/i18n/navigation";
 import { Button } from "@/shared/components/ui/button";
 import { ApiError } from "@/shared/lib/api-client";
 
@@ -20,6 +21,7 @@ interface VerifyEmailStatusProps {
 }
 
 export function VerifyEmailStatus({ token }: VerifyEmailStatusProps) {
+  const t = useTranslations("auth");
   const [state, setState] = useState<VerifyState>({ status: "loading" });
   const user = useAuthStore((s) => s.user);
   // Token verify chỉ dùng được 1 lần — React StrictMode (dev) chạy effect 2
@@ -38,17 +40,17 @@ export function VerifyEmailStatus({ token }: VerifyEmailStatusProps) {
       .catch((err) =>
         setState({
           status: "error",
-          message: err instanceof ApiError ? err.message : "Xác thực email thất bại, vui lòng thử lại",
+          message: err instanceof ApiError ? err.message : t("verifyEmailGenericError"),
         }),
       );
-  }, [token]);
+  }, [token, t]);
 
   if (!token) {
-    return <p className="text-sm text-destructive">Thiếu token xác thực trong đường dẫn</p>;
+    return <p className="text-sm text-destructive">{t("verifyEmailMissingToken")}</p>;
   }
 
   if (state.status === "loading") {
-    return <p className="text-sm text-muted-foreground">Đang xác thực email...</p>;
+    return <p className="text-sm text-muted-foreground">{t("verifyEmailVerifying")}</p>;
   }
 
   if (state.status === "success") {
@@ -56,7 +58,7 @@ export function VerifyEmailStatus({ token }: VerifyEmailStatusProps) {
       <div className="flex flex-col items-center gap-4 text-center">
         <p className="text-sm">{state.message}</p>
         <Button nativeButton={false} render={<Link href={user ? "/" : "/login"} />}>
-          {user ? "Về trang chủ" : "Đăng nhập"}
+          {user ? t("verifyEmailBackHome") : t("verifyEmailLogin")}
         </Button>
       </div>
     );
@@ -69,7 +71,7 @@ export function VerifyEmailStatus({ token }: VerifyEmailStatusProps) {
         <ResendVerificationButton />
       ) : (
         <Button variant="outline" nativeButton={false} render={<Link href="/login" />}>
-          Đăng nhập để gửi lại email xác thực
+          {t("verifyEmailLoginToResend")}
         </Button>
       )}
     </div>

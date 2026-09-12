@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
@@ -15,6 +16,7 @@ interface ResendVerificationButtonProps {
 // hạn/không hợp lệ) — chỉ hoạt động khi đã đăng nhập (BE yêu cầu JwtAuthGuard),
 // nơi gọi tự quyết định có hiện component này hay không dựa vào useAuthStore.
 export function ResendVerificationButton({ size = "default" }: ResendVerificationButtonProps) {
+  const t = useTranslations("auth");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -26,7 +28,7 @@ export function ResendVerificationButton({ size = "default" }: ResendVerificatio
       setFeedback(result.message);
     } catch (err) {
       setFeedback(
-        err instanceof ApiError ? err.message : "Gửi lại email xác thực thất bại, vui lòng thử lại",
+        err instanceof ApiError ? err.message : t("resendVerificationGenericError"),
       );
     } finally {
       setIsSubmitting(false);
@@ -36,7 +38,7 @@ export function ResendVerificationButton({ size = "default" }: ResendVerificatio
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Button variant="outline" size={size} onClick={handleClick} disabled={isSubmitting}>
-        {isSubmitting ? "Đang gửi..." : "Gửi lại email xác thực"}
+        {isSubmitting ? t("resendVerificationSubmitting") : t("resendVerificationSubmit")}
       </Button>
       {feedback && <p className="text-sm">{feedback}</p>}
     </div>

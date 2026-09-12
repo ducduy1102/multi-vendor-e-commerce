@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 
+import { Link } from "@/i18n/navigation";
 import { Button } from "@/shared/components/ui/button";
 
 import { useAuthStore } from "../store/auth.store";
@@ -10,6 +11,7 @@ import { useAuthStore } from "../store/auth.store";
 // chưa đăng nhập (ngược với LogoutButton), bỏ khi có trang chủ/dashboard
 // thật + có menu điều hướng đàng hoàng.
 export function GuestAuthLinks() {
+  const t = useTranslations("auth");
   const user = useAuthStore((state) => state.user);
 
   if (user) {
@@ -19,10 +21,10 @@ export function GuestAuthLinks() {
   return (
     <div className="flex items-center gap-2">
       <Button variant="outline" nativeButton={false} render={<Link href="/login" />}>
-        Đăng nhập
+        {t("guestLoginLink")}
       </Button>
       <Button variant="outline" nativeButton={false} render={<Link href="/register" />}>
-        Đăng ký
+        {t("guestRegisterLink")}
       </Button>
     </div>
   );

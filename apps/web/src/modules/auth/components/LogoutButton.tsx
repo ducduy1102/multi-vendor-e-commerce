@@ -1,14 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { useRouter } from "@/i18n/navigation";
 import { Button } from "@/shared/components/ui/button";
 
 import { logout } from "../services/auth.service";
 import { useAuthStore } from "../store/auth.store";
 
 export function LogoutButton() {
+  const t = useTranslations("auth");
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const clearUser = useAuthStore((state) => state.clearUser);
@@ -33,7 +35,7 @@ export function LogoutButton() {
 
   return (
     <Button variant="outline" onClick={handleLogout} disabled={isLoading}>
-      {isLoading ? "Đang đăng xuất..." : "Đăng xuất"}
+      {isLoading ? t("logoutSubmitting") : t("logoutSubmit")}
     </Button>
   );
 }

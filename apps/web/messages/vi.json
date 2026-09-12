@@ -1,0 +1,48 @@
+{
+  "common": {
+    "loading": "Đang tải...",
+    "or": "hoặc",
+    "toggleTheme": "Chuyển đổi giao diện sáng/tối"
+  },
+  "auth": {
+    "loginTitle": "Đăng nhập",
+    "loginEmailLabel": "Email",
+    "loginPasswordLabel": "Mật khẩu",
+    "loginSubmit": "Đăng nhập",
+    "loginSubmitting": "Đang đăng nhập...",
+    "loginGenericError": "Đăng nhập thất bại, vui lòng thử lại",
+    "loginGoogleErrorAccountNotActive": "Tài khoản của bạn hiện không hoạt động, vui lòng liên hệ hỗ trợ.",
+    "loginGoogleErrorFailed": "Đăng nhập bằng Google thất bại, vui lòng thử lại.",
+
+    "registerTitle": "Đăng ký",
+    "registerNameLabel": "Họ tên",
+    "registerEmailLabel": "Email",
+    "registerPasswordLabel": "Mật khẩu",
+    "registerConfirmPasswordLabel": "Nhập lại mật khẩu",
+    "registerSubmit": "Đăng ký",
+    "registerSubmitting": "Đang đăng ký...",
+    "registerGenericError": "Đăng ký thất bại, vui lòng thử lại",
+
+    "logoutSubmit": "Đăng xuất",
+    "logoutSubmitting": "Đang đăng xuất...",
+
+    "guestLoginLink": "Đăng nhập",
+    "guestRegisterLink": "Đăng ký",
+
+    "googleSignIn": "Đăng nhập với Google",
+
+    "verifyEmailTitle": "Xác thực email",
+    "verifyEmailMissingToken": "Thiếu token xác thực trong đường dẫn",
+    "verifyEmailVerifying": "Đang xác thực email...",
+    "verifyEmailBackHome": "Về trang chủ",
+    "verifyEmailLogin": "Đăng nhập",
+    "verifyEmailLoginToResend": "Đăng nhập để gửi lại email xác thực",
+    "verifyEmailGenericError": "Xác thực email thất bại, vui lòng thử lại",
+
+    "resendVerificationSubmit": "Gửi lại email xác thực",
+    "resendVerificationSubmitting": "Đang gửi...",
+    "resendVerificationGenericError": "Gửi lại email xác thực thất bại, vui lòng thử lại",
+
+    "emailVerificationBannerMessage": "Email của bạn chưa được xác thực."
+  }
+}

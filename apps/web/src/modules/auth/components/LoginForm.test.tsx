@@ -2,13 +2,15 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { withIntl } from "@/shared/lib/test-i18n";
+
 import { LoginForm } from "./LoginForm";
 
 describe("LoginForm", () => {
   it("shows field errors and does not submit when form is empty", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
-    render(<LoginForm onSubmit={onSubmit} />);
+    render(withIntl(<LoginForm onSubmit={onSubmit} />));
 
     await user.click(screen.getByRole("button", { name: "Đăng nhập" }));
 
@@ -19,7 +21,7 @@ describe("LoginForm", () => {
   it("calls onSubmit with validated values when form is filled correctly", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
-    render(<LoginForm onSubmit={onSubmit} />);
+    render(withIntl(<LoginForm onSubmit={onSubmit} />));
 
     await user.type(screen.getByLabelText("Email"), "user@example.com");
     await user.type(screen.getByLabelText("Mật khẩu"), "password123");
@@ -34,7 +36,7 @@ describe("LoginForm", () => {
   });
 
   it("disables submit button while isSubmitting", () => {
-    render(<LoginForm onSubmit={vi.fn()} isSubmitting />);
+    render(withIntl(<LoginForm onSubmit={vi.fn()} isSubmitting />));
 
     expect(screen.getByRole("button", { name: "Đang đăng nhập..." })).toBeDisabled();
   });

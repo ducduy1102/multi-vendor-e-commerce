@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/shared/lib/api-client";
+import { withIntl } from "@/shared/lib/test-i18n";
 
 import { ResendVerificationButton } from "./ResendVerificationButton";
 
@@ -16,7 +17,7 @@ describe("ResendVerificationButton", () => {
     vi.mocked(resendVerification).mockResolvedValue({ message: "Đã gửi lại email xác thực" });
     const user = userEvent.setup();
 
-    render(<ResendVerificationButton />);
+    render(withIntl(<ResendVerificationButton />));
     await user.click(screen.getByRole("button", { name: "Gửi lại email xác thực" }));
 
     expect(await screen.findByText("Đã gửi lại email xác thực")).toBeInTheDocument();
@@ -30,7 +31,7 @@ describe("ResendVerificationButton", () => {
     );
     const user = userEvent.setup();
 
-    render(<ResendVerificationButton />);
+    render(withIntl(<ResendVerificationButton />));
     await user.click(screen.getByRole("button", { name: "Gửi lại email xác thực" }));
 
     expect(

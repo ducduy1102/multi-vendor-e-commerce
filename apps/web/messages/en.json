@@ -1,0 +1,48 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "or": "or",
+    "toggleTheme": "Toggle light/dark theme"
+  },
+  "auth": {
+    "loginTitle": "Log in",
+    "loginEmailLabel": "Email",
+    "loginPasswordLabel": "Password",
+    "loginSubmit": "Log in",
+    "loginSubmitting": "Logging in...",
+    "loginGenericError": "Login failed, please try again",
+    "loginGoogleErrorAccountNotActive": "Your account is currently inactive. Please contact support.",
+    "loginGoogleErrorFailed": "Google sign-in failed, please try again.",
+
+    "registerTitle": "Sign up",
+    "registerNameLabel": "Full name",
+    "registerEmailLabel": "Email",
+    "registerPasswordLabel": "Password",
+    "registerConfirmPasswordLabel": "Confirm password",
+    "registerSubmit": "Sign up",
+    "registerSubmitting": "Signing up...",
+    "registerGenericError": "Sign-up failed, please try again",
+
+    "logoutSubmit": "Log out",
+    "logoutSubmitting": "Logging out...",
+
+    "guestLoginLink": "Log in",
+    "guestRegisterLink": "Sign up",
+
+    "googleSignIn": "Sign in with Google",
+
+    "verifyEmailTitle": "Verify email",
+    "verifyEmailMissingToken": "Missing verification token in the link",
+    "verifyEmailVerifying": "Verifying your email...",
+    "verifyEmailBackHome": "Back to home",
+    "verifyEmailLogin": "Log in",
+    "verifyEmailLoginToResend": "Log in to resend the verification email",
+    "verifyEmailGenericError": "Email verification failed, please try again",
+
+    "resendVerificationSubmit": "Resend verification email",
+    "resendVerificationSubmitting": "Sending...",
+    "resendVerificationGenericError": "Failed to resend verification email, please try again",
+
+    "emailVerificationBannerMessage": "Your email hasn't been verified yet."
+  }
+}
