@@ -75,5 +75,6 @@
       "Read(**/*.pem)",
       "Read(**/*.key)"
     ]
-  }
+  },
+  "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1"
 }
