@@ -1,7 +1,8 @@
 {
   "common": {
     "loading": "Loading...",
-    "or": "or"
+    "or": "or",
+    "toggleTheme": "Toggle light/dark theme"
   },
   "auth": {
     "loginTitle": "Log in",

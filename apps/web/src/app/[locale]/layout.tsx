@@ -7,6 +7,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { routing } from "@/i18n/routing";
 import { AuthHydrator, EmailVerificationBanner } from "@/modules/auth";
 import { LocaleSwitcher } from "@/shared/components/LocaleSwitcher";
+import { ThemeProvider } from "@/shared/components/ThemeProvider";
+import { ThemeToggle } from "@/shared/components/ThemeToggle";
 
 import "../globals.css";
 
@@ -50,13 +52,17 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
     <html
       lang={locale}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>
-          <AuthHydrator />
-          <EmailVerificationBanner />
-          <LocaleSwitcher />
-          {children}
+          <ThemeProvider>
+            <AuthHydrator />
+            <EmailVerificationBanner />
+            <ThemeToggle />
+            <LocaleSwitcher />
+            {children}
+          </ThemeProvider>
         </NextIntlClientProvider>
       </body>
     </html>

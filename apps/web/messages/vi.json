@@ -1,7 +1,8 @@
 {
   "common": {
     "loading": "Đang tải...",
-    "or": "hoặc"
+    "or": "hoặc",
+    "toggleTheme": "Chuyển đổi giao diện sáng/tối"
   },
   "auth": {
     "loginTitle": "Đăng nhập",
