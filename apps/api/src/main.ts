@@ -17,6 +17,10 @@ const DEFAULT_CORS_ORIGINS = ['http://localhost:3000', 'http://localhost:3001'];
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // Version ngay từ endpoint đầu tiên (Tuần 3 Bước 1.5) — tránh phải đổi
+  // toàn bộ client khi có breaking change sau này. SwaggerModule.setup('docs')
+  // bên dưới không đi qua prefix này (route riêng do Swagger tự đăng ký).
+  app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
   app.enableCors({
     origin: process.env.CORS_ORIGIN?.split(',') ?? DEFAULT_CORS_ORIGINS,
