@@ -12,6 +12,8 @@ packages/
   types/                  # type/schema dùng chung FE-BE (Zod schema, DTO type)
 ```
 
+`packages/types` (và mọi package dùng chung khác sau này) **bắt buộc có build step riêng** (`tsconfig.build.json` output CommonJS + script `build`, `main`/`types` trỏ vào `dist/`) — không trỏ `main`/`types` thẳng vào file `.ts` nguồn. `nest build`/`tsc --noEmit` chỉ type-check nên không lộ lỗi, nhưng `require()` lúc chạy thật (`node dist/main.js`) sẽ báo `SyntaxError: Unexpected token 'export'` vì Node không tự biên dịch ESM export syntax của file `.ts` nguồn.
+
 Module theo domain (áp dụng cả 2 phía FE & BE, tên thư mục giống nhau để dễ đối chiếu):
 `auth`, `shop`, `product`, `cart`, `checkout`, `voucher`, `order`, `review`, `chat`, `admin`
 
@@ -51,6 +53,8 @@ Mỗi commit chỉ làm 1 việc, không gộp nhiều module trong 1 commit.
 - TypeScript strict mode bật từ đầu (`strict: true`), không dùng `any` nếu không comment giải thích lý do.
 - Mọi input từ bên ngoài (form, API request, query param, response từ API khác, ENV) **phải validate bằng Zod** trước khi dùng.
 - Type/schema dùng chung giữa FE-BE (vd Product, Order) định nghĩa 1 lần trong `packages/types`, không định nghĩa lại 2 nơi.
+- **Khi BE thêm field mới vào 1 model đã có schema Zod dùng chung ở `packages/types`, phải chủ động thêm field đó vào schema** nếu muốn FE đọc được — `z.object()` mặc định tự "strip" (loại bỏ) field không được khai trong schema khi `.parse()`, không báo lỗi/warning gì cả. BE trả đủ field không có nghĩa FE tự thấy được field đó.
+- Đọc biến môi trường optional có giá trị mặc định: dùng `process.env.VAR?.trim() || fallback`, **không dùng `??`** — `??` chỉ fallback khi giá trị là `undefined`/`null`, không bắt được trường hợp `.env` khai `VAR=` (không có giá trị, `process.env.VAR` là chuỗi rỗng `""`, không phải `undefined`).
 
 ## 5. Testing chung
 
