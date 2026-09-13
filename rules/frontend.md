@@ -29,7 +29,7 @@ apps/web/src/
 
 **Quy tắc:** file trong `app/` (page.tsx, layout.tsx) chỉ compose component từ `modules/`, không viết logic nghiệp vụ trực tiếp ở đây.
 
-**Middleware**: Next.js 16 dùng file `proxy.ts` (export tên `proxy`), **không phải** `middleware.ts` (đã deprecated) — tồn tại đồng thời cả 2 file gây lỗi runtime im lặng (route liên quan trả response rỗng, không throw rõ ràng), chỉ lộ ra khi test tay bằng browser thật. Chỉ có **1 file** `proxy.ts` cho toàn app — nếu cần cả middleware của 1 thư viện (vd `next-intl`'s `createMiddleware`) lẫn guard tự viết (vd chặn route theo cookie), phải tự compose logic vào chung 1 hàm `proxy()`, chạy tuần tự theo đúng thứ tự ưu tiên, không viết 2 file riêng.
+**Middleware**: Next.js 16 dùng file `proxy.ts` (export tên `proxy`), **không phải** `middleware.ts` (đã deprecated) — tồn tại đồng thời cả 2 file gây lỗi runtime im lặng (route liên quan trả response rỗng, không throw rõ ràng), chỉ lộ ra khi test tay bằng browser thật. Chỉ có **1 file** `proxy.ts` cho toàn app — nếu cần cả middleware của 1 thư viện (vd `next-intl`'s `createMiddleware`) lẫn guard tự viết (vd chặn route theo cookie), phải tự compose logic vào chung 1 hàm `proxy()`, chạy tuần tự theo đúng thứ tự ưu tiên, không viết 2 file riêng. Guard trong `proxy.ts` chỉ nên check điều kiện đọc trực tiếp được từ cookie/header (vd có token hay không) — điều kiện cần query DB (vd user đã có shop/quyền thao tác resource cụ thể chưa) phải đẩy xuống Server/Client Component (qua service/hook), không cố nhét vào middleware.
 
 ## 2. Server Component vs Client Component
 
@@ -48,13 +48,17 @@ apps/web/src/
 | Dữ liệu từ server (product list, order history) | TanStack Query |
 | Dữ liệu form | React Hook Form (không đưa vào Zustand) |
 
-Không đưa server data vào Zustand store — TanStack Query đã lo cache/refetch, tránh trùng lặp nguồn sự thật (source of truth).
+Không đưa server data vào Zustand store — TanStack Query đã lo cache/refetch, tránh trùng lặp nguồn sự thật (source of truth). Ngược lại, **không dùng TanStack Query để fetch lại dữ liệu user/session hiện tại** nếu đã có Zustand store riêng cho việc đó (`useAuthStore` + `AuthHydrator`) — chỉ dùng React Query cho server state thật sự mới (shop, product...), tránh có 2-3 nguồn khác nhau cùng đại diện cho 1 khái niệm "user hiện tại" (Zustand + React Query + cookie) dễ lệch nhau.
+
+Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPending`/`isError`/thành công khi có nhánh render khác nhau theo trạng thái — bỏ sót `isError` không báo lỗi TypeScript hay crash gì cả, chỉ lộ ra khi thật sự gặp lỗi khác trường hợp đã lường trước (vd chỉ xử lý `404 → null` nhưng gặp `401` thật), khiến UI treo mãi ở trạng thái loading.
 
 ## 4. Form & validate
 
 - Mọi form dùng React Hook Form + Zod resolver.
 - Schema Zod đặt trong `modules/<domain>/schemas/`, dùng chung được cho cả validate form (FE) lẫn export type request (khớp với DTO BE nếu có thể, qua `packages/types`).
 - Hiển thị lỗi validate rõ ràng theo field, không alert chung chung.
+- Field optional dạng string trong Zod schema dùng cho `zodResolver` (React Hook Form): input bỏ trống gửi lên chuỗi rỗng `""`, không phải `undefined` — nếu cần coi `""` là chưa nhập, xử lý bằng `.optional().transform(v => v === '' ? undefined : v)` ở **cuối** chain, **không** dùng `z.preprocess()` ở đầu chain (khiến input type của field đó suy ra thành `unknown`, làm `useForm<T>({ resolver: zodResolver(schema) })` báo lỗi type `Resolver<...>` không khớp).
+- Form pre-fill dữ liệu tới **bất đồng bộ** (từ TanStack Query, chưa có sẵn lúc mount) dùng option `values` của `useForm()`, không dùng `defaultValues` — `defaultValues` chỉ đọc đúng 1 lần lúc khởi tạo form, không tự cập nhật lại khi prop đổi sau đó.
 
 ## 5. Styling
 
@@ -84,7 +88,8 @@ Không đưa server data vào Zustand store — TanStack Query đã lo cache/ref
 - Ưu tiên test: hook có logic (useCart, useVariantSelector), component có nhiều nhánh điều kiện (variant selector, voucher input).
 - Không bắt buộc test UI thuần trình bày (component chỉ render props).
 - `useEffect` gọi API có tác dụng phụ **không lặp lại an toàn** (token dùng 1 lần, tạo record chỉ nên 1 lần...) phải tự chặn gọi lại trùng bằng `useRef` — React StrictMode (dev) cố ý chạy mount + effect 2 lần để lộ effect không idempotent, nếu không chặn sẽ gọi API 2 lần thật (lần 2 luôn lỗi vì tài nguyên đã dùng). Viết regression test riêng bằng cách render trong `<StrictMode>` thật rồi assert số lần gọi — test không bọc `StrictMode` sẽ không phát hiện được bug loại này.
-- Test tay bằng browser thật (không chỉ Vitest/RTL) cho luồng chính có UI — dùng Playwright (headless Chromium), verify cả cookie (`context.cookies()`) khi luồng liên quan tới session/locale/theme, không chỉ nhìn text hiển thị.
+- Test tay bằng browser thật (không chỉ Vitest/RTL) cho luồng chính có UI — dùng Playwright (headless Chromium), verify cả cookie (`context.cookies()`) khi luồng liên quan tới session/locale/theme, không chỉ nhìn text hiển thị. Viết script tạm (`node <file>.mjs`) chạy tay, không commit vào repo — xoá sau khi verify xong; `playwright` giữ lại làm devDependency lâu dài để dùng lại các tuần sau.
+- Component **Container** (nối UI thuần với hook/service, dùng `useRouter` từ `@/i18n/navigation`) không bắt buộc unit test — mock router của next-intl phức tạp không cần thiết, dựa vào Playwright test tay cho luồng điều hướng thay vào đó (vd `LoginFormContainer`/`RegisterFormContainer` không có test, chỉ `LoginForm`/`RegisterForm` — component thuần, không router — mới có).
 
 ## 9. Tài liệu tham khảo
 
