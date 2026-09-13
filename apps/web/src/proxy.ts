@@ -7,6 +7,10 @@ import { routing } from "@/i18n/routing";
 // apps/api/src/modules/auth/auth.constants.ts.
 const ACCESS_TOKEN_COOKIE = "access_token";
 const GUEST_ONLY_PATHS = ["/login", "/register"];
+// Chỉ check "đã đăng nhập chưa" (đọc được từ cookie tại edge) — KHÔNG check
+// "đã có shop chưa" ở đây (cần query DB, useMyShop() ở Client Component lo
+// việc đó, xem BecomeSellerFormContainer/ShopDashboardContainer Bước 3.7/3.8).
+const PROTECTED_PATH_PREFIXES = ["/seller"];
 
 const intlMiddleware = createIntlMiddleware(routing);
 
@@ -18,15 +22,25 @@ function stripLocalePrefix(pathname: string): string {
   return match ? pathname.slice(match[0].length) || "/" : pathname;
 }
 
-// Chỉ chặn route dành cho guest (login/register) khi đã có session — phân
-// quyền theo role cho các route cần bảo vệ (Guest/User/Seller/Admin) làm ở
-// Bước 3.6 khi có route thật cần bảo vệ.
+function isProtectedPath(pathname: string): boolean {
+  return PROTECTED_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+// Chặn route dành cho guest (login/register) khi đã có session, và chặn
+// route cần đăng nhập (/seller/*, Tuần 3 Bước 3.9) khi chưa có session —
+// phân quyền theo role (Seller/Admin) làm ở phase sau khi có route thật cần.
 export function proxy(request: NextRequest) {
   const isAuthenticated = request.cookies.has(ACCESS_TOKEN_COOKIE);
   const pathWithoutLocale = stripLocalePrefix(request.nextUrl.pathname);
 
   if (isAuthenticated && GUEST_ONLY_PATHS.includes(pathWithoutLocale)) {
     return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  if (!isAuthenticated && isProtectedPath(pathWithoutLocale)) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   return intlMiddleware(request);

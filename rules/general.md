@@ -19,6 +19,7 @@ Module theo domain (áp dụng cả 2 phía FE & BE, tên thư mục giống nha
 
 **Nguyên tắc:**
 - Mỗi module tự chứa code riêng của nó. Không import chéo trực tiếp giữa 2 module nghiệp vụ — muốn lấy dữ liệu module khác thì gọi qua API (BE) hoặc qua `packages/types` (FE).
+- **Ngoại lệ (FE)**: được phép import 1 component/hook **UI thuần tái dùng được** (không phải logic nghiệp vụ riêng của module kia) từ module khác, nếu đi qua đúng barrel export công khai (`index.ts`) của module đó — không reach thẳng vào file nội bộ (`modules/<other>/components/...`). Coi barrel là "API surface" của module, tương đương "gọi qua API" nói ở trên (vd `ResendVerificationButton`/`useAuthStore` từ `modules/auth` dùng lại ở `modules/shop`, xem `Week3.md` Bước 3.7).
 - Code dùng chung ≥ 2 module mới đưa vào `shared/`.
 - Module chưa làm tới vẫn tạo sẵn cấu trúc thư mục con rỗng — dùng skill `scaffold-frontend-module` / `scaffold-backend-module` để tạo tự động, tránh mỗi module lại bịa cấu trúc khác nhau.
 

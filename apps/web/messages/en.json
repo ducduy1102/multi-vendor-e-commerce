@@ -44,5 +44,24 @@
     "resendVerificationGenericError": "Failed to resend verification email, please try again",
 
     "emailVerificationBannerMessage": "Your email hasn't been verified yet."
+  },
+  "shop": {
+    "becomeSellerTitle": "Become a seller",
+    "becomeSellerNameLabel": "Shop name",
+    "becomeSellerDescriptionLabel": "Description",
+    "becomeSellerLogoUrlLabel": "Logo URL",
+    "becomeSellerBannerUrlLabel": "Banner URL",
+    "becomeSellerSubmit": "Create shop",
+    "becomeSellerSubmitting": "Creating shop...",
+    "becomeSellerGenericError": "Failed to create shop, please try again",
+    "becomeSellerEmailNotVerifiedMessage": "You need to verify your email before creating a shop.",
+
+    "loadShopError": "Couldn't load your shop info, please log in again",
+
+    "shopStatusPendingMessage": "Your shop is pending approval. Some features will unlock once it's approved.",
+    "updateShopSubmit": "Save changes",
+    "updateShopSubmitting": "Saving...",
+    "updateShopSuccess": "Changes saved",
+    "updateShopGenericError": "Failed to update shop, please try again"
   }
 }

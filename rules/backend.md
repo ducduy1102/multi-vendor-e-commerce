@@ -52,6 +52,8 @@ apps/api/src/
 - Query chỉ `select` field cần dùng, tránh trả cả object lớn không cần thiết (đặc biệt list product/order).
 - Migration đặt tên rõ nghĩa: `add_product_variant_table`, không để tên mặc định `migration_xxx`.
 - Side-effect gọi service ngoài (gửi mail, gọi API bên thứ 3...) **sau khi** 1 thao tác ghi DB đã thành công không được phép làm fail cả request — bọc try/catch + log lỗi (`Logger.error`), không rethrow. DB đã "xong việc" của nó; side-effect lỗi chỉ nên ảnh hưởng tới chính side-effect đó (vd cho phép bấm "gửi lại" sau), không rollback ngược lại phần đã ghi thành công.
+- Field cần unique tự sinh từ tên khác (slug, mã ngắn...): check trùng trong DB trước khi tạo (rẻ, bắt được đa số trường hợp) **và** bọc `prisma.create()` trong `try/catch` bắt riêng `error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'` để tự thử lại (thêm hậu tố) khi race condition hiếm gặp lọt qua bước check trước — không dựa vào check trước làm điều kiện an toàn duy nhất, `@unique` ở schema mới là trọng tài cuối cùng. Dùng `instanceof`+`code` để phân biệt lỗi, không so `error.message` (dễ vỡ nếu Prisma đổi câu chữ).
+- Cân nhắc kỹ trước khi khoá 1 business rule "chỉ đúng ở MVP hiện tại" bằng `@unique`/constraint cứng ở DB nếu giả định nền tảng của rule đó (vd "user sẽ không bao giờ cần sở hữu nhiều X") chưa chắc chắn đúng với thực tế lâu dài của domain — enforce ở service layer trước (`findFirst` + check thủ công, chấp nhận 1 khe hở race hiếm gặp), chỉ nâng lên DB constraint khi giả định đã thật sự chắc chắn không đổi (xem `shop-ownership-mvp-note.md`).
 
 ## 5. Auth & phân quyền
 
@@ -63,7 +65,8 @@ apps/api/src/
 
 ## 6. Module đặc thù cần lưu ý
 
-- **product**: CRUD product phải xử lý đồng thời nhiều variant trong 1 request (transaction), không tạo variant qua nhiều request rời rạc.
+- **shop**: 1 user tối đa sở hữu 1 shop là business rule enforce ở service layer (`findFirst` theo `ownerId`), không phải `@unique` ở DB — xem lý do chung ở mục 4 (giả định "không bao giờ multi-shop" không chắc chắn đúng thực tế, TikTok Shop thật có tính năng "Multi-Store").
+- **product**: CRUD product phải xử lý đồng thời nhiều variant trong 1 request (transaction), không tạo variant qua nhiều request rời rạc. Mọi query trả sản phẩm cho **public** (không phải seller xem hàng của chính mình) bắt buộc filter `product.status = 'PUBLISHED'` **và** `shop.status = 'APPROVED'` cùng lúc — mặc định thật của `Shop.status` là `PENDING`, không lọc sẽ lộ sản phẩm của shop chưa được duyệt.
 - **cart/checkout**: khi checkout, tách order theo từng shop trong cùng 1 transaction — hoặc tất cả thành công, hoặc rollback toàn bộ.
 - **chat**: dùng Gateway riêng (Socket.io) tách khỏi REST controller, có guard xác thực kết nối socket.
 

@@ -2,3 +2,4 @@
 // Thêm export theo từng domain khi module đó cần share type, vd:
 // export * from './product';
 export * from './auth';
+export * from './shop';
