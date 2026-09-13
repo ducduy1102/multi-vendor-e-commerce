@@ -7,6 +7,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { routing } from "@/i18n/routing";
 import { AuthHydrator, EmailVerificationBanner } from "@/modules/auth";
 import { LocaleSwitcher } from "@/shared/components/LocaleSwitcher";
+import { QueryProvider } from "@/shared/components/QueryProvider";
 import { ThemeProvider } from "@/shared/components/ThemeProvider";
 import { ThemeToggle } from "@/shared/components/ThemeToggle";
 
@@ -57,11 +58,13 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>
           <ThemeProvider>
-            <AuthHydrator />
-            <EmailVerificationBanner />
-            <ThemeToggle />
-            <LocaleSwitcher />
-            {children}
+            <QueryProvider>
+              <AuthHydrator />
+              <EmailVerificationBanner />
+              <ThemeToggle />
+              <LocaleSwitcher />
+              {children}
+            </QueryProvider>
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>
