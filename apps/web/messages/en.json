@@ -44,5 +44,13 @@
     "resendVerificationGenericError": "Failed to resend verification email, please try again",
 
     "emailVerificationBannerMessage": "Your email hasn't been verified yet."
+  },
+  "shop": {
+    "becomeSellerNameLabel": "Shop name",
+    "becomeSellerDescriptionLabel": "Description",
+    "becomeSellerLogoUrlLabel": "Logo URL",
+    "becomeSellerBannerUrlLabel": "Banner URL",
+    "becomeSellerSubmit": "Create shop",
+    "becomeSellerSubmitting": "Creating shop..."
   }
 }

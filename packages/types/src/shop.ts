@@ -17,14 +17,41 @@ const slugSchema = z
     'Slug chỉ gồm chữ thường, số và dấu gạch ngang',
   );
 
+// Input HTML bỏ trống gửi lên chuỗi rỗng "" (React Hook Form), không phải
+// undefined — coi "" như chưa nhập cho mọi field optional dạng string, để
+// payload gửi BE không có field rác (vd description: ""). Dùng .transform()
+// ở cuối (không phải z.preprocess ở đầu) để giữ nguyên input type "string |
+// undefined" cho zodResolver — z.preprocess nhận input "unknown", làm
+// useForm<CreateShopInput>() báo lỗi type không khớp resolver.
+const optionalTrimmedString = () =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .transform((val) => (val === '' ? undefined : val));
+
+// .url() không chain được sau .optional() nên validate URL bằng .refine()
+// (tái dùng z.string().url() nội bộ, không tự viết lại regex) — "" hoặc
+// undefined đều coi là hợp lệ (chưa nhập), y hệt .url() sẽ từ chối "" nếu
+// chain trực tiếp dù field optional.
+const optionalUrlSchema = (message: string) =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .refine((val) => !val || z.string().url().safeParse(val).success, {
+      message,
+    })
+    .transform((val) => (val === '' ? undefined : val));
+
 export const createShopSchema = z.object({
   name: z.string().trim().min(1, 'Tên shop không được để trống'),
   // Bỏ trống thì BE tự sinh slug từ name (xem ShopService.createShop, Week3.md
   // Bước 2.3) — nếu người dùng tự nhập, vẫn phải đúng định dạng slug.
   slug: slugSchema.optional(),
-  description: z.string().trim().optional(),
-  logoUrl: z.string().trim().url('URL logo không hợp lệ').optional(),
-  bannerUrl: z.string().trim().url('URL banner không hợp lệ').optional(),
+  description: optionalTrimmedString(),
+  logoUrl: optionalUrlSchema('URL logo không hợp lệ'),
+  bannerUrl: optionalUrlSchema('URL banner không hợp lệ'),
 });
 export type CreateShopInput = z.infer<typeof createShopSchema>;
 

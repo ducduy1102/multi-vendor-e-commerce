@@ -44,5 +44,13 @@
     "resendVerificationGenericError": "Gửi lại email xác thực thất bại, vui lòng thử lại",
 
     "emailVerificationBannerMessage": "Email của bạn chưa được xác thực."
+  },
+  "shop": {
+    "becomeSellerNameLabel": "Tên shop",
+    "becomeSellerDescriptionLabel": "Mô tả",
+    "becomeSellerLogoUrlLabel": "URL logo",
+    "becomeSellerBannerUrlLabel": "URL banner",
+    "becomeSellerSubmit": "Tạo shop",
+    "becomeSellerSubmitting": "Đang tạo shop..."
   }
 }

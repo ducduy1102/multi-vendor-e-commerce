@@ -1,5 +1,5 @@
 // Barrel export cho module shop — export component/hook cần dùng ở app/.
-// components chưa có (Week3.md Bước 3.6-3.8), export thêm khi có.
+export { BecomeSellerForm } from './components/BecomeSellerForm';
 export { createShopSchema, updateShopSchema } from './schemas/shop.schema';
 export { useCreateShop } from './hooks/useCreateShop';
 export { useMyShop } from './hooks/useMyShop';
