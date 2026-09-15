@@ -192,9 +192,10 @@ model Shop {
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
 
-  owner         User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   addresses     Address[]
   products      Product[]
+  variants      ProductVariant[]
   orders        Order[]
   vouchers      Voucher[]
   conversations Conversation[]
@@ -239,8 +240,14 @@ model Product {
   reviews    Review[]
   wishlists  Wishlist[]
 
-  @@index([shopId])
-  @@index([categoryId])
+  // Composite (không phải index đơn) vì query public list luôn filter kèm
+  // status = PUBLISHED cùng lúc với shopId/categoryId (rules/backend.md mục
+  // 4) — index đơn trên shopId/categoryId đủ cho Tuần 1-3 nhưng không khớp
+  // pattern query thật của Tuần 4. Cột đứng trước (shopId/categoryId) vẫn
+  // phục vụ được query chỉ filter theo 1 cột đó (vd getMyProducts theo
+  // shopId, mọi status) nên không cần giữ thêm index đơn song song.
+  @@index([shopId, status])
+  @@index([categoryId, status])
   @@map("products")
 }
 
@@ -271,10 +278,18 @@ model ProductAttributeValue {
   @@map("product_attribute_values")
 }
 
+// sku chỉ unique trong phạm vi 1 shop (@@unique([shopId, sku])), không phải
+// toàn sàn — đúng thực tế multi-vendor (Shopee/Lazada/Amazon Marketplace đều
+// để "Seller SKU" do từng seller tự quản lý, không unique giữa các seller).
+// shopId ở đây là denormalized ownership reference (không thay thế productId
+// — quan hệ nghiệp vụ chính vẫn là product), bắt buộc gán bằng chính
+// product.shopId đã load trong transaction khi tạo/sửa Product — không nhận
+// field này từ payload FE.
 model ProductVariant {
   id         String   @id @default(uuid())
   productId  String   @map("product_id")
-  sku        String   @unique
+  shopId     String   @map("shop_id")
+  sku        String
   price      Decimal  @db.Decimal(12, 2)
   stock      Int      @default(0)
   isActive   Boolean  @default(true) @map("is_active")
@@ -284,11 +299,14 @@ model ProductVariant {
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   product         Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  shop            Shop                     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   attributeValues VariantAttributeValue[]
   cartItems       CartItem[]
   orderItems      OrderItem[]
 
+  @@unique([shopId, sku])
   @@index([productId])
+  @@index([shopId])
   @@map("product_variants")
 }
 
