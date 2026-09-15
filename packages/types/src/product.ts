@@ -215,6 +215,11 @@ export const productSchema = z.object({
   slug: z.string(),
   description: z.string().nullable(),
   status: productStatusSchema,
+  // Denormalized từ variants active (Decimal -> string qua JSON, giống
+  // variant.price) — FE hiển thị "từ {minPrice}đ" khi có nhiều variant giá
+  // khác nhau, không tự tính lại từ variants[].
+  minPrice: z.string(),
+  maxPrice: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
   attributes: z.array(productAttributeSchema),
@@ -241,8 +246,58 @@ export const productListItemSchema = z.object({
   name: z.string(),
   slug: z.string(),
   status: productStatusSchema,
+  minPrice: z.string(),
+  maxPrice: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
   variants: z.array(productListItemVariantSchema),
 });
 export type ProductListItem = z.infer<typeof productListItemSchema>;
+
+// Query cho GET /products (trang chủ + trang danh sách public, dùng chung —
+// đúng quyết định Week4.md Bước 1.12, không tách endpoint /products/featured
+// riêng). Query param qua URL luôn là string — coerce number cho page/limit/
+// giá, tự chuẩn hoá attributeValues (1 giá trị -> string, ≥2 -> string[])
+// thành mảng để FE lẫn BE dùng cùng 1 shape.
+export const listProductsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(50).default(12),
+  sort: z.enum(['newest', 'price-asc', 'price-desc']).default('newest'),
+  shopId: z.string().trim().optional(),
+  categoryId: z.string().trim().optional(),
+  minPrice: z.coerce.number().nonnegative().optional(),
+  maxPrice: z.coerce.number().nonnegative().optional(),
+  // Lọc theo giá trị thuộc tính (màu/size...) — không tra theo tên attribute
+  // cụ thể (đúng tinh thần "attribute không cố định cứng theo 1 ngành
+  // hàng", note-db.md mục 2): product khớp nếu CÓ variant active mang giá
+  // trị đó, mỗi giá trị trong mảng lọc độc lập (AND giữa các giá trị, không
+  // cần cùng 1 variant) — giống hành vi facet filter thực tế (Shopee/Lazada).
+  attributeValues: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((val) =>
+      val === undefined ? undefined : Array.isArray(val) ? val : [val],
+    ),
+});
+export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
+
+// Card cho trang chủ/danh sách public — không trả description/attributes/
+// toàn bộ variant (rules/backend.md mục 4), chỉ đủ hiển thị 1 ô sản phẩm.
+export const productCardSchema = z.object({
+  id: z.string(),
+  categoryId: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  minPrice: z.string(),
+  maxPrice: z.string(),
+  imageUrl: z.string().nullable(),
+});
+export type ProductCard = z.infer<typeof productCardSchema>;
+
+export const productListResponseSchema = z.object({
+  items: z.array(productCardSchema),
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+});
+export type ProductListResponse = z.infer<typeof productListResponseSchema>;

@@ -1,13 +1,16 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { CreateProductDto } from './dto/create-product.dto';
 import { ProductService } from './product.service';
 
-function p2002(): Prisma.PrismaClientKnownRequestError {
+function p2002(
+  modelName: 'Product' | 'ProductVariant' = 'Product',
+): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
     clientVersion: '6.19.3',
+    meta: { modelName },
   });
 }
 
@@ -43,6 +46,7 @@ describe('ProductService', () => {
     product: {
       findUnique: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
       findUniqueOrThrow: jest.Mock;
@@ -67,6 +71,7 @@ describe('ProductService', () => {
       product: {
         findUnique: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
         create: jest.fn(({ data }) =>
           Promise.resolve({ id: 'product-1', ...data }),
         ),
@@ -183,6 +188,8 @@ describe('ProductService', () => {
         name: 'Áo thun nam',
         slug: 'ao-thun-nam',
         description: undefined,
+        minPrice: 150000,
+        maxPrice: 150000,
       },
       select: { id: true },
     });
@@ -319,6 +326,8 @@ describe('ProductService', () => {
         name: baseDto.name,
         slug: 'ao-thun-nam-2',
         description: baseDto.description,
+        minPrice: 1,
+        maxPrice: 1,
       },
       select: { id: true },
     });
@@ -379,6 +388,42 @@ describe('ProductService', () => {
     await expect(service.createProduct('shop-1', baseDto)).rejects.toBe(
       otherError,
     );
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('1 phần transaction lỗi giữa đường (vd tạo variant thứ 2 fail) — rethrow ngay, dừng luôn không tạo tiếp', async () => {
+    prisma.product.findUnique.mockResolvedValue(null);
+    const dbError = new Error('DB write failed');
+    prisma.productVariant.create
+      .mockImplementationOnce((args: { data: { sku: string } }) =>
+        Promise.resolve({ id: `variant-${args.data.sku}` }),
+      )
+      .mockImplementationOnce(() => Promise.reject(dbError));
+
+    await expect(service.createProduct('shop-1', baseDto)).rejects.toBe(
+      dbError,
+    );
+
+    // Variant đầu tạo xong (kèm link) thì variant thứ 2 mới lỗi — dừng
+    // ngay, không lặp tiếp. $transaction thật (Prisma) sẽ rollback toàn bộ
+    // Product + variant đầu tiên đã "tạo" trong cùng transaction này, không
+    // để lại record mồ côi — đây là lý do createProduct bọc mọi thứ trong 1
+    // $transaction duy nhất thay vì nhiều lệnh rời rạc.
+    expect(prisma.productVariant.create).toHaveBeenCalledTimes(2);
+    expect(prisma.variantAttributeValue.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('P2002 do trùng SKU (ProductVariant) báo đúng lý do, không hiểu lầm thành trùng slug', async () => {
+    prisma.product.findUnique.mockResolvedValue(null);
+    prisma.$transaction.mockRejectedValue(p2002('ProductVariant'));
+
+    await expect(
+      service.createProduct('shop-1', baseDto),
+    ).rejects.toMatchObject({
+      message: 'SKU already exists in this shop',
+      status: 409,
+    });
+    // Không tự thử lại slug khác — vấn đề không phải ở slug, thử lại vô nghĩa.
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -499,6 +544,35 @@ describe('ProductService', () => {
       expect(prisma.variantAttributeValue.deleteMany).not.toHaveBeenCalledWith({
         where: { variantId: 'variant-drop' },
       });
+
+      // minPrice/maxPrice tính lại từ đúng payload variants (KEEP=200000,
+      // NEW=100000) — variant "DROP" bị soft-delete không còn tính vào.
+      expect(prisma.product.update).toHaveBeenCalledWith({
+        where: { id: 'product-1' },
+        data: { minPrice: 100000, maxPrice: 200000 },
+      });
+    });
+
+    it('P2002 do trùng SKU với variant khác trong shop báo đúng 409, không lộ lỗi Prisma thô', async () => {
+      prisma.$transaction.mockRejectedValue(p2002('ProductVariant'));
+
+      await expect(
+        service.updateProduct('shop-1', 'product-1', {
+          attributes: [],
+          variants: [
+            {
+              sku: 'DA-TON-TAI',
+              price: 1,
+              stock: 1,
+              attributeValues: [],
+              imageUrl: undefined,
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        message: 'SKU already exists in this shop',
+        status: 409,
+      });
     });
   });
 
@@ -536,6 +610,8 @@ describe('ProductService', () => {
           name: true,
           slug: true,
           status: true,
+          minPrice: true,
+          maxPrice: true,
           createdAt: true,
           updatedAt: true,
           variants: {
@@ -551,6 +627,232 @@ describe('ProductService', () => {
         },
       });
       expect(result).toBe(rows);
+    });
+  });
+
+  describe('getProduct', () => {
+    function mockDetailRow(overrides: Record<string, unknown> = {}) {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'product-1',
+        shopId: 'shop-1',
+        categoryId: 'cat-1',
+        name: 'Áo thun nam',
+        slug: 'ao-thun-nam',
+        description: undefined,
+        status: 'DRAFT',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        attributes: [],
+        variants: [],
+        shop: { ownerId: 'owner-1', status: 'APPROVED' },
+        ...overrides,
+      });
+    }
+
+    it('404 nếu product không tồn tại', async () => {
+      prisma.product.findUnique.mockResolvedValue(null);
+
+      await expect(service.getProduct('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('guest/public xem được product PUBLISHED của shop APPROVED', async () => {
+      mockDetailRow({ status: 'PUBLISHED' });
+
+      const result = await service.getProduct('product-1');
+      expect(result.id).toBe('product-1');
+    });
+
+    it('KHÔNG lộ field shop (ownerId/status) ra response — chỉ dùng nội bộ để check quyền xem', async () => {
+      mockDetailRow({ status: 'PUBLISHED' });
+
+      const result = await service.getProduct('product-1');
+      expect(result).not.toHaveProperty('shop');
+    });
+
+    it('guest/public KHÔNG xem được product DRAFT — 404 (không lộ có tồn tại)', async () => {
+      mockDetailRow({ status: 'DRAFT' });
+
+      await expect(service.getProduct('product-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('guest/public KHÔNG xem được product PUBLISHED nếu shop chưa APPROVED', async () => {
+      mockDetailRow({
+        status: 'PUBLISHED',
+        shop: { ownerId: 'owner-1', status: 'PENDING' },
+      });
+
+      await expect(service.getProduct('product-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('chủ shop xem được product của mình dù đang DRAFT', async () => {
+      mockDetailRow({ status: 'DRAFT' });
+
+      const result = await service.getProduct('product-1', 'owner-1');
+      expect(result.id).toBe('product-1');
+    });
+
+    it('user đã đăng nhập nhưng không phải chủ shop vẫn bị chặn như guest', async () => {
+      mockDetailRow({ status: 'DRAFT' });
+
+      await expect(
+        service.getProduct('product-1', 'someone-else'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('listPublicProducts', () => {
+    const baseQuery = {
+      page: 1,
+      limit: 12,
+      sort: 'newest' as const,
+    };
+
+    it('luôn filter status=PUBLISHED + shop.status=APPROVED, sort mới nhất mặc định', async () => {
+      await service.listPublicProducts(baseQuery);
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith({
+        where: { status: 'PUBLISHED', shop: { status: 'APPROVED' } },
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+        take: 12,
+        select: {
+          id: true,
+          categoryId: true,
+          name: true,
+          slug: true,
+          minPrice: true,
+          maxPrice: true,
+          variants: {
+            where: { isActive: true },
+            orderBy: { createdAt: 'asc' },
+            take: 1,
+            select: { imageUrl: true },
+          },
+        },
+      });
+      expect(prisma.product.count).toHaveBeenCalledWith({
+        where: { status: 'PUBLISHED', shop: { status: 'APPROVED' } },
+      });
+    });
+
+    it('filter shopId/categoryId/khoảng giá khi có', async () => {
+      await service.listPublicProducts({
+        ...baseQuery,
+        shopId: 'shop-1',
+        categoryId: 'cat-1',
+        minPrice: 100000,
+        maxPrice: 300000,
+      });
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            status: 'PUBLISHED',
+            shop: { status: 'APPROVED' },
+            shopId: 'shop-1',
+            categoryId: 'cat-1',
+            maxPrice: { gte: 100000 },
+            minPrice: { lte: 300000 },
+          },
+        }),
+      );
+    });
+
+    it('mỗi giá trị attributeValues là 1 điều kiện AND độc lập', async () => {
+      await service.listPublicProducts({
+        ...baseQuery,
+        attributeValues: ['Đỏ', 'M'],
+      });
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            status: 'PUBLISHED',
+            shop: { status: 'APPROVED' },
+            AND: [
+              {
+                variants: {
+                  some: {
+                    isActive: true,
+                    attributeValues: {
+                      some: { attributeValue: { value: 'Đỏ' } },
+                    },
+                  },
+                },
+              },
+              {
+                variants: {
+                  some: {
+                    isActive: true,
+                    attributeValues: {
+                      some: { attributeValue: { value: 'M' } },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      );
+    });
+
+    it('sort price-asc/price-desc dùng minPrice, page/limit tính đúng skip', async () => {
+      await service.listPublicProducts({
+        ...baseQuery,
+        sort: 'price-asc',
+        page: 3,
+        limit: 20,
+      });
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { minPrice: 'asc' },
+          skip: 40,
+          take: 20,
+        }),
+      );
+
+      await service.listPublicProducts({ ...baseQuery, sort: 'price-desc' });
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: { minPrice: 'desc' } }),
+      );
+    });
+
+    it('map đúng imageUrl từ variant active đầu tiên, trả total/page/limit', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'p1',
+          categoryId: 'cat-1',
+          name: 'Áo thun',
+          slug: 'ao-thun',
+          minPrice: '100000',
+          maxPrice: '150000',
+          variants: [{ imageUrl: 'https://example.com/a.jpg' }],
+        },
+        {
+          id: 'p2',
+          categoryId: 'cat-1',
+          name: 'Quần jean',
+          slug: 'quan-jean',
+          minPrice: '200000',
+          maxPrice: '200000',
+          variants: [],
+        },
+      ]);
+      prisma.product.count.mockResolvedValue(2);
+
+      const result = await service.listPublicProducts(baseQuery);
+
+      expect(result.items[0].imageUrl).toBe('https://example.com/a.jpg');
+      expect(result.items[1].imageUrl).toBeNull();
+      expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(12);
     });
   });
 });
