@@ -43,6 +43,7 @@ describe('ProductService', () => {
     product: {
       findUnique: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
       findUniqueOrThrow: jest.Mock;
@@ -67,6 +68,7 @@ describe('ProductService', () => {
       product: {
         findUnique: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
         create: jest.fn(({ data }) =>
           Promise.resolve({ id: 'product-1', ...data }),
         ),
@@ -183,6 +185,8 @@ describe('ProductService', () => {
         name: 'Áo thun nam',
         slug: 'ao-thun-nam',
         description: undefined,
+        minPrice: 150000,
+        maxPrice: 150000,
       },
       select: { id: true },
     });
@@ -319,6 +323,8 @@ describe('ProductService', () => {
         name: baseDto.name,
         slug: 'ao-thun-nam-2',
         description: baseDto.description,
+        minPrice: 1,
+        maxPrice: 1,
       },
       select: { id: true },
     });
@@ -499,6 +505,13 @@ describe('ProductService', () => {
       expect(prisma.variantAttributeValue.deleteMany).not.toHaveBeenCalledWith({
         where: { variantId: 'variant-drop' },
       });
+
+      // minPrice/maxPrice tính lại từ đúng payload variants (KEEP=200000,
+      // NEW=100000) — variant "DROP" bị soft-delete không còn tính vào.
+      expect(prisma.product.update).toHaveBeenCalledWith({
+        where: { id: 'product-1' },
+        data: { minPrice: 100000, maxPrice: 200000 },
+      });
     });
   });
 
@@ -536,6 +549,8 @@ describe('ProductService', () => {
           name: true,
           slug: true,
           status: true,
+          minPrice: true,
+          maxPrice: true,
           createdAt: true,
           updatedAt: true,
           variants: {
@@ -620,6 +635,156 @@ describe('ProductService', () => {
       await expect(
         service.getProduct('product-1', 'someone-else'),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('listPublicProducts', () => {
+    const baseQuery = {
+      page: 1,
+      limit: 12,
+      sort: 'newest' as const,
+    };
+
+    it('luôn filter status=PUBLISHED + shop.status=APPROVED, sort mới nhất mặc định', async () => {
+      await service.listPublicProducts(baseQuery);
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith({
+        where: { status: 'PUBLISHED', shop: { status: 'APPROVED' } },
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+        take: 12,
+        select: {
+          id: true,
+          categoryId: true,
+          name: true,
+          slug: true,
+          minPrice: true,
+          maxPrice: true,
+          variants: {
+            where: { isActive: true },
+            orderBy: { createdAt: 'asc' },
+            take: 1,
+            select: { imageUrl: true },
+          },
+        },
+      });
+      expect(prisma.product.count).toHaveBeenCalledWith({
+        where: { status: 'PUBLISHED', shop: { status: 'APPROVED' } },
+      });
+    });
+
+    it('filter shopId/categoryId/khoảng giá khi có', async () => {
+      await service.listPublicProducts({
+        ...baseQuery,
+        shopId: 'shop-1',
+        categoryId: 'cat-1',
+        minPrice: 100000,
+        maxPrice: 300000,
+      });
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            status: 'PUBLISHED',
+            shop: { status: 'APPROVED' },
+            shopId: 'shop-1',
+            categoryId: 'cat-1',
+            maxPrice: { gte: 100000 },
+            minPrice: { lte: 300000 },
+          },
+        }),
+      );
+    });
+
+    it('mỗi giá trị attributeValues là 1 điều kiện AND độc lập', async () => {
+      await service.listPublicProducts({
+        ...baseQuery,
+        attributeValues: ['Đỏ', 'M'],
+      });
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            status: 'PUBLISHED',
+            shop: { status: 'APPROVED' },
+            AND: [
+              {
+                variants: {
+                  some: {
+                    isActive: true,
+                    attributeValues: {
+                      some: { attributeValue: { value: 'Đỏ' } },
+                    },
+                  },
+                },
+              },
+              {
+                variants: {
+                  some: {
+                    isActive: true,
+                    attributeValues: {
+                      some: { attributeValue: { value: 'M' } },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      );
+    });
+
+    it('sort price-asc/price-desc dùng minPrice, page/limit tính đúng skip', async () => {
+      await service.listPublicProducts({
+        ...baseQuery,
+        sort: 'price-asc',
+        page: 3,
+        limit: 20,
+      });
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { minPrice: 'asc' },
+          skip: 40,
+          take: 20,
+        }),
+      );
+
+      await service.listPublicProducts({ ...baseQuery, sort: 'price-desc' });
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: { minPrice: 'desc' } }),
+      );
+    });
+
+    it('map đúng imageUrl từ variant active đầu tiên, trả total/page/limit', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'p1',
+          categoryId: 'cat-1',
+          name: 'Áo thun',
+          slug: 'ao-thun',
+          minPrice: '100000',
+          maxPrice: '150000',
+          variants: [{ imageUrl: 'https://example.com/a.jpg' }],
+        },
+        {
+          id: 'p2',
+          categoryId: 'cat-1',
+          name: 'Quần jean',
+          slug: 'quan-jean',
+          minPrice: '200000',
+          maxPrice: '200000',
+          variants: [],
+        },
+      ]);
+      prisma.product.count.mockResolvedValue(2);
+
+      const result = await service.listPublicProducts(baseQuery);
+
+      expect(result.items[0].imageUrl).toBe('https://example.com/a.jpg');
+      expect(result.items[1].imageUrl).toBeNull();
+      expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(12);
     });
   });
 });

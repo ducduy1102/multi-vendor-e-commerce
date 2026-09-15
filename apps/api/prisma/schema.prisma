@@ -230,6 +230,15 @@ model Product {
   slug        String        @unique
   description String?
   status      ProductStatus @default(DRAFT)
+  // Denormalized từ variants.price (chỉ tính isActive=true) — Prisma không
+  // cho orderBy/filter theo _min/_max của quan hệ 1-nhiều (ProductVariant),
+  // nên cần cache sẵn ở Product để listPublicProducts (Tuần 4 Bước 2.10)
+  // sort/filter theo giá được native qua Prisma, không cần raw SQL. Service
+  // (ProductService.createProduct/updateProduct) chịu trách nhiệm tự tính
+  // lại mỗi khi tập variant active thay đổi — không có DB trigger nào giữ
+  // đồng bộ hộ.
+  minPrice    Decimal       @map("min_price") @db.Decimal(12, 2)
+  maxPrice    Decimal       @map("max_price") @db.Decimal(12, 2)
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 

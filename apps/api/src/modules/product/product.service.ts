@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { slugify } from '../../shared/utils/slugify';
 import type { CreateProductDto } from './dto/create-product.dto';
+import type { ListProductsQueryDto } from './dto/list-products-query.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
 
 // Đủ thử slug, slug-2 .. slug-20 trước khi coi là bế tắc — cùng ngưỡng đã
@@ -22,6 +23,8 @@ const productWithRelationsSelect = {
   slug: true,
   description: true,
   status: true,
+  minPrice: true,
+  maxPrice: true,
   createdAt: true,
   updatedAt: true,
   attributes: {
@@ -78,6 +81,8 @@ const productListItemSelect = {
   name: true,
   slug: true,
   status: true,
+  minPrice: true,
+  maxPrice: true,
   createdAt: true,
   updatedAt: true,
   variants: {
@@ -95,6 +100,46 @@ const productListItemSelect = {
 export type ProductListItemSummary = Prisma.ProductGetPayload<{
   select: typeof productListItemSelect;
 }>;
+
+// Card cho trang chủ/danh sách public (Bước 2.10) — không trả description/
+// attributes/toàn bộ variant (rules/backend.md mục 4). imageUrl lấy từ 1
+// variant active duy nhất (variant active đầu tiên tạo — không có khái
+// niệm "ảnh đại diện" riêng ở Product, chỉ ProductVariant.imageUrl).
+const productCardSelect = {
+  id: true,
+  categoryId: true,
+  name: true,
+  slug: true,
+  minPrice: true,
+  maxPrice: true,
+  variants: {
+    where: { isActive: true },
+    orderBy: { createdAt: 'asc' },
+    take: 1,
+    select: { imageUrl: true },
+  },
+} satisfies Prisma.ProductSelect;
+
+type ProductCardRow = Prisma.ProductGetPayload<{
+  select: typeof productCardSelect;
+}>;
+
+export interface ProductCardSummary {
+  id: string;
+  categoryId: string;
+  name: string;
+  slug: string;
+  minPrice: Prisma.Decimal;
+  maxPrice: Prisma.Decimal;
+  imageUrl: string | null;
+}
+
+export interface PaginatedProductCards {
+  items: ProductCardSummary[];
+  total: number;
+  page: number;
+  limit: number;
+}
 
 // Không trả nguyên bảng nối VariantAttributeValue/ProductAttributeValue ra
 // ngoài — flatten thành cặp tên thuộc tính + giá trị đã resolve sẵn, khớp
@@ -156,6 +201,7 @@ export class ProductService {
     slug: string,
     dto: CreateProductDto,
   ): Promise<ProductSummary> {
+    const { minPrice, maxPrice } = this.computePriceRange(dto.variants);
     const product = await tx.product.create({
       data: {
         shopId,
@@ -163,6 +209,8 @@ export class ProductService {
         name: dto.name,
         slug,
         description: dto.description,
+        minPrice,
+        maxPrice,
         // status không set tường minh — để Prisma tự áp default DRAFT
         // (đúng quyết định Week4.md Bước 1.4/2.5: tạo xong luôn là nháp,
         // "Đăng bán" là action riêng qua updateProduct).
@@ -303,6 +351,79 @@ export class ProductService {
     }
 
     return this.mapProduct(product);
+  }
+
+  // Query chính cho CẢ trang chủ lẫn trang danh sách public (Week4.md Bước
+  // 1.12 — không tách endpoint /products/featured riêng). Luôn bắt buộc
+  // status=PUBLISHED + shop.status=APPROVED (đúng Tuần 3 Bước 1.7 + Bước
+  // 2.9) — không phải optional, đây là nơi duy nhất enforce policy này cho
+  // listing (getProduct enforce riêng cho chi tiết 1 sản phẩm).
+  async listPublicProducts(
+    query: ListProductsQueryDto,
+  ): Promise<PaginatedProductCards> {
+    const where: Prisma.ProductWhereInput = {
+      status: 'PUBLISHED',
+      shop: { status: 'APPROVED' },
+    };
+    if (query.shopId) {
+      where.shopId = query.shopId;
+    }
+    if (query.categoryId) {
+      where.categoryId = query.categoryId;
+    }
+    // So khoảng giá (product.minPrice/maxPrice) chồng lấp khoảng filter —
+    // xấp xỉ chuẩn của ngành (Shopee/Lazada cũng lọc theo range tổng hợp,
+    // không tra từng variant riêng) vì giá filter theo sản phẩm chứ không
+    // theo variant cụ thể.
+    if (query.minPrice !== undefined) {
+      where.maxPrice = { gte: query.minPrice };
+    }
+    if (query.maxPrice !== undefined) {
+      where.minPrice = { lte: query.maxPrice };
+    }
+    // Mỗi giá trị lọc độc lập ("có variant active mang giá trị này") — AND
+    // giữa các giá trị khác nhau, không cần cùng 1 variant (đúng
+    // packages/types/src/product.ts, xem comment ở listProductsQuerySchema).
+    if (query.attributeValues && query.attributeValues.length > 0) {
+      where.AND = query.attributeValues.map((value) => ({
+        variants: {
+          some: {
+            isActive: true,
+            attributeValues: { some: { attributeValue: { value } } },
+          },
+        },
+      }));
+    }
+
+    const orderBy: Prisma.ProductOrderByWithRelationInput =
+      query.sort === 'price-asc'
+        ? { minPrice: 'asc' }
+        : query.sort === 'price-desc'
+          ? { minPrice: 'desc' }
+          : { createdAt: 'desc' };
+
+    const [rows, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        orderBy,
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        select: productCardSelect,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    return {
+      items: rows.map((row) => this.mapProductCard(row)),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
+  }
+
+  private mapProductCard(row: ProductCardRow): ProductCardSummary {
+    const { variants, ...rest } = row;
+    return { ...rest, imageUrl: variants[0]?.imageUrl ?? null };
   }
 
   // shopId đã qua ShopOwnerGuard xác nhận đúng chủ (route lồng
@@ -454,6 +575,27 @@ export class ProductService {
         });
       }
     }
+
+    // Tập variant active sau reconcile == đúng `variants` (payload) — variant
+    // cũ bị gỡ đã set isActive=false ở trên, không còn tính vào khoảng giá.
+    const { minPrice, maxPrice } = this.computePriceRange(variants);
+    await tx.product.update({
+      where: { id: productId },
+      data: { minPrice, maxPrice },
+    });
+  }
+
+  // Denormalize minPrice/maxPrice lên Product từ tập variant ACTIVE hiện tại
+  // (Week4.md Bước 2.10 — Prisma không orderBy/filter được theo _min/_max
+  // của quan hệ 1-nhiều, cần cache sẵn để listPublicProducts sort/filter giá
+  // native). Luôn có ít nhất 1 phần tử (createProductSchema/updateProductSchema
+  // đều bắt buộc `variants.min(1)` khi có mặt), không cần xử lý mảng rỗng.
+  private computePriceRange(variants: { price: number }[]): {
+    minPrice: number;
+    maxPrice: number;
+  } {
+    const prices = variants.map((variant) => variant.price);
+    return { minPrice: Math.min(...prices), maxPrice: Math.max(...prices) };
   }
 
   // attributeValues[i] tham chiếu THEO VỊ TRÍ tới attributeValueIdsByPosition[i]
