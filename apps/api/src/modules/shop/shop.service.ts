@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { slugify } from '../../shared/utils/slugify';
 import type { CreateShopDto } from './dto/create-shop.dto';
 import type { UpdateShopDto } from './dto/update-shop.dto';
 
@@ -64,7 +65,7 @@ export class ShopService {
     if (dto.slug) {
       return this.createWithExplicitSlug(data, dto.slug);
     }
-    return this.createWithGeneratedSlug(data, this.slugify(dto.name));
+    return this.createWithGeneratedSlug(data, slugify(dto.name));
   }
 
   async getMyShop(userId: string): Promise<ShopSummary> {
@@ -173,16 +174,5 @@ export class ShopService {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2002'
     );
-  }
-
-  private slugify(input: string): string {
-    return input
-      .trim()
-      .toLowerCase()
-      .replace(/đ/g, 'd')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
   }
 }
