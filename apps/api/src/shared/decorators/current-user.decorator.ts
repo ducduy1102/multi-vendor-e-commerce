@@ -13,3 +13,17 @@ export const CurrentUser = createParamDecorator(
     return request.user;
   },
 );
+
+interface RequestWithOptionalUser extends Request {
+  user?: AuthenticatedUser;
+}
+
+// @CurrentUserOptional() — dùng sau OptionalJwtAuthGuard (route public vẫn
+// muốn biết viewer nếu có đăng nhập, vd ProductController.getOne). Khác
+// @CurrentUser(): trả undefined thay vì luôn có giá trị.
+export const CurrentUserOptional = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext): AuthenticatedUser | undefined => {
+    const request = ctx.switchToHttp().getRequest<RequestWithOptionalUser>();
+    return request.user;
+  },
+);
