@@ -371,7 +371,15 @@ export class ProductService {
       throw new NotFoundException('Product not found');
     }
 
-    return this.mapProduct(product);
+    // Bug thật phát hiện qua test tay bằng curl thật (Bước 2.15): trước đây
+    // truyền thẳng `product` (có thêm field `shop` từ productDetailSelect)
+    // vào mapProduct() — TypeScript không báo lỗi vì đây không phải object
+    // literal (chỉ excess-property-check literal, không áp dụng cho biến),
+    // nhưng RUNTIME thì `{...product}` copy nguyên `shop.ownerId` ra ngoài
+    // response — lộ cho cả guest chưa đăng nhập. Phải destructure bỏ `shop`
+    // tường minh trước khi map, không dựa vào type hẹp hơn để "ẩn" field.
+    const { shop, ...productWithoutShop } = product;
+    return this.mapProduct(productWithoutShop);
   }
 
   // Query chính cho CẢ trang chủ lẫn trang danh sách public (Week4.md Bước

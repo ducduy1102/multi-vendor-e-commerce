@@ -664,6 +664,13 @@ describe('ProductService', () => {
       expect(result.id).toBe('product-1');
     });
 
+    it('KHÔNG lộ field shop (ownerId/status) ra response — chỉ dùng nội bộ để check quyền xem', async () => {
+      mockDetailRow({ status: 'PUBLISHED' });
+
+      const result = await service.getProduct('product-1');
+      expect(result).not.toHaveProperty('shop');
+    });
+
     it('guest/public KHÔNG xem được product DRAFT — 404 (không lộ có tồn tại)', async () => {
       mockDetailRow({ status: 'DRAFT' });
 
