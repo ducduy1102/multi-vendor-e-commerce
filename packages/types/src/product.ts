@@ -128,17 +128,20 @@ export const createProductSchema = z
   );
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 
-// Không cho sửa status qua đây (archive có action riêng, xem
-// ProductService.archiveProduct). attributes/variants: bỏ trống cả 2 = giữ
-// nguyên, gửi cả 2 = thay thế toàn bộ theo logic reconciliation trong
-// ProductService.updateProduct (khớp theo sku: có sẵn -> update, mới -> tạo,
-// mất trong payload -> isActive = false, không xoá cứng) — chỉ gửi 1 trong 2
-// là lỗi.
+// status cho sửa qua đây (DRAFT -> PUBLISHED "đăng bán", hoặc ngược lại) —
+// archiveProduct chỉ là 1 action tiện lợi gọi cùng cơ chế này với
+// status="ARCHIVED", không phải cơ chế riêng biệt duy nhất đổi được status.
+// attributes/variants: bỏ trống cả 2 = giữ nguyên, gửi cả 2 = reconcile toàn
+// bộ trong ProductService.updateProduct (khớp theo sku: có sẵn -> update,
+// mới -> tạo, mất trong payload -> isActive = false, không xoá cứng; xem
+// updateProduct-reconcile-decision.md cho attributes/values) — chỉ gửi 1
+// trong 2 là lỗi.
 export const updateProductSchema = z
   .object({
     name: z.string().trim().min(1, 'Tên sản phẩm không được để trống').optional(),
     categoryId: z.string().trim().min(1, 'Vui lòng chọn danh mục').optional(),
     description: optionalTrimmedString(),
+    status: productStatusSchema.optional(),
     attributes: z.array(productAttributeInputSchema).optional(),
     variants: z
       .array(productVariantInputSchema)
@@ -218,3 +221,28 @@ export const productSchema = z.object({
   variants: z.array(productVariantSchema),
 });
 export type Product = z.infer<typeof productSchema>;
+
+// Response gọn cho danh sách Product của seller (GET /shops/:shopId/products,
+// ProductService.getMyProducts) — không cần attributeValues/attributeName đã
+// resolve (chỉ cần cho form sửa, xem productSchema), tránh join dư thừa cho
+// 1 danh sách (rules/backend.md mục 4 — đặc biệt nhấn mạnh cho list product).
+export const productListItemVariantSchema = z.object({
+  id: z.string(),
+  sku: z.string(),
+  price: z.string(),
+  stock: z.number(),
+  isActive: z.boolean(),
+  imageUrl: z.string().nullable(),
+});
+
+export const productListItemSchema = z.object({
+  id: z.string(),
+  categoryId: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  status: productStatusSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  variants: z.array(productListItemVariantSchema),
+});
+export type ProductListItem = z.infer<typeof productListItemSchema>;
