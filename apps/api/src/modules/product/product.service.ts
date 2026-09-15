@@ -1,4 +1,8 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { slugify } from '../../shared/utils/slugify';
@@ -55,6 +59,15 @@ const productWithRelationsSelect = {
 type ProductWithRelations = Prisma.ProductGetPayload<{
   select: typeof productWithRelationsSelect;
 }>;
+
+// Chỉ dùng nội bộ cho getProduct để quyết định quyền xem (không lộ ra
+// response — shop bị strip trước khi map, xem getProduct) — không gộp vào
+// productWithRelationsSelect vì createProduct/updateProduct/archiveProduct
+// không cần join thêm bảng shops.
+const productDetailSelect = {
+  ...productWithRelationsSelect,
+  shop: { select: { ownerId: true, status: true } },
+} satisfies Prisma.ProductSelect;
 
 // Danh sách seller (GET /shops/:shopId/products) không cần join
 // attributeValue->attribute — chỉ đủ field cho 1 dòng danh sách (rules/
@@ -260,6 +273,36 @@ export class ProductService {
       data: { status: 'ARCHIVED' },
     });
     return this.loadProductSummary(this.prisma, productId);
+  }
+
+  // Route GET /products/:id là PUBLIC (không JwtAuthGuard bắt buộc, guest
+  // xem được) — viewerUserId chỉ có giá trị nếu request có cookie hợp lệ
+  // (optional-auth, wiring guard cụ thể để dành Bước 2.12). Không phải chủ
+  // shop mà product.status !== PUBLISHED hoặc shop.status !== APPROVED thì
+  // 404 y hệt "không tồn tại" — KHÔNG lộ sản phẩm nháp/shop chưa duyệt qua
+  // URL trực tiếp (đúng Bước 2.9 + rules/backend.md mục 6). Là chủ shop thì
+  // xem được mọi status (dùng lại đúng endpoint này cho trang seller xem
+  // lại/sửa, không tách route riêng).
+  async getProduct(
+    productId: string,
+    viewerUserId?: string,
+  ): Promise<ProductSummary> {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: productDetailSelect,
+    });
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const isOwner = product.shop.ownerId === viewerUserId;
+    const isVisibleToPublic =
+      product.status === 'PUBLISHED' && product.shop.status === 'APPROVED';
+    if (!isOwner && !isVisibleToPublic) {
+      throw new NotFoundException('Product not found');
+    }
+
+    return this.mapProduct(product);
   }
 
   // shopId đã qua ShopOwnerGuard xác nhận đúng chủ (route lồng

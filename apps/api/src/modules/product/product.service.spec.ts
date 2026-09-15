@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { CreateProductDto } from './dto/create-product.dto';
@@ -551,6 +551,75 @@ describe('ProductService', () => {
         },
       });
       expect(result).toBe(rows);
+    });
+  });
+
+  describe('getProduct', () => {
+    function mockDetailRow(overrides: Record<string, unknown> = {}) {
+      prisma.product.findUnique.mockResolvedValue({
+        id: 'product-1',
+        shopId: 'shop-1',
+        categoryId: 'cat-1',
+        name: 'Áo thun nam',
+        slug: 'ao-thun-nam',
+        description: undefined,
+        status: 'DRAFT',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        attributes: [],
+        variants: [],
+        shop: { ownerId: 'owner-1', status: 'APPROVED' },
+        ...overrides,
+      });
+    }
+
+    it('404 nếu product không tồn tại', async () => {
+      prisma.product.findUnique.mockResolvedValue(null);
+
+      await expect(service.getProduct('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('guest/public xem được product PUBLISHED của shop APPROVED', async () => {
+      mockDetailRow({ status: 'PUBLISHED' });
+
+      const result = await service.getProduct('product-1');
+      expect(result.id).toBe('product-1');
+    });
+
+    it('guest/public KHÔNG xem được product DRAFT — 404 (không lộ có tồn tại)', async () => {
+      mockDetailRow({ status: 'DRAFT' });
+
+      await expect(service.getProduct('product-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('guest/public KHÔNG xem được product PUBLISHED nếu shop chưa APPROVED', async () => {
+      mockDetailRow({
+        status: 'PUBLISHED',
+        shop: { ownerId: 'owner-1', status: 'PENDING' },
+      });
+
+      await expect(service.getProduct('product-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('chủ shop xem được product của mình dù đang DRAFT', async () => {
+      mockDetailRow({ status: 'DRAFT' });
+
+      const result = await service.getProduct('product-1', 'owner-1');
+      expect(result.id).toBe('product-1');
+    });
+
+    it('user đã đăng nhập nhưng không phải chủ shop vẫn bị chặn như guest', async () => {
+      mockDetailRow({ status: 'DRAFT' });
+
+      await expect(
+        service.getProduct('product-1', 'someone-else'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });
