@@ -4,10 +4,13 @@ import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { CreateProductDto } from './dto/create-product.dto';
 import { ProductService } from './product.service';
 
-function p2002(): Prisma.PrismaClientKnownRequestError {
+function p2002(
+  modelName: 'Product' | 'ProductVariant' = 'Product',
+): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
     clientVersion: '6.19.3',
+    meta: { modelName },
   });
 }
 
@@ -388,6 +391,42 @@ describe('ProductService', () => {
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
+  it('1 phần transaction lỗi giữa đường (vd tạo variant thứ 2 fail) — rethrow ngay, dừng luôn không tạo tiếp', async () => {
+    prisma.product.findUnique.mockResolvedValue(null);
+    const dbError = new Error('DB write failed');
+    prisma.productVariant.create
+      .mockImplementationOnce((args: { data: { sku: string } }) =>
+        Promise.resolve({ id: `variant-${args.data.sku}` }),
+      )
+      .mockImplementationOnce(() => Promise.reject(dbError));
+
+    await expect(service.createProduct('shop-1', baseDto)).rejects.toBe(
+      dbError,
+    );
+
+    // Variant đầu tạo xong (kèm link) thì variant thứ 2 mới lỗi — dừng
+    // ngay, không lặp tiếp. $transaction thật (Prisma) sẽ rollback toàn bộ
+    // Product + variant đầu tiên đã "tạo" trong cùng transaction này, không
+    // để lại record mồ côi — đây là lý do createProduct bọc mọi thứ trong 1
+    // $transaction duy nhất thay vì nhiều lệnh rời rạc.
+    expect(prisma.productVariant.create).toHaveBeenCalledTimes(2);
+    expect(prisma.variantAttributeValue.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('P2002 do trùng SKU (ProductVariant) báo đúng lý do, không hiểu lầm thành trùng slug', async () => {
+    prisma.product.findUnique.mockResolvedValue(null);
+    prisma.$transaction.mockRejectedValue(p2002('ProductVariant'));
+
+    await expect(
+      service.createProduct('shop-1', baseDto),
+    ).rejects.toMatchObject({
+      message: 'SKU already exists in this shop',
+      status: 409,
+    });
+    // Không tự thử lại slug khác — vấn đề không phải ở slug, thử lại vô nghĩa.
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
   describe('updateProduct', () => {
     it('chỉ sửa field cơ bản khi không gửi attributes/variants', async () => {
       mockLoadedProduct({ name: 'Tên mới', status: 'PUBLISHED' });
@@ -511,6 +550,28 @@ describe('ProductService', () => {
       expect(prisma.product.update).toHaveBeenCalledWith({
         where: { id: 'product-1' },
         data: { minPrice: 100000, maxPrice: 200000 },
+      });
+    });
+
+    it('P2002 do trùng SKU với variant khác trong shop báo đúng 409, không lộ lỗi Prisma thô', async () => {
+      prisma.$transaction.mockRejectedValue(p2002('ProductVariant'));
+
+      await expect(
+        service.updateProduct('shop-1', 'product-1', {
+          attributes: [],
+          variants: [
+            {
+              sku: 'DA-TON-TAI',
+              price: 1,
+              stock: 1,
+              attributeValues: [],
+              imageUrl: undefined,
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        message: 'SKU already exists in this shop',
+        status: 409,
       });
     });
   });

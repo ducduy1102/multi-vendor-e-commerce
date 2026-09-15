@@ -186,9 +186,19 @@ export class ProductService {
         // riêng bước check, thử hậu tố kế tiếp thay vì để lỗi 500 lộ ra
         // ngoài. Transaction đã rollback hết (Product/attribute/variant vừa
         // tạo), an toàn để thử lại từ đầu với slug khác.
-        if (!this.isSlugConflict(error)) {
-          throw error;
+        if (this.isSlugConflict(error)) {
+          continue;
         }
+        // Bug thật phát hiện qua test tay bằng DB thật: transaction này còn
+        // tạo ProductVariant (có @@unique([shopId, sku]) riêng, Bước 1.7) —
+        // P2002 do trùng SKU cũng là Prisma.PrismaClientKnownRequestError,
+        // nếu không phân biệt theo error.meta.modelName sẽ bị hiểu lầm
+        // thành "trùng slug" và tự thử lại slug khác vô nghĩa tới hết lượt,
+        // báo sai nguyên nhân ("Slug already exists" thay vì SKU trùng).
+        if (this.isVariantSkuConflict(error)) {
+          throw new ConflictException('SKU already exists in this shop');
+        }
+        throw error;
       }
     }
 
@@ -286,29 +296,40 @@ export class ProductService {
     productId: string,
     dto: UpdateProductDto,
   ): Promise<ProductSummary> {
-    return this.prisma.$transaction(async (tx) => {
-      await tx.product.update({
-        where: { id: productId },
-        data: {
-          name: dto.name,
-          categoryId: dto.categoryId,
-          description: dto.description,
-          status: dto.status,
-        },
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.product.update({
+          where: { id: productId },
+          data: {
+            name: dto.name,
+            categoryId: dto.categoryId,
+            description: dto.description,
+            status: dto.status,
+          },
+        });
+
+        if (dto.attributes && dto.variants) {
+          await this.reconcileAttributesAndVariants(
+            tx,
+            shopId,
+            productId,
+            dto.attributes,
+            dto.variants,
+          );
+        }
+
+        return this.loadProductSummary(tx, productId);
       });
-
-      if (dto.attributes && dto.variants) {
-        await this.reconcileAttributesAndVariants(
-          tx,
-          shopId,
-          productId,
-          dto.attributes,
-          dto.variants,
-        );
+    } catch (error) {
+      // Bug thật phát hiện qua test tay DB thật (cùng loại đã sửa ở
+      // createProduct): thêm/đổi sku trùng với 1 variant khác trong shop —
+      // không bắt riêng thì lộ nguyên PrismaClientKnownRequestError ra
+      // ngoài (500 thô) thay vì 409 rõ nghĩa.
+      if (this.isVariantSkuConflict(error)) {
+        throw new ConflictException('SKU already exists in this shop');
       }
-
-      return this.loadProductSummary(tx, productId);
-    });
+      throw error;
+    }
   }
 
   // "Xoá" Product = update status = ARCHIVED, không prisma.delete (đúng
@@ -627,13 +648,25 @@ export class ProductService {
     };
   }
 
-  // Product chỉ có 1 unique constraint ngoài id (slug) nên P2002 ở model này
-  // chắc chắn do slug, không cần soi thêm error.meta.target — cùng lý do đã
-  // ghi ở ShopService.isSlugConflict.
+  // KHÁC ShopService.isSlugConflict (Shop chỉ có 1 unique constraint ngoài
+  // id nên không cần soi thêm) — transaction tạo Product ở đây còn tạo
+  // ProductVariant, có @@unique([shopId, sku]) riêng (Bước 1.7). P2002 do
+  // trùng SKU cũng là PrismaClientKnownRequestError, phải soi
+  // error.meta.modelName để không hiểu lầm thành trùng slug (bug thật đã
+  // phát hiện qua test tay DB thật — xem createProduct).
   private isSlugConflict(error: unknown): boolean {
     return (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
+      error.code === 'P2002' &&
+      error.meta?.modelName === 'Product'
+    );
+  }
+
+  private isVariantSkuConflict(error: unknown): boolean {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      error.meta?.modelName === 'ProductVariant'
     );
   }
 }
