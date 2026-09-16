@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
-import { useRouter } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { ApiError } from '@/shared/lib/api-client';
 
 import { useMyShop } from '../hooks/useMyShop';
@@ -16,6 +16,7 @@ import { UpdateShopForm } from './UpdateShopForm';
 // nghiệp vụ trực tiếp (rules/frontend.md mục 1).
 export function ShopDashboardContainer() {
   const t = useTranslations('shop');
+  const tProduct = useTranslations('product');
   const tCommon = useTranslations('common');
   const router = useRouter();
   const myShopQuery = useMyShop();
@@ -57,9 +58,17 @@ export function ShopDashboardContainer() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">{shop.name}</h1>
-        <p className="text-sm text-muted-foreground">/{shop.slug}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold">{shop.name}</h1>
+          <p className="text-sm text-muted-foreground">/{shop.slug}</p>
+        </div>
+        <Link
+          href="/seller/products"
+          className="text-sm font-medium text-foreground hover:underline"
+        >
+          {tProduct('manageProductsLink')}
+        </Link>
       </div>
 
       {shop.status !== 'APPROVED' && (

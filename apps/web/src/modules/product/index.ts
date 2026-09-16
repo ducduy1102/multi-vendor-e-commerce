@@ -4,6 +4,7 @@ export { CategoryShortcutList } from './components/CategoryShortcutList';
 export { ProductFilterBar } from './components/ProductFilterBar';
 export { ProductPagination } from './components/ProductPagination';
 export { ProductPreviewCard } from './components/ProductPreviewCard';
+export { SellerProductsContainer } from './components/SellerProductsContainer';
 export { useArchiveProduct } from './hooks/useArchiveProduct';
 export { useCreateProduct } from './hooks/useCreateProduct';
 export { useMyProducts } from './hooks/useMyProducts';

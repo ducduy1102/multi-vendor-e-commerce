@@ -86,6 +86,20 @@
     "sortPriceDesc": "Price: high to low",
     "paginationStatus": "Page {page}/{totalPages}",
     "paginationPrev": "Previous",
-    "paginationNext": "Next"
+    "paginationNext": "Next",
+
+    "sellerProductsTitle": "My products",
+    "sellerCreateProduct": "Create new product",
+    "sellerLoadProductsError": "Couldn't load your products, please try again",
+    "sellerEmptyState": "You don't have any products yet. Click \"Create new product\" to get started.",
+    "sellerEditAction": "Edit",
+    "sellerArchiveAction": "Archive",
+    "sellerArchiving": "Archiving...",
+    "sellerArchiveConfirm": "Archive this product? It will no longer be visible to the public.",
+    "sellerArchiveGenericError": "Failed to archive the product, please try again",
+    "statusDraft": "Draft",
+    "statusPublished": "Published",
+    "statusArchived": "Archived",
+    "manageProductsLink": "Manage products"
   }
 }

@@ -86,6 +86,20 @@
     "sortPriceDesc": "Giá giảm dần",
     "paginationStatus": "Trang {page}/{totalPages}",
     "paginationPrev": "Trước",
-    "paginationNext": "Sau"
+    "paginationNext": "Sau",
+
+    "sellerProductsTitle": "Sản phẩm của tôi",
+    "sellerCreateProduct": "Tạo sản phẩm mới",
+    "sellerLoadProductsError": "Không tải được danh sách sản phẩm, vui lòng thử lại",
+    "sellerEmptyState": "Bạn chưa có sản phẩm nào. Bấm \"Tạo sản phẩm mới\" để bắt đầu.",
+    "sellerEditAction": "Sửa",
+    "sellerArchiveAction": "Lưu trữ",
+    "sellerArchiving": "Đang lưu trữ...",
+    "sellerArchiveConfirm": "Lưu trữ sản phẩm này? Sản phẩm sẽ không còn hiển thị công khai.",
+    "sellerArchiveGenericError": "Lưu trữ sản phẩm thất bại, vui lòng thử lại",
+    "statusDraft": "Nháp",
+    "statusPublished": "Đang bán",
+    "statusArchived": "Đã lưu trữ",
+    "manageProductsLink": "Quản lý sản phẩm"
   }
 }
