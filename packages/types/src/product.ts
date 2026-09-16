@@ -301,3 +301,17 @@ export const productListResponseSchema = z.object({
   limit: z.number(),
 });
 export type ProductListResponse = z.infer<typeof productListResponseSchema>;
+
+// Response của POST /uploads/signature (CloudinaryService.generateUploadSignature,
+// apps/api/src/shared/cloudinary/cloudinary.service.ts) — BE hiện định nghĩa
+// riêng 1 interface TS thuần cùng shape (không qua Zod, vì đây là response cố
+// định BE tự tạo ra, không phải input cần validate ở BE). Khai lại ở đây để
+// FE có 1 schema Zod duy nhất validate response này trước khi dùng (đúng
+// rules/general.md mục 4), không tự bịa lại field ở phía FE.
+export const uploadSignatureSchema = z.object({
+  signature: z.string(),
+  timestamp: z.number(),
+  apiKey: z.string(),
+  cloudName: z.string(),
+});
+export type UploadSignature = z.infer<typeof uploadSignatureSchema>;
