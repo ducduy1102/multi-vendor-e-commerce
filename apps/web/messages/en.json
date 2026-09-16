@@ -116,6 +116,7 @@
     "productFormValuePlaceholder": "Value (e.g. Red)",
     "productFormVariantsTitle": "Variants",
     "productFormVariantDefaultLabel": "Default (no attributes)",
+    "productFormComboHeader": "Combination",
     "productFormSkuLabel": "SKU",
     "productFormPriceLabel": "Price",
     "productFormStockLabel": "Stock",

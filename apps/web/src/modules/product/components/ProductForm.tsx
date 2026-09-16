@@ -1,12 +1,14 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
   Controller,
   useFieldArray,
   useForm,
   type Control,
+  type FieldErrors,
   type UseFormRegister,
 } from 'react-hook-form';
 import { z } from 'zod';
@@ -40,10 +42,34 @@ const productFormValueSchema = z.object({
   value: z.string().trim().min(1, 'Giá trị không được để trống'),
 });
 
-const productFormAttributeSchema = z.object({
-  name: z.string().trim().min(1, 'Tên thuộc tính không được để trống'),
-  values: z.array(productFormValueSchema).min(1, 'Cần ít nhất 1 giá trị'),
-});
+const productFormAttributeSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Tên thuộc tính không được để trống'),
+    values: z.array(productFormValueSchema).min(1, 'Cần ít nhất 1 giá trị'),
+  })
+  // Giá trị trùng (không phân biệt hoa/thường, vd "M" và "m") trong CÙNG 1
+  // thuộc tính là lỗi cần chặn ngay tại tầng 1 (FE), không đợi tới khi BE
+  // trả lỗi — tránh tích Descartes sinh ra 2 tổ hợp trùng tên khiến seller
+  // không phân biệt được dòng nào là dòng nào. Báo lỗi tại đúng ô giá trị bị
+  // lặp (không phải ô đầu tiên) để seller biết chính xác cần sửa dòng nào.
+  .superRefine((attribute, ctx) => {
+    const seen = new Map<string, number>();
+    attribute.values.forEach((item, valueIndex) => {
+      const key = item.value.trim().toLowerCase();
+      if (key === '') {
+        return;
+      }
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Giá trị "${item.value}" đã tồn tại trong thuộc tính này (không phân biệt hoa/thường)`,
+          path: ['values', valueIndex, 'value'],
+        });
+      } else {
+        seen.set(key, valueIndex);
+      }
+    });
+  });
 
 const productFormVariantSchema = z.object({
   sku: z.string().trim().min(1, 'SKU không được để trống'),
@@ -173,6 +199,11 @@ export function productToFormValues(product: Product): ProductFormValues {
   };
 }
 
+// Chung 1 template cột cho header lẫn từng dòng variant — tránh header và
+// dòng dữ liệu lệch cột nếu sửa 1 nơi quên sửa nơi kia. Cột cuối (ảnh) rộng
+// hơn vì chứa cả thumbnail + nút bấm.
+const VARIANT_GRID_COLS = 'md:grid-cols-[minmax(140px,1fr)_1fr_1fr_1fr_160px]';
+
 interface ProductFormProps {
   categories: Category[];
   mode: 'create' | 'edit';
@@ -208,6 +239,10 @@ export function ProductForm({
   } = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
     defaultValues: defaultValues ?? EMPTY_DEFAULT_VALUES,
+    // Validate ngay khi rời khỏi field (blur), không chỉ lúc bấm submit —
+    // seller thấy lỗi giá trị trùng/SKU trùng ngay lúc đang khai, không phải
+    // đợi điền hết cả form rồi mới bị báo hàng loạt.
+    mode: 'onBlur',
   });
 
   const attributesFieldArray = useFieldArray({ control, name: 'attributes' });
@@ -312,8 +347,7 @@ export function ProductForm({
             removeValueLabel={t('productFormRemoveValue')}
             valuePlaceholder={t('productFormValuePlaceholder')}
             namePlaceholder={t('productFormAttributeNamePlaceholder')}
-            nameError={errors.attributes?.[attributeIndex]?.name?.message}
-            valuesError={errors.attributes?.[attributeIndex]?.values?.message}
+            attributeErrors={errors.attributes?.[attributeIndex]}
           />
         ))}
       </div>
@@ -323,6 +357,16 @@ export function ProductForm({
         {errors.variants?.root?.message && (
           <p className="text-sm text-destructive">{errors.variants.root.message}</p>
         )}
+
+        <div
+          className={`hidden gap-4 px-3 text-xs font-medium text-muted-foreground ${VARIANT_GRID_COLS} md:grid`}
+        >
+          <span>{t('productFormComboHeader')}</span>
+          <span>{t('productFormSkuLabel')}</span>
+          <span>{t('productFormPriceLabel')}</span>
+          <span>{t('productFormStockLabel')}</span>
+          <span>{t('productFormImageLabel')}</span>
+        </div>
 
         <div className="flex flex-col gap-3">
           {variantsFieldArray.fields.map((variantField, variantIndex) => {
@@ -335,84 +379,91 @@ export function ProductForm({
                         `${attribute.name}: ${variantField.attributeValues[i] ?? ''}`,
                     )
                     .join(', ');
+            const variantErrors = errors.variants?.[variantIndex];
+            const hasRowError = !!(
+              variantErrors?.sku ||
+              variantErrors?.price ||
+              variantErrors?.stock
+            );
 
             return (
               <div
                 key={variantField.id}
-                className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-start sm:gap-4"
+                className={`grid grid-cols-1 gap-3 rounded-lg border p-3 ${VARIANT_GRID_COLS} md:items-start md:gap-4 ${
+                  hasRowError ? 'border-destructive bg-destructive/5' : 'border-border'
+                }`}
               >
-                <p className="text-sm text-muted-foreground sm:w-40 sm:shrink-0">{comboLabel}</p>
+                <p className="text-sm text-muted-foreground md:pt-1.5">{comboLabel}</p>
 
-                <div className="flex flex-1 flex-col gap-2 sm:flex-row">
-                  <div className="flex flex-1 flex-col gap-1">
-                    <Label htmlFor={`variant-sku-${variantIndex}`}>
-                      {t('productFormSkuLabel')}
-                    </Label>
-                    <Input
-                      id={`variant-sku-${variantIndex}`}
-                      type="text"
-                      aria-invalid={!!errors.variants?.[variantIndex]?.sku}
-                      {...register(`variants.${variantIndex}.sku`)}
-                    />
-                    {errors.variants?.[variantIndex]?.sku && (
-                      <p className="text-sm text-destructive">
-                        {errors.variants[variantIndex]?.sku?.message}
-                      </p>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor={`variant-sku-${variantIndex}`} className="md:sr-only">
+                    {t('productFormSkuLabel')}
+                  </Label>
+                  <Input
+                    id={`variant-sku-${variantIndex}`}
+                    type="text"
+                    aria-invalid={!!variantErrors?.sku}
+                    {...register(`variants.${variantIndex}.sku`)}
+                  />
+                  {errors.variants?.[variantIndex]?.sku && (
+                    <p className="text-sm text-destructive">
+                      {errors.variants[variantIndex]?.sku?.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor={`variant-price-${variantIndex}`} className="md:sr-only">
+                    {t('productFormPriceLabel')}
+                  </Label>
+                  <Input
+                    id={`variant-price-${variantIndex}`}
+                    type="number"
+                    aria-invalid={!!errors.variants?.[variantIndex]?.price}
+                    {...register(`variants.${variantIndex}.price`)}
+                  />
+                  {errors.variants?.[variantIndex]?.price && (
+                    <p className="text-sm text-destructive">
+                      {errors.variants[variantIndex]?.price?.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor={`variant-stock-${variantIndex}`} className="md:sr-only">
+                    {t('productFormStockLabel')}
+                  </Label>
+                  <Input
+                    id={`variant-stock-${variantIndex}`}
+                    type="number"
+                    placeholder="0"
+                    aria-invalid={!!errors.variants?.[variantIndex]?.stock}
+                    {...register(`variants.${variantIndex}.stock`)}
+                  />
+                  {errors.variants?.[variantIndex]?.stock && (
+                    <p className="text-sm text-destructive">
+                      {errors.variants[variantIndex]?.stock?.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <Label className="md:sr-only">{t('productFormImageLabel')}</Label>
+                  <Controller
+                    control={control}
+                    name={`variants.${variantIndex}.imageUrl`}
+                    render={({ field }) => (
+                      <VariantImageUpload
+                        value={field.value}
+                        onChange={field.onChange}
+                        uploadLabel={t('productFormImageUpload')}
+                        changeLabel={t('productFormImageChange')}
+                        uploadingLabel={t('productFormImageUploading')}
+                        removeLabel={t('productFormImageRemove')}
+                        errorLabel={t('productFormImageError')}
+                      />
                     )}
-                  </div>
-
-                  <div className="flex flex-1 flex-col gap-1">
-                    <Label htmlFor={`variant-price-${variantIndex}`}>
-                      {t('productFormPriceLabel')}
-                    </Label>
-                    <Input
-                      id={`variant-price-${variantIndex}`}
-                      type="number"
-                      aria-invalid={!!errors.variants?.[variantIndex]?.price}
-                      {...register(`variants.${variantIndex}.price`)}
-                    />
-                    {errors.variants?.[variantIndex]?.price && (
-                      <p className="text-sm text-destructive">
-                        {errors.variants[variantIndex]?.price?.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex flex-1 flex-col gap-1">
-                    <Label htmlFor={`variant-stock-${variantIndex}`}>
-                      {t('productFormStockLabel')}
-                    </Label>
-                    <Input
-                      id={`variant-stock-${variantIndex}`}
-                      type="number"
-                      aria-invalid={!!errors.variants?.[variantIndex]?.stock}
-                      {...register(`variants.${variantIndex}.stock`)}
-                    />
-                    {errors.variants?.[variantIndex]?.stock && (
-                      <p className="text-sm text-destructive">
-                        {errors.variants[variantIndex]?.stock?.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex flex-1 flex-col gap-1">
-                    <Label>{t('productFormImageLabel')}</Label>
-                    <Controller
-                      control={control}
-                      name={`variants.${variantIndex}.imageUrl`}
-                      render={({ field }) => (
-                        <VariantImageUpload
-                          value={field.value}
-                          onChange={field.onChange}
-                          uploadLabel={t('productFormImageUpload')}
-                          changeLabel={t('productFormImageChange')}
-                          uploadingLabel={t('productFormImageUploading')}
-                          removeLabel={t('productFormImageRemove')}
-                          errorLabel={t('productFormImageError')}
-                        />
-                      )}
-                    />
-                  </div>
+                  />
                 </div>
               </div>
             );
@@ -446,8 +497,7 @@ interface AttributeRowProps {
   removeValueLabel: string;
   namePlaceholder: string;
   valuePlaceholder: string;
-  nameError?: string;
-  valuesError?: string;
+  attributeErrors?: NonNullable<FieldErrors<ProductFormValues>['attributes']>[number];
 }
 
 // Tách riêng để gọi useFieldArray lồng (attributes.${index}.values) — mỗi
@@ -463,13 +513,20 @@ function AttributeRow({
   removeValueLabel,
   namePlaceholder,
   valuePlaceholder,
-  nameError,
-  valuesError,
+  attributeErrors,
 }: AttributeRowProps) {
   const valuesFieldArray = useFieldArray({
     control,
     name: `attributes.${attributeIndex}.values`,
   });
+  const nameRegister = register(`attributes.${attributeIndex}.name`);
+  const nameError = attributeErrors?.name?.message;
+  // Lỗi cấp mảng (vd "Cần ít nhất 1 giá trị") khác `.root` với react-hook-
+  // form khi field là mảng object có superRefine riêng — cả 2 dạng đều có
+  // thể xuất hiện tuỳ tình huống nên đọc cả `.message` lẫn `.root?.message`.
+  const valuesArrayError =
+    attributeErrors?.values?.message ??
+    (attributeErrors?.values as { root?: { message?: string } } | undefined)?.root?.message;
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
@@ -479,39 +536,60 @@ function AttributeRow({
           placeholder={namePlaceholder}
           aria-invalid={!!nameError}
           className="max-w-xs"
-          {...register(`attributes.${attributeIndex}.name`)}
-          onBlur={onValuesChanged}
+          {...nameRegister}
+          onBlur={(e) => {
+            void nameRegister.onBlur(e);
+            onValuesChanged();
+          }}
         />
-        <Button type="button" variant="ghost" size="sm" onClick={onRemoveAttribute}>
-          {removeAttributeLabel}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={removeAttributeLabel}
+          className="ml-auto"
+          onClick={onRemoveAttribute}
+        >
+          <Trash2 className="size-4" />
         </Button>
       </div>
       {nameError && <p className="text-sm text-destructive">{nameError}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
-        {valuesFieldArray.fields.map((valueField, valueIndex) => (
-          <div key={valueField.id} className="flex items-center gap-1">
-            <Input
-              type="text"
-              placeholder={valuePlaceholder}
-              className="w-32"
-              {...register(`attributes.${attributeIndex}.values.${valueIndex}.value`)}
-              onBlur={onValuesChanged}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={removeValueLabel}
-              onClick={() => {
-                valuesFieldArray.remove(valueIndex);
-                onValuesChanged();
-              }}
-            >
-              ×
-            </Button>
-          </div>
-        ))}
+        {valuesFieldArray.fields.map((valueField, valueIndex) => {
+          const valueRegister = register(`attributes.${attributeIndex}.values.${valueIndex}.value`);
+          const valueError = attributeErrors?.values?.[valueIndex]?.value?.message;
+          return (
+            <div key={valueField.id} className="flex flex-col gap-1">
+              <div className="flex items-center gap-1">
+                <Input
+                  type="text"
+                  placeholder={valuePlaceholder}
+                  className="w-32"
+                  aria-invalid={!!valueError}
+                  {...valueRegister}
+                  onBlur={(e) => {
+                    void valueRegister.onBlur(e);
+                    onValuesChanged();
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={removeValueLabel}
+                  onClick={() => {
+                    valuesFieldArray.remove(valueIndex);
+                    onValuesChanged();
+                  }}
+                >
+                  ×
+                </Button>
+              </div>
+              {valueError && <p className="text-xs text-destructive">{valueError}</p>}
+            </div>
+          );
+        })}
         <Button
           type="button"
           variant="outline"
@@ -521,7 +599,7 @@ function AttributeRow({
           {addValueLabel}
         </Button>
       </div>
-      {valuesError && <p className="text-sm text-destructive">{valuesError}</p>}
+      {valuesArrayError && <p className="text-sm text-destructive">{valuesArrayError}</p>}
     </div>
   );
 }

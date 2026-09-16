@@ -149,6 +149,38 @@ describe('ProductForm', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('báo lỗi ngay tại ô giá trị khi 2 giá trị trong cùng thuộc tính trùng nhau (không phân biệt hoa/thường)', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    renderProductForm(<ProductForm mode="create" categories={categories} onSubmit={onSubmit} />);
+
+    // Đúng bug thật gặp trong ảnh seller gửi lên: attribute "Size" khai
+    // "M" 2 lần — addAttribute() đã tự blur() từng ô giá trị ở cuối, nên lỗi
+    // phải hiện NGAY (mode: 'onBlur'), không cần đợi tới lúc bấm submit.
+    await addAttribute(user, 'Size', ['M', 'M']);
+
+    expect(
+      await screen.findByText(
+        'Giá trị "M" đã tồn tại trong thuộc tính này (không phân biệt hoa/thường)',
+      ),
+    ).toBeInTheDocument();
+
+    await fillBasicFields(user);
+    const skuInputs = screen.getAllByLabelText('SKU');
+    const priceInputs = screen.getAllByLabelText('Giá');
+    const stockInputs = screen.getAllByLabelText('Tồn kho');
+    for (let i = 0; i < skuInputs.length; i++) {
+      await user.clear(skuInputs[i]);
+      await user.type(skuInputs[i], `SKU-${i}`);
+      await user.type(priceInputs[i], '100000');
+      await user.type(stockInputs[i], '5');
+    }
+
+    await user.click(screen.getByRole('button', { name: 'Tạo sản phẩm' }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('hiện field status ở mode edit, không hiện ở mode create', () => {
     renderProductForm(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />);
     expect(screen.queryByLabelText('Trạng thái')).not.toBeInTheDocument();

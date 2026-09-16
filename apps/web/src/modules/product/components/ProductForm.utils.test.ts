@@ -81,6 +81,19 @@ describe('buildVariantMatrix', () => {
     expect(result).toEqual([{ sku: 'DODO', price: '', stock: '', attributeValues: ['Do-do'] }]);
   });
 
+  it('không tự dedupe khi 1 attribute khai giá trị trùng nhau — sinh 2 dòng độc lập, không chia sẻ reference', () => {
+    // buildVariantMatrix KHÔNG chịu trách nhiệm chặn giá trị trùng (đó là
+    // việc của productFormAttributeSchema, ProductForm.tsx) — chỉ cần đảm
+    // bảo không có bug phụ nào (2 dòng share chung 1 object reference) nếu
+    // validate chưa kịp chặn lúc người dùng đang gõ dở.
+    const result = buildVariantMatrix([attr('Size', ['M', 'M'])], []);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].attributeValues).toEqual(['M']);
+    expect(result[1].attributeValues).toEqual(['M']);
+    expect(result[0]).not.toBe(result[1]);
+  });
+
   it('giữ nguyên imageUrl đã upload của dòng cũ khi tổ hợp vẫn còn, dòng mới không có ảnh', () => {
     const existing: VariantMatrixRow[] = [
       {

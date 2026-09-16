@@ -60,13 +60,22 @@ function validateAttributesAndVariants(
     }
     attributeNames.add(attribute.name);
 
-    if (new Set(attribute.values).size !== attribute.values.length) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Thuộc tính "${attribute.name}" có giá trị bị lặp lại`,
-        path: ['attributes', index, 'values'],
-      });
-    }
+    // So sánh không phân biệt hoa/thường ("M" và "m" cùng bị coi là trùng) —
+    // khớp với check FE ở ProductForm.tsx (cùng bất biến, 2 nơi validate
+    // cùng 1 rule không được lệch nhau).
+    const seenValues = new Map<string, number>();
+    attribute.values.forEach((value, valueIndex) => {
+      const key = value.trim().toLowerCase();
+      if (seenValues.has(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Giá trị "${value}" bị lặp lại trong thuộc tính "${attribute.name}" (không phân biệt hoa/thường)`,
+          path: ['attributes', index, 'values', valueIndex],
+        });
+      } else {
+        seenValues.set(key, valueIndex);
+      }
+    });
   });
 
   const skuSet = new Set<string>();
