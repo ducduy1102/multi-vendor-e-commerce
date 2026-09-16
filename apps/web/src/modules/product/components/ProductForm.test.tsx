@@ -1,5 +1,7 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { withIntl } from '@/shared/lib/test-i18n';
@@ -8,6 +10,15 @@ import type { Category } from '../types';
 import { ProductForm } from './ProductForm';
 
 const categories: Category[] = [{ id: 'cat-1', name: 'Áo nam', slug: 'ao-nam', parentId: null }];
+
+// ProductForm giờ gián tiếp dùng useUploadSignature (VariantImageUpload,
+// Bước 3.8) — cần QueryClientProvider để render được, khác các test trước
+// đó (chỉ react-hook-form, không cần). 1 QueryClient mới mỗi lần render,
+// không cache chéo giữa các test.
+function renderProductForm(ui: ReactElement) {
+  const queryClient = new QueryClient();
+  return render(withIntl(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>));
+}
 
 async function addAttribute(
   user: ReturnType<typeof userEvent.setup>,
@@ -40,7 +51,7 @@ async function fillBasicFields(user: ReturnType<typeof userEvent.setup>) {
 
 describe('ProductForm', () => {
   it('hiển thị đúng 1 dòng variant mặc định khi chưa có attribute nào', () => {
-    render(withIntl(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />));
+    renderProductForm(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />);
 
     expect(screen.getAllByLabelText('SKU')).toHaveLength(1);
     expect(screen.getByText('Mặc định (không có thuộc tính)')).toBeInTheDocument();
@@ -48,7 +59,7 @@ describe('ProductForm', () => {
 
   it('thêm 1 attribute với 2 giá trị sinh đúng 2 dòng variant', async () => {
     const user = userEvent.setup();
-    render(withIntl(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />));
+    renderProductForm(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />);
 
     await addAttribute(user, 'Màu sắc', ['Đỏ', 'Xanh']);
 
@@ -59,7 +70,7 @@ describe('ProductForm', () => {
 
   it('thêm attribute thứ 2 sinh đúng tích Descartes (2x2 = 4 dòng)', async () => {
     const user = userEvent.setup();
-    render(withIntl(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />));
+    renderProductForm(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />);
 
     await addAttribute(user, 'Màu sắc', ['Đỏ', 'Xanh']);
     await addAttribute(user, 'Size', ['M', 'L']);
@@ -71,7 +82,7 @@ describe('ProductForm', () => {
 
   it('xoá 1 giá trị làm mất đúng dòng tương ứng, giữ nguyên dữ liệu dòng còn lại', async () => {
     const user = userEvent.setup();
-    render(withIntl(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />));
+    renderProductForm(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />);
 
     await addAttribute(user, 'Màu sắc', ['Đỏ', 'Xanh']);
     expect(screen.getAllByLabelText('SKU')).toHaveLength(2);
@@ -89,7 +100,7 @@ describe('ProductForm', () => {
   it('submit hợp lệ gọi onSubmit với payload đã convert đúng shape (price/stock thành number)', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
-    render(withIntl(<ProductForm mode="create" categories={categories} onSubmit={onSubmit} />));
+    renderProductForm(<ProductForm mode="create" categories={categories} onSubmit={onSubmit} />);
 
     await fillBasicFields(user);
     await addAttribute(user, 'Màu sắc', ['Đỏ']);
@@ -117,7 +128,7 @@ describe('ProductForm', () => {
   it('chặn submit và báo lỗi khi 2 variant trùng SKU', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
-    render(withIntl(<ProductForm mode="create" categories={categories} onSubmit={onSubmit} />));
+    renderProductForm(<ProductForm mode="create" categories={categories} onSubmit={onSubmit} />);
 
     await fillBasicFields(user);
     await addAttribute(user, 'Màu sắc', ['Đỏ', 'Xanh']);
@@ -139,25 +150,23 @@ describe('ProductForm', () => {
   });
 
   it('hiện field status ở mode edit, không hiện ở mode create', () => {
-    render(withIntl(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />));
+    renderProductForm(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />);
     expect(screen.queryByLabelText('Trạng thái')).not.toBeInTheDocument();
 
-    render(
-      withIntl(
-        <ProductForm
-          mode="edit"
-          categories={categories}
-          onSubmit={vi.fn()}
-          defaultValues={{
-            name: 'Áo thun nam',
-            categoryId: 'cat-1',
-            description: '',
-            status: 'PUBLISHED',
-            attributes: [],
-            variants: [{ sku: 'AT-1', price: '100000', stock: '5', attributeValues: [] }],
-          }}
-        />,
-      ),
+    renderProductForm(
+      <ProductForm
+        mode="edit"
+        categories={categories}
+        onSubmit={vi.fn()}
+        defaultValues={{
+          name: 'Áo thun nam',
+          categoryId: 'cat-1',
+          description: '',
+          status: 'PUBLISHED',
+          attributes: [],
+          variants: [{ sku: 'AT-1', price: '100000', stock: '5', attributeValues: [] }],
+        }}
+      />,
     );
     expect(screen.getByLabelText('Trạng thái')).toBeInTheDocument();
   });

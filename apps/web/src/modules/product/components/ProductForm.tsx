@@ -2,7 +2,13 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
-import { useFieldArray, useForm, type Control, type UseFormRegister } from 'react-hook-form';
+import {
+  Controller,
+  useFieldArray,
+  useForm,
+  type Control,
+  type UseFormRegister,
+} from 'react-hook-form';
 import { z } from 'zod';
 
 import { Button } from '@/shared/components/ui/button';
@@ -11,6 +17,7 @@ import { Label } from '@/shared/components/ui/label';
 import { Textarea } from '@/shared/components/ui/textarea';
 import type { Category, Product } from '../types';
 import { buildVariantMatrix } from './ProductForm.utils';
+import { VariantImageUpload } from './VariantImageUpload';
 
 // Schema RIÊNG cho form (khác createProductSchema/updateProductSchema ở
 // @ecommerce/types) — chỉ validate UX tức thời ở FE, BE (ZodValidationPipe +
@@ -49,6 +56,9 @@ const productFormVariantSchema = z.object({
     .trim()
     .refine((v) => Number.isInteger(Number(v)) && Number(v) >= 0, 'Tồn kho phải là số nguyên >= 0'),
   attributeValues: z.array(z.string()),
+  // Gán qua VariantImageUpload (Controller, Bước 3.8) — không có <input
+  // type="text"> nào register trực tiếp field này.
+  imageUrl: z.string().optional(),
 });
 
 const productFormSchema = z
@@ -94,7 +104,13 @@ export interface ProductFormSubmitValues {
   description?: string;
   status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   attributes: { name: string; values: string[] }[];
-  variants: { sku: string; price: number; stock: number; attributeValues: string[] }[];
+  variants: {
+    sku: string;
+    price: number;
+    stock: number;
+    attributeValues: string[];
+    imageUrl?: string;
+  }[];
 }
 
 function toSubmitPayload(values: ProductFormValues): ProductFormSubmitValues {
@@ -112,6 +128,7 @@ function toSubmitPayload(values: ProductFormValues): ProductFormSubmitValues {
       price: Number(variant.price),
       stock: Number(variant.stock),
       attributeValues: variant.attributeValues,
+      imageUrl: variant.imageUrl,
     })),
   };
 }
@@ -121,7 +138,7 @@ const EMPTY_DEFAULT_VALUES: ProductFormValues = {
   categoryId: '',
   description: '',
   attributes: [],
-  variants: [{ sku: '', price: '', stock: '', attributeValues: [] }],
+  variants: [{ sku: '', price: '', stock: '', attributeValues: [], imageUrl: undefined }],
 };
 
 // Chuyển response Product (GET /products/:id) thành defaultValues cho form
@@ -151,6 +168,7 @@ export function productToFormValues(product: Product): ProductFormValues {
           (attribute) =>
             variant.attributeValues.find((av) => av.attributeName === attribute.name)?.value ?? '',
         ),
+        imageUrl: variant.imageUrl ?? undefined,
       })),
   };
 }
@@ -375,6 +393,25 @@ export function ProductForm({
                         {errors.variants[variantIndex]?.stock?.message}
                       </p>
                     )}
+                  </div>
+
+                  <div className="flex flex-1 flex-col gap-1">
+                    <Label>{t('productFormImageLabel')}</Label>
+                    <Controller
+                      control={control}
+                      name={`variants.${variantIndex}.imageUrl`}
+                      render={({ field }) => (
+                        <VariantImageUpload
+                          value={field.value}
+                          onChange={field.onChange}
+                          uploadLabel={t('productFormImageUpload')}
+                          changeLabel={t('productFormImageChange')}
+                          uploadingLabel={t('productFormImageUploading')}
+                          removeLabel={t('productFormImageRemove')}
+                          errorLabel={t('productFormImageError')}
+                        />
+                      )}
+                    />
                   </div>
                 </div>
               </div>

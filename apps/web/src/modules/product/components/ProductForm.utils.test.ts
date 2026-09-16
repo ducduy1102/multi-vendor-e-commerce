@@ -80,4 +80,21 @@ describe('buildVariantMatrix', () => {
 
     expect(result).toEqual([{ sku: 'DODO', price: '', stock: '', attributeValues: ['Do-do'] }]);
   });
+
+  it('giữ nguyên imageUrl đã upload của dòng cũ khi tổ hợp vẫn còn, dòng mới không có ảnh', () => {
+    const existing: VariantMatrixRow[] = [
+      {
+        sku: 'AO-DO',
+        price: '100000',
+        stock: '10',
+        attributeValues: ['Đỏ'],
+        imageUrl: 'https://res.cloudinary.com/demo/image/upload/do.jpg',
+      },
+    ];
+
+    const result = buildVariantMatrix([attr('Màu sắc', ['Đỏ', 'Xanh'])], existing);
+
+    expect(result[0].imageUrl).toBe('https://res.cloudinary.com/demo/image/upload/do.jpg');
+    expect(result[1].imageUrl).toBeUndefined();
+  });
 });

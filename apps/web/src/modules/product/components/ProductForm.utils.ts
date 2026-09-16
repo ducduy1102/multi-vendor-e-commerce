@@ -6,6 +6,10 @@ export interface VariantMatrixRow {
   price: string;
   stock: string;
   attributeValues: string[];
+  // Ảnh upload qua Cloudinary (Week4.md Bước 3.8) — chỉ dòng đã tồn tại
+  // (tái sử dụng qua combo khớp) mới có sẵn giá trị, dòng mới sinh luôn
+  // undefined (chưa upload ảnh nào cho tổ hợp chưa từng có).
+  imageUrl?: string;
 }
 
 interface AttributeInput {
