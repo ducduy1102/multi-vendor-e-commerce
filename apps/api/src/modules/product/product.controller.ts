@@ -330,7 +330,10 @@ export class ProductController {
       'Lấy chữ ký signed upload Cloudinary — FE tự upload thẳng lên Cloudinary bằng chữ ký này, không qua BE',
   })
   @ApiResponse({
-    status: 200,
+    // @Post() không khai @HttpCode() tường minh -> NestJS mặc định 201, đã
+    // verify thật bằng curl ở Week4.md Bước 2.15 (không phải 200 dù chỉ ký,
+    // không thực sự "tạo" resource nào ở BE).
+    status: 201,
     schema: { example: { success: true, data: UPLOAD_SIGNATURE_EXAMPLE } },
   })
   @ApiResponse({ status: 403, description: 'Email chưa xác thực' })
