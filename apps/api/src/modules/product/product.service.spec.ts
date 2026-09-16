@@ -51,6 +51,7 @@ describe('ProductService', () => {
       update: jest.Mock;
       findUniqueOrThrow: jest.Mock;
     };
+    category: { findMany: jest.Mock };
     productAttribute: {
       create: jest.Mock;
       findFirst: jest.Mock;
@@ -77,6 +78,9 @@ describe('ProductService', () => {
         ),
         update: jest.fn().mockResolvedValue({}),
         findUniqueOrThrow: jest.fn(),
+      },
+      category: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       productAttribute: {
         create: jest.fn((args: { data: { name: string } }) =>
@@ -853,6 +857,36 @@ describe('ProductService', () => {
       expect(result.total).toBe(2);
       expect(result.page).toBe(1);
       expect(result.limit).toBe(12);
+    });
+  });
+
+  describe('getCategories', () => {
+    it('trả danh sách category, sort theo tên, không lộ field thừa', async () => {
+      prisma.category.findMany.mockResolvedValue([
+        { id: 'cat-1', name: 'Điện tử', slug: 'dien-tu', parentId: null },
+        {
+          id: 'cat-2',
+          name: 'Điện thoại',
+          slug: 'dien-thoai',
+          parentId: 'cat-1',
+        },
+      ]);
+
+      const result = await service.getCategories();
+
+      expect(prisma.category.findMany).toHaveBeenCalledWith({
+        select: { id: true, name: true, slug: true, parentId: true },
+        orderBy: { name: 'asc' },
+      });
+      expect(result).toEqual([
+        { id: 'cat-1', name: 'Điện tử', slug: 'dien-tu', parentId: null },
+        {
+          id: 'cat-2',
+          name: 'Điện thoại',
+          slug: 'dien-thoai',
+          parentId: 'cat-1',
+        },
+      ]);
     });
   });
 });

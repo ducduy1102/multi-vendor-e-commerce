@@ -124,6 +124,20 @@ type ProductCardRow = Prisma.ProductGetPayload<{
   select: typeof productCardSelect;
 }>;
 
+// Category chưa có module/CRUD riêng (Admin category management để dành Tuần
+// 11, Week4.md Bước 1.3) — chỉ đọc, đủ phục vụ shortcut category ở trang chủ
+// (Bước 3.3) và dropdown filter category ở trang danh sách public (Bước 3.4).
+const categorySelect = {
+  id: true,
+  name: true,
+  slug: true,
+  parentId: true,
+} satisfies Prisma.CategorySelect;
+
+export type CategorySummary = Prisma.CategoryGetPayload<{
+  select: typeof categorySelect;
+}>;
+
 export interface ProductCardSummary {
   id: string;
   categoryId: string;
@@ -464,6 +478,13 @@ export class ProductService {
       where: { shopId },
       orderBy: { createdAt: 'desc' },
       select: productListItemSelect,
+    });
+  }
+
+  async getCategories(): Promise<CategorySummary[]> {
+    return this.prisma.category.findMany({
+      select: categorySelect,
+      orderBy: { name: 'asc' },
     });
   }
 
