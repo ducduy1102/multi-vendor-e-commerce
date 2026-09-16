@@ -63,5 +63,10 @@
     "updateShopSubmitting": "Saving...",
     "updateShopSuccess": "Changes saved",
     "updateShopGenericError": "Failed to update shop, please try again"
+  },
+  "product": {
+    "homeCategoriesTitle": "Featured categories",
+    "homeNewestTitle": "Newest products",
+    "homeEmptyState": "No products yet."
   }
 }

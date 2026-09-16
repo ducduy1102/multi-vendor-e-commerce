@@ -1,0 +1,48 @@
+import Image from 'next/image';
+
+import { Link } from '@/i18n/navigation';
+import type { ProductCard } from '../types';
+
+interface ProductPreviewCardProps {
+  product: ProductCard;
+}
+
+function formatPrice(value: string): string {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+  }).format(Number(value));
+}
+
+// Component thuần trình bày (không gọi API) — không bắt buộc test riêng
+// (rules/frontend.md mục 8). Link trỏ /products/:slug — route thật (Tuần 5,
+// Week4.md Bước 3.5) chưa tồn tại, chỉ tránh phải sửa lại link 2 lần.
+export function ProductPreviewCard({ product }: ProductPreviewCardProps) {
+  const priceLabel =
+    product.minPrice === product.maxPrice
+      ? formatPrice(product.minPrice)
+      : `${formatPrice(product.minPrice)} - ${formatPrice(product.maxPrice)}`;
+
+  return (
+    <Link
+      href={`/products/${product.slug}`}
+      className="group flex flex-col overflow-hidden rounded-lg border border-border bg-background transition-shadow hover:shadow-md"
+    >
+      <div className="relative aspect-square w-full overflow-hidden bg-zinc-100 dark:bg-zinc-900">
+        {product.imageUrl ? (
+          <Image
+            src={product.imageUrl}
+            alt={product.name}
+            fill
+            sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+            className="object-cover transition-transform group-hover:scale-105"
+          />
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-1 p-3">
+        <span className="line-clamp-2 text-sm font-medium text-foreground">{product.name}</span>
+        <span className="text-sm font-semibold text-foreground">{priceLabel}</span>
+      </div>
+    </Link>
+  );
+}
