@@ -4,6 +4,12 @@
     "or": "or",
     "toggleTheme": "Toggle light/dark theme"
   },
+  "header": {
+    "siteName": "Sàn ABC",
+    "becomeSellerLink": "Become a seller",
+    "myAccountLink": "My account",
+    "myProductsLink": "My products"
+  },
   "auth": {
     "loginTitle": "Log in",
     "loginEmailLabel": "Email",

@@ -15,8 +15,8 @@ const LOCALE_LABELS: Record<string, string> = {
 // vì tự suy ra từ URL có/không prefix) — đúng cơ chế đã xác nhận ở Bước 4.5:
 // muốn chuyển VỀ locale mặc định (vi) cũng phải link tường minh "/vi/...",
 // next-intl mới tự rút gọn URL + cập nhật lại cookie NEXT_LOCALE đúng ý.
-// Không tự định vị "fixed" — layout.tsx ghép component này cùng hàng với
-// AuthStatusBar (góc trên bên phải), tự định vị ở đây sẽ đè lên nhau.
+// Không tự định vị "fixed" — được ghép trực tiếp vào Header
+// (shared/components/Header.tsx), Header quyết định vị trí.
 export function LocaleSwitcher() {
   const pathname = usePathname();
   const activeLocale = useLocale();

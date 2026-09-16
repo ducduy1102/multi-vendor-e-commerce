@@ -1,10 +1,7 @@
 // Barrel export cho module auth — export component/hook cần dùng ở app/.
 export { AuthHydrator } from './components/AuthHydrator';
-export { AuthStatusBar } from './components/AuthStatusBar';
-export { CurrentUserBadge } from './components/CurrentUserBadge';
 export { EmailVerificationBanner } from './components/EmailVerificationBanner';
 export { GoogleLoginButton } from './components/GoogleLoginButton';
-export { GuestAuthLinks } from './components/GuestAuthLinks';
 export { LoginForm } from './components/LoginForm';
 export { LoginFormContainer } from './components/LoginFormContainer';
 export { LogoutButton } from './components/LogoutButton';

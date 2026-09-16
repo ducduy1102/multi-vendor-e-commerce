@@ -5,11 +5,10 @@ import { notFound } from 'next/navigation';
 import { Geist, Geist_Mono } from 'next/font/google';
 
 import { routing } from '@/i18n/routing';
-import { AuthHydrator, AuthStatusBar, EmailVerificationBanner } from '@/modules/auth';
-import { LocaleSwitcher } from '@/shared/components/LocaleSwitcher';
+import { AuthHydrator, EmailVerificationBanner } from '@/modules/auth';
+import { Header } from '@/shared/components/Header';
 import { QueryProvider } from '@/shared/components/QueryProvider';
 import { ThemeProvider } from '@/shared/components/ThemeProvider';
-import { ThemeToggle } from '@/shared/components/ThemeToggle';
 
 import '../globals.css';
 
@@ -60,16 +59,8 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
           <ThemeProvider>
             <QueryProvider>
               <AuthHydrator />
+              <Header />
               <EmailVerificationBanner />
-              <ThemeToggle />
-              {/* Góc trên-phải: trạng thái đăng nhập (badge+Đăng xuất, hoặc
-                  Đăng nhập/Đăng ký khi chưa đăng nhập) cùng hàng với chuyển
-                  ngôn ngữ — tạm gắn nổi ở layout vì chưa có header/navbar
-                  thật, dọn khi có header thật thay thế. */}
-              <div className="fixed top-3 right-3 z-50 flex items-center gap-3">
-                <AuthStatusBar />
-                <LocaleSwitcher />
-              </div>
               {children}
             </QueryProvider>
           </ThemeProvider>

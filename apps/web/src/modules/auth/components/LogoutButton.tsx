@@ -1,16 +1,18 @@
-"use client";
+'use client';
 
-import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { LogOut } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
-import { useRouter } from "@/i18n/navigation";
-import { Button } from "@/shared/components/ui/button";
+import { useRouter } from '@/i18n/navigation';
+import { DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
 
-import { logout } from "../services/auth.service";
-import { useAuthStore } from "../store/auth.store";
+import { logout } from '../services/auth.service';
+import { useAuthStore } from '../store/auth.store';
 
+// Hàng "Đăng xuất" trong dropdown tài khoản (Header, shared/components/Header.tsx).
 export function LogoutButton() {
-  const t = useTranslations("auth");
+  const t = useTranslations('auth');
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const clearUser = useAuthStore((state) => state.clearUser);
@@ -28,14 +30,15 @@ export function LogoutButton() {
       await logout();
     } finally {
       clearUser();
-      router.push("/login");
+      router.push('/login');
       router.refresh();
     }
   }
 
   return (
-    <Button variant="outline" onClick={handleLogout} disabled={isLoading}>
-      {isLoading ? t("logoutSubmitting") : t("logoutSubmit")}
-    </Button>
+    <DropdownMenuItem variant="destructive" disabled={isLoading} onClick={handleLogout}>
+      <LogOut />
+      {isLoading ? t('logoutSubmitting') : t('logoutSubmit')}
+    </DropdownMenuItem>
   );
 }
