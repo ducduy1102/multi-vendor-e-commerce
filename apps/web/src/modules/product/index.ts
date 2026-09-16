@@ -1,0 +1,20 @@
+// Barrel export cho module product — export component/hook cần dùng ở app/.
+export { createProductSchema, updateProductSchema } from './schemas/product.schema';
+export { useArchiveProduct } from './hooks/useArchiveProduct';
+export { useCreateProduct } from './hooks/useCreateProduct';
+export { useMyProducts } from './hooks/useMyProducts';
+export { useProduct } from './hooks/useProduct';
+export { useProducts } from './hooks/useProducts';
+export { useUpdateProduct } from './hooks/useUpdateProduct';
+export { useUploadSignature } from './hooks/useUploadSignature';
+export * as productService from './services/product.service';
+export type {
+  CreateProductInput,
+  UpdateProductInput,
+  Product,
+  ProductListItem,
+  ProductCard,
+  ListProductsQuery,
+  ProductListResponse,
+  Category,
+} from './types';
