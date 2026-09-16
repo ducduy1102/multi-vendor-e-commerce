@@ -67,6 +67,25 @@
   "product": {
     "homeCategoriesTitle": "Featured categories",
     "homeNewestTitle": "Newest products",
-    "homeEmptyState": "No products yet."
+    "homeEmptyState": "No products yet.",
+
+    "listTitle": "All products",
+    "filterCategoryLabel": "Category",
+    "filterAllCategories": "All categories",
+    "filterPriceLabel": "Price range",
+    "filterMinPriceLabel": "Min price",
+    "filterMaxPriceLabel": "Max price",
+    "pricePresetUnder1m": "Under 1 million",
+    "pricePreset1mTo5m": "1 – 5 million",
+    "pricePreset5mTo10m": "5 – 10 million",
+    "pricePreset10mTo20m": "10 – 20 million",
+    "pricePresetOver20m": "Over 20 million",
+    "filterSortLabel": "Sort by",
+    "sortNewest": "Newest",
+    "sortPriceAsc": "Price: low to high",
+    "sortPriceDesc": "Price: high to low",
+    "paginationStatus": "Page {page}/{totalPages}",
+    "paginationPrev": "Previous",
+    "paginationNext": "Next"
   }
 }

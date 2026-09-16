@@ -67,6 +67,25 @@
   "product": {
     "homeCategoriesTitle": "Danh mục nổi bật",
     "homeNewestTitle": "Sản phẩm mới nhất",
-    "homeEmptyState": "Chưa có sản phẩm nào."
+    "homeEmptyState": "Chưa có sản phẩm nào.",
+
+    "listTitle": "Tất cả sản phẩm",
+    "filterCategoryLabel": "Danh mục",
+    "filterAllCategories": "Tất cả danh mục",
+    "filterPriceLabel": "Khoảng giá",
+    "filterMinPriceLabel": "Giá từ",
+    "filterMaxPriceLabel": "Giá đến",
+    "pricePresetUnder1m": "Dưới 1 triệu",
+    "pricePreset1mTo5m": "1 – 5 triệu",
+    "pricePreset5mTo10m": "5 – 10 triệu",
+    "pricePreset10mTo20m": "10 – 20 triệu",
+    "pricePresetOver20m": "Trên 20 triệu",
+    "filterSortLabel": "Sắp xếp",
+    "sortNewest": "Mới nhất",
+    "sortPriceAsc": "Giá tăng dần",
+    "sortPriceDesc": "Giá giảm dần",
+    "paginationStatus": "Trang {page}/{totalPages}",
+    "paginationPrev": "Trước",
+    "paginationNext": "Sau"
   }
 }
