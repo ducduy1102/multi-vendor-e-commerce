@@ -1,4 +1,7 @@
 {
+  "metadata": {
+    "description": "Multi-vendor marketplace - shop from many independent stores and categories in one place."
+  },
   "common": {
     "loading": "Loading...",
     "or": "or",

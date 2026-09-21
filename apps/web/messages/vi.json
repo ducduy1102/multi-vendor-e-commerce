@@ -1,4 +1,7 @@
 {
+  "metadata": {
+    "description": "Sàn thương mại điện tử đa gian hàng - mua sắm từ nhiều shop, nhiều ngành hàng trên cùng một nền tảng."
+  },
   "common": {
     "loading": "Đang tải...",
     "or": "hoặc",
