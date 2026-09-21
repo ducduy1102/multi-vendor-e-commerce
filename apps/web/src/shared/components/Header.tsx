@@ -1,11 +1,12 @@
 'use client';
 
-import { ChevronDown, ShoppingBag, Store, UserPlus } from 'lucide-react';
+import { ChevronDown, Store, UserPlus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Link, usePathname } from '@/i18n/navigation';
 import { LogoutButton, useAuthStore } from '@/modules/auth';
 import { useMyShop } from '@/modules/shop';
+import { ChotMark } from '@/shared/components/ChotMark';
 import { Button } from '@/shared/components/ui/button';
 import {
   DropdownMenu,
@@ -74,9 +75,9 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-1.5 px-3 py-2.5 sm:gap-4 sm:px-4">
-        <Link href="/" className="flex shrink-0 items-center gap-1.5 text-foreground sm:gap-2">
-          <ShoppingBag className="size-5 shrink-0 text-primary" />
-          <span className="font-semibold whitespace-nowrap">{t('siteName')}</span>
+        <Link href="/" className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <ChotMark className="size-7 shrink-0" />
+          <span className="font-semibold whitespace-nowrap text-brand">{t('siteName')}</span>
         </Link>
 
         <div className="flex items-center gap-1.5 sm:gap-3">
