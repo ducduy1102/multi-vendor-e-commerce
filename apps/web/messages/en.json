@@ -7,6 +7,11 @@
     "or": "or",
     "toggleTheme": "Toggle light/dark theme"
   },
+  "error": {
+    "title": "Something went wrong",
+    "description": "We couldn't load this page. Please try again.",
+    "retry": "Try again"
+  },
   "header": {
     "siteName": "Chốt",
     "becomeSellerLink": "Become a seller",

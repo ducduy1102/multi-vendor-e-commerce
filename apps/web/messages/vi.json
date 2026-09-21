@@ -7,6 +7,11 @@
     "or": "hoặc",
     "toggleTheme": "Chuyển đổi giao diện sáng/tối"
   },
+  "error": {
+    "title": "Đã có lỗi xảy ra",
+    "description": "Không tải được nội dung trang này. Vui lòng thử lại.",
+    "retry": "Thử lại"
+  },
   "header": {
     "siteName": "Chốt",
     "becomeSellerLink": "Trở thành người bán",
