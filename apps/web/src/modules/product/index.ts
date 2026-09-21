@@ -1,6 +1,7 @@
 // Barrel export cho module product — export component/hook cần dùng ở app/.
 export { createProductSchema, updateProductSchema } from './schemas/product.schema';
 export { CategoryShortcutList } from './components/CategoryShortcutList';
+export { getTopLevelCategories } from './get-top-level-categories';
 export { CreateProductFormContainer } from './components/CreateProductFormContainer';
 export { EditProductFormContainer } from './components/EditProductFormContainer';
 export { ProductFilterBar } from './components/ProductFilterBar';
