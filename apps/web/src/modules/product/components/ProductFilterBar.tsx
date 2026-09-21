@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 
 import { useRouter } from '@/i18n/navigation';
 import { Label } from '@/shared/components/ui/label';
+import { cn } from '@/shared/lib/utils';
 import type { Category, ListProductsQuery } from '../types';
 import { PriceRangeFilter } from './PriceRangeFilter';
 
@@ -124,7 +125,13 @@ export function ProductFilterBar({ categories, initialFilters }: ProductFilterBa
               initialFilters.minPrice === preset.minPrice &&
               initialFilters.maxPrice === preset.maxPrice;
             return (
-              <label key={preset.key} className="flex items-center gap-2 text-sm text-foreground">
+              <label
+                key={preset.key}
+                className={cn(
+                  'flex items-center gap-2 text-sm',
+                  isActive ? 'font-medium text-primary' : 'text-foreground',
+                )}
+              >
                 <input
                   type="radio"
                   name="price-preset"
@@ -135,7 +142,7 @@ export function ProductFilterBar({ categories, initialFilters }: ProductFilterBa
                       maxPrice: preset.maxPrice?.toString(),
                     })
                   }
-                  className="size-4 accent-foreground"
+                  className="size-4 accent-primary"
                 />
                 {t(preset.labelKey)}
               </label>

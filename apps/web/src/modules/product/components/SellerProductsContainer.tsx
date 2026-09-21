@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Link } from '@/i18n/navigation';
+import { Badge } from '@/shared/components/ui/badge';
 import { Button, buttonVariants } from '@/shared/components/ui/button';
 import { ApiError } from '@/shared/lib/api-client';
 import { useArchiveProduct } from '../hooks/useArchiveProduct';
@@ -18,6 +19,16 @@ const STATUS_LABEL_KEY = {
   DRAFT: 'statusDraft',
   PUBLISHED: 'statusPublished',
   ARCHIVED: 'statusArchived',
+} as const satisfies Record<ProductListItem['status'], string>;
+
+// PUBLISHED dùng --success (đang lên sàn, thấy được ngay giữa danh sách);
+// DRAFT giữ trung tính (chưa có gì đặc biệt để báo); ARCHIVED làm mờ hẳn
+// (opacity, không phải màu riêng) — đúng ý "ngừng bán", không phải 1 trạng
+// thái cần chú ý như 2 cái kia.
+const STATUS_BADGE_CLASS = {
+  DRAFT: 'border-border text-muted-foreground',
+  PUBLISHED: 'border-success/30 bg-success/10 text-success',
+  ARCHIVED: 'border-border text-muted-foreground opacity-60',
 } as const satisfies Record<ProductListItem['status'], string>;
 
 function formatPrice(value: string): string {
@@ -87,9 +98,9 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                  <Badge variant="outline" className={STATUS_BADGE_CLASS[product.status]}>
                     {t(STATUS_LABEL_KEY[product.status])}
-                  </span>
+                  </Badge>
                   <Link
                     href={`/seller/products/${product.id}/edit`}
                     className="text-sm font-medium text-foreground hover:underline"

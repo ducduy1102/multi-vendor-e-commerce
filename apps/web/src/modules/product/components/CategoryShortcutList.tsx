@@ -22,7 +22,7 @@ export function CategoryShortcutList({ categories }: CategoryShortcutListProps) 
         <Link
           key={category.id}
           href={{ pathname: '/products', query: { categoryId: category.id } }}
-          className="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-900"
+          className="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
         >
           {category.name}
         </Link>

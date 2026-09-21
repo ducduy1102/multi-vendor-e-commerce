@@ -28,7 +28,7 @@ export function ProductPreviewCard({ product }: ProductPreviewCardProps) {
       href={`/products/${product.slug}`}
       className="group flex flex-col overflow-hidden rounded-lg border border-border bg-background transition-shadow hover:shadow-md"
     >
-      <div className="relative aspect-square w-full overflow-hidden bg-zinc-100 dark:bg-zinc-900">
+      <div className="relative aspect-square w-full overflow-hidden bg-muted">
         {product.imageUrl ? (
           <Image
             src={product.imageUrl}

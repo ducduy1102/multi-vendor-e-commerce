@@ -11,7 +11,7 @@ interface ProductPaginationProps {
 }
 
 const linkClassName =
-  'rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-900';
+  'rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:border-primary hover:bg-primary/10 hover:text-primary';
 
 // Component thuần trình bày (không gọi API, không giữ state), Server
 // Component (không "use client") — dùng getTranslations (async, đúng
