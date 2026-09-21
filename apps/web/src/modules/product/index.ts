@@ -1,9 +1,13 @@
 // Barrel export cho module product — export component/hook cần dùng ở app/.
+// CategoryShortcutList/getTopLevelCategories KHÔNG export ở đây nữa — chỉ
+// còn HomeCatalog.tsx dùng (qua import tương đối cùng thư mục), không còn
+// consumer nào ở app/ cần trực tiếp sau khi page.tsx chuyển sang compose
+// HomeCatalog thay vì tự gọi 2 thứ này.
 export { createProductSchema, updateProductSchema } from './schemas/product.schema';
-export { CategoryShortcutList } from './components/CategoryShortcutList';
-export { getTopLevelCategories } from './get-top-level-categories';
 export { CreateProductFormContainer } from './components/CreateProductFormContainer';
 export { EditProductFormContainer } from './components/EditProductFormContainer';
+export { HomeCatalog } from './components/HomeCatalog';
+export { HomeCatalogSkeleton } from './components/HomeCatalogSkeleton';
 export { ProductFilterBar } from './components/ProductFilterBar';
 export { ProductForm } from './components/ProductForm';
 export { ProductPagination } from './components/ProductPagination';

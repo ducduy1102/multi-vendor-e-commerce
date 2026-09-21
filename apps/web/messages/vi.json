@@ -92,6 +92,7 @@
     "homeCategoriesTitle": "Danh mục nổi bật",
     "homeNewestTitle": "Sản phẩm mới nhất",
     "homeEmptyState": "Chưa có sản phẩm nào.",
+    "homeLoadingSrOnly": "Đang tải danh mục và sản phẩm...",
 
     "listTitle": "Tất cả sản phẩm",
     "filterCategoryLabel": "Danh mục",
