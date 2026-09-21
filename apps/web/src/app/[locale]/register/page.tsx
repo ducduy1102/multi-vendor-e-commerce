@@ -5,8 +5,9 @@ import { RegisterFormContainer } from "@/modules/auth";
 import { ChotMark } from "@/shared/components/ChotMark";
 
 export default async function RegisterPage() {
-  const t = await getTranslations("auth");
-  const tHeader = await getTranslations("header");
+  // 2 await độc lập — Promise.all thay vì await nối tiếp
+  // (vercel-react-best-practices, async-parallel).
+  const [t, tHeader] = await Promise.all([getTranslations("auth"), getTranslations("header")]);
 
   return (
     <div className="flex flex-1 items-center justify-center px-4 py-16">

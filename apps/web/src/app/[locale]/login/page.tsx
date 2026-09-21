@@ -9,9 +9,13 @@ interface LoginPageProps {
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const { error } = await searchParams;
-  const t = await getTranslations("auth");
-  const tHeader = await getTranslations("header");
+  // 3 await độc lập (không cái nào phụ thuộc kết quả cái kia) — Promise.all
+  // thay vì await nối tiếp (vercel-react-best-practices, async-parallel).
+  const [{ error }, t, tHeader] = await Promise.all([
+    searchParams,
+    getTranslations("auth"),
+    getTranslations("header"),
+  ]);
 
   // Message ứng với query param ?error= mà AuthController.googleCallback (BE)
   // redirect về khi đăng nhập Google thất bại — trang này chỉ map sang message
