@@ -7,6 +7,7 @@ import { Link } from '@/i18n/navigation';
 import { Badge } from '@/shared/components/ui/badge';
 import { Button, buttonVariants } from '@/shared/components/ui/button';
 import { ApiError } from '@/shared/lib/api-client';
+import { formatPrice } from '../format-price';
 import { useArchiveProduct } from '../hooks/useArchiveProduct';
 import { useMyProducts } from '../hooks/useMyProducts';
 import type { ProductListItem } from '../types';
@@ -30,13 +31,6 @@ const STATUS_BADGE_CLASS = {
   PUBLISHED: 'border-success/30 bg-success/10 text-success',
   ARCHIVED: 'border-border text-muted-foreground opacity-60',
 } as const satisfies Record<ProductListItem['status'], string>;
-
-function formatPrice(value: string): string {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-  }).format(Number(value));
-}
 
 // Nhận shopId qua prop (đã resolve sẵn ở app/seller/products/page.tsx) —
 // không tự gọi useMyShop() ở đây: modules/product không được cross-import

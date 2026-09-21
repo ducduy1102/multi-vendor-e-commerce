@@ -1,17 +1,11 @@
 import Image from 'next/image';
 
 import { Link } from '@/i18n/navigation';
+import { formatPrice } from '../format-price';
 import type { ProductCard } from '../types';
 
 interface ProductPreviewCardProps {
   product: ProductCard;
-}
-
-function formatPrice(value: string): string {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-  }).format(Number(value));
 }
 
 // Component thuần trình bày (không gọi API) — không bắt buộc test riêng
