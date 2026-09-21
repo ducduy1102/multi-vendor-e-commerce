@@ -74,10 +74,16 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-1.5 px-3 py-2.5 sm:gap-4 sm:px-4">
+      <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-1.5 px-3 sm:gap-4 sm:px-4">
         <Link href="/" className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <ChotMark className="size-7 shrink-0" />
-          <span className="font-semibold whitespace-nowrap text-brand">{t('siteName')}</span>
+          {/* An duoi 420px: do bang Playwright (390/375/360, Guest va da
+              dang nhap) cho thay ca cum nut ben phai deu tran ngang o
+              ≤375px neu giu wordmark "Chot" - icon ChotMark da du nhan
+              dien thuong hieu khi khong con cho. */}
+          <span className="font-semibold whitespace-nowrap text-brand max-[420px]:hidden">
+            {t('siteName')}
+          </span>
         </Link>
 
         <div className="flex items-center gap-1.5 sm:gap-3">
