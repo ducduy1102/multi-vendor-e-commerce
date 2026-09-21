@@ -101,3 +101,86 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 
 - [alan2207/bulletproof-react](https://github.com/alan2207/bulletproof-react) — cấu trúc `features/<domain>/{components,hooks,services,types,index.ts}` gần khớp với convention ở mục 1. Dùng Vite chứ không phải Next.js App Router, chỉ tham khảo nguyên tắc tổ chức module, không copy code trực tiếp.
 - [vercel/commerce](https://github.com/vercel/commerce) — Next.js Commerce 2.0, reference chính thức cho App Router + RSC + Server Actions trong e-commerce (product list/detail, cart). Mặc định bind Shopify, cần thay data layer nếu tham khảo cách fetch/hiển thị.
+
+## UI polish (Chốt)
+
+Áp dụng khi task là "audit / polish / cải thiện UI" cho các trang đã có.
+
+**Thứ tự ưu tiên khi mâu thuẫn:** `rules/general.md` và các mục còn lại của file này > mục "UI polish" này > skill ngoài (`shadcn`, `react-best-practices`). Skill chỉ là gợi ý bổ sung, không phải mệnh lệnh.
+
+### 1. Quy trình bắt buộc
+
+- Luôn **audit trước, chưa sửa code**. Liệt kê vấn đề theo mức ưu tiên (file, vấn đề, cách sửa đề xuất, độ rủi ro với test và i18n), chờ người dùng duyệt.
+- Chỉ sửa **đúng các mục đã duyệt**, không làm thêm ngoài danh sách.
+- Mỗi lần sửa gói trong một nhóm nhỏ, mỗi trang một commit.
+- Cuối mỗi lần, báo rõ: file đã đổi, skill nào đã áp dụng quy tắc nào, việc nào không làm được và vì sao.
+
+### 2. Thương hiệu và màu
+
+- Màu chủ đạo: xanh ngọc `#0F766E` (primary). Điểm nhấn: cam `#E8552B` (accent). Chữ và nền trung tính dùng token có sẵn.
+- Chuyển hai màu trên sang đúng định dạng token đang dùng trong `globals.css` (không tự đổi hệ màu).
+- Chỉ dùng **semantic color** (`bg-primary`, `text-muted-foreground`, `border`...). **Cấm** màu thô (`bg-blue-500`, `#hex`, `text-neutral-500`) trong component.
+- Accent (cam) chỉ dùng cho điểm nhấn: badge, giá khuyến mãi, CTA phụ. **Không** dùng cho nút Xoá/Huỷ/Lưu trữ.
+- `--destructive` phải khác hue rõ rệt với accent để nút nguy hiểm và nút hành động chính không giống nhau. Kiểm tra bằng mắt ở cả light và dark.
+- Giữ tối đa 2-3 màu thương hiệu xuất hiện trên một màn hình.
+
+### 3. Mật độ và chuyển động
+
+- Đây là marketplace: **mật độ thông tin cao**. Card gọn, ưu tiên hiển thị ảnh, tên, giá, shop. Không dùng khoảng trắng quá lớn hay layout bất đối xứng kiểu landing page.
+- Chuyển động **tối thiểu**: chỉ transition ngắn (hover, focus, mở/đóng), tôn trọng `prefers-reduced-motion`.
+- **Không** thêm GSAP, framer-motion hay hiệu ứng theo cuộn nếu chưa hỏi.
+
+### 4. Trạng thái bắt buộc
+
+- Mọi danh sách và trang dữ liệu phải có đủ: **loading** (dùng `Skeleton`), **empty**, **error**.
+- Nút submit phải `disabled` khi đang gửi. Thao tác nguy hiểm phải có xác nhận.
+- Input và nút cần trạng thái `focus-visible` rõ ràng, vùng bấm đủ lớn trên mobile.
+
+### 5. Responsive và giao diện sáng/tối
+
+- Kiểm tra ở **390px**: không tràn ngang, filter và thanh công cụ tự xuống dòng.
+- Kiểm tra cả **light và dark**. Không hardcode màu làm hỏng một trong hai chế độ.
+
+### 6. i18n
+
+- Mọi chuỗi hiển thị đi qua `next-intl`, cập nhật **cả `vi` và `en`**.
+- Không đổi hoặc xoá key hiện có nếu chưa cập nhật mọi chỗ dùng.
+- Giá tiền định dạng theo locale (`Intl.NumberFormat`, đơn vị VND), không nối chuỗi thủ công.
+
+### 7. Kiến trúc (giữ nguyên quy ước hiện có)
+
+- Mặc định là Server Component. Chỉ dùng `"use client"` khi thật sự cần tương tác.
+- `page.tsx` chỉ compose, logic nằm trong Container. Component UI thuần nhận dữ liệu qua props.
+- **Không cross-import giữa các module** (`product` và `shop` không import lẫn nhau). Chỗ ghép hai domain giữ ở `page.tsx` như `seller/products/page.tsx`.
+- Không đổi hành vi nghiệp vụ, URL params, phân trang, query key, schema Zod hay API.
+
+### 8. shadcn/ui
+
+- **Dùng lại** component và variant có sẵn (`Card`, `Badge`, `Skeleton`, `Button variant=...`) trước khi viết mới.
+- Style là `base-nova` (`@base-ui/react`). Không dùng wrapper `Form` kiểu Radix.
+- Nếu chạy `shadcn add`: kiểm tra file sinh ra có import `cn` từ package ngoài không (phải là `@/shared/lib/utils`) và có tự thêm dependency `cn` không. Sửa import và gỡ dependency thừa (xem mục 5).
+
+### 9. Hiệu năng (`react-best-practices`)
+
+- Tránh waterfall: các fetch độc lập chạy song song (`Promise.all`), không `await` nối tiếp không cần thiết.
+- Không import cả thư viện nặng khi chỉ cần một phần, không đẩy thêm JS xuống client không cần.
+- Ảnh dùng `next/image` với `sizes`/kích thước phù hợp, ảnh đầu trang ưu tiên tải sớm.
+- Đo **Lighthouse trước và sau** cho `/` và `/products`. Nếu điểm giảm thì hoàn tác thay đổi đó.
+
+### 10. Thư viện
+
+- **Không thêm dependency mới** nếu chưa hỏi người dùng.
+
+### 11. Hoàn thành khi (definition of done)
+
+- `tsc --noEmit`, `eslint`, `prettier --check` sạch.
+- `vitest run` pass, **không giảm số test**.
+- `next build` thành công.
+- Test tay bằng Playwright: desktop và 390px, light và dark, `vi` và `en`.
+- Không viết unit test cho Container (theo mục 8). Component UI thuần có logic mới thì thêm test cạnh file gốc (theo `rules/general.md` mục 5).
+
+### 12. Không làm
+
+- Không viết lại kiến trúc, không refactor lớn ngoài danh sách đã duyệt.
+- Không xoá hay sửa test để cho qua.
+- Không đổi copy hoặc bản dịch ngoài phạm vi audit.
