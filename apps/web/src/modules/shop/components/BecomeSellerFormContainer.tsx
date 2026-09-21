@@ -25,6 +25,7 @@ export function BecomeSellerFormContainer() {
   const tCommon = useTranslations('common');
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const isHydrating = useAuthStore((state) => state.isHydrating);
   const myShopQuery = useMyShop();
   const createShop = useCreateShop();
   const [error, setError] = useState<string | null>(null);
@@ -47,9 +48,13 @@ export function BecomeSellerFormContainer() {
     }
   }
 
-  // isPending lúc đầu (chưa biết đã có shop chưa) hoặc đã có data (đang chờ
-  // useEffect điều hướng ở trên) — không render form/thông báo nhầm.
-  if (myShopQuery.isPending || myShopQuery.data) {
+  // isHydrating: chưa biết chắc user đã xác thực email hay chưa (xem
+  // auth.store.ts) — đánh giá `user?.emailVerifiedAt` lúc này dễ hiện nhầm
+  // "chưa xác thực" cho user thật ra đã xác thực, chỉ vì AuthHydrator chưa
+  // kịp trả lời. isPending lúc đầu (chưa biết đã có shop chưa) hoặc đã có
+  // data (đang chờ useEffect điều hướng ở trên) — không render form/thông
+  // báo nhầm.
+  if (isHydrating || myShopQuery.isPending || myShopQuery.data) {
     return <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>;
   }
 

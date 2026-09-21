@@ -53,6 +53,7 @@ export function Header() {
   const tAuth = useTranslations('auth');
   const pathname = usePathname();
   const user = useAuthStore((state) => state.user);
+  const isHydrating = useAuthStore((state) => state.isHydrating);
   const myShopQuery = useMyShop({ enabled: !!user });
 
   // null trong lúc đang loading (chưa biết seller hay chưa) — cố tình
@@ -90,7 +91,17 @@ export function Header() {
           <ThemeToggle />
           <LocaleSwitcher />
 
-          {!user ? (
+          {isHydrating ? (
+            // Placeholder cùng kích thước (h-8, khớp Button size="default")
+            // thay vì bỏ trống hẳn — chờ AuthHydrator biết chắc user đã
+            // đăng nhập hay chưa (xem auth.store.ts) trước khi quyết định
+            // hiện nút Guest hay dropdown tài khoản, tránh nháy 1 nhịp sai
+            // trạng thái cho người đã đăng nhập lúc F5 trang.
+            <div className="flex items-center gap-1.5 sm:gap-2" aria-hidden="true">
+              <div className="h-8 w-16 animate-pulse rounded-lg bg-muted sm:w-20" />
+              <div className="h-8 w-16 animate-pulse rounded-lg bg-muted sm:w-20" />
+            </div>
+          ) : !user ? (
             <div className="flex items-center gap-1.5 sm:gap-2">
               <Button variant="outline" nativeButton={false} render={<Link href="/login" />}>
                 {tAuth('guestLoginLink')}

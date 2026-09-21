@@ -19,6 +19,7 @@ const mockUser = {
 describe("AuthHydrator", () => {
   afterEach(() => {
     useAuthStore.getState().clearUser();
+    useAuthStore.getState().setIsHydrating(true);
     vi.resetAllMocks();
   });
 
@@ -39,5 +40,41 @@ describe("AuthHydrator", () => {
 
     await waitFor(() => expect(vi.mocked(me)).toHaveBeenCalled());
     expect(useAuthStore.getState().user).toBeNull();
+  });
+
+  it("keeps isHydrating true until /auth/me resolves, then sets it false", async () => {
+    const { me } = await import("../services/auth.service");
+    let resolveMe!: (user: typeof mockUser) => void;
+    vi.mocked(me).mockReturnValue(
+      new Promise((resolve) => {
+        resolveMe = resolve;
+      }),
+    );
+
+    render(<AuthHydrator />);
+
+    expect(useAuthStore.getState().isHydrating).toBe(true);
+
+    resolveMe(mockUser);
+
+    await waitFor(() => expect(useAuthStore.getState().isHydrating).toBe(false));
+  });
+
+  it("sets isHydrating to false when /auth/me rejects with 401 (chưa đăng nhập)", async () => {
+    const { me } = await import("../services/auth.service");
+    vi.mocked(me).mockRejectedValue(new Error("Unauthorized"));
+
+    render(<AuthHydrator />);
+
+    await waitFor(() => expect(useAuthStore.getState().isHydrating).toBe(false));
+  });
+
+  it("sets isHydrating to false when /auth/me rejects with a network error", async () => {
+    const { me } = await import("../services/auth.service");
+    vi.mocked(me).mockRejectedValue(new TypeError("Failed to fetch"));
+
+    render(<AuthHydrator />);
+
+    await waitFor(() => expect(useAuthStore.getState().isHydrating).toBe(false));
   });
 });
