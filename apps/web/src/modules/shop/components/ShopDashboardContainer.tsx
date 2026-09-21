@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
 import { Link, useRouter } from '@/i18n/navigation';
+import { Alert } from '@/shared/components/ui/alert';
 import { ApiError } from '@/shared/lib/api-client';
 
 import { useMyShop } from '../hooks/useMyShop';
@@ -72,15 +73,11 @@ export function ShopDashboardContainer() {
       </div>
 
       {shop.status !== 'APPROVED' && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-          {t('shopStatusPendingMessage')}
-        </div>
+        <Alert variant="warning">{t('shopStatusPendingMessage')}</Alert>
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {successMessage && (
-        <p className="text-sm text-emerald-600 dark:text-emerald-400">{successMessage}</p>
-      )}
+      {successMessage && <p className="text-sm text-success">{successMessage}</p>}
 
       <UpdateShopForm
         defaultValues={{
