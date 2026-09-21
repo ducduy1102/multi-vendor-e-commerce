@@ -1,3 +1,4 @@
+import { ImageOff } from 'lucide-react';
 import Image from 'next/image';
 
 import { Link } from '@/i18n/navigation';
@@ -6,12 +7,17 @@ import type { ProductCard } from '../types';
 
 interface ProductPreviewCardProps {
   product: ProductCard;
+  // Mặc định false — chỉ trang chủ truyền true cho vài item đầu (nhiều khả
+  // năng là LCP element), /products không truyền nên giữ nguyên hành vi cũ
+  // (lazy-load mọi ảnh). Component dùng chung cho cả 2 trang (đã chốt ở
+  // rules/frontend.md mục 13), không tách bản riêng cho từng trang.
+  priority?: boolean;
 }
 
 // Component thuần trình bày (không gọi API) — không bắt buộc test riêng
 // (rules/frontend.md mục 8). Link trỏ /products/:slug — route thật (Tuần 5,
 // Week4.md Bước 3.5) chưa tồn tại, chỉ tránh phải sửa lại link 2 lần.
-export function ProductPreviewCard({ product }: ProductPreviewCardProps) {
+export function ProductPreviewCard({ product, priority = false }: ProductPreviewCardProps) {
   const priceLabel =
     product.minPrice === product.maxPrice
       ? formatPrice(product.minPrice)
@@ -26,12 +32,21 @@ export function ProductPreviewCard({ product }: ProductPreviewCardProps) {
         {product.imageUrl ? (
           <Image
             src={product.imageUrl}
-            alt={product.name}
+            // "" (thuần trang trí) — tên sản phẩm đã hiện ngay bên dưới,
+            // trong CÙNG 1 Link, screen reader không cần đọc lại tên 2 lần
+            // liên tiếp khi focus vào link (đúng khuyến nghị WCAG cho ảnh +
+            // text trùng nghĩa nằm chung 1 link).
+            alt=""
             fill
             sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+            priority={priority}
             className="object-cover transition-transform group-hover:scale-105"
           />
-        ) : null}
+        ) : (
+          <div className="flex size-full items-center justify-center" aria-hidden="true">
+            <ImageOff className="size-8 text-muted-foreground" />
+          </div>
+        )}
       </div>
       <div className="flex flex-col gap-1 p-3">
         <span className="line-clamp-2 text-sm font-medium text-foreground">{product.name}</span>
