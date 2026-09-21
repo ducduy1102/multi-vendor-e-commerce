@@ -19,6 +19,8 @@
     "loginGenericError": "Đăng nhập thất bại, vui lòng thử lại",
     "loginGoogleErrorAccountNotActive": "Tài khoản của bạn hiện không hoạt động, vui lòng liên hệ hỗ trợ.",
     "loginGoogleErrorFailed": "Đăng nhập bằng Google thất bại, vui lòng thử lại.",
+    "loginNoAccountPrompt": "Chưa có tài khoản?",
+    "loginRegisterLink": "Đăng ký ngay",
 
     "registerTitle": "Đăng ký",
     "registerNameLabel": "Họ tên",
@@ -28,6 +30,8 @@
     "registerSubmit": "Đăng ký",
     "registerSubmitting": "Đang đăng ký...",
     "registerGenericError": "Đăng ký thất bại, vui lòng thử lại",
+    "registerHasAccountPrompt": "Đã có tài khoản?",
+    "registerLoginLink": "Đăng nhập ngay",
 
     "logoutSubmit": "Đăng xuất",
     "logoutSubmitting": "Đang đăng xuất...",
@@ -36,6 +40,7 @@
     "guestRegisterLink": "Đăng ký",
 
     "googleSignIn": "Đăng nhập với Google",
+    "registerGoogleSignIn": "Đăng ký với Google",
 
     "verifyEmailTitle": "Xác thực email",
     "verifyEmailMissingToken": "Thiếu token xác thực trong đường dẫn",

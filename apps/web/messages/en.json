@@ -19,6 +19,8 @@
     "loginGenericError": "Login failed, please try again",
     "loginGoogleErrorAccountNotActive": "Your account is currently inactive. Please contact support.",
     "loginGoogleErrorFailed": "Google sign-in failed, please try again.",
+    "loginNoAccountPrompt": "Don't have an account?",
+    "loginRegisterLink": "Sign up now",
 
     "registerTitle": "Sign up",
     "registerNameLabel": "Full name",
@@ -28,6 +30,8 @@
     "registerSubmit": "Sign up",
     "registerSubmitting": "Signing up...",
     "registerGenericError": "Sign-up failed, please try again",
+    "registerHasAccountPrompt": "Already have an account?",
+    "registerLoginLink": "Log in now",
 
     "logoutSubmit": "Log out",
     "logoutSubmitting": "Logging out...",
@@ -36,6 +40,7 @@
     "guestRegisterLink": "Sign up",
 
     "googleSignIn": "Sign in with Google",
+    "registerGoogleSignIn": "Sign up with Google",
 
     "verifyEmailTitle": "Verify email",
     "verifyEmailMissingToken": "Missing verification token in the link",

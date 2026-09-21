@@ -16,7 +16,14 @@ import { API_BASE_URL, API_PREFIX } from "@/shared/lib/api-client";
 // dựa trên trình duyệt, không gọi được qua JS/fetch bình thường. BE
 // (GET /api/v1/auth/google) tự redirect sang Google, rồi Google redirect lại
 // BE (/api/v1/auth/google/callback) set cookie xong redirect thẳng về FE.
-export function GoogleLoginButton() {
+interface GoogleLoginButtonProps {
+  // RegisterFormContainer truyền t("registerGoogleSignIn") để chữ trên nút
+  // khớp ngữ cảnh "Đăng ký" thay vì mặc định "Đăng nhập" — cùng 1 route OAuth
+  // BE (login/register gộp chung), chỉ khác label hiển thị theo trang gọi.
+  label?: string;
+}
+
+export function GoogleLoginButton({ label }: GoogleLoginButtonProps) {
   const t = useTranslations("auth");
 
   return (
@@ -27,7 +34,7 @@ export function GoogleLoginButton() {
       nativeButton={false}
       render={<a href={`${API_BASE_URL}${API_PREFIX}/auth/google`} />}
     >
-      {t("googleSignIn")}
+      {label ?? t("googleSignIn")}
     </Button>
   );
 }

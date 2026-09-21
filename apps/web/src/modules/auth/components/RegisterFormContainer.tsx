@@ -3,7 +3,8 @@
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
-import { useRouter } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
+import { FieldSeparator } from "@/shared/components/ui/field";
 import { ApiError } from "@/shared/lib/api-client";
 
 import { register } from "../services/auth.service";
@@ -45,12 +46,17 @@ export function RegisterFormContainer() {
     <div className="flex flex-col gap-4">
       {error && <p className="text-sm text-destructive">{error}</p>}
       <RegisterForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <div className="h-px flex-1 bg-border" />
-        {tCommon("or")}
-        <div className="h-px flex-1 bg-border" />
-      </div>
-      <GoogleLoginButton />
+      <FieldSeparator>{tCommon("or")}</FieldSeparator>
+      <GoogleLoginButton label={t("registerGoogleSignIn")} />
+      <p className="text-center text-sm text-muted-foreground">
+        {t("registerHasAccountPrompt")}{" "}
+        <Link
+          href="/login"
+          className="font-medium text-primary underline-offset-4 hover:underline"
+        >
+          {t("registerLoginLink")}
+        </Link>
+      </p>
     </div>
   );
 }
