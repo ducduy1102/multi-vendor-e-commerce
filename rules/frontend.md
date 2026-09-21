@@ -106,7 +106,7 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 
 Áp dụng khi task là "audit / polish / cải thiện UI" cho các trang đã có.
 
-**Thứ tự ưu tiên khi mâu thuẫn:** `rules/general.md` và các mục còn lại của file này > mục "UI polish" này > skill ngoài (`shadcn`, `react-best-practices`). Skill chỉ là gợi ý bổ sung, không phải mệnh lệnh.
+**Thứ tự ưu tiên khi mâu thuẫn:** `rules/general.md` và các mục còn lại của file này > mục "UI polish" này > skill ngoài (`shadcn`, `vercel-react-best-practices`). Skill chỉ là gợi ý bổ sung, không phải mệnh lệnh.
 
 ### 1. Quy trình bắt buộc
 
@@ -133,6 +133,10 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 ### 4. Trạng thái bắt buộc
 
 - Mọi danh sách và trang dữ liệu phải có đủ: **loading** (dùng `Skeleton`), **empty**, **error**.
+- **Loading dùng `Suspense` đặt sát phần dữ liệu** (component async bọc trong `<Suspense fallback={<...Skeleton />}>`). **Không** đặt `loading.tsx` ở cấp `app/[locale]/`, vì nó sẽ áp lên mọi route con (login, register, seller...) và hiện sai khung.
+- Skeleton phải **khớp kích thước và bố cục** với nội dung thật (cùng tỷ lệ ảnh, cùng lưới, cùng số cột) để không bị nhảy layout khi dữ liệu về. Dùng chung hằng số class lưới giữa lưới thật và lưới skeleton, để hai bên không lệch nhau.
+- Skeleton chỉ mang tính trang trí: `aria-hidden`. Vùng bọc có `aria-busy="true"` kèm một dòng chữ `sr-only` đã dịch (vi và en). Thêm `motion-reduce:animate-none` để tôn trọng `prefers-reduced-motion`.
+- Error dùng `app/[locale]/error.tsx` chung (Client Component). Không hiển thị `error.message` hay stack cho người dùng.
 - Nút submit phải `disabled` khi đang gửi. Thao tác nguy hiểm phải có xác nhận.
 - Input và nút cần trạng thái `focus-visible` rõ ràng, vùng bấm đủ lớn trên mobile.
 
@@ -145,7 +149,7 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 
 - Mọi chuỗi hiển thị đi qua `next-intl`, cập nhật **cả `vi` và `en`**.
 - Không đổi hoặc xoá key hiện có nếu chưa cập nhật mọi chỗ dùng.
-- Giá tiền định dạng theo locale (`Intl.NumberFormat`, đơn vị VND), không nối chuỗi thủ công.
+- Giá tiền dùng `Intl.NumberFormat`, đơn vị VND, **định dạng cố định `vi-VN` cho mọi locale** (chủ đích, giống nhiều sàn quốc tế). Không nối chuỗi thủ công. Dùng chung hàm `formatPrice` của module `product`, không định nghĩa lại ở nơi khác.
 
 ### 7. Kiến trúc (giữ nguyên quy ước hiện có)
 
@@ -159,8 +163,10 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 - **Dùng lại** component và variant có sẵn (`Card`, `Badge`, `Skeleton`, `Button variant=...`) trước khi viết mới.
 - Style là `base-nova` (`@base-ui/react`). Không dùng wrapper `Form` kiểu Radix.
 - Nếu chạy `shadcn add`: kiểm tra file sinh ra có import `cn` từ package ngoài không (phải là `@/shared/lib/utils`) và có tự thêm dependency `cn` không. Sửa import và gỡ dependency thừa (xem mục 5).
+- **Primitive đã được duyệt thêm:** `Skeleton` (`shadcn add skeleton`). **Vẫn phải hỏi trước** khi thêm `Card`, `Sheet`, `Avatar` hay primitive khác.
+- Chỉ thêm primitive khi chính component đó được dùng ngay trong đợt sửa, không thêm sẵn "phòng khi cần".
 
-### 9. Hiệu năng (`react-best-practices`)
+### 9. Hiệu năng (`vercel-react-best-practices`)
 
 - Tránh waterfall: các fetch độc lập chạy song song (`Promise.all`), không `await` nối tiếp không cần thiết.
 - Không import cả thư viện nặng khi chỉ cần một phần, không đẩy thêm JS xuống client không cần.
@@ -169,7 +175,8 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 
 ### 10. Thư viện
 
-- **Không thêm dependency mới** nếu chưa hỏi người dùng.
+- **Không thêm dependency npm mới** nếu chưa hỏi người dùng.
+- Primitive shadcn chỉ được thêm khi nằm trong danh sách đã duyệt ở mục 8 hoặc người dùng đã đồng ý trong bước duyệt audit.
 
 ### 11. Hoàn thành khi (definition of done)
 
@@ -184,3 +191,19 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 - Không viết lại kiến trúc, không refactor lớn ngoài danh sách đã duyệt.
 - Không xoá hay sửa test để cho qua.
 - Không đổi copy hoặc bản dịch ngoài phạm vi audit.
+
+### 13. Quyết định đã chốt (không đề xuất lại khi audit)
+
+Các mục dưới đây đã được cân nhắc và quyết định. Khi audit, **không** đưa vào danh sách vấn đề, trừ khi có thay đổi phạm vi.
+
+- **Trang chủ và `/products` là dynamic (`ƒ`)**, không thêm cache hay `revalidate`. Sản phẩm publish hoặc archive phải hiện ngay.
+- **`isHydrating` trong `useAuthStore`** là cách chống nháy Guest và User. `useAuthStore` vẫn là nguồn duy nhất cho user hiện tại, không fetch lại bằng React Query.
+- **Mục "Trang cá nhân" trong dropdown đang ẩn** cho đến khi có trang thật (Tuần 5 Wishlist, Tuần 8 Đơn hàng của tôi).
+- **Banner xác thực email không có nút đóng** (chủ đích, nhắc liên tục).
+- **Chưa có menu mobile (`Sheet`)**, sẽ thêm khi Header phình ra ở Tuần 5-6 (search, giỏ hàng).
+- **Chưa tách `AccountMenu` khỏi Header**, làm khi có test cho Header.
+- **`ProductPreviewCard` là Server Component dùng chung** cho `/` và `/products`. Không thêm `"use client"` chỉ để xử lý ảnh lỗi (`onError`). Thiếu ảnh dùng placeholder `ImageOff`.
+- **Tên shop trên card** cần đổi BE (`productCardSchema`), làm cùng trang chi tiết sản phẩm ở Tuần 5.
+- **Hero trang chủ là khối tĩnh tối giản**: một `<h1>`, một câu mô tả, một nút tới `/products`. Không ảnh, không slider, không quản lý qua admin.
+- **`UserAvatar` chữ cái đầu viết tay**, chưa dùng `Avatar` của shadcn vì chưa có ảnh đại diện.
+- **Ảnh Cloudinary không transform lúc upload**, `next/image` tối ưu ở output. Xem lại khi tối ưu hiệu năng sâu hơn.

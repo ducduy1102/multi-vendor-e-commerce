@@ -39,14 +39,16 @@ Quy tắc riêng cho từng phía: xem `rules/frontend.md` và `rules/backend.md
 
 **Branch:** `feature/<module>-<mo-ta-ngan>`, `fix/<module>-<mo-ta-ngan>`, `chore/<mo-ta-ngan>`
 
-**Commit (Conventional Commits):**
+**Commit (Conventional Commits) — viết bằng tiếng Anh**, không dùng tiếng Việt (có dấu hay không dấu):
 ```
-<type>(<module>): <mô tả ngắn gọn>
+<type>(<module>): <short description>
 
-feat(product): thêm CRUD product variant theo size/màu
-fix(cart): sửa lỗi trừ tồn kho sai khi 2 request đồng thời
+feat(product): add CRUD for product variants by size/color
+fix(cart): fix stock deduction race condition on concurrent requests
 ```
 Type: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, `style`.
+
+Áp dụng cho **toàn bộ nội dung commit** (dòng subject lẫn phần body giải thích chi tiết bên dưới, nếu có) — không chỉ riêng dòng `<type>(<module>): ...`.
 
 Mỗi commit chỉ làm 1 việc, không gộp nhiều module trong 1 commit.
 
