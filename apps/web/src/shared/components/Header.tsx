@@ -115,14 +115,20 @@ export function Header() {
                   rộng bằng đúng trigger (--anchor-width), không đủ chỗ cho
                   "Sản phẩm của tôi" trên 1 dòng. */}
               <DropdownMenuContent align="end" className="min-w-48">
-                <DropdownMenuItem render={<Link href="/" />}>{t('myAccountLink')}</DropdownMenuItem>
+                {/* TODO: bật lại mục "Trang cá nhân" (key i18n header.myAccountLink,
+                    giữ nguyên trong messages/*.json) khi có trang thật để trỏ tới —
+                    hiện chưa route nào trong roadmap làm riêng trang này, gần nhất
+                    là Wishlist (Tuần 5) hoặc "Đơn hàng của tôi" (Tuần 8). Ẩn tạm vì
+                    trỏ "/" không có đích thật, dễ gây hiểu nhầm là bug. */}
                 {shopLink && (
-                  <DropdownMenuItem render={<Link href={shopLink.href} />}>
-                    <shopLink.icon />
-                    {shopLink.label}
-                  </DropdownMenuItem>
+                  <>
+                    <DropdownMenuItem render={<Link href={shopLink.href} />}>
+                      <shopLink.icon />
+                      {shopLink.label}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
                 )}
-                <DropdownMenuSeparator />
                 <LogoutButton />
               </DropdownMenuContent>
             </DropdownMenu>
