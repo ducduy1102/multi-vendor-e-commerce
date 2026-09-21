@@ -12,9 +12,12 @@ import { ThemeProvider } from '@/shared/components/ThemeProvider';
 
 import '../globals.css';
 
+// 'vietnamese' bat buoc co - subset 'latin' khong bao gom dau tieng Viet
+// (a, e, o...), thieu se lam chu tieng Viet fallback sang font he thong
+// (xem globals.css --font-sans, da fix loi tro vong chinh no o day).
 const geistSans = Geist({
   variable: '--font-geist-sans',
-  subsets: ['latin'],
+  subsets: ['latin', 'vietnamese'],
 });
 
 const geistMono = Geist_Mono({
