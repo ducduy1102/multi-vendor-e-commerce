@@ -6,6 +6,7 @@ import {
   ProductPreviewCard,
   productService,
 } from '@/modules/product';
+import { HomeHero } from '@/shared/components/HomeHero';
 
 // Server Component — gọi thẳng listProducts (SSR, không cần TanStack Query
 // cho lần fetch đầu, đúng rules/frontend.md mục 2). Cùng query mặc định
@@ -26,6 +27,8 @@ export default async function Home() {
   return (
     <div className="flex flex-1 flex-col">
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-4 py-10 sm:px-6">
+        <HomeHero />
+
         {topLevelCategories.length > 0 && (
           <section className="flex flex-col gap-4">
             <h2 className="text-lg font-semibold text-foreground">{t('homeCategoriesTitle')}</h2>

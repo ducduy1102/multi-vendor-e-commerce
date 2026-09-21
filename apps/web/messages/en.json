@@ -13,6 +13,11 @@
     "myAccountLink": "My account",
     "myProductsLink": "My products"
   },
+  "home": {
+    "heroTitle": "Shop hundreds of stores, all in one place",
+    "heroDescription": "Chốt is a multi-vendor marketplace — discover products from many independent shops across every category, all on one platform.",
+    "heroCta": "Explore products"
+  },
   "auth": {
     "loginTitle": "Log in",
     "loginEmailLabel": "Email",
