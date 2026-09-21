@@ -7,6 +7,7 @@ import { Link, usePathname } from '@/i18n/navigation';
 import { LogoutButton, useAuthStore } from '@/modules/auth';
 import { useMyShop } from '@/modules/shop';
 import { ChotMark } from '@/shared/components/ChotMark';
+import { Container } from '@/shared/components/Container';
 import { Button } from '@/shared/components/ui/button';
 import {
   DropdownMenu,
@@ -75,7 +76,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background">
-      <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-1.5 px-3 sm:gap-4 sm:px-4">
+      <Container className="flex h-14 items-center justify-between gap-1.5 sm:gap-4">
         <Link href="/" className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <ChotMark className="size-7 shrink-0" />
           {/* An duoi 420px: do bang Playwright (390/375/360, Guest va da
@@ -151,7 +152,7 @@ export function Header() {
             </DropdownMenu>
           )}
         </div>
-      </div>
+      </Container>
     </header>
   );
 }

@@ -7,6 +7,7 @@ import {
   ProductPreviewCard,
   productService,
 } from '@/modules/product';
+import { Container } from '@/shared/components/Container';
 
 interface ProductsPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -43,50 +44,52 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
   return (
     <div className="flex flex-1 flex-col">
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-10 sm:px-6">
-        <h1 className="text-xl font-semibold text-foreground">{t('listTitle')}</h1>
+      <main className="flex flex-1 flex-col">
+        <Container className="flex flex-1 flex-col gap-6 py-10">
+          <h1 className="text-xl font-semibold text-foreground">{t('listTitle')}</h1>
 
-        {/* Sidebar dọc bên trái (filter) + nội dung bên phải — xếp chồng
-            dọc ở mobile (filter trước, danh sách sau), nằm cạnh nhau từ
-            breakpoint lg. */}
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-          <aside className="w-full shrink-0 lg:w-64">
-            <ProductFilterBar
-              // key ép remount mỗi khi filter trên URL đổi (kể cả điều hướng
-              // từ nơi khác, nút back/forward) — ProductFilterBar/
-              // PriceRangeFilter giữ state nội bộ (range khoảng giá) khởi
-              // tạo 1 lần lúc mount từ props, không tự resync nếu chỉ đổi
-              // props mà giữ nguyên instance.
-              key={`${query.categoryId ?? ''}-${query.minPrice ?? ''}-${query.maxPrice ?? ''}-${query.sort}`}
-              categories={categories}
-              initialFilters={{
-                categoryId: query.categoryId,
-                minPrice: query.minPrice,
-                maxPrice: query.maxPrice,
-                sort: query.sort,
-              }}
-            />
-          </aside>
+          {/* Sidebar dọc bên trái (filter) + nội dung bên phải — xếp chồng
+              dọc ở mobile (filter trước, danh sách sau), nằm cạnh nhau từ
+              breakpoint lg. */}
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+            <aside className="w-full shrink-0 lg:w-64">
+              <ProductFilterBar
+                // key ép remount mỗi khi filter trên URL đổi (kể cả điều hướng
+                // từ nơi khác, nút back/forward) — ProductFilterBar/
+                // PriceRangeFilter giữ state nội bộ (range khoảng giá) khởi
+                // tạo 1 lần lúc mount từ props, không tự resync nếu chỉ đổi
+                // props mà giữ nguyên instance.
+                key={`${query.categoryId ?? ''}-${query.minPrice ?? ''}-${query.maxPrice ?? ''}-${query.sort}`}
+                categories={categories}
+                initialFilters={{
+                  categoryId: query.categoryId,
+                  minPrice: query.minPrice,
+                  maxPrice: query.maxPrice,
+                  sort: query.sort,
+                }}
+              />
+            </aside>
 
-          <div className="flex flex-1 flex-col gap-6">
-            {items.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('homeEmptyState')}</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-                {items.map((product) => (
-                  <ProductPreviewCard key={product.id} product={product} />
-                ))}
-              </div>
-            )}
+            <div className="flex flex-1 flex-col gap-6">
+              {items.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t('homeEmptyState')}</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
+                  {items.map((product) => (
+                    <ProductPreviewCard key={product.id} product={product} />
+                  ))}
+                </div>
+              )}
 
-            <ProductPagination
-              page={page}
-              totalPages={totalPages}
-              prevHref={buildPageHref(Math.max(1, page - 1))}
-              nextHref={buildPageHref(Math.min(totalPages, page + 1))}
-            />
+              <ProductPagination
+                page={page}
+                totalPages={totalPages}
+                prevHref={buildPageHref(Math.max(1, page - 1))}
+                nextHref={buildPageHref(Math.min(totalPages, page + 1))}
+              />
+            </div>
           </div>
-        </div>
+        </Container>
       </main>
     </div>
   );

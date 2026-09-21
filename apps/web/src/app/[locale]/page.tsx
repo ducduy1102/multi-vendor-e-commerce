@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 
 import { HomeCatalog, HomeCatalogSkeleton } from '@/modules/product';
+import { Container } from '@/shared/components/Container';
 import { HomeHero } from '@/shared/components/HomeHero';
 
 // Server Component — page.tsx chỉ compose Hero (render ngay, không phụ
@@ -16,12 +17,14 @@ import { HomeHero } from '@/shared/components/HomeHero';
 export default function Home() {
   return (
     <div className="flex flex-1 flex-col">
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-4 py-10 sm:px-6">
-        <HomeHero />
+      <main className="flex flex-1 flex-col">
+        <Container className="flex flex-1 flex-col gap-10 py-10">
+          <HomeHero />
 
-        <Suspense fallback={<HomeCatalogSkeleton />}>
-          <HomeCatalog />
-        </Suspense>
+          <Suspense fallback={<HomeCatalogSkeleton />}>
+            <HomeCatalog />
+          </Suspense>
+        </Container>
       </main>
     </div>
   );
