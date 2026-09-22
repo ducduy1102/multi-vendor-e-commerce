@@ -4,7 +4,7 @@ import { Link } from '@/i18n/navigation';
 import { getTopLevelCategories } from '../get-top-level-categories';
 import * as productService from '../services/product.service';
 import { CategoryShortcutList } from './CategoryShortcutList';
-import { HOME_PRODUCT_GRID_CLASS, HOME_PRODUCTS_LIMIT } from './HomeCatalog.constants';
+import { HOME_CATALOG_GRID_CLASS, HOME_PRODUCTS_LIMIT } from './HomeCatalog.constants';
 import { ProductPreviewCard } from './ProductPreviewCard';
 
 // Server Component async — bọc trong <Suspense> ở page.tsx (fallback
@@ -47,7 +47,7 @@ export async function HomeCatalog() {
         {products.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('homeEmptyState')}</p>
         ) : (
-          <div className={HOME_PRODUCT_GRID_CLASS}>
+          <div className={HOME_CATALOG_GRID_CLASS}>
             {products.map((product, index) => (
               <ProductPreviewCard key={product.id} product={product} priority={index < 4} />
             ))}
