@@ -15,7 +15,9 @@ packages/
 `packages/types` (và mọi package dùng chung khác sau này) **bắt buộc có build step riêng** (`tsconfig.build.json` output CommonJS + script `build`, `main`/`types` trỏ vào `dist/`) — không trỏ `main`/`types` thẳng vào file `.ts` nguồn. `nest build`/`tsc --noEmit` chỉ type-check nên không lộ lỗi, nhưng `require()` lúc chạy thật (`node dist/main.js`) sẽ báo `SyntaxError: Unexpected token 'export'` vì Node không tự biên dịch ESM export syntax của file `.ts` nguồn.
 
 Module theo domain (áp dụng cả 2 phía FE & BE, tên thư mục giống nhau để dễ đối chiếu):
-`auth`, `shop`, `product`, `cart`, `checkout`, `voucher`, `order`, `review`, `chat`, `admin`
+`auth`, `shop`, `product`, `wishlist`, `cart`, `checkout`, `voucher`, `order`, `review`, `chat`, `admin`
+
+`wishlist` tách riêng khỏi `product` từ Tuần 5 (`Week5.md` Bước 1.11) — khác `Category` (chỉ đọc, gộp vào `product`), Wishlist có đủ CRUD riêng (add/remove/list/status) kèm route/service/hook/trang `/wishlist` riêng, đủ lớn để tách theo đúng nguyên tắc module ở mục này.
 
 **Nguyên tắc:**
 - Mỗi module tự chứa code riêng của nó. Không import chéo trực tiếp giữa 2 module nghiệp vụ — muốn lấy dữ liệu module khác thì gọi qua API (BE) hoặc qua `packages/types` (FE).
