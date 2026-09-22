@@ -22,9 +22,10 @@
     "menuTitle": "Điều hướng"
   },
   "home": {
-    "heroTitle": "Mua sắm từ hàng trăm gian hàng, một điểm đến duy nhất",
-    "heroDescription": "Chốt là sàn thương mại điện tử đa gian hàng — khám phá sản phẩm từ nhiều shop, nhiều ngành hàng khác nhau, tất cả trên cùng một nền tảng.",
-    "heroCta": "Khám phá sản phẩm"
+    "bannerHeading": "Chốt đơn nhanh, mua sắm từ nhiều shop",
+    "bannerCta": "Khám phá sản phẩm",
+    "bannerSellerTitle": "Bán hàng cùng Chốt",
+    "bannerNewProductsTitle": "Sản phẩm mới"
   },
   "auth": {
     "loginTitle": "Đăng nhập",

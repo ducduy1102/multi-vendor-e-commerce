@@ -14,7 +14,7 @@ import { ProductGridSkeleton } from './ProductGridSkeleton';
 // Async Server Component tự gọi getTranslations (giống ProductPagination.tsx)
 // thay vì nhận loadingLabel qua prop — trước đó Home() phải await
 // getTranslations('product') TRƯỚC khi return JSX chỉ để có chuỗi này, khiến
-// <HomeHero /> (không phụ thuộc fetch nào) bị delay theo (vercel-react-best-
+// <HomeBanner /> (không phụ thuộc fetch nào) bị delay theo (vercel-react-best-
 // practices, server-parallel-fetching, CRITICAL). Đã xác minh bằng Playwright
 // (đọc DOM thật .sr-only, không phải grep HTML thô) rằng dịch vẫn đúng khi
 // gọi ở vị trí fallback của Suspense, cả vi lẫn en.

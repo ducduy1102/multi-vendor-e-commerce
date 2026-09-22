@@ -1,14 +1,14 @@
 'use client';
 
-import { ChevronDown, Menu, Store, UserPlus } from 'lucide-react';
+import { ChevronDown, Menu } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Link, usePathname } from '@/i18n/navigation';
 import { LogoutButton, useAuthStore } from '@/modules/auth';
-import { useMyShop } from '@/modules/shop';
 import { ChotMark } from '@/shared/components/ChotMark';
 import { Container } from '@/shared/components/Container';
 import { Button } from '@/shared/components/ui/button';
+import { useSellerChannelLink } from '@/shared/hooks/useSellerChannelLink';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,32 +52,29 @@ const HIDDEN_ON_PATHS = ['/login', '/register'];
 // Header là app-chrome hiển thị ở MỌI trang (không thuộc riêng 1 route/
 // feature cụ thể) — khác pattern "composition root ở app/<route>/page.tsx"
 // đã dùng cho product+shop (Week4.md Bước 3.6), Header cần đọc CẢ
-// useAuthStore (modules/auth) lẫn useMyShop (modules/shop) ngay trong chính
-// nó để quyết định nội dung dropdown tài khoản. Đặt ở shared/ (không thuộc
-// module nào) và import 2 hook qua đúng public API của từng module — cùng
-// tinh thần ngoại lệ "hook dùng chung ≥ 2 module" đã áp dụng cho
-// useAuthStore ở modules/shop (rules/general.md mục 1).
+// useAuthStore (modules/auth, trực tiếp) lẫn useMyShop (modules/shop, qua
+// useSellerChannelLink) để quyết định nội dung dropdown tài khoản. Đặt ở
+// shared/ (không thuộc module nào) — cùng tinh thần ngoại lệ "hook dùng
+// chung ≥ 2 module" đã áp dụng cho useAuthStore ở modules/shop
+// (rules/general.md mục 1).
 export function Header() {
   const t = useTranslations('header');
   const tAuth = useTranslations('auth');
   const pathname = usePathname();
   const user = useAuthStore((state) => state.user);
   const isHydrating = useAuthStore((state) => state.isHydrating);
-  const myShopQuery = useMyShop({ enabled: !!user });
 
-  // Khác bản trước (chỉ dùng trong dropdown, ẩn hẳn khi guest) — giờ còn
-  // hiển thị ở thanh trên (desktop) và Sheet (mobile), cả 2 chỗ khách chưa
-  // đăng nhập cũng thấy được link "Trở thành người bán". Bấm vào khi chưa
-  // đăng nhập vẫn an toàn: /seller/onboarding nằm trong PROTECTED_PATH_PREFIXES
-  // ở proxy.ts, tự redirect sang /login — không cần Header tự check thêm.
-  // null chỉ còn xảy ra khi đã đăng nhập nhưng useMyShop() chưa resolve
-  // xong (tránh nhấp nháy sai link rồi đổi ngay sau).
-  const shopLink =
-    user && myShopQuery.data
-      ? { href: '/seller/products' as const, label: t('myProductsLink'), icon: Store }
-      : !user || myShopQuery.isSuccess
-        ? { href: '/seller/onboarding' as const, label: t('becomeSellerLink'), icon: UserPlus }
-        : null;
+  // Logic href/icon (guest -> onboarding, có shop -> quản lý sản phẩm...)
+  // giờ dùng chung với HomeBanner (shared/hooks/useSellerChannelLink.ts) —
+  // ở đây chỉ còn gắn thêm label theo ngữ cảnh Header (dropdown/thanh trên/
+  // Sheet đều dùng "Trở thành người bán"/"Sản phẩm của tôi", khác chữ cố
+  // định "Bán hàng cùng Chốt" của banner).
+  const sellerChannel = useSellerChannelLink();
+  const shopLink = sellerChannel && {
+    href: sellerChannel.href,
+    icon: sellerChannel.icon,
+    label: sellerChannel.hasShop ? t('myProductsLink') : t('becomeSellerLink'),
+  };
 
   // Đặt SAU mọi hook (Rules of Hooks — không được return sớm trước khi các
   // hook ở trên đã chạy đủ, dù trang này thường chưa đăng nhập nên
