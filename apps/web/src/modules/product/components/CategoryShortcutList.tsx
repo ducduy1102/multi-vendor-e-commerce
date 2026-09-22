@@ -1,6 +1,7 @@
 import { Link } from '@/i18n/navigation';
 import { getCategoryIcon } from '../constants/category-icons';
 import type { Category } from '../types';
+import { CATEGORY_GRID_CLASS } from './HomeCatalog.constants';
 
 interface CategoryShortcutListProps {
   // Đã lọc sẵn category cấp cha (getTopLevelCategories, tính 1 lần ở
@@ -20,7 +21,7 @@ export function CategoryShortcutList({ categories }: CategoryShortcutListProps) 
   }
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,5.5rem)] justify-start gap-x-2 gap-y-4">
+    <div className={CATEGORY_GRID_CLASS}>
       {categories.map((category) => {
         const Icon = getCategoryIcon(category.slug);
         return (
