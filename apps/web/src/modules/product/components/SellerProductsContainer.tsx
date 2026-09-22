@@ -38,6 +38,7 @@ const STATUS_BADGE_CLASS = {
 // page.tsx (composition root), không phải của module product.
 export function SellerProductsContainer({ shopId }: SellerProductsContainerProps) {
   const t = useTranslations('product');
+  const tShop = useTranslations('shop');
   const tCommon = useTranslations('common');
   const myProductsQuery = useMyProducts(shopId);
   const archiveProduct = useArchiveProduct();
@@ -61,11 +62,22 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-foreground">{t('sellerProductsTitle')}</h1>
-        <Link href="/seller/products/new" className={buttonVariants({ variant: 'default' })}>
-          {t('sellerCreateProduct')}
-        </Link>
+        <div className="flex shrink-0 items-center gap-4">
+          <Link
+            href="/seller/shop"
+            className="shrink-0 text-sm font-medium text-foreground hover:underline"
+          >
+            {tShop('shopInfoLink')}
+          </Link>
+          <Link
+            href="/seller/products/new"
+            className={buttonVariants({ variant: 'default', className: 'shrink-0' })}
+          >
+            {t('sellerCreateProduct')}
+          </Link>
+        </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

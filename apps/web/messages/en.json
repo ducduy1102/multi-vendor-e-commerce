@@ -83,6 +83,8 @@
     "becomeSellerGenericError": "Failed to create shop, please try again",
     "becomeSellerEmailNotVerifiedMessage": "You need to verify your email before creating a shop.",
 
+    "shopInfoLink": "Shop info",
+
     "loadShopError": "Couldn't load your shop info, please log in again",
 
     "shopStatusPendingMessage": "Your shop is pending approval. Some features will unlock once it's approved.",
