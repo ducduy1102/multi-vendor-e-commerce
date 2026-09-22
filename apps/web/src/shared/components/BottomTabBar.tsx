@@ -69,7 +69,7 @@ export function BottomTabBar() {
           aria-current={isHomeActive ? 'page' : undefined}
           className={tabItemClass(isHomeActive)}
         >
-          <Home className="size-5" />
+          <Home className="size-5" aria-hidden="true" />
           {t('homeLink')}
         </Link>
         <Link
@@ -77,7 +77,7 @@ export function BottomTabBar() {
           aria-current={isProductsActive ? 'page' : undefined}
           className={tabItemClass(isProductsActive)}
         >
-          <LayoutGrid className="size-5" />
+          <LayoutGrid className="size-5" aria-hidden="true" />
           {t('productsLink')}
         </Link>
         <AccountSheet triggerClassName={tabItemClass(false)} />

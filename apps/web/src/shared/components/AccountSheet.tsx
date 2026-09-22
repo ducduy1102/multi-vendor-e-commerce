@@ -52,7 +52,7 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
         {isHydrating ? (
           <span className="size-5 animate-pulse rounded-full bg-muted" aria-hidden="true" />
         ) : (
-          <User className="size-5" />
+          <User className="size-5" aria-hidden="true" />
         )}
         {t('accountTabLabel')}
       </SheetTrigger>
@@ -68,9 +68,17 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
           </div>
 
           {isHydrating ? (
+            // Cố định 2 khối cao h-8 (khớp Button size="default" thật) dù
+            // nội dung thật sau khi hydrate xong có thể là 2 phần (Guest:
+            // Đăng nhập/Đăng ký) hoặc 4 phần khác hẳn (đã đăng nhập: avatar+
+            // tên, link shop, Separator, nút Đăng xuất) — ngoại lệ có chủ ý
+            // so với "khớp kích thước và bố cục" (rules/frontend.md mục 4
+            // UI polish): không biết trước sẽ rơi vào nhánh nào lúc render
+            // skeleton, và isHydrating thường rất ngắn nên chấp nhận đổi
+            // hình dạng khối (không chỉ đổi kích thước) ở lần hydrate xong.
             <div className="flex flex-col gap-2" aria-hidden="true">
-              <div className="h-9 w-full animate-pulse rounded-lg bg-muted" />
-              <div className="h-9 w-full animate-pulse rounded-lg bg-muted" />
+              <div className="h-8 w-full animate-pulse rounded-lg bg-muted" />
+              <div className="h-8 w-full animate-pulse rounded-lg bg-muted" />
             </div>
           ) : !user ? (
             <div className="flex flex-col gap-2">
@@ -99,7 +107,7 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
                   render={<Link href={shopLink.href} />}
                   className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                 >
-                  <shopLink.icon className="size-4" />
+                  <shopLink.icon className="size-4" aria-hidden="true" />
                   {shopLink.label}
                 </SheetClose>
               )}
@@ -113,7 +121,7 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
                 disabled={isLoggingOut}
                 onClick={handleLogout}
               >
-                <LogOut />
+                <LogOut aria-hidden="true" />
                 {isLoggingOut ? tAuth('logoutSubmitting') : tAuth('logoutSubmit')}
               </Button>
             </>
