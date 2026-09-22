@@ -19,7 +19,10 @@
     "myProductsLink": "Sản phẩm của tôi",
     "productsLink": "Sản phẩm",
     "openMenu": "Mở menu điều hướng",
-    "menuTitle": "Điều hướng"
+    "menuTitle": "Điều hướng",
+    "homeLink": "Trang chủ",
+    "accountTabLabel": "Tài khoản",
+    "mobileNavLabel": "Điều hướng nhanh"
   },
   "home": {
     "bannerHeading": "Chốt đơn nhanh, mua sắm từ nhiều shop",

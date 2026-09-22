@@ -6,6 +6,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 
 import { routing } from '@/i18n/routing';
 import { AuthHydrator, EmailVerificationBanner } from '@/modules/auth';
+import { BottomTabBar, MobileTabBarSpacer } from '@/shared/components/BottomTabBar';
 import { Header } from '@/shared/components/Header';
 import { QueryProvider } from '@/shared/components/QueryProvider';
 import { ThemeProvider } from '@/shared/components/ThemeProvider';
@@ -90,7 +91,8 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
               <AuthHydrator />
               <Header />
               <EmailVerificationBanner />
-              {children}
+              <MobileTabBarSpacer>{children}</MobileTabBarSpacer>
+              <BottomTabBar />
             </QueryProvider>
           </ThemeProvider>
         </NextIntlClientProvider>

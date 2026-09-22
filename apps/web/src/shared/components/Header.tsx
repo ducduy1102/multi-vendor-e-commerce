@@ -9,6 +9,7 @@ import { ChotMark } from '@/shared/components/ChotMark';
 import { Container } from '@/shared/components/Container';
 import { Button } from '@/shared/components/ui/button';
 import { useSellerChannelLink } from '@/shared/hooks/useSellerChannelLink';
+import { HIDDEN_CHROME_PATHS } from '@/shared/lib/hidden-chrome-paths';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,10 +60,6 @@ function HeaderNavLink({ href, children }: { href: string; children: React.React
   );
 }
 
-// Trang đăng nhập/đăng ký tự có layout riêng (card giữa màn hình, không
-// cần điều hướng) — Header ở đây chỉ thừa, không giúp gì cho luồng auth.
-const HIDDEN_ON_PATHS = ['/login', '/register'];
-
 // Header là app-chrome hiển thị ở MỌI trang (không thuộc riêng 1 route/
 // feature cụ thể) — khác pattern "composition root ở app/<route>/page.tsx"
 // đã dùng cho product+shop (Week4.md Bước 3.6), Header cần đọc CẢ
@@ -93,7 +90,7 @@ export function Header() {
   // Đặt SAU mọi hook (Rules of Hooks — không được return sớm trước khi các
   // hook ở trên đã chạy đủ, dù trang này thường chưa đăng nhập nên
   // useMyShop() cũng đang disabled, không tốn request thật nào).
-  if (HIDDEN_ON_PATHS.includes(pathname)) {
+  if (HIDDEN_CHROME_PATHS.includes(pathname)) {
     return null;
   }
 

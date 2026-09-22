@@ -19,7 +19,10 @@
     "myProductsLink": "My products",
     "productsLink": "Products",
     "openMenu": "Open navigation menu",
-    "menuTitle": "Navigation"
+    "menuTitle": "Navigation",
+    "homeLink": "Home",
+    "accountTabLabel": "Account",
+    "mobileNavLabel": "Quick navigation"
   },
   "home": {
     "bannerHeading": "Shop from many stores, check out fast",
