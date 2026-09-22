@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 
+import { Link } from '@/i18n/navigation';
 import { getTopLevelCategories } from '../get-top-level-categories';
 import * as productService from '../services/product.service';
 import { CategoryShortcutList } from './CategoryShortcutList';
@@ -34,7 +35,15 @@ export async function HomeCatalog() {
       )}
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold text-foreground">{t('homeNewestTitle')}</h2>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold text-foreground">{t('homeNewestTitle')}</h2>
+          <Link
+            href="/products"
+            className="text-sm font-medium text-primary transition-colors hover:underline"
+          >
+            {t('viewAllLink')}
+          </Link>
+        </div>
         {products.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('homeEmptyState')}</p>
         ) : (

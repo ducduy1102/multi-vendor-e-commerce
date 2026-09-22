@@ -95,6 +95,7 @@
   "product": {
     "homeCategoriesTitle": "Danh mục",
     "homeNewestTitle": "Sản phẩm mới nhất",
+    "viewAllLink": "Xem tất cả",
     "homeEmptyState": "Chưa có sản phẩm nào.",
     "homeLoadingSrOnly": "Đang tải danh mục và sản phẩm...",
 

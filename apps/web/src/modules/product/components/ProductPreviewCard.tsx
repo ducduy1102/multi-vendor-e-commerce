@@ -38,7 +38,12 @@ export function ProductPreviewCard({ product, priority = false }: ProductPreview
             // text trùng nghĩa nằm chung 1 link).
             alt=""
             fill
-            sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+            // 1280px trở lên: trang chủ lên xl:grid-cols-5 (20vw/thẻ, xem
+            // HomeCatalog.constants.ts) — /products vẫn dừng ở 4 cột (25vw)
+            // nên hơi thừa 1 chút ở đúng breakpoint này trên /products,
+            // chấp nhận được (ProductPreviewCard dùng chung cho cả 2 trang,
+            // rules/frontend.md mục 13).
+            sizes="(min-width: 1280px) 20vw, (min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
             priority={priority}
             className="object-cover transition-transform group-hover:scale-105"
           />
