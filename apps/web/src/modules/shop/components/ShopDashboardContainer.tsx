@@ -5,17 +5,15 @@ import { useEffect, useState } from 'react';
 
 import { Link, useRouter } from '@/i18n/navigation';
 import { Alert } from '@/shared/components/ui/alert';
+import { Skeleton } from '@/shared/components/ui/skeleton';
 import { ApiError } from '@/shared/lib/api-client';
 
 import { useMyShop } from '../hooks/useMyShop';
 import { useUpdateShop } from '../hooks/useUpdateShop';
 import type { Shop, UpdateShopInput } from '../types';
+import { ShopFormFieldsSkeleton } from './ShopFormFieldsSkeleton';
 import { UpdateShopForm } from './UpdateShopForm';
 
-// Màu/nội dung banner phải khớp đúng ý nghĩa từng trạng thái — REJECTED và
-// SUSPENDED không phải "đang chờ duyệt" như PENDING, nên không được dùng
-// chung 1 variant/message (UI polish mục 1, chốt sau audit). APPROVED không
-// có banner (null) — không phải lỗi thiếu case, xem chỗ dùng bên dưới.
 const SHOP_STATUS_ALERT = {
   PENDING: { variant: 'warning', messageKey: 'shopStatusPendingMessage' },
   APPROVED: null,
@@ -66,7 +64,19 @@ export function ShopDashboardContainer() {
     if (myShopQuery.isError) {
       return <p className="text-sm text-destructive">{t('loadShopError')}</p>;
     }
-    return <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>;
+    return (
+      <div aria-busy="true" className="flex flex-col gap-6">
+        <span className="sr-only">{tCommon('loading')}</span>
+        <div aria-hidden="true" className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <Skeleton className="h-7 w-40 motion-reduce:animate-none" />
+            <Skeleton className="h-4 w-24 motion-reduce:animate-none" />
+          </div>
+          <Skeleton className="h-4 w-28 motion-reduce:animate-none" />
+        </div>
+        <ShopFormFieldsSkeleton />
+      </div>
+    );
   }
 
   const shop = myShopQuery.data;

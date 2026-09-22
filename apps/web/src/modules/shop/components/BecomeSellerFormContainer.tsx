@@ -16,6 +16,7 @@ import { useCreateShop } from '../hooks/useCreateShop';
 import { useMyShop } from '../hooks/useMyShop';
 import type { CreateShopInput } from '../types';
 import { BecomeSellerForm } from './BecomeSellerForm';
+import { ShopFormFieldsSkeleton } from './ShopFormFieldsSkeleton';
 
 // Nối BecomeSellerForm (UI + validate, Bước 3.6) với useCreateShop/useMyShop
 // (Bước 3.5) — đặt trong modules/ để app/seller/onboarding/page.tsx chỉ
@@ -55,7 +56,12 @@ export function BecomeSellerFormContainer() {
   // data (đang chờ useEffect điều hướng ở trên) — không render form/thông
   // báo nhầm.
   if (isHydrating || myShopQuery.isPending || myShopQuery.data) {
-    return <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>;
+    return (
+      <div aria-busy="true">
+        <span className="sr-only">{tCommon('loading')}</span>
+        <ShopFormFieldsSkeleton />
+      </div>
+    );
   }
 
   // `getMyShop()` chỉ trả null cho 404 (chưa có shop) — lỗi khác (401 chưa
