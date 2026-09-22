@@ -46,12 +46,6 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
             <aside className="w-full shrink-0 lg:w-64">
               <ProductFilterBar
-                // key ép remount mỗi khi filter trên URL đổi (kể cả điều hướng
-                // từ nơi khác, nút back/forward) — ProductFilterBar/
-                // PriceRangeFilter giữ state nội bộ (range khoảng giá) khởi
-                // tạo 1 lần lúc mount từ props, không tự resync nếu chỉ đổi
-                // props mà giữ nguyên instance.
-                key={`${query.categoryId ?? ''}-${query.minPrice ?? ''}-${query.maxPrice ?? ''}-${query.sort}`}
                 categories={categories}
                 initialFilters={{
                   categoryId: query.categoryId,

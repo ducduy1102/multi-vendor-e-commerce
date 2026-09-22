@@ -151,6 +151,7 @@ export function ProductFilterBar({ categories, initialFilters }: ProductFilterBa
         </div>
 
         <PriceRangeFilter
+          key={`${initialFilters.minPrice ?? ''}-${initialFilters.maxPrice ?? ''}`}
           min={PRICE_MIN}
           max={PRICE_MAX}
           step={PRICE_STEP}
