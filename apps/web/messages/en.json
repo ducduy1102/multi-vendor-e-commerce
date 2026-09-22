@@ -93,7 +93,7 @@
     "updateShopGenericError": "Failed to update shop, please try again"
   },
   "product": {
-    "homeCategoriesTitle": "Featured categories",
+    "homeCategoriesTitle": "Categories",
     "homeNewestTitle": "Newest products",
     "homeEmptyState": "No products yet.",
     "homeLoadingSrOnly": "Loading categories and products...",

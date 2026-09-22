@@ -93,7 +93,7 @@
     "updateShopGenericError": "Cập nhật shop thất bại, vui lòng thử lại"
   },
   "product": {
-    "homeCategoriesTitle": "Danh mục nổi bật",
+    "homeCategoriesTitle": "Danh mục",
     "homeNewestTitle": "Sản phẩm mới nhất",
     "homeEmptyState": "Chưa có sản phẩm nào.",
     "homeLoadingSrOnly": "Đang tải danh mục và sản phẩm...",
