@@ -461,12 +461,67 @@ export class ProductService {
       }));
     }
 
+    // Week5.md Bước 1.8/1.9/2.5 — search full-text theo `q` (name trọng số A
+    // + description trọng số B, đã có sẵn trong cột search_vector qua
+    // trigger Bước 2.4b). Prisma chưa hỗ trợ native query tsvector nên chỉ
+    // dùng $queryRaw để xác định TẬP id khớp + rank — mọi filter khác
+    // (status/shop/category/giá/attributeValues) vẫn chạy qua Prisma `where`
+    // như cũ (AND với `id IN (...)`), không viết lại logic filter đó bằng
+    // raw SQL (tránh 2 nguồn logic filter lệch nhau).
+    let rankById: Map<string, number> | undefined;
+    if (query.q) {
+      const ranked = await this.prisma.$queryRaw<
+        { id: string; rank: number }[]
+      >`
+        SELECT id, ts_rank(search_vector, plainto_tsquery('simple', unaccent(${query.q}))) AS rank
+        FROM products
+        WHERE search_vector @@ plainto_tsquery('simple', unaccent(${query.q}))
+      `;
+      if (ranked.length === 0) {
+        return { items: [], total: 0, page: query.page, limit: query.limit };
+      }
+      rankById = new Map(ranked.map((row) => [row.id, row.rank]));
+      where.id = { in: [...rankById.keys()] };
+    }
+
     const orderBy: Prisma.ProductOrderByWithRelationInput =
       query.sort === 'price-asc'
         ? { minPrice: 'asc' }
         : query.sort === 'price-desc'
           ? { minPrice: 'desc' }
           : { createdAt: 'desc' };
+
+    // Có `q` và user KHÔNG tự chọn sort khác (vẫn 'newest' mặc định từ Zod)
+    // -> xếp theo độ liên quan (ts_rank) thay vì mới nhất, đúng 1.8. Chọn
+    // hẳn price-asc/price-desc thì vẫn tôn trọng lựa chọn đó.
+    const useRankOrder = rankById !== undefined && query.sort === 'newest';
+
+    if (useRankOrder) {
+      // Prisma không orderBy được theo đúng thứ tự 1 mảng id tuỳ ý — lấy hết
+      // row đã khớp mọi filter (không skip/take ở Prisma) rồi tự sắp/xén
+      // trang theo rank ở tầng service. Chấp nhận được ở quy mô project hiện
+      // tại (không tối ưu cho catalog cực lớn, giống nhiều đánh đổi đơn giản
+      // hoá khác đã chọn xuyên suốt project).
+      const rows = await this.prisma.product.findMany({
+        where,
+        select: productCardSelect,
+      });
+      const sorted = rows
+        .slice()
+        .sort(
+          (a, b) => (rankById!.get(b.id) ?? 0) - (rankById!.get(a.id) ?? 0),
+        );
+      const total = sorted.length;
+      const start = (query.page - 1) * query.limit;
+      const page = sorted.slice(start, start + query.limit);
+
+      return {
+        items: page.map((row) => this.mapProductCard(row)),
+        total,
+        page: query.page,
+        limit: query.limit,
+      };
+    }
 
     const [rows, total] = await Promise.all([
       this.prisma.product.findMany({

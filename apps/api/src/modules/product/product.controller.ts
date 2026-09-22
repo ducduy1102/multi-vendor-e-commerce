@@ -292,6 +292,13 @@ export class ProductController {
     description:
       'Lặp lại param cho nhiều giá trị, vd ?attributeValues=Đỏ&attributeValues=M',
   })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description:
+      'Search full-text theo name+description (Postgres tsvector, không phân biệt dấu). Có q + sort mặc định (newest) sẽ tự đổi sang xếp theo độ liên quan, trừ khi tự chọn price-asc/price-desc',
+    example: 'áo thun',
+  })
   @ApiResponse({
     status: 200,
     schema: {

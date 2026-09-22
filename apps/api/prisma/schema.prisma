@@ -242,6 +242,14 @@ model Product {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
+  // Week5.md Bước 1.6/2.4b — search full-text. Prisma không có type gốc cho
+  // `tsvector`, khai qua `Unsupported` (field này bị loại khỏi Prisma Client
+  // tự sinh, chỉ query được qua `$queryRaw` — đúng ProductService.listPublicProducts
+  // ở Bước 2.5). Không tự set giá trị ở service — 1 trigger Postgres (thêm
+  // bằng raw SQL trong migration, Prisma không có khái niệm trigger) tự cập
+  // nhật cột này mỗi khi `name`/`description` đổi.
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
   shop       Shop               @relation(fields: [shopId], references: [id], onDelete: Cascade)
   category   Category           @relation(fields: [categoryId], references: [id])
   attributes ProductAttribute[]
@@ -257,6 +265,7 @@ model Product {
   // shopId, mọi status) nên không cần giữ thêm index đơn song song.
   @@index([shopId, status])
   @@index([categoryId, status])
+  @@index([searchVector], type: Gin)
   @@map("products")
 }
 

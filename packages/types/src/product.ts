@@ -298,6 +298,9 @@ export const listProductsQuerySchema = z.object({
     .transform((val) =>
       val === undefined ? undefined : Array.isArray(val) ? val : [val],
     ),
+  // Search full-text (Week5.md Bước 1.6/1.8-1.9) — mở rộng GET /products có
+  // sẵn thay vì tách endpoint riêng, kết hợp AND với các filter khác ở trên.
+  q: z.string().trim().optional(),
 });
 export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
 
