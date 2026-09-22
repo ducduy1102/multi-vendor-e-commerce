@@ -129,6 +129,7 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 - Đây là marketplace: **mật độ thông tin cao**. Card gọn, ưu tiên hiển thị ảnh, tên, giá, shop. Không dùng khoảng trắng quá lớn hay layout bất đối xứng kiểu landing page.
 - Chuyển động **tối thiểu**: chỉ transition ngắn (hover, focus, mở/đóng), tôn trọng `prefers-reduced-motion`.
 - **Không** thêm GSAP, framer-motion hay hiệu ứng theo cuộn nếu chưa hỏi.
+- Header và nội dung chính dùng **chung một container căn giữa** (`mx-auto w-full max-w-screen-xl px-4`), không để header tràn full-width còn nội dung lệch trái.
 
 ### 4. Trạng thái bắt buộc
 
@@ -142,6 +143,7 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 
 ### 5. Responsive và giao diện sáng/tối
 
+- **Ranh giới điều hướng mobile/desktop dùng thống nhất `sm:` (640px)** trên toàn app — mọi cặp ẩn/hiện kiểu `hidden sm:flex` / `sm:hidden` liên quan đến chuyển đổi giữa `BottomTabBar` (mobile) và Header/nav ngang (desktop) phải dùng cùng một breakpoint, không được lệch nhau (ví dụ một bên `sm:`, một bên `md:`), vì sẽ tạo khoảng chết không có điều hướng nào hiện. `md:`/`lg:` vẫn dùng bình thường cho mục đích khác (số cột lưới, kích thước chữ...), chỉ riêng cặp ẩn/hiện điều hướng là bắt buộc `sm:`.
 - Kiểm tra ở **390px**: không tràn ngang, filter và thanh công cụ tự xuống dòng.
 - Kiểm tra cả **light và dark**. Không hardcode màu làm hỏng một trong hai chế độ.
 
@@ -163,7 +165,7 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 - **Dùng lại** component và variant có sẵn (`Card`, `Badge`, `Skeleton`, `Button variant=...`) trước khi viết mới.
 - Style là `base-nova` (`@base-ui/react`). Không dùng wrapper `Form` kiểu Radix.
 - Nếu chạy `shadcn add`: kiểm tra file sinh ra có import `cn` từ package ngoài không (phải là `@/shared/lib/utils`) và có tự thêm dependency `cn` không. Sửa import và gỡ dependency thừa (xem mục 5).
-- **Primitive đã được duyệt thêm:** `Skeleton` (`shadcn add skeleton`). **Vẫn phải hỏi trước** khi thêm `Card`, `Sheet`, `Avatar` hay primitive khác.
+- **Primitive đã được duyệt thêm:** `Skeleton` (`shadcn add skeleton`), `Sheet` (`shadcn add sheet`, dùng cho `AccountSheet` mở từ bottom tab bar trên mobile) và `AlertDialog` (`shadcn add alert-dialog`, dùng cho xác nhận hành động nguy hiểm — vd "Lưu trữ" sản phẩm ở `/seller/products`, thay `window.confirm()`). **Vẫn phải hỏi trước** khi thêm `Card`, `Avatar` hay primitive khác.
 - Chỉ thêm primitive khi chính component đó được dùng ngay trong đợt sửa, không thêm sẵn "phòng khi cần".
 
 ### 9. Hiệu năng (`vercel-react-best-practices`)
@@ -200,10 +202,16 @@ Các mục dưới đây đã được cân nhắc và quyết định. Khi audi
 - **`isHydrating` trong `useAuthStore`** là cách chống nháy Guest và User. `useAuthStore` vẫn là nguồn duy nhất cho user hiện tại, không fetch lại bằng React Query.
 - **Mục "Trang cá nhân" trong dropdown đang ẩn** cho đến khi có trang thật (Tuần 5 Wishlist, Tuần 8 Đơn hàng của tôi).
 - **Banner xác thực email không có nút đóng** (chủ đích, nhắc liên tục).
-- **Chưa có menu mobile (`Sheet`)**, sẽ thêm khi Header phình ra ở Tuần 5-6 (search, giỏ hàng).
+- **Điều hướng mobile dùng bottom tab bar** (3 tab: Trang chủ, Sản phẩm, Tài khoản; layout chừa sẵn cho tab Cart thứ 4 ở Tuần 6), **không dùng Sheet hamburger** (đã bỏ vì trùng lặp với menu tài khoản). Tab "Tài khoản" mở `AccountSheet` — một Sheet duy nhất gộp cả `ThemeToggle`, `LocaleSwitcher` và menu tài khoản trước đây. Header mobile chỉ còn logo. Thanh search, giỏ hàng, thông báo vẫn chỉ **chừa chỗ** ở Header desktop, làm theo roadmap (Tuần 5, 6, 10). Không tạo link tới trang chưa tồn tại.
+- **`AccountSheet` giữ mở khi đổi ngôn ngữ hoặc theme** (nhất quán giữa hai control). Trạng thái mở/đóng được nâng lên `useUIStore` (Zustand, `shared/store/ui.store.ts`) thay vì `useState` cục bộ, vì đổi locale gây điều hướng làm remount cây con dưới `[locale]`, còn Zustand sống ở module scope nên không bị mất khi remount. Phạm vi store chỉ giữ đúng 1 boolean cho nhu cầu này, không tổng quát hoá thành quản lý nhiều dialog.
 - **Chưa tách `AccountMenu` khỏi Header**, làm khi có test cho Header.
 - **`ProductPreviewCard` là Server Component dùng chung** cho `/` và `/products`. Không thêm `"use client"` chỉ để xử lý ảnh lỗi (`onError`). Thiếu ảnh dùng placeholder `ImageOff`.
 - **Tên shop trên card** cần đổi BE (`productCardSchema`), làm cùng trang chi tiết sản phẩm ở Tuần 5.
-- **Hero trang chủ là khối tĩnh tối giản**: một `<h1>`, một câu mô tả, một nút tới `/products`. Không ảnh, không slider, không quản lý qua admin.
+- **Header là một tầng** (không tách thanh utility phía trên): "Sản phẩm" và link Kênh người bán là 2 mục nav ngang hàng cạnh logo, cùng kiểu chữ, cùng component nav item. Chỉ tách lại hai tầng khi có đủ nội dung phụ (ít nhất 3-4 mục nhỏ khác, ví dụ Trợ giúp, thông báo).
+- **Hero trang chủ chỉ có 1 banner lớn**, dựng bằng CSS/SVG (không ảnh ngoài, không carousel): `<h1>` ngắn và một nút. Đã bỏ 2 banner nhỏ vì trùng đích với mục nav "Sản phẩm" và "Kênh người bán" khi chưa có nội dung nào khác biệt để lấp vào. Thêm lại banner phụ khi có nội dung thật sự khác nav (khuyến mãi, danh mục theo mùa...). Carousel động chờ banner do Admin quản lý (Tuần 11). Chỉ tham khảo bố cục của các sàn khác, **không sao chép** hình, chữ, màu hay icon của họ.
+- **Icon danh mục ánh xạ theo `slug` ở FE** (`lucide-react`, kèm icon dự phòng) vì `categorySchema` chưa có field icon.
 - **`UserAvatar` chữ cái đầu viết tay**, chưa dùng `Avatar` của shadcn vì chưa có ảnh đại diện.
 - **Ảnh Cloudinary không transform lúc upload**, `next/image` tối ưu ở output. Xem lại khi tối ưu hiệu năng sâu hơn.
+- **Điều hướng "Kênh người bán"** khi đã có shop vẫn trỏ `/seller/products` (dùng thường xuyên hơn). `/seller/shop` được vào qua 1 link nhỏ "Thông tin shop" đặt trên `/seller/products`, không qua Header/AccountSheet.
+- **Không nhân đôi lời nhắc xác thực email**: `BecomeSellerFormContainer` không tự vẽ Alert + nút "Gửi lại xác thực" riêng nữa (trùng banner toàn cục `EmailVerificationBanner`), chỉ còn 1 dòng text ngắn giải thích vì sao form đang khoá.
+- **`/seller/onboarding` và `/seller/shop` dùng chung độ rộng `max-w-lg`** (đồng bộ banner trạng thái, tiêu đề và form trên cùng trang, và giữa 2 trang với nhau).
