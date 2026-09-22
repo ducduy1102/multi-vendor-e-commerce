@@ -45,6 +45,20 @@ function UserAvatar({ name }: { name: string }) {
   );
 }
 
+// 1 component dùng chung cho cả 2 mục điều hướng ngang hàng ("Sản phẩm",
+// "Kênh người bán") — đảm bảo cùng kiểu chữ/hover, không lặp lại className
+// ở 2 nơi rồi lệch nhau khi sửa sau này.
+function HeaderNavLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="text-sm font-medium text-foreground transition-colors hover:text-primary"
+    >
+      {children}
+    </Link>
+  );
+}
+
 // Trang đăng nhập/đăng ký tự có layout riêng (card giữa màn hình, không
 // cần điều hướng) — Header ở đây chỉ thừa, không giúp gì cho luồng auth.
 const HIDDEN_ON_PATHS = ['/login', '/register'];
@@ -66,9 +80,9 @@ export function Header() {
 
   // Logic href/icon (guest -> onboarding, có shop -> quản lý sản phẩm...)
   // giờ dùng chung với HomeBanner (shared/hooks/useSellerChannelLink.ts) —
-  // ở đây chỉ còn gắn thêm label theo ngữ cảnh Header (dropdown/thanh trên/
-  // Sheet đều dùng "Trở thành người bán"/"Sản phẩm của tôi", khác chữ cố
-  // định "Bán hàng cùng Chốt" của banner).
+  // ở đây chỉ còn gắn thêm label theo ngữ cảnh Header (dropdown/nav ngang
+  // hàng/Sheet đều dùng "Trở thành người bán"/"Sản phẩm của tôi", khác chữ
+  // cố định "Bán hàng cùng Chốt" của banner).
   const sellerChannel = useSellerChannelLink();
   const shopLink = sellerChannel && {
     href: sellerChannel.href,
@@ -83,12 +97,9 @@ export function Header() {
     return null;
   }
 
-  // Dùng chung cho cả thanh trên (desktop) lẫn hàng chính (mobile) — 1
-  // nguồn duy nhất cho trạng thái Guest/loading/đã đăng nhập, tránh viết
-  // lại 2 lần rồi lệch nhau. Render 2 lần ở 2 vị trí khác nhau (ẩn/hiện
-  // bằng CSS theo breakpoint) là hợp lệ với React — không phải trường hợp
-  // "2 khối cùng mount đụng chung 1 field form" (rules/frontend.md mục 5),
-  // component ở đây không dùng register().
+  // 1 nguồn duy nhất cho trạng thái Guest/loading/đã đăng nhập — Header giờ
+  // chỉ còn 1 hàng nên cụm này chỉ render 1 lần duy nhất (trước đó có bản
+  // 2 tầng, phải render 2 lần ở 2 vị trí ẩn/hiện theo breakpoint).
   const accountCluster = isHydrating ? (
     // Placeholder cùng kích thước (h-8, khớp Button size="default") thay vì
     // bỏ trống hẳn — chờ AuthHydrator biết chắc user đã đăng nhập hay chưa
@@ -151,33 +162,11 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background">
-      {/* Thanh trên — chỉ desktop (md+), ẩn hẳn ở mobile (thay bằng Sheet
-          mở từ nút menu ở hàng chính). Trái: link "Kênh người bán". Phải:
-          ThemeToggle, LocaleSwitcher, cụm tài khoản. */}
-      <div className="hidden border-b border-border/60 md:block">
-        <Container className="flex items-center justify-between gap-4 py-1.5">
-          {shopLink ? (
-            <Link
-              href={shopLink.href}
-              className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
-            >
-              <shopLink.icon className="size-4" />
-              {shopLink.label}
-            </Link>
-          ) : (
-            <span />
-          )}
-
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            <LocaleSwitcher />
-            {accountCluster}
-          </div>
-        </Container>
-      </div>
-
-      {/* Hàng chính — desktop: logo + điều hướng + (TODO search/giỏ hàng).
-          Mobile: logo + cụm tài khoản + nút menu (mở Sheet). */}
+      {/* 1 hàng duy nhất (bản 2 tầng trước đó mất cân đối vì thanh trên chỉ
+          có 1 link) — trái: logo + điều hướng ngang hàng ("Sản phẩm",
+          "Kênh người bán"). Phải: ThemeToggle, LocaleSwitcher (ẩn ở mobile,
+          chuyển vào Sheet), cụm tài khoản (luôn hiện, cả mobile lẫn
+          desktop), nút menu (chỉ mobile). */}
       <Container className="flex h-14 items-center gap-3">
         <Link href="/" className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <ChotMark className="size-7 shrink-0" />
@@ -190,26 +179,28 @@ export function Header() {
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-4 md:flex">
-          <Link
-            href="/products"
-            className="text-sm font-medium text-foreground transition-colors hover:text-primary"
-          >
-            {t('productsLink')}
-          </Link>
+        {/* md:ml-4 — cách logo 1 khoảng rõ ràng, không dính sát. */}
+        <nav className="hidden items-center gap-4 md:ml-4 md:flex">
+          <HeaderNavLink href="/products">{t('productsLink')}</HeaderNavLink>
+          {shopLink && <HeaderNavLink href={shopLink.href}>{shopLink.label}</HeaderNavLink>}
         </nav>
 
         {/* TODO: thanh search (Tuần 5) — chiếm khoảng giữa linh hoạt này,
-            đặt giữa điều hướng và giỏ hàng/cụm tài khoản. */}
+            đặt giữa điều hướng và giỏ hàng/ThemeToggle/LocaleSwitcher. */}
         <div className="flex-1" />
 
         {/* TODO: icon/nút giỏ hàng (Tuần 6) — đặt ngay trước cụm dưới đây. */}
 
-        {/* Cụm tài khoản — chỉ hiện ở mobile (desktop đã có ở thanh trên). */}
-        <div className="flex items-center gap-1.5 md:hidden">{accountCluster}</div>
+        {/* ThemeToggle/LocaleSwitcher — chỉ desktop, mobile chuyển vào Sheet. */}
+        <div className="hidden items-center gap-3 md:flex">
+          <ThemeToggle />
+          <LocaleSwitcher />
+        </div>
+
+        {accountCluster}
 
         {/* Nút menu mobile — mở Sheet chứa điều hướng + ThemeToggle +
-            LocaleSwitcher (đang nằm ở thanh trên, ẩn trên mobile). */}
+            LocaleSwitcher (ẩn trên mobile ở trên). */}
         <Sheet>
           <SheetTrigger
             render={<Button type="button" variant="ghost" size="icon" className="md:hidden" />}
