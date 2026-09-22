@@ -5,6 +5,16 @@ import { useState } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { Alert } from '@/shared/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/shared/components/ui/alert-dialog';
 import { Badge } from '@/shared/components/ui/badge';
 import { Button, buttonVariants } from '@/shared/components/ui/button';
 import { ApiError } from '@/shared/lib/api-client';
@@ -53,12 +63,10 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
   const myProductsQuery = useMyProducts(shopId);
   const archiveProduct = useArchiveProduct();
   const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleArchive(id: string) {
-    if (!window.confirm(t('sellerArchiveConfirm'))) {
-      return;
-    }
     setError(null);
     setArchivingId(id);
     try {
@@ -67,6 +75,14 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
       setError(err instanceof ApiError ? err.message : t('sellerArchiveGenericError'));
     } finally {
       setArchivingId(null);
+    }
+  }
+
+  function confirmArchive() {
+    const id = confirmingId;
+    setConfirmingId(null);
+    if (id) {
+      void handleArchive(id);
     }
   }
 
@@ -148,7 +164,7 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                     variant="outline"
                     size="sm"
                     disabled={product.status === 'ARCHIVED' || archivingId === product.id}
-                    onClick={() => handleArchive(product.id)}
+                    onClick={() => setConfirmingId(product.id)}
                   >
                     {archivingId === product.id ? t('sellerArchiving') : t('sellerArchiveAction')}
                   </Button>
@@ -158,6 +174,26 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
           })}
         </ul>
       )}
+
+      <AlertDialog
+        open={confirmingId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmingId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('sellerArchiveAction')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('sellerArchiveConfirm')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmArchive}>
+              {t('sellerArchiveAction')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
