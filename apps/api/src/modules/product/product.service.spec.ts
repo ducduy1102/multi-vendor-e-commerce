@@ -648,7 +648,12 @@ describe('ProductService', () => {
         updatedAt: new Date(),
         attributes: [],
         variants: [],
-        shop: { ownerId: 'owner-1', status: 'APPROVED' },
+        shop: {
+          name: 'ABC Shop',
+          slug: 'abc-shop',
+          ownerId: 'owner-1',
+          status: 'APPROVED',
+        },
         ...overrides,
       });
     }
@@ -668,11 +673,11 @@ describe('ProductService', () => {
       expect(result.id).toBe('product-1');
     });
 
-    it('KHÔNG lộ field shop (ownerId/status) ra response — chỉ dùng nội bộ để check quyền xem', async () => {
+    it('chỉ lộ shop.name/slug ra response — KHÔNG lộ ownerId/status (chỉ dùng nội bộ để check quyền xem)', async () => {
       mockDetailRow({ status: 'PUBLISHED' });
 
       const result = await service.getProduct('product-1');
-      expect(result).not.toHaveProperty('shop');
+      expect(result.shop).toEqual({ name: 'ABC Shop', slug: 'abc-shop' });
     });
 
     it('guest/public KHÔNG xem được product DRAFT — 404 (không lộ có tồn tại)', async () => {
@@ -686,7 +691,12 @@ describe('ProductService', () => {
     it('guest/public KHÔNG xem được product PUBLISHED nếu shop chưa APPROVED', async () => {
       mockDetailRow({
         status: 'PUBLISHED',
-        shop: { ownerId: 'owner-1', status: 'PENDING' },
+        shop: {
+          name: 'ABC Shop',
+          slug: 'abc-shop',
+          ownerId: 'owner-1',
+          status: 'PENDING',
+        },
       });
 
       await expect(service.getProduct('product-1')).rejects.toBeInstanceOf(

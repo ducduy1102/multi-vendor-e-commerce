@@ -236,6 +236,17 @@ export const productSchema = z.object({
 });
 export type Product = z.infer<typeof productSchema>;
 
+// Chỉ GET /products/:slug (chi tiết — ProductService.getProduct) trả thêm
+// `shop` — create/update/archive dùng chung productSchema ở trên, không join
+// bảng shops nên không có field này (Week5.md Bước 1.5/2.2-2.3, khớp
+// ProductDetailSummary ở apps/api). Tách schema riêng thay vì thêm `shop`
+// optional vào productSchema dùng chung, tránh mọi chỗ khác phải tự lường
+// field này có mặt hay không.
+export const productDetailSchema = productSchema.extend({
+  shop: z.object({ name: z.string(), slug: z.string() }),
+});
+export type ProductDetail = z.infer<typeof productDetailSchema>;
+
 // Response gọn cho danh sách Product của seller (GET /shops/:shopId/products,
 // ProductService.getMyProducts) — không cần attributeValues/attributeName đã
 // resolve (chỉ cần cho form sửa, xem productSchema), tránh join dư thừa cho

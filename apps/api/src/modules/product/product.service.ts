@@ -63,13 +63,15 @@ type ProductWithRelations = Prisma.ProductGetPayload<{
   select: typeof productWithRelationsSelect;
 }>;
 
-// Chỉ dùng nội bộ cho getProduct để quyết định quyền xem (không lộ ra
-// response — shop bị strip trước khi map, xem getProduct) — không gộp vào
-// productWithRelationsSelect vì createProduct/updateProduct/archiveProduct
-// không cần join thêm bảng shops.
+// Chỉ dùng nội bộ cho getProduct — ownerId/status dùng để quyết định quyền
+// xem, không lộ ra response; name/slug (Week5.md Bước 1.5 hướng a) thì có
+// lộ ra, dưới dạng object `shop: {name, slug}` map riêng trong getProduct(),
+// không đưa nguyên object `shop` này ra ngoài (xem comment ở getProduct).
+// Không gộp vào productWithRelationsSelect vì createProduct/updateProduct/
+// archiveProduct không cần join thêm bảng shops.
 const productDetailSelect = {
   ...productWithRelationsSelect,
-  shop: { select: { ownerId: true, status: true } },
+  shop: { select: { name: true, slug: true, ownerId: true, status: true } },
 } satisfies Prisma.ProductSelect;
 
 // Danh sách seller (GET /shops/:shopId/products) không cần join
@@ -165,6 +167,13 @@ export type ProductSummary = Omit<ProductWithRelations, 'variants'> & {
   > & {
     attributeValues: { attributeName: string; value: string }[];
   })[];
+};
+
+// Chỉ getProduct() (chi tiết public/chủ shop) trả thêm `shop` — createProduct/
+// updateProduct/archiveProduct dùng productWithRelationsSelect, không join
+// bảng shops nên không có field này (Week5.md Bước 1.5/2.2).
+export type ProductDetailSummary = ProductSummary & {
+  shop: { name: string; slug: string };
 };
 
 @Injectable()
@@ -358,20 +367,25 @@ export class ProductService {
     return this.loadProductSummary(this.prisma, productId);
   }
 
-  // Route GET /products/:id là PUBLIC (không JwtAuthGuard bắt buộc, guest
+  // Route GET /products/:slug là PUBLIC (không JwtAuthGuard bắt buộc, guest
   // xem được) — viewerUserId chỉ có giá trị nếu request có cookie hợp lệ
-  // (optional-auth, wiring guard cụ thể để dành Bước 2.12). Không phải chủ
-  // shop mà product.status !== PUBLISHED hoặc shop.status !== APPROVED thì
-  // 404 y hệt "không tồn tại" — KHÔNG lộ sản phẩm nháp/shop chưa duyệt qua
-  // URL trực tiếp (đúng Bước 2.9 + rules/backend.md mục 6). Là chủ shop thì
-  // xem được mọi status (dùng lại đúng endpoint này cho trang seller xem
-  // lại/sửa, không tách route riêng).
+  // (OptionalJwtAuthGuard). Không phải chủ shop mà product.status !==
+  // PUBLISHED hoặc shop.status !== APPROVED thì 404 y hệt "không tồn tại" —
+  // KHÔNG lộ sản phẩm nháp/shop chưa duyệt qua URL trực tiếp (đúng Bước 2.9
+  // + rules/backend.md mục 6). Là chủ shop thì xem được mọi status (dùng
+  // lại đúng endpoint này cho trang seller xem lại/sửa, không tách route
+  // riêng).
+  //
+  // Lookup theo slug, không phải id (Week5.md Bước 1.4 hướng b) — FE luôn
+  // điều hướng bằng slug (ProductPreviewCard). Các chỗ nội bộ khác
+  // (updateProduct/archiveProduct, ShopOwnerGuard) đã có sẵn id thật từ DB
+  // nên vẫn lookup theo id, không đổi.
   async getProduct(
-    productId: string,
+    slug: string,
     viewerUserId?: string,
-  ): Promise<ProductSummary> {
+  ): Promise<ProductDetailSummary> {
     const product = await this.prisma.product.findUnique({
-      where: { id: productId },
+      where: { slug },
       select: productDetailSelect,
     });
     if (!product) {
@@ -385,15 +399,24 @@ export class ProductService {
       throw new NotFoundException('Product not found');
     }
 
-    // Bug thật phát hiện qua test tay bằng curl thật (Bước 2.15): trước đây
-    // truyền thẳng `product` (có thêm field `shop` từ productDetailSelect)
-    // vào mapProduct() — TypeScript không báo lỗi vì đây không phải object
-    // literal (chỉ excess-property-check literal, không áp dụng cho biến),
-    // nhưng RUNTIME thì `{...product}` copy nguyên `shop.ownerId` ra ngoài
-    // response — lộ cho cả guest chưa đăng nhập. Phải destructure bỏ `shop`
-    // tường minh trước khi map, không dựa vào type hẹp hơn để "ẩn" field.
+    // Bug thật phát hiện qua test tay bằng curl thật (Tuần 4 Bước 2.15):
+    // trước đây truyền thẳng `product` (có thêm field `shop` từ
+    // productDetailSelect) vào mapProduct() — TypeScript không báo lỗi vì
+    // đây không phải object literal (chỉ excess-property-check literal,
+    // không áp dụng cho biến), nhưng RUNTIME thì `{...product}` copy nguyên
+    // `shop.ownerId`/`shop.status` ra ngoài response — lộ cho cả guest chưa
+    // đăng nhập. Phải destructure bỏ `shop` tường minh trước khi map, không
+    // dựa vào type hẹp hơn để "ẩn" field.
+    //
+    // Week5.md Bước 1.5/2.2: chỉ `name`/`slug` của shop mới lộ ra response
+    // (destructure lấy đúng 2 field này từ `shop`, không đưa nguyên object
+    // `shop` — vẫn giữ ownerId/status ở lại bên trong, không lặp lại đúng
+    // bug cũ theo hướng ngược lại).
     const { shop, ...productWithoutShop } = product;
-    return this.mapProduct(productWithoutShop);
+    return {
+      ...this.mapProduct(productWithoutShop),
+      shop: { name: shop.name, slug: shop.slug },
+    };
   }
 
   // Query chính cho CẢ trang chủ lẫn trang danh sách public (Week4.md Bước

@@ -77,6 +77,15 @@ const PRODUCT_EXAMPLE = {
   ],
 };
 
+// Chỉ GET /products/:slug (chi tiết) trả thêm `shop` — create/update/
+// archive dùng chung PRODUCT_EXAMPLE, không join bảng shops (Week5.md Bước
+// 1.5/2.2), nên tách example riêng thay vì thêm field vào PRODUCT_EXAMPLE
+// dùng chung.
+const PRODUCT_DETAIL_EXAMPLE = {
+  ...PRODUCT_EXAMPLE,
+  shop: { name: 'ABC Shop', slug: 'abc-shop' },
+};
+
 const PRODUCT_LIST_ITEM_EXAMPLE = {
   id: PRODUCT_EXAMPLE.id,
   categoryId: PRODUCT_EXAMPLE.categoryId,
@@ -299,15 +308,17 @@ export class ProductController {
     return this.productService.listPublicProducts(query);
   }
 
-  @Get('products/:id')
+  @Get('products/:slug')
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     summary:
-      'Chi tiết 1 product — public (PUBLISHED+APPROVED) hoặc chủ shop xem mọi status',
+      'Chi tiết 1 product theo slug — public (PUBLISHED+APPROVED) hoặc chủ shop xem mọi status',
   })
   @ApiResponse({
     status: 200,
-    schema: { example: { success: true, data: { product: PRODUCT_EXAMPLE } } },
+    schema: {
+      example: { success: true, data: { product: PRODUCT_DETAIL_EXAMPLE } },
+    },
   })
   @ApiResponse({
     status: 404,
@@ -315,10 +326,10 @@ export class ProductController {
       'Không tồn tại, hoặc chưa PUBLISHED/shop chưa APPROVED (ẩn với guest)',
   })
   async getOne(
-    @Param('id') id: string,
+    @Param('slug') slug: string,
     @CurrentUserOptional() user?: AuthenticatedUser,
   ) {
-    const product = await this.productService.getProduct(id, user?.userId);
+    const product = await this.productService.getProduct(slug, user?.userId);
     return { product };
   }
 
