@@ -16,7 +16,10 @@
     "siteName": "Chốt",
     "becomeSellerLink": "Become a seller",
     "myAccountLink": "My account",
-    "myProductsLink": "My products"
+    "myProductsLink": "My products",
+    "productsLink": "Products",
+    "openMenu": "Open navigation menu",
+    "menuTitle": "Navigation"
   },
   "home": {
     "heroTitle": "Shop hundreds of stores, all in one place",

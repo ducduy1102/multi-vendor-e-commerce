@@ -16,7 +16,10 @@
     "siteName": "Chốt",
     "becomeSellerLink": "Trở thành người bán",
     "myAccountLink": "Trang cá nhân",
-    "myProductsLink": "Sản phẩm của tôi"
+    "myProductsLink": "Sản phẩm của tôi",
+    "productsLink": "Sản phẩm",
+    "openMenu": "Mở menu điều hướng",
+    "menuTitle": "Điều hướng"
   },
   "home": {
     "heroTitle": "Mua sắm từ hàng trăm gian hàng, một điểm đến duy nhất",
