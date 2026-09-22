@@ -23,13 +23,21 @@ const STATUS_LABEL_KEY = {
 } as const satisfies Record<ProductListItem['status'], string>;
 
 // PUBLISHED dùng --success (đang lên sàn, thấy được ngay giữa danh sách);
-// DRAFT giữ trung tính (chưa có gì đặc biệt để báo); ARCHIVED làm mờ hẳn
-// (opacity, không phải màu riêng) — đúng ý "ngừng bán", không phải 1 trạng
-// thái cần chú ý như 2 cái kia.
+// DRAFT giữ outline trung tính (chưa có gì đặc biệt để báo); ARCHIVED đổi
+// sang Badge variant="secondary" (nền xám đặc) thay vì opacity-60 trên nền
+// outline giống hệt DRAFT — trước đó 2 trạng thái này chỉ khác nhau ở độ mờ,
+// dễ nhầm khi liếc nhanh. Không dùng --destructive/--warning (đã dành riêng
+// cho banner trạng thái shop, rules/frontend.md mục "UI polish" mục 2).
+const STATUS_BADGE_VARIANT = {
+  DRAFT: 'outline',
+  PUBLISHED: 'outline',
+  ARCHIVED: 'secondary',
+} as const satisfies Record<ProductListItem['status'], 'outline' | 'secondary'>;
+
 const STATUS_BADGE_CLASS = {
   DRAFT: 'border-border text-muted-foreground',
   PUBLISHED: 'border-success/30 bg-success/10 text-success',
-  ARCHIVED: 'border-border text-muted-foreground opacity-60',
+  ARCHIVED: '',
 } as const satisfies Record<ProductListItem['status'], string>;
 
 // Nhận shopId qua prop (đã resolve sẵn ở app/seller/products/page.tsx) —
@@ -104,7 +112,10 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <Badge variant="outline" className={STATUS_BADGE_CLASS[product.status]}>
+                  <Badge
+                    variant={STATUS_BADGE_VARIANT[product.status]}
+                    className={STATUS_BADGE_CLASS[product.status]}
+                  >
                     {t(STATUS_LABEL_KEY[product.status])}
                   </Badge>
                   <Link
