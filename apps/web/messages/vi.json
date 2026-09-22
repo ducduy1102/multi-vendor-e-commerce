@@ -99,6 +99,11 @@
     "homeLoadingSrOnly": "Đang tải danh mục và sản phẩm...",
 
     "listTitle": "Tất cả sản phẩm",
+    "resultCount": "{count} sản phẩm",
+    "filterEmptyState": "Không có sản phẩm khớp bộ lọc, thử điều chỉnh lại.",
+    "filterRemoveCategory": "Xoá bộ lọc danh mục",
+    "filterRemovePrice": "Xoá bộ lọc giá",
+    "productsLoadingSrOnly": "Đang tải sản phẩm...",
     "filterCategoryLabel": "Danh mục",
     "filterAllCategories": "Tất cả danh mục",
     "filterPriceLabel": "Khoảng giá",

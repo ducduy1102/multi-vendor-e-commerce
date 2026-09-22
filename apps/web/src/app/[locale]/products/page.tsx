@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { Suspense } from 'react';
 
 import {
+  ActiveFiltersSummary,
   PRODUCTS_PAGE_GRID_CLASS,
   ProductFilterBar,
   ProductGridSkeleton,
@@ -10,6 +11,7 @@ import {
   productService,
 } from '@/modules/product';
 import { Container } from '@/shared/components/Container';
+import { Skeleton } from '@/shared/components/ui/skeleton';
 
 interface ProductsPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -40,6 +42,13 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
         <Container className="flex flex-1 flex-col gap-6 py-10">
           <h1 className="text-xl font-semibold text-foreground">{t('listTitle')}</h1>
 
+          <ActiveFiltersSummary
+            query={query}
+            categories={categories}
+            removeCategoryLabel={t('filterRemoveCategory')}
+            removePriceLabel={t('filterRemovePrice')}
+          />
+
           {/* Sidebar dọc bên trái (filter) + nội dung bên phải — xếp chồng
               dọc ở mobile (filter trước, danh sách sau), nằm cạnh nhau từ
               breakpoint lg. */}
@@ -66,7 +75,19 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                 // ProductListResults. key đổi buộc React coi đây là 1
                 // instance mới, tự suspend lại đúng ý.
                 key={JSON.stringify(query)}
-                fallback={<ProductGridSkeleton gridClassName={PRODUCTS_PAGE_GRID_CLASS} />}
+                fallback={
+                  // aria-busy + sr-only ở đây (thiếu ở Commit 1 lúc mới thêm
+                  // Suspense) — khớp đúng pattern HomeCatalogSkeleton.tsx đã
+                  // làm, giờ tiện sửa cùng lúc vì đang đổi lại đúng fallback
+                  // này để thêm skeleton cho dòng "X sản phẩm" mới.
+                  <div aria-busy="true" className="flex flex-col gap-6">
+                    <span className="sr-only">{t('productsLoadingSrOnly')}</span>
+                    <div aria-hidden="true" className="flex flex-col gap-6">
+                      <Skeleton className="h-5 w-24 motion-reduce:animate-none" />
+                      <ProductGridSkeleton gridClassName={PRODUCTS_PAGE_GRID_CLASS} />
+                    </div>
+                  </div>
+                }
               >
                 <ProductListResults query={query} />
               </Suspense>

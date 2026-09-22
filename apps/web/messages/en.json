@@ -99,6 +99,11 @@
     "homeLoadingSrOnly": "Loading categories and products...",
 
     "listTitle": "All products",
+    "resultCount": "{count} products",
+    "filterEmptyState": "No products match this filter. Try adjusting it.",
+    "filterRemoveCategory": "Remove category filter",
+    "filterRemovePrice": "Remove price filter",
+    "productsLoadingSrOnly": "Loading products...",
     "filterCategoryLabel": "Category",
     "filterAllCategories": "All categories",
     "filterPriceLabel": "Price range",

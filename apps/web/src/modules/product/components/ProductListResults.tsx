@@ -20,6 +20,11 @@ export async function ProductListResults({ query }: ProductListResultsProps) {
   const t = await getTranslations('product');
   const { items, total, page, limit } = await productService.listProducts(query);
   const totalPages = Math.max(1, Math.ceil(total / limit));
+  // Có filter đang áp dụng (không tính `sort` — đổi cách sắp xếp không thu
+  // hẹp kết quả) → dùng thông báo rỗng khác "chưa có sản phẩm nào" của
+  // trang chủ, tránh hiểu lầm cả sàn chưa có sản phẩm gì.
+  const hasActiveFilters =
+    query.categoryId !== undefined || query.minPrice !== undefined || query.maxPrice !== undefined;
 
   function buildPageHref(targetPage: number): string {
     const params = new URLSearchParams();
@@ -33,8 +38,12 @@ export async function ProductListResults({ query }: ProductListResultsProps) {
 
   return (
     <>
+      <p className="text-sm text-muted-foreground">{t('resultCount', { count: total })}</p>
+
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('homeEmptyState')}</p>
+        <p className="text-sm text-muted-foreground">
+          {hasActiveFilters ? t('filterEmptyState') : t('homeEmptyState')}
+        </p>
       ) : (
         <div className={PRODUCTS_PAGE_GRID_CLASS}>
           {items.map((product) => (
