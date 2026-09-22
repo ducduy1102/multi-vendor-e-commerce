@@ -88,6 +88,8 @@
     "loadShopError": "Couldn't load your shop info, please log in again",
 
     "shopStatusPendingMessage": "Your shop is pending approval. Some features will unlock once it's approved.",
+    "shopStatusRejectedMessage": "Your shop was rejected. Update your shop info or contact an admin.",
+    "shopStatusSuspendedMessage": "Your shop has been suspended. Some features are temporarily disabled.",
     "updateShopSubmit": "Save changes",
     "updateShopSubmitting": "Saving...",
     "updateShopSuccess": "Changes saved",

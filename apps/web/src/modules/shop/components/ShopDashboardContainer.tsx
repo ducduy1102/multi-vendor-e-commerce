@@ -9,8 +9,22 @@ import { ApiError } from '@/shared/lib/api-client';
 
 import { useMyShop } from '../hooks/useMyShop';
 import { useUpdateShop } from '../hooks/useUpdateShop';
-import type { UpdateShopInput } from '../types';
+import type { Shop, UpdateShopInput } from '../types';
 import { UpdateShopForm } from './UpdateShopForm';
+
+// Màu/nội dung banner phải khớp đúng ý nghĩa từng trạng thái — REJECTED và
+// SUSPENDED không phải "đang chờ duyệt" như PENDING, nên không được dùng
+// chung 1 variant/message (UI polish mục 1, chốt sau audit). APPROVED không
+// có banner (null) — không phải lỗi thiếu case, xem chỗ dùng bên dưới.
+const SHOP_STATUS_ALERT = {
+  PENDING: { variant: 'warning', messageKey: 'shopStatusPendingMessage' },
+  APPROVED: null,
+  REJECTED: { variant: 'destructive', messageKey: 'shopStatusRejectedMessage' },
+  SUSPENDED: { variant: 'destructive', messageKey: 'shopStatusSuspendedMessage' },
+} as const satisfies Record<
+  Shop['status'],
+  { variant: 'warning' | 'destructive'; messageKey: string } | null
+>;
 
 // Nối UpdateShopForm (Bước 3.8) với useMyShop/useUpdateShop (Bước 3.5) — đặt
 // trong modules/ để app/seller/shop/page.tsx chỉ compose, không viết logic
@@ -56,6 +70,7 @@ export function ShopDashboardContainer() {
   }
 
   const shop = myShopQuery.data;
+  const statusAlert = SHOP_STATUS_ALERT[shop.status];
 
   return (
     <div className="flex flex-col gap-6">
@@ -72,9 +87,7 @@ export function ShopDashboardContainer() {
         </Link>
       </div>
 
-      {shop.status !== 'APPROVED' && (
-        <Alert variant="warning">{t('shopStatusPendingMessage')}</Alert>
-      )}
+      {statusAlert && <Alert variant={statusAlert.variant}>{t(statusAlert.messageKey)}</Alert>}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       {successMessage && <p className="text-sm text-success">{successMessage}</p>}

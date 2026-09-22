@@ -88,6 +88,8 @@
     "loadShopError": "Không tải được thông tin shop, vui lòng đăng nhập lại",
 
     "shopStatusPendingMessage": "Shop của bạn đang chờ duyệt. Một số tính năng sẽ mở khi được duyệt.",
+    "shopStatusRejectedMessage": "Shop của bạn đã bị từ chối duyệt. Hãy cập nhật lại thông tin hoặc liên hệ quản trị viên.",
+    "shopStatusSuspendedMessage": "Shop của bạn đang bị đình chỉ. Một số tính năng đã bị tạm khoá.",
     "updateShopSubmit": "Lưu thay đổi",
     "updateShopSubmitting": "Đang lưu...",
     "updateShopSuccess": "Đã lưu thay đổi",
