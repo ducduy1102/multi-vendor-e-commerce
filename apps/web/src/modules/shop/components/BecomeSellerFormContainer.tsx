@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 // auth (User.emailVerifiedAt), shop chỉ đọc lại để feature-gate.
 import { useAuthStore } from '@/modules/auth';
 import { useRouter } from '@/i18n/navigation';
+import { Alert } from '@/shared/components/ui/alert';
 import { ApiError } from '@/shared/lib/api-client';
 
 import { useCreateShop } from '../hooks/useCreateShop';
@@ -81,7 +82,11 @@ export function BecomeSellerFormContainer() {
 
   return (
     <div className="flex flex-col gap-4">
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <Alert variant="destructive" role="alert">
+          {error}
+        </Alert>
+      )}
       <BecomeSellerForm onSubmit={handleSubmit} isSubmitting={createShop.isPending} />
     </div>
   );

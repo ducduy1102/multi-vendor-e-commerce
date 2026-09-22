@@ -85,13 +85,13 @@ export function ShopDashboardContainer() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold">{shop.name}</h1>
-          <p className="text-sm text-muted-foreground">/{shop.slug}</p>
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="truncate text-xl font-semibold">{shop.name}</h1>
+          <p className="truncate text-sm text-muted-foreground">/{shop.slug}</p>
         </div>
         <Link
           href="/seller/products"
-          className="text-sm font-medium text-foreground hover:underline"
+          className="shrink-0 text-sm font-medium text-foreground hover:underline"
         >
           {tProduct('manageProductsLink')}
         </Link>
@@ -99,8 +99,16 @@ export function ShopDashboardContainer() {
 
       {statusAlert && <Alert variant={statusAlert.variant}>{t(statusAlert.messageKey)}</Alert>}
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {successMessage && <p className="text-sm text-success">{successMessage}</p>}
+      {error && (
+        <Alert variant="destructive" role="alert">
+          {error}
+        </Alert>
+      )}
+      {successMessage && (
+        <Alert variant="success" role="status">
+          {successMessage}
+        </Alert>
+      )}
 
       <UpdateShopForm
         defaultValues={{
