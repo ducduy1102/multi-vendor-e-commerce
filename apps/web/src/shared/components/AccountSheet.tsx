@@ -17,6 +17,7 @@ import {
   SheetTrigger,
 } from '@/shared/components/ui/sheet';
 import { useSellerChannelLink } from '@/shared/hooks/useSellerChannelLink';
+import { cn } from '@/shared/lib/utils';
 import { useUIStore } from '@/shared/store/ui.store';
 import { LocaleSwitcher } from './LocaleSwitcher';
 import { ThemeToggle } from './ThemeToggle';
@@ -79,7 +80,7 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
             <div className="flex flex-col gap-2">
               <SheetClose
                 render={<Link href="/login" />}
-                className={buttonVariants({ variant: 'outline', className: 'w-full' })}
+                className={cn(buttonVariants({ variant: 'outline' }), 'w-full')}
               >
                 {tAuth('guestLoginLink')}
               </SheetClose>
