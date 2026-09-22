@@ -23,9 +23,7 @@
   },
   "home": {
     "bannerHeading": "Shop from many stores, check out fast",
-    "bannerCta": "Explore products",
-    "bannerSellerTitle": "Sell with Chốt",
-    "bannerNewProductsTitle": "New products"
+    "bannerCta": "Explore products"
   },
   "auth": {
     "loginTitle": "Log in",
