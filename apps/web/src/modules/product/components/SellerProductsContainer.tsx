@@ -126,12 +126,14 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                   >
                     {t(STATUS_LABEL_KEY[product.status])}
                   </Badge>
-                  <Link
-                    href={`/seller/products/${product.id}/edit`}
-                    className="text-sm font-medium text-foreground hover:underline"
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    nativeButton={false}
+                    render={<Link href={`/seller/products/${product.id}/edit`} />}
                   >
                     {t('sellerEditAction')}
-                  </Link>
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
