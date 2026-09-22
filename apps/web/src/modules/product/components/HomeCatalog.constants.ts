@@ -7,6 +7,15 @@ export const HOME_PRODUCTS_LIMIT = 8;
 export const HOME_PRODUCT_GRID_CLASS =
   'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5';
 
+// Lưới của /products (ProductListResults.tsx) — tạm giữ nguyên y hệt class
+// đang dùng inline ở page.tsx trước đây (kể cả breakpoint `lg:grid-cols-3`
+// trùng `sm:grid-cols-3`), chỉ đưa thành hằng số để Suspense fallback
+// (ProductGridSkeleton) dùng chung được. TODO: rà lại đúng số cột ở `lg`
+// (đang có sidebar filter chiếm chỗ, khác trang chủ) và bỏ breakpoint dư ở
+// đợt sửa riêng.
+export const PRODUCTS_PAGE_GRID_CLASS =
+  'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4';
+
 // Dùng chung giữa CategoryShortcutList (lưới thật) và HomeCatalogSkeleton
 // (lưới skeleton) — cùng lý do trên. auto-fill + cột rộng CỐ ĐỊNH (không
 // 1fr/minmax) + justify-start: vài category không bị kéo giãn lấp đầy hàng.

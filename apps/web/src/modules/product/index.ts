@@ -4,12 +4,15 @@
 // consumer nào ở app/ cần trực tiếp sau khi page.tsx chuyển sang compose
 // HomeCatalog thay vì tự gọi 2 thứ này.
 export { createProductSchema, updateProductSchema } from './schemas/product.schema';
+export { PRODUCTS_PAGE_GRID_CLASS } from './components/HomeCatalog.constants';
 export { CreateProductFormContainer } from './components/CreateProductFormContainer';
 export { EditProductFormContainer } from './components/EditProductFormContainer';
 export { HomeCatalog } from './components/HomeCatalog';
 export { HomeCatalogSkeleton } from './components/HomeCatalogSkeleton';
 export { ProductFilterBar } from './components/ProductFilterBar';
 export { ProductForm } from './components/ProductForm';
+export { ProductGridSkeleton } from './components/ProductGridSkeleton';
+export { ProductListResults } from './components/ProductListResults';
 export { ProductPagination } from './components/ProductPagination';
 export { ProductPreviewCard } from './components/ProductPreviewCard';
 export { SellerProductsContainer } from './components/SellerProductsContainer';

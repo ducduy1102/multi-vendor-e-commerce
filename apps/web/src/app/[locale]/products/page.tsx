@@ -1,10 +1,12 @@
 import { listProductsQuerySchema } from '@ecommerce/types';
 import { getTranslations } from 'next-intl/server';
+import { Suspense } from 'react';
 
 import {
+  PRODUCTS_PAGE_GRID_CLASS,
   ProductFilterBar,
-  ProductPagination,
-  ProductPreviewCard,
+  ProductGridSkeleton,
+  ProductListResults,
   productService,
 } from '@/modules/product';
 import { Container } from '@/shared/components/Container';
@@ -24,23 +26,13 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   // rơi về default giống như không có query nào, thay vì throw lên error boundary.
   const query = parsed.success ? parsed.data : listProductsQuerySchema.parse({});
 
+  // Chỉ còn categories ở đây — categories phục vụ ProductFilterBar (phần
+  // TĨNH, không phụ thuộc filter/trang hiện tại) nên KHÔNG bọc Suspense,
+  // ngược lại với listProducts(query) (phần phụ thuộc query, đổi mỗi lần
+  // filter/trang đổi) — tách vào ProductListResults.tsx, bọc <Suspense>
+  // riêng để đổi filter không chặn re-render cả sidebar/tiêu đề.
   const t = await getTranslations('product');
-  const [{ items, total, page, limit }, categories] = await Promise.all([
-    productService.listProducts(query),
-    productService.getCategories(),
-  ]);
-
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-
-  function buildPageHref(targetPage: number): string {
-    const params = new URLSearchParams();
-    if (query.categoryId) params.set('categoryId', query.categoryId);
-    if (query.minPrice !== undefined) params.set('minPrice', String(query.minPrice));
-    if (query.maxPrice !== undefined) params.set('maxPrice', String(query.maxPrice));
-    if (query.sort !== 'newest') params.set('sort', query.sort);
-    params.set('page', String(targetPage));
-    return `/products?${params.toString()}`;
-  }
+  const categories = await productService.getCategories();
 
   return (
     <div className="flex flex-1 flex-col">
@@ -71,22 +63,19 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             </aside>
 
             <div className="flex flex-1 flex-col gap-6">
-              {items.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t('homeEmptyState')}</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-                  {items.map((product) => (
-                    <ProductPreviewCard key={product.id} product={product} />
-                  ))}
-                </div>
-              )}
-
-              <ProductPagination
-                page={page}
-                totalPages={totalPages}
-                prevHref={buildPageHref(Math.max(1, page - 1))}
-                nextHref={buildPageHref(Math.min(totalPages, page + 1))}
-              />
+              <Suspense
+                // key theo query — đã verify bằng Playwright (chặn network
+                // giả lập chậm) rằng KHÔNG có key này, Suspense không tự
+                // suspend lại khi searchParams đổi trên cùng route (chỉ
+                // suspend đúng 1 lần ở lần điều hướng đầu tới /products) —
+                // gotcha đã biết của Next.js App Router, không phải lỗi
+                // ProductListResults. key đổi buộc React coi đây là 1
+                // instance mới, tự suspend lại đúng ý.
+                key={JSON.stringify(query)}
+                fallback={<ProductGridSkeleton gridClassName={PRODUCTS_PAGE_GRID_CLASS} />}
+              >
+                <ProductListResults query={query} />
+              </Suspense>
             </div>
           </div>
         </Container>
