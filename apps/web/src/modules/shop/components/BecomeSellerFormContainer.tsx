@@ -3,12 +3,12 @@
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
-// Tái dùng qua barrel export công khai của module auth (@/modules/auth), không
-// reach vào file nội bộ (modules/auth/components/...) — coi barrel là "API
-// surface" của module, giống cách rules/general.md mục 1 cho phép lấy dữ liệu
-// module khác qua API/packages/types. Xác thực email vẫn là khái niệm của
-// domain auth (User.emailVerifiedAt), shop chỉ đọc lại để feature-gate.
-import { ResendVerificationButton, useAuthStore } from '@/modules/auth';
+// useAuthStore tái dùng qua barrel export công khai của module auth
+// (@/modules/auth), không reach vào file nội bộ — coi barrel là "API surface"
+// của module, giống cách rules/general.md mục 1 cho phép lấy dữ liệu module
+// khác qua API/packages/types. Xác thực email vẫn là khái niệm của domain
+// auth (User.emailVerifiedAt), shop chỉ đọc lại để feature-gate.
+import { useAuthStore } from '@/modules/auth';
 import { useRouter } from '@/i18n/navigation';
 import { ApiError } from '@/shared/lib/api-client';
 
@@ -18,9 +18,6 @@ import type { CreateShopInput } from '../types';
 import { BecomeSellerForm } from './BecomeSellerForm';
 import { ShopFormFieldsSkeleton } from './ShopFormFieldsSkeleton';
 
-// Nối BecomeSellerForm (UI + validate, Bước 3.6) với useCreateShop/useMyShop
-// (Bước 3.5) — đặt trong modules/ để app/seller/onboarding/page.tsx chỉ
-// compose, không viết logic nghiệp vụ trực tiếp (rules/frontend.md mục 1).
 export function BecomeSellerFormContainer() {
   const t = useTranslations('shop');
   const tCommon = useTranslations('common');
@@ -72,12 +69,13 @@ export function BecomeSellerFormContainer() {
     return <p className="text-sm text-destructive">{t('loadShopError')}</p>;
   }
 
+  // Nút "Gửi lại xác thực" đã có sẵn ở EmailVerificationBanner (toàn app,
+  // app/[locale]/layout.tsx) — hiện ngay phía trên form này khi email chưa
+  // xác thực, nên ở đây chỉ giải thích ngắn gọn vì sao form đang khoá, không
+  // lặp lại CTA thứ 2 (UI polish, chốt sau audit).
   if (!user?.emailVerifiedAt) {
     return (
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">{t('becomeSellerEmailNotVerifiedMessage')}</p>
-        <ResendVerificationButton />
-      </div>
+      <p className="text-sm text-muted-foreground">{t('becomeSellerEmailNotVerifiedShort')}</p>
     );
   }
 

@@ -81,7 +81,7 @@
     "becomeSellerSubmit": "Create shop",
     "becomeSellerSubmitting": "Creating shop...",
     "becomeSellerGenericError": "Failed to create shop, please try again",
-    "becomeSellerEmailNotVerifiedMessage": "You need to verify your email before creating a shop.",
+    "becomeSellerEmailNotVerifiedShort": "Verify your email to continue.",
 
     "shopInfoLink": "Shop info",
 

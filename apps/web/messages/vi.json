@@ -81,7 +81,7 @@
     "becomeSellerSubmit": "Tạo shop",
     "becomeSellerSubmitting": "Đang tạo shop...",
     "becomeSellerGenericError": "Tạo shop thất bại, vui lòng thử lại",
-    "becomeSellerEmailNotVerifiedMessage": "Bạn cần xác thực email trước khi tạo shop.",
+    "becomeSellerEmailNotVerifiedShort": "Xác thực email để tiếp tục.",
 
     "shopInfoLink": "Thông tin shop",
 
