@@ -19,7 +19,7 @@ export function SellerProductsListSkeleton() {
             <Skeleton className="h-3 w-20 motion-reduce:animate-none" />
           </div>
           <div className="flex shrink-0 items-center gap-3">
-            <Skeleton className="h-5 w-16 rounded-full motion-reduce:animate-none" />
+            <Skeleton className="h-7 w-16 rounded-[min(var(--radius-md),12px)] motion-reduce:animate-none" />
             <Skeleton className="h-7 w-12 motion-reduce:animate-none" />
             <Skeleton className="h-7 w-16 motion-reduce:animate-none" />
           </div>

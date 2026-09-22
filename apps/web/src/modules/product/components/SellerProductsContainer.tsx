@@ -18,6 +18,7 @@ import {
 import { Badge } from '@/shared/components/ui/badge';
 import { Button, buttonVariants } from '@/shared/components/ui/button';
 import { ApiError } from '@/shared/lib/api-client';
+import { cn } from '@/shared/lib/utils';
 import { formatPrice } from '../format-price';
 import { useArchiveProduct } from '../hooks/useArchiveProduct';
 import { useMyProducts } from '../hooks/useMyProducts';
@@ -46,11 +47,30 @@ const STATUS_BADGE_VARIANT = {
   ARCHIVED: 'secondary',
 } as const satisfies Record<ProductListItem['status'], 'outline' | 'secondary'>;
 
+// ARCHIVED: --secondary/--muted mặc định của variant="secondary" gần như
+// trắng ở light mode (cùng giá trị oklch với --muted), khiến badge gần như
+// hoà vào nền trắng — nhìn giống hệt DRAFT (chỉ có viền nhạt) dù variant đã
+// khác. Ghi đè nền đậm hơn (muted-foreground/15) + chữ đậm (text-foreground
+// thay vì text-secondary-foreground) + border-border để tương phản rõ với
+// nền trắng, đồng thời rõ hơn DRAFT (nền trong suốt, chữ mờ muted-foreground)
+// — vẫn giữ trung tính (không thêm hue mới) vì ARCHIVED là trạng thái ngừng
+// hoạt động, không phải cảnh báo (--warning) hay nguy hiểm (--destructive).
 const STATUS_BADGE_CLASS = {
   DRAFT: 'border-border text-muted-foreground',
   PUBLISHED: 'border-success/30 bg-success/10 text-success',
-  ARCHIVED: '',
+  ARCHIVED: 'border-border bg-muted-foreground/15 text-foreground',
 } as const satisfies Record<ProductListItem['status'], string>;
+
+// Badge mặc định (badge.tsx) cỡ text-xs/h-5/rounded-4xl (pill) — nhỏ và bo
+// tròn hơn rõ rệt so với text-[0.8rem]/h-7/rounded-[min(var(--radius-md),12px)]
+// của Button size="sm" đặt cạnh (nút "Sửa"/"Lưu trữ"), gây mất cân đối thị
+// giác. Khớp đúng cả chiều cao lẫn border-radius (không chỉ cỡ chữ) để viền
+// badge thẳng hàng và cùng độ bo với viền nút cạnh bên — dùng lại đúng giá
+// trị radius của Button size="sm" thay vì rounded-lg (radius mặc định của
+// buttonVariants) vì size="sm" tự override radius riêng, không kế thừa giá
+// trị base. Tăng CHỈ ở đây qua className, không đổi mặc định global của
+// Badge (nơi khác có thể cần cỡ nhỏ/pill).
+const STATUS_BADGE_SIZE_CLASS = 'h-7 rounded-[min(var(--radius-md),12px)] px-2.5 text-sm';
 
 // Nhận shopId qua prop (đã resolve sẵn ở app/seller/products/page.tsx) —
 // không tự gọi useMyShop() ở đây: modules/product không được cross-import
@@ -147,7 +167,7 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                 <div className="flex shrink-0 items-center gap-3">
                   <Badge
                     variant={STATUS_BADGE_VARIANT[product.status]}
-                    className={STATUS_BADGE_CLASS[product.status]}
+                    className={cn(STATUS_BADGE_SIZE_CLASS, STATUS_BADGE_CLASS[product.status])}
                   >
                     {t(STATUS_LABEL_KEY[product.status])}
                   </Badge>
