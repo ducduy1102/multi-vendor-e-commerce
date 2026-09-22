@@ -164,13 +164,7 @@ export function Header() {
       <Container className="flex h-14 items-center gap-3">
         <Link href="/" className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <ChotMark className="size-7 shrink-0" />
-          {/* An duoi 420px: do bang Playwright (390/375/360, Guest va da
-              dang nhap) cho thay ca cum nut ben phai deu tran ngang o
-              ≤375px neu giu wordmark "Chot" - icon ChotMark da du nhan
-              dien thuong hieu khi khong con cho. */}
-          <span className="font-semibold whitespace-nowrap text-brand max-[420px]:hidden">
-            {t('siteName')}
-          </span>
+          <span className="font-semibold whitespace-nowrap text-brand">{t('siteName')}</span>
         </Link>
 
         {/* sm:ml-4 — cách logo 1 khoảng rõ ràng, không dính sát. */}
