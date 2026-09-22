@@ -150,6 +150,7 @@
     "productFormDescriptionLabel": "Mô tả",
     "productFormStatusLabel": "Trạng thái",
     "productFormAttributesTitle": "Thuộc tính",
+    "productFormAttributesEmpty": "Chưa có thuộc tính nào — sản phẩm sẽ dùng 1 biến thể mặc định (không phân loại theo màu/size...).",
     "productFormAddAttribute": "+ Thêm thuộc tính",
     "productFormRemoveAttribute": "Xoá thuộc tính",
     "productFormAddValue": "+ Thêm giá trị",

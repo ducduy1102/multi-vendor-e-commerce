@@ -199,10 +199,7 @@ export function productToFormValues(product: Product): ProductFormValues {
   };
 }
 
-// Chung 1 template cột cho header lẫn từng dòng variant — tránh header và
-// dòng dữ liệu lệch cột nếu sửa 1 nơi quên sửa nơi kia. Cột cuối (ảnh) rộng
-// hơn vì chứa cả thumbnail + nút bấm.
-const VARIANT_GRID_COLS = 'md:grid-cols-[minmax(140px,1fr)_1fr_1fr_1fr_160px]';
+export const VARIANT_GRID_COLS = 'md:grid-cols-[minmax(140px,1fr)_1fr_1fr_1fr_160px]';
 
 interface ProductFormProps {
   categories: Category[];
@@ -334,6 +331,10 @@ export function ProductForm({
           </Button>
         </div>
 
+        {attributesFieldArray.fields.length === 0 && (
+          <p className="text-sm text-muted-foreground">{t('productFormAttributesEmpty')}</p>
+        )}
+
         {attributesFieldArray.fields.map((attributeField, attributeIndex) => (
           <AttributeRow
             key={attributeField.id}
@@ -368,7 +369,7 @@ export function ProductForm({
           <span>{t('productFormImageLabel')}</span>
         </div>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           {variantsFieldArray.fields.map((variantField, variantIndex) => {
             const comboLabel =
               variantField.attributeValues.length === 0

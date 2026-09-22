@@ -62,9 +62,9 @@ export function VariantImageUpload({
         <Image
           src={value}
           alt=""
-          width={40}
-          height={40}
-          className="size-10 shrink-0 rounded object-cover"
+          width={48}
+          height={48}
+          className="size-12 shrink-0 rounded object-cover"
         />
       ) : null}
 

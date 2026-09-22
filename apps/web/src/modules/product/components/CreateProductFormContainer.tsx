@@ -8,6 +8,7 @@ import { ApiError } from '@/shared/lib/api-client';
 import { useCategories } from '../hooks/useCategories';
 import { useCreateProduct } from '../hooks/useCreateProduct';
 import { ProductForm, type ProductFormSubmitValues } from './ProductForm';
+import { ProductFormSkeleton } from './ProductFormSkeleton';
 
 interface CreateProductFormContainerProps {
   shopId: string;
@@ -44,7 +45,12 @@ export function CreateProductFormContainer({ shopId }: CreateProductFormContaine
   }
 
   if (categoriesQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>;
+    return (
+      <div aria-busy="true">
+        <span className="sr-only">{tCommon('loading')}</span>
+        <ProductFormSkeleton />
+      </div>
+    );
   }
   if (categoriesQuery.isError) {
     return <p className="text-sm text-destructive">{t('loadProductError')}</p>;

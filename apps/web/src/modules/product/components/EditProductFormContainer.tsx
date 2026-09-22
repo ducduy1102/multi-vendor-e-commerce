@@ -9,6 +9,7 @@ import { useCategories } from '../hooks/useCategories';
 import { useProduct } from '../hooks/useProduct';
 import { useUpdateProduct } from '../hooks/useUpdateProduct';
 import { ProductForm, productToFormValues, type ProductFormSubmitValues } from './ProductForm';
+import { ProductFormSkeleton } from './ProductFormSkeleton';
 
 interface EditProductFormContainerProps {
   productId: string;
@@ -37,7 +38,12 @@ export function EditProductFormContainer({ productId }: EditProductFormContainer
   }
 
   if (categoriesQuery.isPending || productQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>;
+    return (
+      <div aria-busy="true">
+        <span className="sr-only">{tCommon('loading')}</span>
+        <ProductFormSkeleton />
+      </div>
+    );
   }
   if (categoriesQuery.isError || productQuery.isError || !productQuery.data) {
     return <p className="text-sm text-destructive">{t('loadProductError')}</p>;

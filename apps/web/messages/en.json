@@ -150,6 +150,7 @@
     "productFormDescriptionLabel": "Description",
     "productFormStatusLabel": "Status",
     "productFormAttributesTitle": "Attributes",
+    "productFormAttributesEmpty": "No attributes yet — the product will use 1 default variant (no color/size breakdown).",
     "productFormAddAttribute": "+ Add attribute",
     "productFormRemoveAttribute": "Remove attribute",
     "productFormAddValue": "+ Add value",
