@@ -102,6 +102,19 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 - [alan2207/bulletproof-react](https://github.com/alan2207/bulletproof-react) — cấu trúc `features/<domain>/{components,hooks,services,types,index.ts}` gần khớp với convention ở mục 1. Dùng Vite chứ không phải Next.js App Router, chỉ tham khảo nguyên tắc tổ chức module, không copy code trực tiếp.
 - [vercel/commerce](https://github.com/vercel/commerce) — Next.js Commerce 2.0, reference chính thức cho App Router + RSC + Server Actions trong e-commerce (product list/detail, cart). Mặc định bind Shopify, cần thay data layer nếu tham khảo cách fetch/hiển thị.
 
+## 10. Trạng thái tải dữ liệu (loading/empty/error) & primitive shadcn đã duyệt
+
+Áp dụng cho **mọi** danh sách/trang dữ liệu, kể cả code mới — khác mục "UI polish (Chốt)" bên dưới (mục đó chỉ áp dụng khi task là audit/polish trang đã có). Phát hiện khi làm Tuần 4 (`ProductFormSkeleton`) rằng pattern này đã dùng ở ≥2 chỗ độc lập (`SellerProductsListSkeleton`, `ProductFormSkeleton`), không còn là polish riêng lẻ mà là convention chung — Tuần 5 trở đi (trang chi tiết sản phẩm, trang wishlist...) áp dụng ngay từ lúc code, không đợi tới đợt audit sau mới thêm.
+
+- Mọi danh sách và trang dữ liệu phải có đủ: **loading** (dùng `Skeleton`), **empty**, **error**.
+- **Loading dùng `Suspense` đặt sát phần dữ liệu** (component async bọc trong `<Suspense fallback={<...Skeleton />}>`). **Không** đặt `loading.tsx` ở cấp `app/[locale]/`, vì nó sẽ áp lên mọi route con (login, register, seller...) và hiện sai khung.
+- Skeleton phải **khớp kích thước và bố cục** với nội dung thật (cùng tỷ lệ ảnh, cùng lưới, cùng số cột) để không bị nhảy layout khi dữ liệu về. Dùng chung hằng số class lưới giữa lưới thật và lưới skeleton (vd export `VARIANT_GRID_COLS`/`HOME_CATALOG_GRID_CLASS` rồi import lại ở file skeleton), để hai bên không lệch nhau — xem `ProductCardSkeleton`/`SellerProductsListSkeleton`/`ProductFormSkeleton` làm ví dụ.
+- Skeleton chỉ mang tính trang trí: `aria-hidden`. Vùng bọc có `aria-busy="true"` kèm một dòng chữ `sr-only` đã dịch (vi và en). Thêm `motion-reduce:animate-none` để tôn trọng `prefers-reduced-motion`.
+- Error dùng `app/[locale]/error.tsx` chung (Client Component). Không hiển thị `error.message` hay stack cho người dùng.
+- Nút submit phải `disabled` khi đang gửi. Thao tác nguy hiểm phải có xác nhận.
+- Input và nút cần trạng thái `focus-visible` rõ ràng, vùng bấm đủ lớn trên mobile.
+- **Primitive shadcn/ui đã được duyệt sẵn** (dùng thẳng khi cần, không phải hỏi lại): `Skeleton` (`shadcn add skeleton`), `Sheet` (`shadcn add sheet`), `AlertDialog` (`shadcn add alert-dialog`). Primitive khác (`Card`, `Avatar`...) vẫn phải hỏi trước khi thêm.
+
 ## UI polish (Chốt)
 
 Áp dụng khi task là "audit / polish / cải thiện UI" cho các trang đã có.
@@ -133,13 +146,7 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 
 ### 4. Trạng thái bắt buộc
 
-- Mọi danh sách và trang dữ liệu phải có đủ: **loading** (dùng `Skeleton`), **empty**, **error**.
-- **Loading dùng `Suspense` đặt sát phần dữ liệu** (component async bọc trong `<Suspense fallback={<...Skeleton />}>`). **Không** đặt `loading.tsx` ở cấp `app/[locale]/`, vì nó sẽ áp lên mọi route con (login, register, seller...) và hiện sai khung.
-- Skeleton phải **khớp kích thước và bố cục** với nội dung thật (cùng tỷ lệ ảnh, cùng lưới, cùng số cột) để không bị nhảy layout khi dữ liệu về. Dùng chung hằng số class lưới giữa lưới thật và lưới skeleton, để hai bên không lệch nhau.
-- Skeleton chỉ mang tính trang trí: `aria-hidden`. Vùng bọc có `aria-busy="true"` kèm một dòng chữ `sr-only` đã dịch (vi và en). Thêm `motion-reduce:animate-none` để tôn trọng `prefers-reduced-motion`.
-- Error dùng `app/[locale]/error.tsx` chung (Client Component). Không hiển thị `error.message` hay stack cho người dùng.
-- Nút submit phải `disabled` khi đang gửi. Thao tác nguy hiểm phải có xác nhận.
-- Input và nút cần trạng thái `focus-visible` rõ ràng, vùng bấm đủ lớn trên mobile.
+Xem "## 10. Trạng thái tải dữ liệu..." ở đầu file (loading/empty/error, Skeleton, primitive đã duyệt) — áp dụng chung, không riêng audit. Khi audit, kiểm tra đúng các điểm ở đó cho trang đang xét và liệt kê vào danh sách vấn đề nếu thiếu.
 
 ### 5. Responsive và giao diện sáng/tối
 
@@ -165,7 +172,7 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 - **Dùng lại** component và variant có sẵn (`Card`, `Badge`, `Skeleton`, `Button variant=...`) trước khi viết mới.
 - Style là `base-nova` (`@base-ui/react`). Không dùng wrapper `Form` kiểu Radix.
 - Nếu chạy `shadcn add`: kiểm tra file sinh ra có import `cn` từ package ngoài không (phải là `@/shared/lib/utils`) và có tự thêm dependency `cn` không. Sửa import và gỡ dependency thừa (xem mục 5).
-- **Primitive đã được duyệt thêm:** `Skeleton` (`shadcn add skeleton`), `Sheet` (`shadcn add sheet`, dùng cho `AccountSheet` mở từ bottom tab bar trên mobile) và `AlertDialog` (`shadcn add alert-dialog`, dùng cho xác nhận hành động nguy hiểm — vd "Lưu trữ" sản phẩm ở `/seller/products`, thay `window.confirm()`). **Vẫn phải hỏi trước** khi thêm `Card`, `Avatar` hay primitive khác.
+- Danh sách primitive đã duyệt sẵn (`Skeleton`/`Sheet`/`AlertDialog`) xem "## 10. Trạng thái tải dữ liệu..." ở đầu file — `Skeleton` dùng cho `AccountSheet`, `AlertDialog` dùng cho xác nhận hành động nguy hiểm (vd "Lưu trữ" sản phẩm ở `/seller/products`, thay `window.confirm()`). Primitive khác vẫn phải hỏi trước.
 - Chỉ thêm primitive khi chính component đó được dùng ngay trong đợt sửa, không thêm sẵn "phòng khi cần".
 
 ### 9. Hiệu năng (`vercel-react-best-practices`)
