@@ -17,6 +17,7 @@ import {
   SheetTrigger,
 } from '@/shared/components/ui/sheet';
 import { useSellerChannelLink } from '@/shared/hooks/useSellerChannelLink';
+import { useUIStore } from '@/shared/store/ui.store';
 import { LocaleSwitcher } from './LocaleSwitcher';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -35,6 +36,8 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
   const user = useAuthStore((state) => state.user);
   const isHydrating = useAuthStore((state) => state.isHydrating);
   const { handleLogout, isLoading: isLoggingOut } = useLogout();
+  const isAccountSheetOpen = useUIStore((state) => state.isAccountSheetOpen);
+  const setAccountSheetOpen = useUIStore((state) => state.setAccountSheetOpen);
 
   const sellerChannel = useSellerChannelLink();
   const shopLink = sellerChannel && {
@@ -44,7 +47,7 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
   };
 
   return (
-    <Sheet>
+    <Sheet open={isAccountSheetOpen} onOpenChange={setAccountSheetOpen}>
       <SheetTrigger render={<button type="button" className={triggerClassName} />}>
         {/* Skeleton cùng kích thước icon (size-5) khi đang hydrate — tránh
             nháy sai icon Guest/đã đăng nhập lúc F5 (cùng lý do accountCluster
