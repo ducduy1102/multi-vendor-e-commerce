@@ -9,6 +9,7 @@ export { RegisterForm } from './components/RegisterForm';
 export { RegisterFormContainer } from './components/RegisterFormContainer';
 export { ResendVerificationButton } from './components/ResendVerificationButton';
 export { VerifyEmailStatus } from './components/VerifyEmailStatus';
+export { useLogout } from './hooks/useLogout';
 export { loginSchema, registerFormSchema } from './schemas/auth.schema';
 export * as authService from './services/auth.service';
 export { useAuthStore } from './store/auth.store';

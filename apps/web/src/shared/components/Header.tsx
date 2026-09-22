@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, Menu } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Link, usePathname } from '@/i18n/navigation';
@@ -17,14 +17,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/shared/components/ui/dropdown-menu';
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/shared/components/ui/sheet';
 import { LocaleSwitcher } from './LocaleSwitcher';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -38,7 +30,9 @@ function initialsFromName(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function UserAvatar({ name }: { name: string }) {
+// Export — AccountSheet (shared/components/AccountSheet.tsx, Sheet mobile)
+// dùng lại đúng cách hiển thị avatar này, tránh lặp initialsFromName() ở 2 nơi.
+export function UserAvatar({ name }: { name: string }) {
   return (
     <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
       {initialsFromName(name)}
@@ -159,11 +153,14 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background">
-      {/* 1 hàng duy nhất (bản 2 tầng trước đó mất cân đối vì thanh trên chỉ
-          có 1 link) — trái: logo + điều hướng ngang hàng ("Sản phẩm",
-          "Kênh người bán"). Phải: ThemeToggle, LocaleSwitcher (ẩn ở mobile,
-          chuyển vào Sheet), cụm tài khoản (luôn hiện, cả mobile lẫn
-          desktop), nút menu (chỉ mobile). */}
+      {/* Mobile (< sm): chỉ còn logo — điều hướng, ThemeToggle, LocaleSwitcher
+          và cụm tài khoản đã chuyển hết vào BottomTabBar/AccountSheet
+          (shared/components/BottomTabBar.tsx, AccountSheet.tsx). Desktop
+          (>= sm, khớp breakpoint BottomTabBar ẩn đi — trước đây header dùng
+          md: cho các cụm này, để hở khoảng 640-768px không có điều hướng
+          nào cả sau khi bỏ hamburger, nay đổi về sm: cho khớp): trái — logo +
+          điều hướng ngang hàng ("Sản phẩm", "Kênh người bán"); phải —
+          ThemeToggle, LocaleSwitcher, cụm tài khoản. */}
       <Container className="flex h-14 items-center gap-3">
         <Link href="/" className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <ChotMark className="size-7 shrink-0" />
@@ -176,8 +173,8 @@ export function Header() {
           </span>
         </Link>
 
-        {/* md:ml-4 — cách logo 1 khoảng rõ ràng, không dính sát. */}
-        <nav className="hidden items-center gap-4 md:ml-4 md:flex">
+        {/* sm:ml-4 — cách logo 1 khoảng rõ ràng, không dính sát. */}
+        <nav className="hidden items-center gap-4 sm:ml-4 sm:flex">
           <HeaderNavLink href="/products">{t('productsLink')}</HeaderNavLink>
           {shopLink && <HeaderNavLink href={shopLink.href}>{shopLink.label}</HeaderNavLink>}
         </nav>
@@ -188,50 +185,12 @@ export function Header() {
 
         {/* TODO: icon/nút giỏ hàng (Tuần 6) — đặt ngay trước cụm dưới đây. */}
 
-        {/* ThemeToggle/LocaleSwitcher — chỉ desktop, mobile chuyển vào Sheet. */}
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="hidden items-center gap-3 sm:flex">
           <ThemeToggle />
           <LocaleSwitcher />
         </div>
 
-        {accountCluster}
-
-        {/* Nút menu mobile — mở Sheet chứa điều hướng + ThemeToggle +
-            LocaleSwitcher (ẩn trên mobile ở trên). */}
-        <Sheet>
-          <SheetTrigger
-            render={<Button type="button" variant="ghost" size="icon" className="md:hidden" />}
-          >
-            <Menu />
-            <span className="sr-only">{t('openMenu')}</span>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-64">
-            <SheetHeader>
-              <SheetTitle>{t('menuTitle')}</SheetTitle>
-            </SheetHeader>
-            <nav className="flex flex-col gap-1 px-4">
-              <SheetClose
-                render={<Link href="/products" />}
-                className="rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                {t('productsLink')}
-              </SheetClose>
-              {shopLink && (
-                <SheetClose
-                  render={<Link href={shopLink.href} />}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                >
-                  <shopLink.icon className="size-4" />
-                  {shopLink.label}
-                </SheetClose>
-              )}
-            </nav>
-            <div className="mt-auto flex items-center gap-2 border-t border-border p-4">
-              <ThemeToggle />
-              <LocaleSwitcher />
-            </div>
-          </SheetContent>
-        </Sheet>
+        <div className="hidden sm:flex">{accountCluster}</div>
       </Container>
     </header>
   );
