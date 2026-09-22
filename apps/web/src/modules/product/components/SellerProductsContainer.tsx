@@ -20,8 +20,8 @@ import { Button, buttonVariants } from '@/shared/components/ui/button';
 import { ApiError } from '@/shared/lib/api-client';
 import { cn } from '@/shared/lib/utils';
 import { formatPrice } from '../format-price';
-import { useArchiveProduct } from '../hooks/useArchiveProduct';
 import { useMyProducts } from '../hooks/useMyProducts';
+import { useUpdateProductStatus } from '../hooks/useUpdateProductStatus';
 import type { ProductListItem } from '../types';
 import { SellerProductsListSkeleton } from './SellerProductsListSkeleton';
 
@@ -81,8 +81,10 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
   const tShop = useTranslations('shop');
   const tCommon = useTranslations('common');
   const myProductsQuery = useMyProducts(shopId);
-  const archiveProduct = useArchiveProduct();
+  const archiveProductMutation = useUpdateProductStatus('ARCHIVED');
+  const reactivateProductMutation = useUpdateProductStatus('DRAFT');
   const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,7 +92,7 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
     setError(null);
     setArchivingId(id);
     try {
-      await archiveProduct.mutateAsync(id);
+      await archiveProductMutation.mutateAsync(id);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('sellerArchiveGenericError'));
     } finally {
@@ -103,6 +105,20 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
     setConfirmingId(null);
     if (id) {
       void handleArchive(id);
+    }
+  }
+
+  // Không cần AlertDialog xác nhận — khác "Lưu trữ", hành động này không
+  // ẩn sản phẩm khỏi seller hay mất dữ liệu gì (chỉ đưa ARCHIVED -> DRAFT).
+  async function handleReactivate(id: string) {
+    setError(null);
+    setReactivatingId(id);
+    try {
+      await reactivateProductMutation.mutateAsync(id);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t('sellerReactivateGenericError'));
+    } finally {
+      setReactivatingId(null);
     }
   }
 
@@ -179,15 +195,29 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                   >
                     {t('sellerEditAction')}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={product.status === 'ARCHIVED' || archivingId === product.id}
-                    onClick={() => setConfirmingId(product.id)}
-                  >
-                    {archivingId === product.id ? t('sellerArchiving') : t('sellerArchiveAction')}
-                  </Button>
+                  {product.status === 'ARCHIVED' ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={reactivatingId === product.id}
+                      onClick={() => void handleReactivate(product.id)}
+                    >
+                      {reactivatingId === product.id
+                        ? t('sellerReactivating')
+                        : t('sellerReactivateAction')}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={archivingId === product.id}
+                      onClick={() => setConfirmingId(product.id)}
+                    >
+                      {archivingId === product.id ? t('sellerArchiving') : t('sellerArchiveAction')}
+                    </Button>
+                  )}
                 </div>
               </li>
             );

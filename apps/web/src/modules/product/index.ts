@@ -18,13 +18,13 @@ export { ProductPagination } from './components/ProductPagination';
 export { ProductPreviewCard } from './components/ProductPreviewCard';
 export { SellerProductsContainer } from './components/SellerProductsContainer';
 export { SellerProductsListSkeleton } from './components/SellerProductsListSkeleton';
-export { useArchiveProduct } from './hooks/useArchiveProduct';
 export { useCategories } from './hooks/useCategories';
 export { useCreateProduct } from './hooks/useCreateProduct';
 export { useMyProducts } from './hooks/useMyProducts';
 export { useProduct } from './hooks/useProduct';
 export { useProducts } from './hooks/useProducts';
 export { useUpdateProduct } from './hooks/useUpdateProduct';
+export { useUpdateProductStatus } from './hooks/useUpdateProductStatus';
 export { useUploadSignature } from './hooks/useUploadSignature';
 export * as productService from './services/product.service';
 export type {
