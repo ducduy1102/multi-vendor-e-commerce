@@ -60,13 +60,22 @@ function validateAttributesAndVariants(
     }
     attributeNames.add(attribute.name);
 
-    if (new Set(attribute.values).size !== attribute.values.length) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Thuộc tính "${attribute.name}" có giá trị bị lặp lại`,
-        path: ['attributes', index, 'values'],
-      });
-    }
+    // So sánh không phân biệt hoa/thường ("M" và "m" cùng bị coi là trùng) —
+    // khớp với check FE ở ProductForm.tsx (cùng bất biến, 2 nơi validate
+    // cùng 1 rule không được lệch nhau).
+    const seenValues = new Map<string, number>();
+    attribute.values.forEach((value, valueIndex) => {
+      const key = value.trim().toLowerCase();
+      if (seenValues.has(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Giá trị "${value}" bị lặp lại trong thuộc tính "${attribute.name}" (không phân biệt hoa/thường)`,
+          path: ['attributes', index, 'values', valueIndex],
+        });
+      } else {
+        seenValues.set(key, valueIndex);
+      }
+    });
   });
 
   const skuSet = new Set<string>();
@@ -301,3 +310,17 @@ export const productListResponseSchema = z.object({
   limit: z.number(),
 });
 export type ProductListResponse = z.infer<typeof productListResponseSchema>;
+
+// Response của POST /uploads/signature (CloudinaryService.generateUploadSignature,
+// apps/api/src/shared/cloudinary/cloudinary.service.ts) — BE hiện định nghĩa
+// riêng 1 interface TS thuần cùng shape (không qua Zod, vì đây là response cố
+// định BE tự tạo ra, không phải input cần validate ở BE). Khai lại ở đây để
+// FE có 1 schema Zod duy nhất validate response này trước khi dùng (đúng
+// rules/general.md mục 4), không tự bịa lại field ở phía FE.
+export const uploadSignatureSchema = z.object({
+  signature: z.string(),
+  timestamp: z.number(),
+  apiKey: z.string(),
+  cloudName: z.string(),
+});
+export type UploadSignature = z.infer<typeof uploadSignatureSchema>;

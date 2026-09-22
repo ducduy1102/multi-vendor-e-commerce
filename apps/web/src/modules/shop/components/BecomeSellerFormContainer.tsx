@@ -3,28 +3,28 @@
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
-// Tái dùng qua barrel export công khai của module auth (@/modules/auth), không
-// reach vào file nội bộ (modules/auth/components/...) — coi barrel là "API
-// surface" của module, giống cách rules/general.md mục 1 cho phép lấy dữ liệu
-// module khác qua API/packages/types. Xác thực email vẫn là khái niệm của
-// domain auth (User.emailVerifiedAt), shop chỉ đọc lại để feature-gate.
-import { ResendVerificationButton, useAuthStore } from '@/modules/auth';
+// useAuthStore tái dùng qua barrel export công khai của module auth
+// (@/modules/auth), không reach vào file nội bộ — coi barrel là "API surface"
+// của module, giống cách rules/general.md mục 1 cho phép lấy dữ liệu module
+// khác qua API/packages/types. Xác thực email vẫn là khái niệm của domain
+// auth (User.emailVerifiedAt), shop chỉ đọc lại để feature-gate.
+import { useAuthStore } from '@/modules/auth';
 import { useRouter } from '@/i18n/navigation';
+import { Alert } from '@/shared/components/ui/alert';
 import { ApiError } from '@/shared/lib/api-client';
 
 import { useCreateShop } from '../hooks/useCreateShop';
 import { useMyShop } from '../hooks/useMyShop';
 import type { CreateShopInput } from '../types';
 import { BecomeSellerForm } from './BecomeSellerForm';
+import { ShopFormFieldsSkeleton } from './ShopFormFieldsSkeleton';
 
-// Nối BecomeSellerForm (UI + validate, Bước 3.6) với useCreateShop/useMyShop
-// (Bước 3.5) — đặt trong modules/ để app/seller/onboarding/page.tsx chỉ
-// compose, không viết logic nghiệp vụ trực tiếp (rules/frontend.md mục 1).
 export function BecomeSellerFormContainer() {
   const t = useTranslations('shop');
   const tCommon = useTranslations('common');
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const isHydrating = useAuthStore((state) => state.isHydrating);
   const myShopQuery = useMyShop();
   const createShop = useCreateShop();
   const [error, setError] = useState<string | null>(null);
@@ -47,10 +47,19 @@ export function BecomeSellerFormContainer() {
     }
   }
 
-  // isPending lúc đầu (chưa biết đã có shop chưa) hoặc đã có data (đang chờ
-  // useEffect điều hướng ở trên) — không render form/thông báo nhầm.
-  if (myShopQuery.isPending || myShopQuery.data) {
-    return <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>;
+  // isHydrating: chưa biết chắc user đã xác thực email hay chưa (xem
+  // auth.store.ts) — đánh giá `user?.emailVerifiedAt` lúc này dễ hiện nhầm
+  // "chưa xác thực" cho user thật ra đã xác thực, chỉ vì AuthHydrator chưa
+  // kịp trả lời. isPending lúc đầu (chưa biết đã có shop chưa) hoặc đã có
+  // data (đang chờ useEffect điều hướng ở trên) — không render form/thông
+  // báo nhầm.
+  if (isHydrating || myShopQuery.isPending || myShopQuery.data) {
+    return (
+      <div aria-busy="true">
+        <span className="sr-only">{tCommon('loading')}</span>
+        <ShopFormFieldsSkeleton />
+      </div>
+    );
   }
 
   // `getMyShop()` chỉ trả null cho 404 (chưa có shop) — lỗi khác (401 chưa
@@ -61,18 +70,23 @@ export function BecomeSellerFormContainer() {
     return <p className="text-sm text-destructive">{t('loadShopError')}</p>;
   }
 
+  // Nút "Gửi lại xác thực" đã có sẵn ở EmailVerificationBanner (toàn app,
+  // app/[locale]/layout.tsx) — hiện ngay phía trên form này khi email chưa
+  // xác thực, nên ở đây chỉ giải thích ngắn gọn vì sao form đang khoá, không
+  // lặp lại CTA thứ 2 (UI polish, chốt sau audit).
   if (!user?.emailVerifiedAt) {
     return (
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">{t('becomeSellerEmailNotVerifiedMessage')}</p>
-        <ResendVerificationButton />
-      </div>
+      <p className="text-sm text-muted-foreground">{t('becomeSellerEmailNotVerifiedShort')}</p>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <Alert variant="destructive" role="alert">
+          {error}
+        </Alert>
+      )}
       <BecomeSellerForm onSubmit={handleSubmit} isSubmitting={createShop.isPending} />
     </div>
   );

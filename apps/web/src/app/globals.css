@@ -1,13 +1,13 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -39,6 +39,13 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-brand: var(--brand);
+  --color-brand-fixed: var(--brand-fixed);
+  --color-brand-fixed-foreground: var(--brand-fixed-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -55,8 +62,11 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  /* --primary = --brand (re-design.md: dùng màu chủ đạo làm điểm nhấn thị
+     giác chính) — Button/dropdown/focus-ring đã wire sẵn theo --primary nên
+     tự đổi màu theo, không phải sửa từng component. */
+  --primary: var(--brand);
+  --primary-foreground: #ffffff;
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -66,12 +76,38 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* Ring theo brand thay vì xám trung tính — trạng thái focus cũng là 1 chỗ
+     re-design.md muốn thấy màu chủ đạo. */
+  --ring: var(--brand);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* Xanh ngọc thương hiệu "Chốt" — hex thật lấy từ .claude/icon/chot-*.svg,
+     giữ nguyên hex (không quy đổi sang oklch) để không trôi màu so với file
+     gốc. Dùng cho wordmark cạnh ChotMark — badge/vòng/then bên trong
+     ChotMark tự vẽ màu cố định riêng, không đọc token này. */
+  --brand: #0f766e;
+  /* Cặp màu thương hiệu CỐ ĐỊNH — không khai lại trong .dark (khác --brand,
+     --primary vốn cố ý sáng hơn ở dark mode để đủ tương phản trên nền gần
+     đen). Dùng cho bề mặt LỚN cần giữ đúng màu thương hiệu bất kể theme (vd
+     nền HomeBanner) — nếu nền không đổi theo theme thì cặp foreground đi
+     cùng cũng phải cố định theo, không dùng lại --primary-foreground (vốn
+     tự đảo sáng/tối để pair với --primary, sẽ ra chữ tối trên nền tối nếu
+     lỡ dùng nhầm ở đây). */
+  --brand-fixed: #0f766e;
+  --brand-fixed-foreground: #ffffff;
+  /* success dùng chung hex brand (đã đọc là "tích cực" sẵn) — tách tên
+     riêng để code rõ nghĩa (`text-success`) hơn là `text-brand` khi thật sự
+     đang báo thành công, không phải khi đang thể hiện thương hiệu. */
+  --success: var(--brand);
+  --success-foreground: #ffffff;
+  /* warning: chính thức hoá màu amber đang bị hardcode rải rác (banner email
+     chưa xác thực, banner shop chưa duyệt) thành 1 token duy nhất, theo đúng
+     convention --destructive (dùng ở opacity thấp cho nền, đậm cho chữ). */
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -90,8 +126,8 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: var(--brand);
+  --primary-foreground: #062420;
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -101,12 +137,19 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: var(--brand);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* Bản sáng hơn cho nền tối — giữ đủ tương phản, không dùng lại #0f766e
+     (quá trầm trên nền gần đen). Cùng logic đã áp dụng cho nút primary. */
+  --brand: #5eead4;
+  --success: var(--brand);
+  --success-foreground: #062420;
+  --warning: #fbbf24;
+  --warning-foreground: #451a03;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);

@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
+import { Alert } from "@/shared/components/ui/alert";
 import { useAuthStore } from "../store/auth.store";
 import { ResendVerificationButton } from "./ResendVerificationButton";
 
@@ -20,9 +21,12 @@ export function EmailVerificationBanner() {
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-3 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+    <Alert
+      variant="warning"
+      className="flex flex-wrap items-center justify-center gap-3 rounded-none border-x-0 border-t-0"
+    >
       <span>{t("emailVerificationBannerMessage")}</span>
       <ResendVerificationButton size="sm" />
-    </div>
+    </Alert>
   );
 }

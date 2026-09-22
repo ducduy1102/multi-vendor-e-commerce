@@ -3,19 +3,33 @@
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
-import { useRouter } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
+import { Alert } from '@/shared/components/ui/alert';
+import { Skeleton } from '@/shared/components/ui/skeleton';
 import { ApiError } from '@/shared/lib/api-client';
 
 import { useMyShop } from '../hooks/useMyShop';
 import { useUpdateShop } from '../hooks/useUpdateShop';
-import type { UpdateShopInput } from '../types';
+import type { Shop, UpdateShopInput } from '../types';
+import { ShopFormFieldsSkeleton } from './ShopFormFieldsSkeleton';
 import { UpdateShopForm } from './UpdateShopForm';
+
+const SHOP_STATUS_ALERT = {
+  PENDING: { variant: 'warning', messageKey: 'shopStatusPendingMessage' },
+  APPROVED: null,
+  REJECTED: { variant: 'destructive', messageKey: 'shopStatusRejectedMessage' },
+  SUSPENDED: { variant: 'destructive', messageKey: 'shopStatusSuspendedMessage' },
+} as const satisfies Record<
+  Shop['status'],
+  { variant: 'warning' | 'destructive'; messageKey: string } | null
+>;
 
 // Nối UpdateShopForm (Bước 3.8) với useMyShop/useUpdateShop (Bước 3.5) — đặt
 // trong modules/ để app/seller/shop/page.tsx chỉ compose, không viết logic
 // nghiệp vụ trực tiếp (rules/frontend.md mục 1).
 export function ShopDashboardContainer() {
   const t = useTranslations('shop');
+  const tProduct = useTranslations('product');
   const tCommon = useTranslations('common');
   const router = useRouter();
   const myShopQuery = useMyShop();
@@ -50,27 +64,50 @@ export function ShopDashboardContainer() {
     if (myShopQuery.isError) {
       return <p className="text-sm text-destructive">{t('loadShopError')}</p>;
     }
-    return <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>;
+    return (
+      <div aria-busy="true" className="flex flex-col gap-6">
+        <span className="sr-only">{tCommon('loading')}</span>
+        <div aria-hidden="true" className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <Skeleton className="h-7 w-40 motion-reduce:animate-none" />
+            <Skeleton className="h-4 w-24 motion-reduce:animate-none" />
+          </div>
+          <Skeleton className="h-4 w-28 motion-reduce:animate-none" />
+        </div>
+        <ShopFormFieldsSkeleton />
+      </div>
+    );
   }
 
   const shop = myShopQuery.data;
+  const statusAlert = SHOP_STATUS_ALERT[shop.status];
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">{shop.name}</h1>
-        <p className="text-sm text-muted-foreground">/{shop.slug}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="truncate text-xl font-semibold">{shop.name}</h1>
+          <p className="truncate text-sm text-muted-foreground">/{shop.slug}</p>
+        </div>
+        <Link
+          href="/seller/products"
+          className="shrink-0 text-sm font-medium text-foreground hover:underline"
+        >
+          {tProduct('manageProductsLink')}
+        </Link>
       </div>
 
-      {shop.status !== 'APPROVED' && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-          {t('shopStatusPendingMessage')}
-        </div>
-      )}
+      {statusAlert && <Alert variant={statusAlert.variant}>{t(statusAlert.messageKey)}</Alert>}
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <Alert variant="destructive" role="alert">
+          {error}
+        </Alert>
+      )}
       {successMessage && (
-        <p className="text-sm text-emerald-600 dark:text-emerald-400">{successMessage}</p>
+        <Alert variant="success" role="status">
+          {successMessage}
+        </Alert>
       )}
 
       <UpdateShopForm

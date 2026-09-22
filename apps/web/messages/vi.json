@@ -1,8 +1,31 @@
 {
+  "metadata": {
+    "description": "Sàn thương mại điện tử đa gian hàng - mua sắm từ nhiều shop, nhiều ngành hàng trên cùng một nền tảng."
+  },
   "common": {
     "loading": "Đang tải...",
     "or": "hoặc",
-    "toggleTheme": "Chuyển đổi giao diện sáng/tối"
+    "toggleTheme": "Chuyển đổi giao diện sáng/tối",
+    "cancel": "Huỷ"
+  },
+  "error": {
+    "title": "Đã có lỗi xảy ra",
+    "description": "Không tải được nội dung trang này. Vui lòng thử lại.",
+    "retry": "Thử lại"
+  },
+  "header": {
+    "siteName": "Chốt",
+    "becomeSellerLink": "Trở thành người bán",
+    "myAccountLink": "Trang cá nhân",
+    "myProductsLink": "Sản phẩm của tôi",
+    "productsLink": "Sản phẩm",
+    "homeLink": "Trang chủ",
+    "accountTabLabel": "Tài khoản",
+    "mobileNavLabel": "Điều hướng nhanh"
+  },
+  "home": {
+    "bannerHeading": "Chốt đơn nhanh, mua sắm từ nhiều shop",
+    "bannerCta": "Khám phá sản phẩm"
   },
   "auth": {
     "loginTitle": "Đăng nhập",
@@ -13,6 +36,8 @@
     "loginGenericError": "Đăng nhập thất bại, vui lòng thử lại",
     "loginGoogleErrorAccountNotActive": "Tài khoản của bạn hiện không hoạt động, vui lòng liên hệ hỗ trợ.",
     "loginGoogleErrorFailed": "Đăng nhập bằng Google thất bại, vui lòng thử lại.",
+    "loginNoAccountPrompt": "Chưa có tài khoản?",
+    "loginRegisterLink": "Đăng ký ngay",
 
     "registerTitle": "Đăng ký",
     "registerNameLabel": "Họ tên",
@@ -22,6 +47,8 @@
     "registerSubmit": "Đăng ký",
     "registerSubmitting": "Đang đăng ký...",
     "registerGenericError": "Đăng ký thất bại, vui lòng thử lại",
+    "registerHasAccountPrompt": "Đã có tài khoản?",
+    "registerLoginLink": "Đăng nhập ngay",
 
     "logoutSubmit": "Đăng xuất",
     "logoutSubmitting": "Đang đăng xuất...",
@@ -30,6 +57,7 @@
     "guestRegisterLink": "Đăng ký",
 
     "googleSignIn": "Đăng nhập với Google",
+    "registerGoogleSignIn": "Đăng ký với Google",
 
     "verifyEmailTitle": "Xác thực email",
     "verifyEmailMissingToken": "Thiếu token xác thực trong đường dẫn",
@@ -54,14 +82,101 @@
     "becomeSellerSubmit": "Tạo shop",
     "becomeSellerSubmitting": "Đang tạo shop...",
     "becomeSellerGenericError": "Tạo shop thất bại, vui lòng thử lại",
-    "becomeSellerEmailNotVerifiedMessage": "Bạn cần xác thực email trước khi tạo shop.",
+    "becomeSellerEmailNotVerifiedShort": "Xác thực email để tiếp tục.",
+
+    "shopInfoLink": "Thông tin shop",
 
     "loadShopError": "Không tải được thông tin shop, vui lòng đăng nhập lại",
 
     "shopStatusPendingMessage": "Shop của bạn đang chờ duyệt. Một số tính năng sẽ mở khi được duyệt.",
+    "shopStatusRejectedMessage": "Shop của bạn đã bị từ chối duyệt. Hãy cập nhật lại thông tin hoặc liên hệ quản trị viên.",
+    "shopStatusSuspendedMessage": "Shop của bạn đang bị đình chỉ. Một số tính năng đã bị tạm khoá.",
     "updateShopSubmit": "Lưu thay đổi",
     "updateShopSubmitting": "Đang lưu...",
     "updateShopSuccess": "Đã lưu thay đổi",
     "updateShopGenericError": "Cập nhật shop thất bại, vui lòng thử lại"
+  },
+  "product": {
+    "homeCategoriesTitle": "Danh mục",
+    "homeNewestTitle": "Sản phẩm mới nhất",
+    "viewAllLink": "Xem tất cả",
+    "homeEmptyState": "Chưa có sản phẩm nào.",
+    "homeLoadingSrOnly": "Đang tải danh mục và sản phẩm...",
+
+    "listTitle": "Tất cả sản phẩm",
+    "resultCount": "{count} sản phẩm",
+    "filterEmptyState": "Không có sản phẩm khớp bộ lọc, thử điều chỉnh lại.",
+    "filterRemoveCategory": "Xoá bộ lọc danh mục",
+    "filterRemovePrice": "Xoá bộ lọc giá",
+    "productsLoadingSrOnly": "Đang tải sản phẩm...",
+    "filterCategoryLabel": "Danh mục",
+    "filterAllCategories": "Tất cả danh mục",
+    "filterPriceLabel": "Khoảng giá",
+    "filterMinPriceLabel": "Giá từ",
+    "filterMaxPriceLabel": "Giá đến",
+    "pricePresetUnder1m": "Dưới 1 triệu",
+    "pricePreset1mTo5m": "1 – 5 triệu",
+    "pricePreset5mTo10m": "5 – 10 triệu",
+    "pricePreset10mTo20m": "10 – 20 triệu",
+    "pricePresetOver20m": "Trên 20 triệu",
+    "filterSortLabel": "Sắp xếp",
+    "sortNewest": "Mới nhất",
+    "sortPriceAsc": "Giá tăng dần",
+    "sortPriceDesc": "Giá giảm dần",
+    "paginationStatus": "Trang {page}/{totalPages}",
+    "paginationPrev": "Trước",
+    "paginationNext": "Sau",
+
+    "sellerProductsTitle": "Sản phẩm của tôi",
+    "sellerCreateProduct": "Tạo sản phẩm mới",
+    "sellerLoadProductsError": "Không tải được danh sách sản phẩm, vui lòng thử lại",
+    "sellerEmptyState": "Bạn chưa có sản phẩm nào. Bấm \"Tạo sản phẩm mới\" để bắt đầu.",
+    "sellerEditAction": "Sửa",
+    "sellerArchiveAction": "Lưu trữ",
+    "sellerArchiving": "Đang lưu trữ...",
+    "sellerArchiveConfirm": "Lưu trữ sản phẩm này? Sản phẩm sẽ không còn hiển thị công khai.",
+    "sellerArchiveGenericError": "Lưu trữ sản phẩm thất bại, vui lòng thử lại",
+    "sellerReactivateAction": "Mở lại",
+    "sellerReactivating": "Đang mở lại...",
+    "sellerReactivateGenericError": "Mở lại sản phẩm thất bại, vui lòng thử lại",
+    "statusDraft": "Nháp",
+    "statusPublished": "Đang bán",
+    "statusArchived": "Đã lưu trữ",
+    "manageProductsLink": "Quản lý sản phẩm",
+
+    "productFormNameLabel": "Tên sản phẩm",
+    "productFormCategoryLabel": "Danh mục",
+    "productFormCategoryPlaceholder": "-- Chọn danh mục --",
+    "productFormDescriptionLabel": "Mô tả",
+    "productFormStatusLabel": "Trạng thái",
+    "productFormAttributesTitle": "Thuộc tính",
+    "productFormAttributesEmpty": "Chưa có thuộc tính nào — sản phẩm sẽ dùng 1 biến thể mặc định (không phân loại theo màu/size...).",
+    "productFormAddAttribute": "+ Thêm thuộc tính",
+    "productFormRemoveAttribute": "Xoá thuộc tính",
+    "productFormAddValue": "+ Thêm giá trị",
+    "productFormRemoveValue": "Xoá",
+    "productFormAttributeNamePlaceholder": "Tên thuộc tính (vd: Màu sắc)",
+    "productFormValuePlaceholder": "Giá trị (vd: Đỏ)",
+    "productFormVariantsTitle": "Biến thể",
+    "productFormVariantDefaultLabel": "Mặc định (không có thuộc tính)",
+    "productFormComboHeader": "Tổ hợp",
+    "productFormSkuLabel": "SKU",
+    "productFormPriceLabel": "Giá",
+    "productFormStockLabel": "Tồn kho",
+    "productFormImageLabel": "Ảnh",
+    "productFormImageUpload": "Chọn ảnh",
+    "productFormImageChange": "Đổi ảnh",
+    "productFormImageUploading": "Đang tải lên...",
+    "productFormImageRemove": "Xoá ảnh",
+    "productFormImageError": "Tải ảnh thất bại, thử lại",
+    "productFormSubmitCreate": "Tạo sản phẩm",
+    "productFormSubmitCreating": "Đang tạo...",
+    "productFormSubmitUpdate": "Lưu thay đổi",
+    "productFormSubmitUpdating": "Đang lưu...",
+    "productFormCreateGenericError": "Tạo sản phẩm thất bại, vui lòng thử lại",
+    "productFormUpdateGenericError": "Cập nhật sản phẩm thất bại, vui lòng thử lại",
+    "createProductTitle": "Tạo sản phẩm mới",
+    "editProductTitle": "Sửa sản phẩm",
+    "loadProductError": "Không tải được sản phẩm, vui lòng thử lại"
   }
 }

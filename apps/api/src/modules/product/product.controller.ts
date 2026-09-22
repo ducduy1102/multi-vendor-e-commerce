@@ -109,6 +109,13 @@ const PRODUCT_CARD_EXAMPLE = {
   imageUrl: null,
 };
 
+const CATEGORY_EXAMPLE = {
+  id: PRODUCT_EXAMPLE.categoryId,
+  name: 'Điện thoại',
+  slug: 'dien-thoai',
+  parentId: null,
+};
+
 const UPLOAD_SIGNATURE_EXAMPLE = {
   signature: '12e56f42a1b2c3d4e5f6...',
   timestamp: 1_789_473_380,
@@ -238,6 +245,22 @@ export class ProductController {
     return { product };
   }
 
+  @Get('categories')
+  @ApiOperation({
+    summary:
+      'Danh sách category (chỉ đọc — chưa có CRUD, Admin category management để dành Tuần 11)',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: { success: true, data: { categories: [CATEGORY_EXAMPLE] } },
+    },
+  })
+  async listCategories() {
+    const categories = await this.productService.getCategories();
+    return { categories };
+  }
+
   @Get('products')
   @ApiOperation({
     summary:
@@ -307,7 +330,10 @@ export class ProductController {
       'Lấy chữ ký signed upload Cloudinary — FE tự upload thẳng lên Cloudinary bằng chữ ký này, không qua BE',
   })
   @ApiResponse({
-    status: 200,
+    // @Post() không khai @HttpCode() tường minh -> NestJS mặc định 201, đã
+    // verify thật bằng curl ở Week4.md Bước 2.15 (không phải 200 dù chỉ ký,
+    // không thực sự "tạo" resource nào ở BE).
+    status: 201,
     schema: { example: { success: true, data: UPLOAD_SIGNATURE_EXAMPLE } },
   })
   @ApiResponse({ status: 403, description: 'Email chưa xác thực' })

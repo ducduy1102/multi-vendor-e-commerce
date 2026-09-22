@@ -54,6 +54,9 @@ OK: `/shops/:shopId/products`. Tránh: `/shops/:id/products/:id/variants/:id/att
 **8. Không trả thẳng Prisma model ra response** — luôn qua DTO/serializer chọn field cần trả, tránh lộ field nhạy cảm (`passwordHash`, `refreshTokenHash`). Khớp `rules/backend.md` mục 4 "chỉ select field cần dùng".
 
 **9. Không tin dữ liệu định danh quyền hạn từ client.** `shopId`, `userId`, `role` dùng để phân quyền phải lấy từ `@CurrentUser()` (JWT payload) hoặc đối chiếu DB ở service layer — không lấy trực tiếp từ request body/query dù client có gửi lên. Đúng `rules/backend.md` mục 5.
+  - Nếu **chỉ 1 endpoint** trong module cần check ownership, check thẳng trong service (`findFirst`/`findUnique` + so sánh, xem `ShopService.updateShop` — không tách Guard, đúng nguyên tắc "không tạo abstraction khi chỉ 1 chỗ dùng" của `rules/general.md` mục 1).
+  - Nếu **≥ 2 endpoint** cùng module cần check ownership (tạo/sửa/xoá, upload ảnh...), tách 1 Guard dùng chung (xem `ShopOwnerGuard`) — tự nhận diện định danh theo route: đọc trực tiếp từ route param nếu route lồng (vd `:shopId`), hoặc tự tra ngược theo `:id` nếu route phẳng (vd `product.shopId` từ `productId`). Gán kết quả đã resolve vào `request` qua 1 field riêng + 1 param decorator cặp theo (khác `@CurrentUser()`), để Controller/Service dùng lại thay vì query DB lần 2 cho cùng việc.
+  - Route **public nhưng cần biết viewer nếu có đăng nhập** (không bắt buộc — vd chủ shop xem được resource nháp của mình qua đúng route public guest cũng gọi được): dùng Guard `extends AuthGuard('jwt')` override `handleRequest()` để không throw khi thiếu/sai token (xem `OptionalJwtAuthGuard`), không viết Strategy riêng.
 
 **10. Idempotency cho endpoint xử lý tiền/webhook.** Webhook VNPay/Momo (Tuần 7) có thể bị gọi lại nhiều lần cho cùng 1 giao dịch — check `transactionId` đã xử lý chưa trước khi update `Payment`/`Order`, không cộng dồn/trừ kho 2 lần.
 

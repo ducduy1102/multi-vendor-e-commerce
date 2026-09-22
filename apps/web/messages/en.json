@@ -1,8 +1,31 @@
 {
+  "metadata": {
+    "description": "Multi-vendor marketplace - shop from many independent stores and categories in one place."
+  },
   "common": {
     "loading": "Loading...",
     "or": "or",
-    "toggleTheme": "Toggle light/dark theme"
+    "toggleTheme": "Toggle light/dark theme",
+    "cancel": "Cancel"
+  },
+  "error": {
+    "title": "Something went wrong",
+    "description": "We couldn't load this page. Please try again.",
+    "retry": "Try again"
+  },
+  "header": {
+    "siteName": "Chốt",
+    "becomeSellerLink": "Become a seller",
+    "myAccountLink": "My account",
+    "myProductsLink": "My products",
+    "productsLink": "Products",
+    "homeLink": "Home",
+    "accountTabLabel": "Account",
+    "mobileNavLabel": "Quick navigation"
+  },
+  "home": {
+    "bannerHeading": "Shop from many stores, check out fast",
+    "bannerCta": "Explore products"
   },
   "auth": {
     "loginTitle": "Log in",
@@ -13,6 +36,8 @@
     "loginGenericError": "Login failed, please try again",
     "loginGoogleErrorAccountNotActive": "Your account is currently inactive. Please contact support.",
     "loginGoogleErrorFailed": "Google sign-in failed, please try again.",
+    "loginNoAccountPrompt": "Don't have an account?",
+    "loginRegisterLink": "Sign up now",
 
     "registerTitle": "Sign up",
     "registerNameLabel": "Full name",
@@ -22,6 +47,8 @@
     "registerSubmit": "Sign up",
     "registerSubmitting": "Signing up...",
     "registerGenericError": "Sign-up failed, please try again",
+    "registerHasAccountPrompt": "Already have an account?",
+    "registerLoginLink": "Log in now",
 
     "logoutSubmit": "Log out",
     "logoutSubmitting": "Logging out...",
@@ -30,6 +57,7 @@
     "guestRegisterLink": "Sign up",
 
     "googleSignIn": "Sign in with Google",
+    "registerGoogleSignIn": "Sign up with Google",
 
     "verifyEmailTitle": "Verify email",
     "verifyEmailMissingToken": "Missing verification token in the link",
@@ -54,14 +82,101 @@
     "becomeSellerSubmit": "Create shop",
     "becomeSellerSubmitting": "Creating shop...",
     "becomeSellerGenericError": "Failed to create shop, please try again",
-    "becomeSellerEmailNotVerifiedMessage": "You need to verify your email before creating a shop.",
+    "becomeSellerEmailNotVerifiedShort": "Verify your email to continue.",
+
+    "shopInfoLink": "Shop info",
 
     "loadShopError": "Couldn't load your shop info, please log in again",
 
     "shopStatusPendingMessage": "Your shop is pending approval. Some features will unlock once it's approved.",
+    "shopStatusRejectedMessage": "Your shop was rejected. Update your shop info or contact an admin.",
+    "shopStatusSuspendedMessage": "Your shop has been suspended. Some features are temporarily disabled.",
     "updateShopSubmit": "Save changes",
     "updateShopSubmitting": "Saving...",
     "updateShopSuccess": "Changes saved",
     "updateShopGenericError": "Failed to update shop, please try again"
+  },
+  "product": {
+    "homeCategoriesTitle": "Categories",
+    "homeNewestTitle": "Newest products",
+    "viewAllLink": "View all",
+    "homeEmptyState": "No products yet.",
+    "homeLoadingSrOnly": "Loading categories and products...",
+
+    "listTitle": "All products",
+    "resultCount": "{count} products",
+    "filterEmptyState": "No products match this filter. Try adjusting it.",
+    "filterRemoveCategory": "Remove category filter",
+    "filterRemovePrice": "Remove price filter",
+    "productsLoadingSrOnly": "Loading products...",
+    "filterCategoryLabel": "Category",
+    "filterAllCategories": "All categories",
+    "filterPriceLabel": "Price range",
+    "filterMinPriceLabel": "Min price",
+    "filterMaxPriceLabel": "Max price",
+    "pricePresetUnder1m": "Under 1 million",
+    "pricePreset1mTo5m": "1 – 5 million",
+    "pricePreset5mTo10m": "5 – 10 million",
+    "pricePreset10mTo20m": "10 – 20 million",
+    "pricePresetOver20m": "Over 20 million",
+    "filterSortLabel": "Sort by",
+    "sortNewest": "Newest",
+    "sortPriceAsc": "Price: low to high",
+    "sortPriceDesc": "Price: high to low",
+    "paginationStatus": "Page {page}/{totalPages}",
+    "paginationPrev": "Previous",
+    "paginationNext": "Next",
+
+    "sellerProductsTitle": "My products",
+    "sellerCreateProduct": "Create new product",
+    "sellerLoadProductsError": "Couldn't load your products, please try again",
+    "sellerEmptyState": "You don't have any products yet. Click \"Create new product\" to get started.",
+    "sellerEditAction": "Edit",
+    "sellerArchiveAction": "Archive",
+    "sellerArchiving": "Archiving...",
+    "sellerArchiveConfirm": "Archive this product? It will no longer be visible to the public.",
+    "sellerArchiveGenericError": "Failed to archive the product, please try again",
+    "sellerReactivateAction": "Reopen",
+    "sellerReactivating": "Reopening...",
+    "sellerReactivateGenericError": "Failed to reopen the product, please try again",
+    "statusDraft": "Draft",
+    "statusPublished": "Published",
+    "statusArchived": "Archived",
+    "manageProductsLink": "Manage products",
+
+    "productFormNameLabel": "Product name",
+    "productFormCategoryLabel": "Category",
+    "productFormCategoryPlaceholder": "-- Select a category --",
+    "productFormDescriptionLabel": "Description",
+    "productFormStatusLabel": "Status",
+    "productFormAttributesTitle": "Attributes",
+    "productFormAttributesEmpty": "No attributes yet — the product will use 1 default variant (no color/size breakdown).",
+    "productFormAddAttribute": "+ Add attribute",
+    "productFormRemoveAttribute": "Remove attribute",
+    "productFormAddValue": "+ Add value",
+    "productFormRemoveValue": "Remove",
+    "productFormAttributeNamePlaceholder": "Attribute name (e.g. Color)",
+    "productFormValuePlaceholder": "Value (e.g. Red)",
+    "productFormVariantsTitle": "Variants",
+    "productFormVariantDefaultLabel": "Default (no attributes)",
+    "productFormComboHeader": "Combination",
+    "productFormSkuLabel": "SKU",
+    "productFormPriceLabel": "Price",
+    "productFormStockLabel": "Stock",
+    "productFormImageLabel": "Image",
+    "productFormImageUpload": "Choose image",
+    "productFormImageChange": "Change image",
+    "productFormImageUploading": "Uploading...",
+    "productFormImageRemove": "Remove image",
+    "productFormImageError": "Upload failed, try again",
+    "productFormSubmitCreate": "Create product",
+    "productFormSubmitCreating": "Creating...",
+    "productFormSubmitUpdate": "Save changes",
+    "productFormSubmitUpdating": "Saving...",
+    "productFormCreateGenericError": "Failed to create the product, please try again",
+    "productFormUpdateGenericError": "Failed to update the product, please try again",
+    "createProductTitle": "Create new product",
+    "editProductTitle": "Edit product",
+    "loadProductError": "Couldn't load the product, please try again"
   }
 }
