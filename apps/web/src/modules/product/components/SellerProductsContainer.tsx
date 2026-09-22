@@ -97,7 +97,10 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
       ) : myProductsQuery.data.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('sellerEmptyState')}</p>
       ) : (
-        <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul
+          role="list"
+          className="flex flex-col divide-y divide-border rounded-lg border border-border"
+        >
           {myProductsQuery.data.map((product) => {
             const priceLabel =
               product.minPrice === product.maxPrice
@@ -105,13 +108,18 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                 : `${formatPrice(product.minPrice)} - ${formatPrice(product.maxPrice)}`;
 
             return (
-              <div key={product.id} className="flex items-center justify-between gap-4 px-4 py-3">
-                <div className="flex flex-col gap-1">
-                  <span className="text-sm font-medium text-foreground">{product.name}</span>
+              <li key={product.id} className="flex items-center justify-between gap-4 px-4 py-3">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span
+                    className="truncate text-sm font-medium text-foreground"
+                    title={product.name}
+                  >
+                    {product.name}
+                  </span>
                   <span className="text-xs text-muted-foreground">{priceLabel}</span>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex shrink-0 items-center gap-3">
                   <Badge
                     variant={STATUS_BADGE_VARIANT[product.status]}
                     className={STATUS_BADGE_CLASS[product.status]}
@@ -134,10 +142,10 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                     {archivingId === product.id ? t('sellerArchiving') : t('sellerArchiveAction')}
                   </Button>
                 </div>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </div>
   );
