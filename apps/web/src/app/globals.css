@@ -1,6 +1,6 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -40,6 +40,8 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   --color-brand: var(--brand);
+  --color-brand-fixed: var(--brand-fixed);
+  --color-brand-fixed-foreground: var(--brand-fixed-foreground);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
@@ -87,6 +89,15 @@
      gốc. Dùng cho wordmark cạnh ChotMark — badge/vòng/then bên trong
      ChotMark tự vẽ màu cố định riêng, không đọc token này. */
   --brand: #0f766e;
+  /* Cặp màu thương hiệu CỐ ĐỊNH — không khai lại trong .dark (khác --brand,
+     --primary vốn cố ý sáng hơn ở dark mode để đủ tương phản trên nền gần
+     đen). Dùng cho bề mặt LỚN cần giữ đúng màu thương hiệu bất kể theme (vd
+     nền HomeBanner) — nếu nền không đổi theo theme thì cặp foreground đi
+     cùng cũng phải cố định theo, không dùng lại --primary-foreground (vốn
+     tự đảo sáng/tối để pair với --primary, sẽ ra chữ tối trên nền tối nếu
+     lỡ dùng nhầm ở đây). */
+  --brand-fixed: #0f766e;
+  --brand-fixed-foreground: #ffffff;
   /* success dùng chung hex brand (đã đọc là "tích cực" sẵn) — tách tên
      riêng để code rõ nghĩa (`text-success`) hơn là `text-brand` khi thật sự
      đang báo thành công, không phải khi đang thể hiện thương hiệu. */
