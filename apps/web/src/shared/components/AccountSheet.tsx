@@ -29,8 +29,9 @@ interface AccountSheetProps {
 // Mở từ tab "Tài khoản" của BottomTabBar (shared/components/BottomTabBar.tsx)
 // — Sheet duy nhất cho mobile, gộp cả ThemeToggle/LocaleSwitcher (trước ở
 // Sheet hamburger cũ) lẫn menu tài khoản (trước ở DropdownMenu desktop của
-// Header.tsx). shopLink dùng lại đúng useSellerChannelLink() — cùng nguồn
-// với Header.tsx, không tự tính lại href/label riêng.
+// Header.tsx). shopLink lấy nguyên từ useSellerChannelLink() (kèm label đã
+// dịch sẵn) — cùng 1 hook dùng chung với Header.tsx, không tự tính lại
+// href/label riêng ở đây.
 export function AccountSheet({ triggerClassName }: AccountSheetProps) {
   const t = useTranslations('header');
   const tAuth = useTranslations('auth');
@@ -40,12 +41,7 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
   const isAccountSheetOpen = useUIStore((state) => state.isAccountSheetOpen);
   const setAccountSheetOpen = useUIStore((state) => state.setAccountSheetOpen);
 
-  const sellerChannel = useSellerChannelLink();
-  const shopLink = sellerChannel && {
-    href: sellerChannel.href,
-    icon: sellerChannel.icon,
-    label: sellerChannel.hasShop ? t('myProductsLink') : t('becomeSellerLink'),
-  };
+  const shopLink = useSellerChannelLink();
 
   return (
     <Sheet open={isAccountSheetOpen} onOpenChange={setAccountSheetOpen}>

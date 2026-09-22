@@ -69,17 +69,11 @@ export function Header() {
   const user = useAuthStore((state) => state.user);
   const isHydrating = useAuthStore((state) => state.isHydrating);
 
-  // Logic href/icon (guest -> onboarding, có shop -> quản lý sản phẩm...)
-  // giờ dùng chung với HomeBanner (shared/hooks/useSellerChannelLink.ts) —
-  // ở đây chỉ còn gắn thêm label theo ngữ cảnh Header (dropdown/nav ngang
-  // hàng/Sheet đều dùng "Trở thành người bán"/"Sản phẩm của tôi", khác chữ
-  // cố định "Bán hàng cùng Chốt" của banner).
-  const sellerChannel = useSellerChannelLink();
-  const shopLink = sellerChannel && {
-    href: sellerChannel.href,
-    icon: sellerChannel.icon,
-    label: sellerChannel.hasShop ? t('myProductsLink') : t('becomeSellerLink'),
-  };
+  // href/icon/label (guest -> onboarding, có shop -> quản lý sản phẩm...)
+  // dùng chung với AccountSheet.tsx qua đúng 1 hook — useSellerChannelLink
+  // tự tính sẵn label (namespace 'header'), không tự lặp lại điều kiện
+  // hasShop ? myProductsLink : becomeSellerLink ở đây nữa.
+  const shopLink = useSellerChannelLink();
 
   // Đặt SAU mọi hook (Rules of Hooks — không được return sớm trước khi các
   // hook ở trên đã chạy đủ, dù trang này thường chưa đăng nhập nên

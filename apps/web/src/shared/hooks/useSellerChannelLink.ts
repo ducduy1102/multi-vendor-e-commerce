@@ -1,6 +1,7 @@
 'use client';
 
 import { Store, UserPlus, type LucideIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { useAuthStore } from '@/modules/auth';
 import { useMyShop } from '@/modules/shop';
@@ -9,6 +10,7 @@ export interface SellerChannelLink {
   href: '/seller/products' | '/seller/onboarding';
   icon: LucideIcon;
   hasShop: boolean;
+  label: string;
 }
 
 // Trích từ Header.tsx — lúc tách ra dùng chung với HomeBanner ("UI polish
@@ -21,15 +23,27 @@ export interface SellerChannelLink {
 // tự redirect sang /login, không cần hook tự check thêm. null chỉ còn xảy
 // ra khi đã đăng nhập nhưng useMyShop() chưa resolve xong (tránh nhấp nháy
 // sai link rồi đổi ngay sau).
+//
+// `label` tự tính sẵn ở đây (namespace 'header' cố định — cả Header.tsx lẫn
+// AccountSheet.tsx đều dùng đúng 2 key này, không có nhu cầu khác biệt) —
+// trước đó Header.tsx và AccountSheet.tsx mỗi nơi tự lặp lại y hệt đoạn
+// `hasShop ? t('myProductsLink') : t('becomeSellerLink')`, dễ lệch nếu 1
+// trong 2 nơi sửa mà quên chỗ còn lại.
 export function useSellerChannelLink(): SellerChannelLink | null {
+  const t = useTranslations('header');
   const user = useAuthStore((state) => state.user);
   const myShopQuery = useMyShop({ enabled: !!user });
 
   if (user && myShopQuery.data) {
-    return { href: '/seller/products', icon: Store, hasShop: true };
+    return { href: '/seller/products', icon: Store, hasShop: true, label: t('myProductsLink') };
   }
   if (!user || myShopQuery.isSuccess) {
-    return { href: '/seller/onboarding', icon: UserPlus, hasShop: false };
+    return {
+      href: '/seller/onboarding',
+      icon: UserPlus,
+      hasShop: false,
+      label: t('becomeSellerLink'),
+    };
   }
   return null;
 }
