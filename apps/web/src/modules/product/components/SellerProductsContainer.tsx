@@ -11,6 +11,7 @@ import { formatPrice } from '../format-price';
 import { useArchiveProduct } from '../hooks/useArchiveProduct';
 import { useMyProducts } from '../hooks/useMyProducts';
 import type { ProductListItem } from '../types';
+import { SellerProductsListSkeleton } from './SellerProductsListSkeleton';
 
 interface SellerProductsContainerProps {
   shopId: string;
@@ -91,7 +92,10 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {myProductsQuery.isPending ? (
-        <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
+        <div aria-busy="true">
+          <span className="sr-only">{tCommon('loading')}</span>
+          <SellerProductsListSkeleton />
+        </div>
       ) : myProductsQuery.isError ? (
         <p className="text-sm text-destructive">{t('sellerLoadProductsError')}</p>
       ) : myProductsQuery.data.length === 0 ? (

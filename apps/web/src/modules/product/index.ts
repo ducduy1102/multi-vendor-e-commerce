@@ -17,6 +17,7 @@ export { ProductListResults } from './components/ProductListResults';
 export { ProductPagination } from './components/ProductPagination';
 export { ProductPreviewCard } from './components/ProductPreviewCard';
 export { SellerProductsContainer } from './components/SellerProductsContainer';
+export { SellerProductsListSkeleton } from './components/SellerProductsListSkeleton';
 export { useArchiveProduct } from './hooks/useArchiveProduct';
 export { useCategories } from './hooks/useCategories';
 export { useCreateProduct } from './hooks/useCreateProduct';
