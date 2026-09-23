@@ -3,7 +3,6 @@
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/shared/components/ui/button';
-import { cn } from '@/shared/lib/utils';
 import { useVariantSelection } from './VariantSelectionContext';
 import {
   isValueAvailable,
@@ -55,7 +54,6 @@ export function VariantSelector({ attributes, variants }: VariantSelectorProps) 
                     isAvailable ? undefined : `${attributeValue.value} — ${t('detailOutOfStock')}`
                   }
                   onClick={() => select(attribute.name, attributeValue.value)}
-                  className={cn(!isAvailable && 'line-through')}
                 >
                   {attributeValue.value}
                 </Button>
