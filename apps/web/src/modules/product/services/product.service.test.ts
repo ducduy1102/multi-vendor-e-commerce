@@ -8,6 +8,7 @@ import {
   getCategories,
   getMyProducts,
   getProduct,
+  getProductBySlug,
   getUploadSignature,
   listProducts,
   updateProduct,
@@ -150,6 +151,42 @@ describe('product.service', () => {
     mockFetchOnce({ success: false, data: null, message: 'Product not found' }, 404);
 
     await expect(getProduct('khong-ton-tai')).rejects.toMatchObject(
+      new ApiError('Product not found', 404),
+    );
+  });
+
+  it('getProductBySlug GETs /products/:slug, parse kèm field shop (khác getProduct)', async () => {
+    const productDetail = {
+      ...mockProduct,
+      variants: [
+        {
+          id: 'variant-1',
+          sku: 'AT-1',
+          price: '150000',
+          stock: 10,
+          isActive: true,
+          images: [],
+          weightGram: null,
+          attributeValues: [],
+        },
+      ],
+      shop: { name: 'Shop ABC', slug: 'shop-abc' },
+    };
+    mockFetchOnce({ success: true, data: { product: productDetail } });
+
+    const result = await getProductBySlug('ao-thun-nam');
+
+    expect(result).toEqual(productDetail);
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/products/ao-thun-nam'),
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('getProductBySlug rethrows ApiError 404 khi slug không tồn tại/không được xem', async () => {
+    mockFetchOnce({ success: false, data: null, message: 'Product not found' }, 404);
+
+    await expect(getProductBySlug('khong-ton-tai')).rejects.toMatchObject(
       new ApiError('Product not found', 404),
     );
   });

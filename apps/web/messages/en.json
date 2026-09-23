@@ -177,6 +177,10 @@
     "productFormUpdateGenericError": "Failed to update the product, please try again",
     "createProductTitle": "Create new product",
     "editProductTitle": "Edit product",
-    "loadProductError": "Couldn't load the product, please try again"
+    "loadProductError": "Couldn't load the product, please try again",
+
+    "detailLoadingSrOnly": "Loading product details...",
+    "detailShopLabel": "Shop",
+    "detailNoDescription": "No description yet for this product."
   }
 }

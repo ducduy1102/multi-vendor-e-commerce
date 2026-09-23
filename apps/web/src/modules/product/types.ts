@@ -3,6 +3,7 @@ export type {
   CreateProductInput,
   UpdateProductInput,
   Product,
+  ProductDetail,
   ProductListItem,
   ProductCard,
   ListProductsQuery,

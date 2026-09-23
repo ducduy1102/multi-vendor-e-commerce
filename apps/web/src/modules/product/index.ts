@@ -10,6 +10,8 @@ export { CreateProductFormContainer } from './components/CreateProductFormContai
 export { EditProductFormContainer } from './components/EditProductFormContainer';
 export { HomeCatalog } from './components/HomeCatalog';
 export { HomeCatalogSkeleton } from './components/HomeCatalogSkeleton';
+export { ProductDetailContainer } from './components/ProductDetailContainer';
+export { ProductDetailSkeleton } from './components/ProductDetailSkeleton';
 export { ProductFilterBar } from './components/ProductFilterBar';
 export { ProductForm } from './components/ProductForm';
 export { ProductGridSkeleton } from './components/ProductGridSkeleton';
@@ -31,6 +33,7 @@ export type {
   CreateProductInput,
   UpdateProductInput,
   Product,
+  ProductDetail,
   ProductListItem,
   ProductCard,
   ListProductsQuery,

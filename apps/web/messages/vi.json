@@ -177,6 +177,10 @@
     "productFormUpdateGenericError": "Cập nhật sản phẩm thất bại, vui lòng thử lại",
     "createProductTitle": "Tạo sản phẩm mới",
     "editProductTitle": "Sửa sản phẩm",
-    "loadProductError": "Không tải được sản phẩm, vui lòng thử lại"
+    "loadProductError": "Không tải được sản phẩm, vui lòng thử lại",
+
+    "detailLoadingSrOnly": "Đang tải thông tin sản phẩm...",
+    "detailShopLabel": "Shop",
+    "detailNoDescription": "Chưa có mô tả cho sản phẩm này."
   }
 }

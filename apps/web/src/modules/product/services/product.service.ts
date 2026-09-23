@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   categorySchema,
+  productDetailSchema,
   productListItemSchema,
   productListResponseSchema,
   productSchema,
@@ -9,6 +10,7 @@ import {
   type CreateProductInput,
   type ListProductsQuery,
   type Product,
+  type ProductDetail,
   type ProductListItem,
   type ProductListResponse,
   type UpdateProductInput,
@@ -52,6 +54,17 @@ export async function getProduct(id: string): Promise<Product> {
     method: 'GET',
   });
   return productSchema.parse(data.product);
+}
+
+// Route public GET /products/:slug (khác getProduct(id) ở trên — dùng cho
+// seller tự sửa sản phẩm của mình qua id thật). Trả thêm `shop: {name,
+// slug}` nên parse riêng bằng productDetailSchema (Week5.md Bước 1.5/2.2-2.3,
+// khớp ProductDetailSummary ở apps/api) — không dùng chung productSchema.
+export async function getProductBySlug(slug: string): Promise<ProductDetail> {
+  const data = await apiFetch<{ product: unknown }>(`/products/${slug}`, {
+    method: 'GET',
+  });
+  return productDetailSchema.parse(data.product);
 }
 
 // params bỏ trống field nào thì không gửi param đó lên URL — để BE tự áp
