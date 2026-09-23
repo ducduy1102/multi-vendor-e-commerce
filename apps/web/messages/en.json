@@ -23,7 +23,9 @@
     "accountTabLabel": "Account",
     "mobileNavLabel": "Quick navigation",
     "searchLabel": "Search products",
-    "searchPlaceholder": "Search products..."
+    "searchPlaceholder": "Search products...",
+    "searchClearLabel": "Clear search",
+    "searchSubmitLabel": "Search"
   },
   "home": {
     "bannerHeading": "Shop from many stores, check out fast",

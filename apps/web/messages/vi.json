@@ -23,7 +23,9 @@
     "accountTabLabel": "Tài khoản",
     "mobileNavLabel": "Điều hướng nhanh",
     "searchLabel": "Tìm sản phẩm",
-    "searchPlaceholder": "Tìm sản phẩm..."
+    "searchPlaceholder": "Tìm sản phẩm...",
+    "searchClearLabel": "Xoá nội dung tìm kiếm",
+    "searchSubmitLabel": "Tìm kiếm"
   },
   "home": {
     "bannerHeading": "Chốt đơn nhanh, mua sắm từ nhiều shop",

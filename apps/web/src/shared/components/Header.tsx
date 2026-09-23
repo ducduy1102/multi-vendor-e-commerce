@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, Search } from 'lucide-react';
+import { ChevronDown, Search, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
@@ -9,7 +9,6 @@ import { LogoutButton, useAuthStore } from '@/modules/auth';
 import { ChotMark } from '@/shared/components/ChotMark';
 import { Container } from '@/shared/components/Container';
 import { Button } from '@/shared/components/ui/button';
-import { Input } from '@/shared/components/ui/input';
 import { useSellerChannelLink } from '@/shared/hooks/useSellerChannelLink';
 import { HIDDEN_CHROME_PATHS } from '@/shared/lib/hidden-chrome-paths';
 import {
@@ -42,20 +41,6 @@ export function UserAvatar({ name }: { name: string }) {
   );
 }
 
-// 1 component dùng chung cho cả 2 mục điều hướng ngang hàng ("Sản phẩm",
-// "Kênh người bán") — đảm bảo cùng kiểu chữ/hover, không lặp lại className
-// ở 2 nơi rồi lệch nhau khi sửa sau này.
-function HeaderNavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="text-sm font-medium text-foreground transition-colors hover:text-primary"
-    >
-      {children}
-    </Link>
-  );
-}
-
 // Week5.md Bước 3.5 — chiếm đúng khoảng trống đã chừa sẵn ở 1.10
 // (Header.tsx:170-172 cũ, placeholder <div className="flex-1" />). Điều
 // hướng sang /products?q=... (tái dùng trang danh sách đã có sẵn filter/
@@ -64,6 +49,19 @@ function HeaderNavLink({ href, children }: { href: string; children: React.React
 // nếu đang ở /products — Header là component toàn cục, không có sẵn
 // searchParams qua props như page.tsx; giữ đơn giản đúng phạm vi roadmap,
 // không thêm useSearchParams() chỉ để đồng bộ ngược 1 chiều này).
+//
+// `type="text"` thay vì `type="search"` — input kiểu search tự có nút "x"
+// xoá của trình duyệt (`::-webkit-search-cancel-button`), không style lại
+// màu được nhất quán giữa các trình duyệt (Firefox không hỗ trợ tương tự).
+// Tự vẽ nút xoá riêng (X, chỉ hiện khi có chữ) để chủ động màu/style.
+//
+// Bố cục 1 khối viền chung (input thô, không dùng component `Input` — viền/
+// nền riêng của nó không hợp khi cần input trong suốt lồng bên trong 1 khối
+// viền lớn hơn, giống cách ProductFilterBar.tsx dùng `<select>` thô thay vì
+// cố ép primitive có sẵn) — nút search nằm THỤT VÀO BÊN TRONG khối đó (bố
+// cục kiểu Shopee, khác Lazada nút dính liền cạnh phải), nền `bg-primary` +
+// icon trắng (`text-primary-foreground`) theo yêu cầu — không phải viền
+// rỗng như bản đầu.
 function HeaderSearchForm() {
   const t = useTranslations('header');
   const router = useRouter();
@@ -76,23 +74,36 @@ function HeaderSearchForm() {
   }
 
   return (
-    <form role="search" onSubmit={handleSubmit} className="hidden flex-1 sm:flex sm:max-w-sm">
+    <form role="search" onSubmit={handleSubmit} className="hidden flex-1 sm:flex">
       <label htmlFor="header-search" className="sr-only">
         {t('searchLabel')}
       </label>
-      <div className="relative w-full">
-        <Search
-          aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
+      <div className="flex h-10 w-full items-center gap-1 rounded-lg border border-input bg-transparent pr-1 pl-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
+        <input
           id="header-search"
-          type="search"
+          type="text"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={t('searchPlaceholder')}
-          className="pl-8"
+          className="h-full min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground md:text-sm"
         />
+        {query ? (
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            aria-label={t('searchClearLabel')}
+            className="flex shrink-0 cursor-pointer items-center justify-center rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="size-4" />
+          </button>
+        ) : null}
+        <button
+          type="submit"
+          aria-label={t('searchSubmitLabel')}
+          className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/80"
+        >
+          <Search className="size-4" />
+        </button>
       </div>
     </form>
   );
@@ -194,22 +205,18 @@ export function Header() {
       {/* Mobile (< sm): chỉ còn logo — điều hướng, ThemeToggle, LocaleSwitcher
           và cụm tài khoản đã chuyển hết vào BottomTabBar/AccountSheet
           (shared/components/BottomTabBar.tsx, AccountSheet.tsx). Desktop
-          (>= sm, khớp breakpoint BottomTabBar ẩn đi — trước đây header dùng
-          md: cho các cụm này, để hở khoảng 640-768px không có điều hướng
-          nào cả sau khi bỏ hamburger, nay đổi về sm: cho khớp): trái — logo +
-          điều hướng ngang hàng ("Sản phẩm", "Kênh người bán"); phải —
-          ThemeToggle, LocaleSwitcher, cụm tài khoản. */}
+          (>= sm, khớp breakpoint BottomTabBar ẩn đi): trái — logo; phải —
+          thanh search, ThemeToggle, LocaleSwitcher, cụm tài khoản. Nav ngang
+          hàng "Sản phẩm"/"Kênh người bán" đã bỏ (theo yêu cầu) — vào
+          /products qua thanh search hoặc trang chủ, vào khu seller qua
+          dropdown tài khoản (shopLink vẫn còn ở đó). */}
       <Container className="flex h-14 items-center gap-3">
         <Link href="/" className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          <ChotMark className="size-7 shrink-0" />
-          <span className="font-semibold whitespace-nowrap text-brand">{t('siteName')}</span>
+          <ChotMark className="size-8 shrink-0" />
+          <span className="text-lg font-semibold whitespace-nowrap text-brand">
+            {t('siteName')}
+          </span>
         </Link>
-
-        {/* sm:ml-4 — cách logo 1 khoảng rõ ràng, không dính sát. */}
-        <nav className="hidden items-center gap-4 sm:ml-4 sm:flex">
-          <HeaderNavLink href="/products">{t('productsLink')}</HeaderNavLink>
-          {shopLink && <HeaderNavLink href={shopLink.href}>{shopLink.label}</HeaderNavLink>}
-        </nav>
 
         <HeaderSearchForm />
 
