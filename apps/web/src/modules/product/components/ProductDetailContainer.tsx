@@ -1,6 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 
+import { WishlistButton } from '@/modules/wishlist';
 import { ApiError } from '@/shared/lib/api-client';
 import * as productService from '../services/product.service';
 import { PRODUCT_DETAIL_LAYOUT_CLASS } from './ProductDetail.constants';
@@ -20,7 +21,10 @@ interface ProductDetailContainerProps {
 // (Client Component) quanh CẢ layout, nhưng h1/dl/mô tả bên dưới vẫn là JSX
 // viết trực tiếp ở đây (Server Component), không bị kéo vào client bundle vì
 // chỉ truyền qua như `children`, không import vào file Provider (xem
-// VariantSelectionContext.tsx). Nút wishlist (Bước 3.4) ghép thêm sau.
+// VariantSelectionContext.tsx). `WishlistButton` (Bước 3.4) import từ
+// modules/wishlist qua barrel — component tự chứa (tự gọi API/quản lý state
+// riêng), đúng ngoại lệ cross-import UI tái dùng được ở rules/frontend.md
+// mục 1 (giống ResendVerificationButton/useAuthStore dùng lại ở modules/shop).
 export async function ProductDetailContainer({ slug }: ProductDetailContainerProps) {
   let product;
   try {
@@ -44,7 +48,10 @@ export async function ProductDetailContainer({ slug }: ProductDetailContainerPro
         <ProductGallery variants={product.variants} />
 
         <div className="flex flex-col gap-4">
-          <h1 className="text-xl font-semibold text-foreground">{product.name}</h1>
+          <div className="flex items-start justify-between gap-2">
+            <h1 className="text-xl font-semibold text-foreground">{product.name}</h1>
+            <WishlistButton productId={product.id} />
+          </div>
 
           <ProductVariantSection
             attributes={product.attributes}

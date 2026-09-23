@@ -184,5 +184,10 @@
     "detailNoDescription": "No description yet for this product.",
     "detailOutOfStock": "Out of stock",
     "detailThumbnailLabel": "Photo {index}"
+  },
+
+  "wishlist": {
+    "addLabel": "Add to wishlist",
+    "removeLabel": "Remove from wishlist"
   }
 }
