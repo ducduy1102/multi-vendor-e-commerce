@@ -386,25 +386,31 @@ export class ProductService {
     return this.loadProductSummary(this.prisma, productId);
   }
 
-  // Route GET /products/:slug là PUBLIC (không JwtAuthGuard bắt buộc, guest
-  // xem được) — viewerUserId chỉ có giá trị nếu request có cookie hợp lệ
-  // (OptionalJwtAuthGuard). Không phải chủ shop mà product.status !==
+  // Route GET /products/:idOrSlug là PUBLIC (không JwtAuthGuard bắt buộc,
+  // guest xem được) — viewerUserId chỉ có giá trị nếu request có cookie hợp
+  // lệ (OptionalJwtAuthGuard). Không phải chủ shop mà product.status !==
   // PUBLISHED hoặc shop.status !== APPROVED thì 404 y hệt "không tồn tại" —
   // KHÔNG lộ sản phẩm nháp/shop chưa duyệt qua URL trực tiếp (đúng Bước 2.9
   // + rules/backend.md mục 6). Là chủ shop thì xem được mọi status (dùng
   // lại đúng endpoint này cho trang seller xem lại/sửa, không tách route
   // riêng).
   //
-  // Lookup theo slug, không phải id (Week5.md Bước 1.4 hướng b) — FE luôn
-  // điều hướng bằng slug (ProductPreviewCard). Các chỗ nội bộ khác
-  // (updateProduct/archiveProduct, ShopOwnerGuard) đã có sẵn id thật từ DB
-  // nên vẫn lookup theo id, không đổi.
+  // Lookup theo id HOẶC slug (Week5.md Bước 1.4 quay lại hướng a, sau khi
+  // phát hiện bug thật: hướng b — lookup CHỈ theo slug — đã bịt luôn đường
+  // FE seller fetch lại product của mình theo id thật lúc mở trang edit
+  // (modules/product/services/product.service.ts FE, hàm getProduct(id),
+  // dùng từ Tuần 4, gọi CHUNG endpoint này). Verify lúc chốt hướng b chỉ rà
+  // soát call site phía BE (ProductController), bỏ sót call site phía FE
+  // cùng tên hàm. findFirst + OR (không phải findUnique, vì Prisma không
+  // cho where nhiều field unique cùng lúc kiểu OR trong findUnique) — public
+  // detail page (Bước 3.1) truyền slug, trang seller edit truyền id, cùng 1
+  // endpoint xử lý được cả 2.
   async getProduct(
-    slug: string,
+    idOrSlug: string,
     viewerUserId?: string,
   ): Promise<ProductDetailSummary> {
-    const product = await this.prisma.product.findUnique({
-      where: { slug },
+    const product = await this.prisma.product.findFirst({
+      where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
       select: productDetailSelect,
     });
     if (!product) {

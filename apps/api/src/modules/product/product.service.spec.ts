@@ -45,6 +45,7 @@ describe('ProductService', () => {
   let prisma: {
     product: {
       findUnique: jest.Mock;
+      findFirst: jest.Mock;
       findMany: jest.Mock;
       count: jest.Mock;
       create: jest.Mock;
@@ -79,6 +80,7 @@ describe('ProductService', () => {
     prisma = {
       product: {
         findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn(({ data }) =>
@@ -731,7 +733,7 @@ describe('ProductService', () => {
 
   describe('getProduct', () => {
     function mockDetailRow(overrides: Record<string, unknown> = {}) {
-      prisma.product.findUnique.mockResolvedValue({
+      prisma.product.findFirst.mockResolvedValue({
         id: 'product-1',
         shopId: 'shop-1',
         categoryId: 'cat-1',
@@ -754,23 +756,40 @@ describe('ProductService', () => {
     }
 
     it('404 nếu product không tồn tại', async () => {
-      prisma.product.findUnique.mockResolvedValue(null);
+      prisma.product.findFirst.mockResolvedValue(null);
 
       await expect(service.getProduct('missing')).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
 
-    // Week5.md Bước 1.4/2.1 — lookup theo slug, không phải id (gap thật đã
-    // gây 404 cho FE trước khi sửa).
-    it('lookup theo slug, không phải id (Bước 2.1)', async () => {
+    // Week5.md Bước 1.4 — quay lại hướng a (id HOẶC slug) sau khi phát hiện
+    // bug thật: hướng b (chỉ lookup theo slug, Bước 2.1) đã bịt đường FE
+    // seller fetch lại product của mình theo id thật lúc mở trang edit
+    // (/seller/products/:id/edit, dùng chung đúng endpoint này từ Tuần 4).
+    it('lookup theo id HOẶC slug (findFirst + OR, không phải findUnique theo mỗi slug)', async () => {
       mockDetailRow({ status: 'PUBLISHED' });
 
       await service.getProduct('ao-thun-nam');
 
-      expect(prisma.product.findUnique).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { slug: 'ao-thun-nam' } }),
+      expect(prisma.product.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { OR: [{ id: 'ao-thun-nam' }, { slug: 'ao-thun-nam' }] },
+        }),
       );
+    });
+
+    it('chủ shop xem lại được product của mình khi truyền id thật (luồng trang seller edit)', async () => {
+      mockDetailRow({ status: 'DRAFT' });
+
+      const result = await service.getProduct('product-1', 'owner-1');
+
+      expect(prisma.product.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { OR: [{ id: 'product-1' }, { slug: 'product-1' }] },
+        }),
+      );
+      expect(result.id).toBe('product-1');
     });
 
     it('guest/public xem được product PUBLISHED của shop APPROVED', async () => {

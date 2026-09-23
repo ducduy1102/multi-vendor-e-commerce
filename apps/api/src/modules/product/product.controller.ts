@@ -77,7 +77,7 @@ const PRODUCT_EXAMPLE = {
   ],
 };
 
-// Chỉ GET /products/:slug (chi tiết) trả thêm `shop` — create/update/
+// Chỉ GET /products/:idOrSlug (chi tiết) trả thêm `shop` — create/update/
 // archive dùng chung PRODUCT_EXAMPLE, không join bảng shops (Week5.md Bước
 // 1.5/2.2), nên tách example riêng thay vì thêm field vào PRODUCT_EXAMPLE
 // dùng chung.
@@ -315,11 +315,13 @@ export class ProductController {
     return this.productService.listPublicProducts(query);
   }
 
-  @Get('products/:slug')
+  @Get('products/:idOrSlug')
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     summary:
-      'Chi tiết 1 product theo slug — public (PUBLISHED+APPROVED) hoặc chủ shop xem mọi status',
+      'Chi tiết 1 product theo id HOẶC slug — public (PUBLISHED+APPROVED) hoặc chủ shop xem mọi status. ' +
+      'Nhận cả 2 kiểu (không chỉ slug) vì trang seller sửa sản phẩm (FE modules/product) gọi lại đúng ' +
+      'endpoint này theo id thật, trang chi tiết public gọi theo slug (Week5.md Bước 1.4).',
   })
   @ApiResponse({
     status: 200,
@@ -333,10 +335,13 @@ export class ProductController {
       'Không tồn tại, hoặc chưa PUBLISHED/shop chưa APPROVED (ẩn với guest)',
   })
   async getOne(
-    @Param('slug') slug: string,
+    @Param('idOrSlug') idOrSlug: string,
     @CurrentUserOptional() user?: AuthenticatedUser,
   ) {
-    const product = await this.productService.getProduct(slug, user?.userId);
+    const product = await this.productService.getProduct(
+      idOrSlug,
+      user?.userId,
+    );
     return { product };
   }
 
