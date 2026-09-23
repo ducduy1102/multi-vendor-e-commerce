@@ -1,8 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { withIntl } from '@/shared/lib/test-i18n';
+import { VariantSelectionProvider } from './VariantSelectionContext';
 import { VariantSelector } from './VariantSelector';
 import type { SelectorAttribute, SelectorVariant } from './VariantSelector.utils';
 
@@ -61,44 +62,25 @@ const variants: SelectorVariant[] = [
   ]),
 ];
 
+function renderSelector(attrs: SelectorAttribute[], vars: SelectorVariant[]) {
+  return render(
+    withIntl(
+      <VariantSelectionProvider>
+        <VariantSelector attributes={attrs} variants={vars} />
+      </VariantSelectionProvider>,
+    ),
+  );
+}
+
 describe('VariantSelector', () => {
   it('không render gì khi sản phẩm không có attribute (chỉ variant mặc định)', () => {
-    const onVariantChange = vi.fn();
-    const { container } = render(
-      withIntl(
-        <VariantSelector
-          attributes={[]}
-          variants={[variant('v-default', [])]}
-          onVariantChange={onVariantChange}
-        />,
-      ),
-    );
+    const { container } = renderSelector([], [variant('v-default', [])]);
 
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('báo variant mặc định ngay khi mount nếu sản phẩm không có attribute', () => {
-    const onVariantChange = vi.fn();
-    const defaultVariant = variant('v-default', []);
-    render(
-      withIntl(
-        <VariantSelector
-          attributes={[]}
-          variants={[defaultVariant]}
-          onVariantChange={onVariantChange}
-        />,
-      ),
-    );
-
-    expect(onVariantChange).toHaveBeenCalledWith(defaultVariant);
-  });
-
   it('render đủ mọi attribute + giá trị', () => {
-    render(
-      withIntl(
-        <VariantSelector attributes={attributes} variants={variants} onVariantChange={vi.fn()} />,
-      ),
-    );
+    renderSelector(attributes, variants);
 
     expect(screen.getByText('Màu sắc')).toBeInTheDocument();
     expect(screen.getByText('Size')).toBeInTheDocument();
@@ -108,55 +90,20 @@ describe('VariantSelector', () => {
     expect(screen.getByRole('button', { name: 'L' })).toBeInTheDocument();
   });
 
-  it('gọi onVariantChange(undefined) khi mới chọn 1 phần combo (chưa đủ)', async () => {
-    const onVariantChange = vi.fn();
+  it('bấm 1 giá trị -> chuyển sang trạng thái đã chọn (aria-pressed)', async () => {
     const user = userEvent.setup();
-    render(
-      withIntl(
-        <VariantSelector
-          attributes={attributes}
-          variants={variants}
-          onVariantChange={onVariantChange}
-        />,
-      ),
-    );
+    renderSelector(attributes, variants);
 
-    await user.click(screen.getByRole('button', { name: 'Đỏ' }));
+    const doButton = screen.getByRole('button', { name: 'Đỏ' });
+    expect(doButton).toHaveAttribute('aria-pressed', 'false');
 
-    expect(onVariantChange).toHaveBeenLastCalledWith(undefined);
-  });
-
-  it('gọi onVariantChange(variant) đúng khi chọn đủ combo khớp', async () => {
-    const onVariantChange = vi.fn();
-    const user = userEvent.setup();
-    render(
-      withIntl(
-        <VariantSelector
-          attributes={attributes}
-          variants={variants}
-          onVariantChange={onVariantChange}
-        />,
-      ),
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Đỏ' }));
-    await user.click(screen.getByRole('button', { name: 'M' }));
-
-    expect(onVariantChange).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'v-do-m' }));
+    await user.click(doButton);
+    expect(doButton).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('bấm lại giá trị đang chọn để bỏ chọn (toggle off)', async () => {
-    const onVariantChange = vi.fn();
     const user = userEvent.setup();
-    render(
-      withIntl(
-        <VariantSelector
-          attributes={attributes}
-          variants={variants}
-          onVariantChange={onVariantChange}
-        />,
-      ),
-    );
+    renderSelector(attributes, variants);
 
     const doButton = screen.getByRole('button', { name: 'Đỏ' });
     await user.click(doButton);
@@ -164,16 +111,11 @@ describe('VariantSelector', () => {
 
     await user.click(doButton);
     expect(doButton).toHaveAttribute('aria-pressed', 'false');
-    expect(onVariantChange).toHaveBeenLastCalledWith(undefined);
   });
 
   it('disable đúng option hết hàng theo combo đã chọn, không disable cả sản phẩm', async () => {
     const user = userEvent.setup();
-    render(
-      withIntl(
-        <VariantSelector attributes={attributes} variants={variants} onVariantChange={vi.fn()} />,
-      ),
-    );
+    renderSelector(attributes, variants);
 
     // Chưa chọn gì: mọi giá trị đều còn ít nhất 1 combo còn hàng -> không disable.
     expect(screen.getByRole('button', { name: 'Đỏ' })).toBeEnabled();
@@ -187,23 +129,14 @@ describe('VariantSelector', () => {
     expect(screen.getByRole('button', { name: 'Xanh' })).toBeEnabled();
   });
 
-  it('không cho chọn giá trị đang disabled (click không có tác dụng)', async () => {
-    const onVariantChange = vi.fn();
+  it('không cho chọn giá trị đang disabled (click không có tác dụng, vẫn ở trạng thái chưa chọn)', async () => {
     const user = userEvent.setup();
-    render(
-      withIntl(
-        <VariantSelector
-          attributes={attributes}
-          variants={variants}
-          onVariantChange={onVariantChange}
-        />,
-      ),
-    );
+    renderSelector(attributes, variants);
 
     await user.click(screen.getByRole('button', { name: 'L' }));
-    onVariantChange.mockClear();
 
-    await user.click(screen.getByRole('button', { name: /Đỏ/ })); // đang disabled
-    expect(onVariantChange).not.toHaveBeenCalled();
+    const doButton = screen.getByRole('button', { name: /Đỏ/ });
+    await user.click(doButton); // đang disabled — button native tự chặn click
+    expect(doButton).toHaveAttribute('aria-pressed', 'false');
   });
 });

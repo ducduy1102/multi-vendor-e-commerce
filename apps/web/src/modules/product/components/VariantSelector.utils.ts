@@ -7,7 +7,7 @@ export type SelectorAttribute = Product['attributes'][number];
 // attribute (không phải mảng, khớp UI chỉ chọn được 1 màu/1 size cùng lúc).
 export type SelectedValues = Record<string, string>;
 
-function matchesSelection(variant: SelectorVariant, selection: SelectedValues): boolean {
+export function matchesSelection(variant: SelectorVariant, selection: SelectedValues): boolean {
   return Object.entries(selection).every(([attributeName, value]) =>
     variant.attributeValues.some((av) => av.attributeName === attributeName && av.value === value),
   );
@@ -49,5 +49,23 @@ export function isValueAvailable(
   const candidate: SelectedValues = { ...selectedValues, [attributeName]: value };
   return variants.some(
     (variant) => variant.isActive && variant.stock > 0 && matchesSelection(variant, candidate),
+  );
+}
+
+// Week5.md Bước 1.15 (phần ảnh) + Bước 3.3 — KHÁC findMatchingVariant: chỉ
+// cần khớp SUBSET giá trị đã chọn (không bắt buộc chọn đủ mọi attribute),
+// lấy variant active ĐẦU TIÊN (theo thứ tự mảng) khớp — cập nhật ảnh ngay
+// khi mới chọn 1 phần thuộc tính (vd đổi màu dù chưa chọn size), đúng UX
+// Shopee. Không xét `stock` (khác isValueAvailable) — hết hàng vẫn cho xem
+// ảnh, chỉ khác ở chỗ không mua được (VariantSelector tự disable riêng).
+// selectedValues rỗng (chưa chọn gì) → mọi variant đều "khớp" (subset rỗng),
+// tự trả về variant active đầu tiên — đúng hành vi mặc định lúc vào trang.
+export function findGalleryVariant(
+  variants: SelectorVariant[],
+  selectedValues: SelectedValues,
+): SelectorVariant | undefined {
+  const activeVariants = variants.filter((variant) => variant.isActive);
+  return (
+    activeVariants.find((variant) => matchesSelection(variant, selectedValues)) ?? activeVariants[0]
   );
 }

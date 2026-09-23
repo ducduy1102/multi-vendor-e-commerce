@@ -13,15 +13,30 @@ export async function ProductDetailSkeleton() {
     <div aria-busy="true" className={PRODUCT_DETAIL_LAYOUT_CLASS}>
       <span className="sr-only">{t('detailLoadingSrOnly')}</span>
 
-      <Skeleton
-        aria-hidden="true"
-        className="aspect-square w-full rounded-lg motion-reduce:animate-none"
-      />
+      <div aria-hidden="true" className="flex flex-col gap-2">
+        <Skeleton className="aspect-square w-full rounded-lg motion-reduce:animate-none" />
+        {/* Hàng thumbnail (Bước 3.3, ProductGallery) chỉ hiện khi variant có
+            >1 ảnh — không biết trước số ảnh thật lúc loading, dùng 3 ô làm
+            ước lượng hợp lý (giống CATEGORY_SKELETON_COUNT), không cần khớp
+            chính xác số lượng. */}
+        <div className="flex gap-2">
+          <Skeleton className="size-14 shrink-0 rounded-md motion-reduce:animate-none" />
+          <Skeleton className="size-14 shrink-0 rounded-md motion-reduce:animate-none" />
+          <Skeleton className="size-14 shrink-0 rounded-md motion-reduce:animate-none" />
+        </div>
+      </div>
 
       <div aria-hidden="true" className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           <Skeleton className="h-7 w-3/4 motion-reduce:animate-none" />
           <Skeleton className="h-6 w-32 motion-reduce:animate-none" />
+        </div>
+
+        {/* VariantSelector (Bước 3.2) — 1 hàng "nút thuộc tính" ước lượng. */}
+        <div className="flex gap-2">
+          <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
+          <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
+          <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
         </div>
 
         <div className="flex flex-col gap-2">

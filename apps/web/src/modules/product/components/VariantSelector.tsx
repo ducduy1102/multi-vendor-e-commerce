@@ -1,14 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/shared/components/ui/button';
 import { cn } from '@/shared/lib/utils';
+import { useVariantSelection } from './VariantSelectionContext';
 import {
-  findMatchingVariant,
   isValueAvailable,
-  type SelectedValues,
   type SelectorAttribute,
   type SelectorVariant,
 } from './VariantSelector.utils';
@@ -16,44 +14,21 @@ import {
 interface VariantSelectorProps {
   attributes: SelectorAttribute[];
   variants: SelectorVariant[];
-  onVariantChange: (variant: SelectorVariant | undefined) => void;
 }
 
-// Component thuần (Week5.md Bước 3.2) — tự giữ state lựa chọn bên trong,
-// chỉ báo ra ngoài qua onVariantChange (variant khớp đủ combo, hoặc
-// undefined nếu chưa chọn đủ/không khớp). Cha (ProductVariantSection) dùng
-// callback này để đổi giá hiển thị theo 1.15 — không tự hiển thị giá ở đây,
-// component này chỉ lo phần chọn thuộc tính.
-export function VariantSelector({ attributes, variants, onVariantChange }: VariantSelectorProps) {
+// Component thuần (Week5.md Bước 3.2) — đọc/ghi `selectedValues` qua
+// `useVariantSelection()` (Bước 3.3 — chuyển từ tự giữ state nội bộ +
+// callback `onVariantChange` sang dùng chung Context với `ProductGallery`,
+// xem lý do ở VariantSelectionContext.tsx) thay vì tự tính variant khớp rồi
+// báo ra ngoài — nơi cần biết variant khớp (giá) hay variant gallery (ảnh)
+// tự đọc `selectedValues` từ context và tự tính lấy bằng
+// `findMatchingVariant`/`findGalleryVariant`, không còn qua callback.
+export function VariantSelector({ attributes, variants }: VariantSelectorProps) {
   const t = useTranslations('product');
-  const [selectedValues, setSelectedValues] = useState<SelectedValues>({});
-
-  useEffect(() => {
-    onVariantChange(findMatchingVariant(variants, attributes, selectedValues));
-    // onVariantChange cố ý không nằm trong deps — cha truyền hàm mới mỗi
-    // render (setState từ useState luôn stable, nhưng để an toàn không giả
-    // định điều đó ở cha), chỉ cần chạy lại khi chính lựa chọn đổi.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [variants, attributes, selectedValues]);
+  const { selectedValues, select } = useVariantSelection();
 
   if (attributes.length === 0) {
     return null;
-  }
-
-  function handleSelect(attributeName: string, value: string) {
-    const isSelected = selectedValues[attributeName] === value;
-    if (!isSelected && !isValueAvailable(variants, attributeName, value, selectedValues)) {
-      return;
-    }
-    setSelectedValues((prev) => {
-      const next = { ...prev };
-      if (isSelected) {
-        delete next[attributeName];
-      } else {
-        next[attributeName] = value;
-      }
-      return next;
-    });
   }
 
   return (
@@ -79,7 +54,7 @@ export function VariantSelector({ attributes, variants, onVariantChange }: Varia
                   aria-label={
                     isAvailable ? undefined : `${attributeValue.value} — ${t('detailOutOfStock')}`
                   }
-                  onClick={() => handleSelect(attribute.name, attributeValue.value)}
+                  onClick={() => select(attribute.name, attributeValue.value)}
                   className={cn(!isAvailable && 'line-through')}
                 >
                   {attributeValue.value}

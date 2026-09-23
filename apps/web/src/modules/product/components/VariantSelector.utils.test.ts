@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  findGalleryVariant,
   findMatchingVariant,
   isValueAvailable,
   type SelectorAttribute,
@@ -135,5 +136,46 @@ describe('isValueAvailable', () => {
 
   it('Size=M vẫn available khi chưa chọn màu (cả 2 combo Đỏ-M/Xanh-M đều còn hàng)', () => {
     expect(isValueAvailable(colorSizeVariants, 'Size', 'M', {})).toBe(true);
+  });
+});
+
+describe('findGalleryVariant', () => {
+  it('chưa chọn gì -> variant active đầu tiên (theo thứ tự mảng)', () => {
+    const result = findGalleryVariant(colorSizeVariants, {});
+
+    expect(result?.id).toBe('v-do-m');
+  });
+
+  it('chọn 1 phần thuộc tính (chưa đủ combo) vẫn đổi theo variant active đầu tiên khớp', () => {
+    // Chỉ chọn Màu sắc=Xanh (chưa chọn Size) -> variant active đầu tiên khớp
+    // subset {Màu sắc: Xanh} là v-xanh-m (đứng trước v-xanh-l trong mảng).
+    const result = findGalleryVariant(colorSizeVariants, { 'Màu sắc': 'Xanh' });
+
+    expect(result?.id).toBe('v-xanh-m');
+  });
+
+  it('vẫn trả về variant hết hàng (gallery không quan tâm stock, khác isValueAvailable)', () => {
+    const result = findGalleryVariant(colorSizeVariants, { 'Màu sắc': 'Đỏ', Size: 'L' });
+
+    expect(result?.id).toBe('v-do-l');
+  });
+
+  it('KHÔNG bao giờ trả về variant isActive=false — không khớp active nào thì fallback về variant active đầu tiên', () => {
+    // {Màu sắc: Xanh, Size: L} chỉ khớp đúng v-xanh-l (isActive=false) — bị
+    // loại khỏi danh sách xét, không còn active variant nào khác khớp subset
+    // này -> fallback về active variant đầu tiên (v-do-m), không phải
+    // undefined (defensive, luôn ưu tiên hiện 1 ảnh nào đó hơn là trống).
+    // Lưu ý: trạng thái này không thể tới được qua UI thật (VariantSelector
+    // tự chặn chọn Size=L khi đã chọn Xanh vì combo đó chỉ có variant inactive
+    // — xem VariantSelector.test.tsx), chỉ là edge case defensive của hàm.
+    const result = findGalleryVariant(colorSizeVariants, { 'Màu sắc': 'Xanh', Size: 'L' });
+
+    expect(result?.id).toBe('v-do-m');
+  });
+
+  it('không có variant nào active -> undefined (không crash)', () => {
+    const allInactive = colorSizeVariants.map((v) => ({ ...v, isActive: false }));
+
+    expect(findGalleryVariant(allInactive, {})).toBeUndefined();
   });
 });

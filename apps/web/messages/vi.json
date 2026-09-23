@@ -182,6 +182,7 @@
     "detailLoadingSrOnly": "Đang tải thông tin sản phẩm...",
     "detailShopLabel": "Shop",
     "detailNoDescription": "Chưa có mô tả cho sản phẩm này.",
-    "detailOutOfStock": "Hết hàng"
+    "detailOutOfStock": "Hết hàng",
+    "detailThumbnailLabel": "Ảnh {index}"
   }
 }
