@@ -202,6 +202,16 @@ describe('product.service', () => {
     expect(calledUrl).not.toContain('page=');
     expect(calledUrl).not.toContain('limit=');
     expect(calledUrl).not.toContain('minPrice=');
+    expect(calledUrl).not.toContain('q=');
+  });
+
+  it('listProducts gửi kèm param q khi có (Week5.md Bước 3.6 — thanh search)', async () => {
+    mockFetchOnce({ success: true, data: { items: [], total: 0, page: 1, limit: 12 } });
+
+    await listProducts({ q: 'áo thun' });
+
+    const calledUrl = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(new URL(calledUrl).searchParams.get('q')).toBe('áo thun');
   });
 
   it('listProducts append nhiều lần cho attributeValues[] (không ghi đè, mỗi giá trị 1 param riêng)', async () => {

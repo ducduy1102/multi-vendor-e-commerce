@@ -21,7 +21,9 @@
     "productsLink": "Products",
     "homeLink": "Home",
     "accountTabLabel": "Account",
-    "mobileNavLabel": "Quick navigation"
+    "mobileNavLabel": "Quick navigation",
+    "searchLabel": "Search products",
+    "searchPlaceholder": "Search products..."
   },
   "home": {
     "bannerHeading": "Shop from many stores, check out fast",
@@ -109,6 +111,8 @@
     "filterRemoveCategory": "Remove category filter",
     "filterRemovePrice": "Remove price filter",
     "productsLoadingSrOnly": "Loading products...",
+    "filterSearchLabel": "Search",
+    "filterSearchPlaceholder": "Search products...",
     "filterCategoryLabel": "Category",
     "filterAllCategories": "All categories",
     "filterPriceLabel": "Price range",

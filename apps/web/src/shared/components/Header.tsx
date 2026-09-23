@@ -1,13 +1,15 @@
 'use client';
 
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Search } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
-import { Link, usePathname } from '@/i18n/navigation';
+import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { LogoutButton, useAuthStore } from '@/modules/auth';
 import { ChotMark } from '@/shared/components/ChotMark';
 import { Container } from '@/shared/components/Container';
 import { Button } from '@/shared/components/ui/button';
+import { Input } from '@/shared/components/ui/input';
 import { useSellerChannelLink } from '@/shared/hooks/useSellerChannelLink';
 import { HIDDEN_CHROME_PATHS } from '@/shared/lib/hidden-chrome-paths';
 import {
@@ -51,6 +53,48 @@ function HeaderNavLink({ href, children }: { href: string; children: React.React
     >
       {children}
     </Link>
+  );
+}
+
+// Week5.md Bước 3.5 — chiếm đúng khoảng trống đã chừa sẵn ở 1.10
+// (Header.tsx:170-172 cũ, placeholder <div className="flex-1" />). Điều
+// hướng sang /products?q=... (tái dùng trang danh sách đã có sẵn filter/
+// sort/pagination — Bước 3.6 đọc lại `q` từ đó), không tạo trang kết quả
+// riêng. Input luôn bắt đầu rỗng (không tự đọc lại `q` hiện tại trên URL
+// nếu đang ở /products — Header là component toàn cục, không có sẵn
+// searchParams qua props như page.tsx; giữ đơn giản đúng phạm vi roadmap,
+// không thêm useSearchParams() chỉ để đồng bộ ngược 1 chiều này).
+function HeaderSearchForm() {
+  const t = useTranslations('header');
+  const router = useRouter();
+  const [query, setQuery] = useState('');
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = query.trim();
+    router.push({ pathname: '/products', query: trimmed ? { q: trimmed } : {} });
+  }
+
+  return (
+    <form role="search" onSubmit={handleSubmit} className="hidden flex-1 sm:flex sm:max-w-sm">
+      <label htmlFor="header-search" className="sr-only">
+        {t('searchLabel')}
+      </label>
+      <div className="relative w-full">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          id="header-search"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t('searchPlaceholder')}
+          className="pl-8"
+        />
+      </div>
+    </form>
   );
 }
 
@@ -167,9 +211,7 @@ export function Header() {
           {shopLink && <HeaderNavLink href={shopLink.href}>{shopLink.label}</HeaderNavLink>}
         </nav>
 
-        {/* TODO: thanh search (Tuần 5) — chiếm khoảng giữa linh hoạt này,
-            đặt giữa điều hướng và giỏ hàng/ThemeToggle/LocaleSwitcher. */}
-        <div className="flex-1" />
+        <HeaderSearchForm />
 
         {/* TODO: icon/nút giỏ hàng (Tuần 6) — đặt ngay trước cụm dưới đây. */}
 

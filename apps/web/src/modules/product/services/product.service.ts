@@ -82,6 +82,7 @@ export async function listProducts(
   if (params.categoryId !== undefined) searchParams.set('categoryId', params.categoryId);
   if (params.minPrice !== undefined) searchParams.set('minPrice', String(params.minPrice));
   if (params.maxPrice !== undefined) searchParams.set('maxPrice', String(params.maxPrice));
+  if (params.q !== undefined) searchParams.set('q', params.q);
   params.attributeValues?.forEach((value) => searchParams.append('attributeValues', value));
 
   const query = searchParams.toString();

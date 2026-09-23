@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 
 import { useRouter } from '@/i18n/navigation';
+import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
 import { cn } from '@/shared/lib/utils';
 import type { Category, ListProductsQuery } from '../types';
@@ -11,6 +12,7 @@ import { PriceRangeFilter } from './PriceRangeFilter';
 interface ProductFilterBarProps {
   categories: Category[];
   initialFilters: {
+    q?: string;
     categoryId?: string;
     minPrice?: number;
     maxPrice?: number;
@@ -65,9 +67,10 @@ export function ProductFilterBar({ categories, initialFilters }: ProductFilterBa
   const router = useRouter();
 
   function pushQuery(
-    overrides: Partial<Record<'categoryId' | 'minPrice' | 'maxPrice' | 'sort', string>>,
+    overrides: Partial<Record<'q' | 'categoryId' | 'minPrice' | 'maxPrice' | 'sort', string>>,
   ) {
     const next = {
+      q: initialFilters.q,
       categoryId: initialFilters.categoryId,
       minPrice: initialFilters.minPrice?.toString(),
       maxPrice: initialFilters.maxPrice?.toString(),
@@ -83,8 +86,33 @@ export function ProductFilterBar({ categories, initialFilters }: ProductFilterBa
     router.push({ pathname: '/products', query });
   }
 
+  // `key` theo `q` hiện tại — remount khi giá trị đổi TỪ BÊN NGOÀI (vd search
+  // lại ở Header, hoặc sửa URL tay), giống cách PriceRangeFilter đã làm ở
+  // page.tsx. `defaultValue` (uncontrolled, không phải value+onChange) vì
+  // đây là ô gõ tự do nhiều ký tự trước khi submit — khác select/radio ở
+  // dưới (chọn 1 phát push URL ngay, value controlled thẳng từ prop được).
+  function handleSearchSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const value = String(formData.get('q') ?? '').trim();
+    pushQuery({ q: value || undefined });
+  }
+
   return (
     <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="filter-search">{t('filterSearchLabel')}</Label>
+        <form key={initialFilters.q ?? ''} role="search" onSubmit={handleSearchSubmit}>
+          <Input
+            id="filter-search"
+            name="q"
+            type="search"
+            defaultValue={initialFilters.q ?? ''}
+            placeholder={t('filterSearchPlaceholder')}
+          />
+        </form>
+      </div>
+
       <div className="flex flex-col gap-1">
         <Label htmlFor="filter-category">{t('filterCategoryLabel')}</Label>
         <select

@@ -57,6 +57,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
               <ProductFilterBar
                 categories={categories}
                 initialFilters={{
+                  q: query.q,
                   categoryId: query.categoryId,
                   minPrice: query.minPrice,
                   maxPrice: query.maxPrice,

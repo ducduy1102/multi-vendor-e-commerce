@@ -21,7 +21,9 @@
     "productsLink": "Sản phẩm",
     "homeLink": "Trang chủ",
     "accountTabLabel": "Tài khoản",
-    "mobileNavLabel": "Điều hướng nhanh"
+    "mobileNavLabel": "Điều hướng nhanh",
+    "searchLabel": "Tìm sản phẩm",
+    "searchPlaceholder": "Tìm sản phẩm..."
   },
   "home": {
     "bannerHeading": "Chốt đơn nhanh, mua sắm từ nhiều shop",
@@ -109,6 +111,8 @@
     "filterRemoveCategory": "Xoá bộ lọc danh mục",
     "filterRemovePrice": "Xoá bộ lọc giá",
     "productsLoadingSrOnly": "Đang tải sản phẩm...",
+    "filterSearchLabel": "Tìm kiếm",
+    "filterSearchPlaceholder": "Tìm sản phẩm...",
     "filterCategoryLabel": "Danh mục",
     "filterAllCategories": "Tất cả danh mục",
     "filterPriceLabel": "Khoảng giá",
