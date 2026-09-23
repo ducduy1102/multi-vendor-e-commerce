@@ -4,9 +4,9 @@ import Image from 'next/image';
 import { notFound } from 'next/navigation';
 
 import { ApiError } from '@/shared/lib/api-client';
-import { formatPrice } from '../format-price';
 import * as productService from '../services/product.service';
 import { PRODUCT_DETAIL_LAYOUT_CLASS } from './ProductDetail.constants';
+import { ProductVariantSection } from './ProductVariantSection';
 
 interface ProductDetailContainerProps {
   slug: string;
@@ -14,11 +14,10 @@ interface ProductDetailContainerProps {
 
 // Server Component async (Suspense-wrapped ở page.tsx) — SSR fetch qua slug,
 // đúng rules/frontend.md mục 2 (data fetch ban đầu ở Server Component, không
-// TanStack Query cho lần fetch đầu). Component/hook cho VariantSelector
-// (Week5.md Bước 3.2), gallery nhiều ảnh (Bước 3.3) và nút wishlist (Bước
-// 3.4) sẽ ghép thêm vào layout này ở các bước sau — 3.1 chỉ dựng khung +
-// thông tin cơ bản (ảnh đơn variant đầu tiên, khoảng giá, tên shop/danh mục,
-// mô tả).
+// TanStack Query cho lần fetch đầu). Giá + chọn variant (Week5.md Bước 3.2)
+// tách sang `ProductVariantSection` (Client Component, cần state) — gallery
+// nhiều ảnh (Bước 3.3) và nút wishlist (Bước 3.4) ghép thêm vào layout này ở
+// các bước sau.
 export async function ProductDetailContainer({ slug }: ProductDetailContainerProps) {
   let product;
   try {
@@ -35,11 +34,6 @@ export async function ProductDetailContainer({ slug }: ProductDetailContainerPro
     productService.getCategories(),
   ]);
   const categoryName = categories.find((category) => category.id === product.categoryId)?.name;
-
-  const priceLabel =
-    product.minPrice === product.maxPrice
-      ? formatPrice(product.minPrice)
-      : `${formatPrice(product.minPrice)} - ${formatPrice(product.maxPrice)}`;
   const coverImageUrl = product.variants[0]?.images[0]?.url;
 
   return (
@@ -62,10 +56,14 @@ export async function ProductDetailContainer({ slug }: ProductDetailContainerPro
       </div>
 
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold text-foreground">{product.name}</h1>
-          <p className="text-lg font-semibold text-foreground">{priceLabel}</p>
-        </div>
+        <h1 className="text-xl font-semibold text-foreground">{product.name}</h1>
+
+        <ProductVariantSection
+          attributes={product.attributes}
+          variants={product.variants}
+          minPrice={product.minPrice}
+          maxPrice={product.maxPrice}
+        />
 
         <dl className="flex flex-col gap-1 text-sm text-muted-foreground">
           <div className="flex gap-1">
