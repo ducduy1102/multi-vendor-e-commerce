@@ -65,6 +65,7 @@ describe('ProductService', () => {
     };
     variantAttributeValue: { createMany: jest.Mock; deleteMany: jest.Mock };
     $transaction: jest.Mock;
+    $queryRaw: jest.Mock;
   };
 
   beforeEach(() => {
@@ -112,6 +113,12 @@ describe('ProductService', () => {
       $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
         callback(prisma),
       ),
+      // $queryRaw dùng cho search full-text (Week5.md Bước 2.5) — Prisma mock
+      // này là 1 hàm (tagged template), không phải object có method như
+      // product/category..., nên mock trực tiếp bằng jest.fn() trả mảng rỗng
+      // mặc định (không có q thì không gọi tới, có q mà không match gì cũng
+      // hợp lệ).
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
     service = new ProductService(prisma as unknown as PrismaService);
   });
@@ -666,6 +673,18 @@ describe('ProductService', () => {
       );
     });
 
+    // Week5.md Bước 1.4/2.1 — lookup theo slug, không phải id (gap thật đã
+    // gây 404 cho FE trước khi sửa).
+    it('lookup theo slug, không phải id (Bước 2.1)', async () => {
+      mockDetailRow({ status: 'PUBLISHED' });
+
+      await service.getProduct('ao-thun-nam');
+
+      expect(prisma.product.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { slug: 'ao-thun-nam' } }),
+      );
+    });
+
     it('guest/public xem được product PUBLISHED của shop APPROVED', async () => {
       mockDetailRow({ status: 'PUBLISHED' });
 
@@ -867,6 +886,164 @@ describe('ProductService', () => {
       expect(result.total).toBe(2);
       expect(result.page).toBe(1);
       expect(result.limit).toBe(12);
+    });
+
+    // Week5.md Bước 1.6-1.9/2.4b/2.5 — search full-text theo q. Việc "có
+    // dấu/không dấu ra cùng kết quả" là hành vi của unaccent() ở tầng
+    // Postgres thật (đã verify bằng psql/curl thật ở Bước 2.4b/2.5, không
+    // giả lập lại được bằng mock Prisma) — ở đây chỉ verify phần logic
+    // service tự viết: q được truyền y nguyên (không tự accent-strip phía
+    // service) vào $queryRaw, tập id khớp được AND vào where Prisma, và
+    // JS tự sort lại theo rank khi cần (vì $queryRaw không có ORDER BY).
+    describe('search (q)', () => {
+      function mockRanked(rows: { id: string; rank: number }[]) {
+        prisma.$queryRaw.mockResolvedValue(rows);
+      }
+
+      function cardRow(id: string, overrides: Record<string, unknown> = {}) {
+        return {
+          id,
+          categoryId: 'cat-1',
+          name: `Product ${id}`,
+          slug: id,
+          minPrice: '100000',
+          maxPrice: '100000',
+          variants: [],
+          ...overrides,
+        };
+      }
+
+      // $queryRaw gọi dạng tagged template — mock.calls[n] là [strings, ...
+      // giá trị interpolate]. jest.Mock không tự có generic cho tagged
+      // template nên .mock.calls vốn kiểu `any`; ép kiểu tường minh 1 lần ở
+      // đây thay vì để `any` rò rỉ ra từng chỗ dùng (@typescript-eslint/
+      // no-unsafe-assignment).
+      function queryRawValues(callIndex: number): string[] {
+        const calls = prisma.$queryRaw.mock.calls as unknown as Array<
+          [TemplateStringsArray, ...string[]]
+        >;
+        const [, ...values] = calls[callIndex];
+        return values;
+      }
+
+      it('q không dấu và có dấu đều truyền nguyên văn vào $queryRaw (DB tự unaccent, service không tự xử lý)', async () => {
+        mockRanked([{ id: 'p1', rank: 1 }]);
+        prisma.product.findMany.mockResolvedValue([cardRow('p1')]);
+
+        await service.listPublicProducts({ ...baseQuery, q: 'ao thun' });
+        expect(queryRawValues(0)).toEqual(['ao thun', 'ao thun']);
+
+        await service.listPublicProducts({ ...baseQuery, q: 'áo thun' });
+        expect(queryRawValues(1)).toEqual(['áo thun', 'áo thun']);
+      });
+
+      it('có q + sort mặc định "newest" -> xếp theo rank (JS sort), không gọi count', async () => {
+        // Cố tình trả rank không theo thứ tự để verify service tự sort lại,
+        // không dựa vào thứ tự $queryRaw trả về (SQL không có ORDER BY).
+        mockRanked([
+          { id: 'p1', rank: 0.2 },
+          { id: 'p2', rank: 0.9 },
+        ]);
+        prisma.product.findMany.mockResolvedValue([
+          cardRow('p1'),
+          cardRow('p2'),
+        ]);
+
+        const result = await service.listPublicProducts({
+          ...baseQuery,
+          q: 'áo',
+        });
+
+        expect(result.items.map((item) => item.id)).toEqual(['p2', 'p1']);
+        expect(prisma.product.count).not.toHaveBeenCalled();
+        expect(prisma.product.findMany).toHaveBeenCalledTimes(1);
+        // Không skip/take/orderBy ở Prisma cho nhánh rank — tự sort/cắt
+        // trang bằng JS. Đọc thẳng call args đã ép kiểu (tránh
+        // expect.any()/objectContaining lồng nhau gây lỗi lint
+        // no-unsafe-assignment khi so khớp với type cụ thể của findMany).
+        const [[call]] = prisma.product.findMany.mock.calls as unknown as [
+          [{ where: unknown; skip?: unknown; orderBy?: unknown }],
+        ];
+        expect(call.where).toEqual({
+          status: 'PUBLISHED',
+          shop: { status: 'APPROVED' },
+          id: { in: ['p1', 'p2'] },
+        });
+        expect(call.skip).toBeUndefined();
+        expect(call.orderBy).toBeUndefined();
+      });
+
+      it('kết hợp q với filter category/giá vẫn đúng (AND cả 2 điều kiện)', async () => {
+        mockRanked([{ id: 'p1', rank: 1 }]);
+        prisma.product.findMany.mockResolvedValue([cardRow('p1')]);
+
+        await service.listPublicProducts({
+          ...baseQuery,
+          q: 'áo',
+          categoryId: 'cat-1',
+          minPrice: 100000,
+          maxPrice: 300000,
+        });
+
+        expect(prisma.product.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: {
+              status: 'PUBLISHED',
+              shop: { status: 'APPROVED' },
+              categoryId: 'cat-1',
+              maxPrice: { gte: 100000 },
+              minPrice: { lte: 300000 },
+              id: { in: ['p1'] },
+            },
+          }),
+        );
+      });
+
+      it('q không khớp gì -> total 0, không gọi findMany/count', async () => {
+        mockRanked([]);
+
+        const result = await service.listPublicProducts({
+          ...baseQuery,
+          q: 'khong ton tai xyz',
+        });
+
+        expect(result).toEqual({ items: [], total: 0, page: 1, limit: 12 });
+        expect(prisma.product.findMany).not.toHaveBeenCalled();
+        expect(prisma.product.count).not.toHaveBeenCalled();
+      });
+
+      it('có q + user tự chọn sort price-asc -> giữ nguyên price-asc, không ép rank', async () => {
+        mockRanked([
+          { id: 'p1', rank: 0.9 },
+          { id: 'p2', rank: 0.2 },
+        ]);
+        prisma.product.findMany.mockResolvedValue([
+          cardRow('p1'),
+          cardRow('p2'),
+        ]);
+        prisma.product.count.mockResolvedValue(2);
+
+        await service.listPublicProducts({
+          ...baseQuery,
+          q: 'áo',
+          sort: 'price-asc',
+        });
+
+        const expectedWhere = {
+          status: 'PUBLISHED',
+          shop: { status: 'APPROVED' },
+          id: { in: ['p1', 'p2'] },
+        };
+        expect(prisma.product.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            orderBy: { minPrice: 'asc' },
+            where: expectedWhere,
+          }),
+        );
+        expect(prisma.product.count).toHaveBeenCalledWith({
+          where: expectedWhere,
+        });
+      });
     });
   });
 
