@@ -311,7 +311,6 @@ model ProductVariant {
   price      Decimal  @db.Decimal(12, 2)
   stock      Int      @default(0)
   isActive   Boolean  @default(true) @map("is_active")
-  imageUrl   String?  @map("image_url")
   weightGram Int?     @map("weight_gram")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -319,6 +318,7 @@ model ProductVariant {
   product         Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
   shop            Shop                     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   attributeValues VariantAttributeValue[]
+  images          ProductImage[]
   cartItems       CartItem[]
   orderItems      OrderItem[]
 
@@ -326,6 +326,22 @@ model ProductVariant {
   @@index([productId])
   @@index([shopId])
   @@map("product_variants")
+}
+
+// Week5.md Bước 1.3/2.12 — nhiều ảnh/variant (đổi màu → đổi cả bộ ảnh), thay
+// cho field đơn ProductVariant.imageUrl cũ. Gắn ở cấp VARIANT, không phải
+// Product (mỗi combo màu/size có bộ ảnh riêng, đúng pattern Shopee/Lazada).
+model ProductImage {
+  id        String   @id @default(uuid())
+  variantId String   @map("variant_id")
+  url       String
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([variantId])
+  @@map("product_images")
 }
 
 // Bảng nối: xác định 1 variant là tổ hợp của những giá trị thuộc tính nào

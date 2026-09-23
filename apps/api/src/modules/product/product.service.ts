@@ -15,6 +15,14 @@ import type { UpdateProductDto } from './dto/update-product.dto';
 // nhập (khác Shop) nên không cần nhánh "explicit slug", chỉ có 1 chiến lược.
 const MAX_GENERATED_SLUG_ATTEMPTS = 20;
 
+// Week5.md Bước 1.3/2.12 — dùng chung ở mọi nơi select ảnh/variant (đủ
+// dùng cho cả chi tiết lẫn danh sách, tránh lặp lại đúng shape 3 lần trong
+// file này). Sắp theo position để FE không cần tự sort lại.
+const variantImagesSelect = {
+  orderBy: { position: 'asc' },
+  select: { url: true, position: true },
+} satisfies Prisma.ProductVariant$imagesArgs;
+
 const productWithRelationsSelect = {
   id: true,
   shopId: true,
@@ -43,7 +51,7 @@ const productWithRelationsSelect = {
       price: true,
       stock: true,
       isActive: true,
-      imageUrl: true,
+      images: variantImagesSelect,
       weightGram: true,
       attributeValues: {
         select: {
@@ -94,7 +102,7 @@ const productListItemSelect = {
       price: true,
       stock: true,
       isActive: true,
-      imageUrl: true,
+      images: variantImagesSelect,
     },
   },
 } satisfies Prisma.ProductSelect;
@@ -104,9 +112,9 @@ export type ProductListItemSummary = Prisma.ProductGetPayload<{
 }>;
 
 // Card cho trang chủ/danh sách public (Bước 2.10) — không trả description/
-// attributes/toàn bộ variant (rules/backend.md mục 4). imageUrl lấy từ 1
-// variant active duy nhất (variant active đầu tiên tạo — không có khái
-// niệm "ảnh đại diện" riêng ở Product, chỉ ProductVariant.imageUrl).
+// attributes/toàn bộ variant (rules/backend.md mục 4). imageUrl (số ít) lấy
+// từ ảnh đầu tiên (position=0) của 1 variant active duy nhất — card chỉ cần
+// 1 ảnh bìa, không cần cả bộ ảnh (Week5.md Bước 2.12).
 const productCardSelect = {
   id: true,
   categoryId: true,
@@ -118,7 +126,9 @@ const productCardSelect = {
     where: { isActive: true },
     orderBy: { createdAt: 'asc' },
     take: 1,
-    select: { imageUrl: true },
+    select: {
+      images: { orderBy: { position: 'asc' }, take: 1, select: { url: true } },
+    },
   },
 } satisfies Prisma.ProductSelect;
 
@@ -285,7 +295,6 @@ export class ProductService {
           sku: variant.sku,
           price: variant.price,
           stock: variant.stock,
-          imageUrl: variant.imageUrl,
         },
         select: { id: true },
       });
@@ -300,6 +309,16 @@ export class ProductService {
           data: attributeValueIds.map((attributeValueId) => ({
             variantId: createdVariant.id,
             attributeValueId,
+          })),
+        });
+      }
+
+      if (variant.images.length > 0) {
+        await tx.productImage.createMany({
+          data: variant.images.map((url, position) => ({
+            variantId: createdVariant.id,
+            url,
+            position,
           })),
         });
       }
@@ -544,7 +563,7 @@ export class ProductService {
 
   private mapProductCard(row: ProductCardRow): ProductCardSummary {
     const { variants, ...rest } = row;
-    return { ...rest, imageUrl: variants[0]?.imageUrl ?? null };
+    return { ...rest, imageUrl: variants[0]?.images[0]?.url ?? null };
   }
 
   // shopId đã qua ShopOwnerGuard xác nhận đúng chủ (route lồng
@@ -660,7 +679,6 @@ export class ProductService {
                 sku: variant.sku,
                 price: variant.price,
                 stock: variant.stock,
-                imageUrl: variant.imageUrl,
               },
               select: { id: true },
             })
@@ -672,9 +690,20 @@ export class ProductService {
           data: {
             price: variant.price,
             stock: variant.stock,
-            imageUrl: variant.imageUrl,
             isActive: true,
           },
+        });
+        // Variant đã có sẵn — reconcile ảnh theo url (Week5.md Bước 2.12).
+        await this.reconcileVariantImages(tx, variantId, variant.images);
+      } else if (variant.images.length > 0) {
+        // Variant mới tạo, chắc chắn chưa có ảnh nào — tạo thẳng, không cần
+        // fetch/diff như reconcileVariantImages.
+        await tx.productImage.createMany({
+          data: variant.images.map((url, position) => ({
+            variantId,
+            url,
+            position,
+          })),
         });
       }
 
@@ -711,6 +740,48 @@ export class ProductService {
       where: { id: productId },
       data: { minPrice, maxPrice },
     });
+  }
+
+  // Reconcile ảnh của 1 variant theo khoá tự nhiên (url) — KHÁC soft-delete
+  // của variant (mục trên): ảnh không có FK nào khác tham chiếu tới, không
+  // cần giữ lịch sử, nên ảnh không còn trong payload bị xoá hẳn (Week5.md
+  // Bước 1.3/2.12). Ảnh còn trong payload giữ nguyên id (chỉ update lại
+  // position nếu thứ tự đổi), ảnh mới thì tạo.
+  private async reconcileVariantImages(
+    tx: Prisma.TransactionClient,
+    variantId: string,
+    urls: string[],
+  ): Promise<void> {
+    const existingImages = await tx.productImage.findMany({
+      where: { variantId },
+      select: { id: true, url: true, position: true },
+    });
+    const existingByUrl = new Map(
+      existingImages.map((image) => [image.url, image]),
+    );
+    const payloadUrls = new Set(urls);
+
+    for (let position = 0; position < urls.length; position++) {
+      const url = urls[position];
+      const existingImage = existingByUrl.get(url);
+      if (!existingImage) {
+        await tx.productImage.create({ data: { variantId, url, position } });
+      } else if (existingImage.position !== position) {
+        await tx.productImage.update({
+          where: { id: existingImage.id },
+          data: { position },
+        });
+      }
+    }
+
+    const staleImageIds = existingImages
+      .filter((image) => !payloadUrls.has(image.url))
+      .map((image) => image.id);
+    if (staleImageIds.length > 0) {
+      await tx.productImage.deleteMany({
+        where: { id: { in: staleImageIds } },
+      });
+    }
   }
 
   // Denormalize minPrice/maxPrice lên Product từ tập variant ACTIVE hiện tại

@@ -70,7 +70,7 @@ const PRODUCT_EXAMPLE = {
       price: '150000',
       stock: 10,
       isActive: true,
-      imageUrl: null,
+      images: [],
       weightGram: null,
       attributeValues: [{ attributeName: 'Màu sắc', value: 'Đỏ' }],
     },
@@ -103,7 +103,7 @@ const PRODUCT_LIST_ITEM_EXAMPLE = {
       price: PRODUCT_EXAMPLE.variants[0].price,
       stock: PRODUCT_EXAMPLE.variants[0].stock,
       isActive: true,
-      imageUrl: null,
+      images: [],
     },
   ],
 };

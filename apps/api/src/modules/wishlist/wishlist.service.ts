@@ -20,7 +20,9 @@ const wishlistProductSelect = {
     where: { isActive: true },
     orderBy: { createdAt: 'asc' },
     take: 1,
-    select: { imageUrl: true },
+    select: {
+      images: { orderBy: { position: 'asc' }, take: 1, select: { url: true } },
+    },
   },
 } satisfies Prisma.ProductSelect;
 
@@ -87,7 +89,7 @@ export class WishlistService {
     const { status, shop, variants, ...rest } = product;
     return {
       ...rest,
-      imageUrl: variants[0]?.imageUrl ?? null,
+      imageUrl: variants[0]?.images[0]?.url ?? null,
       isAvailable: status === 'PUBLISHED' && shop.status === 'APPROVED',
     };
   }

@@ -12,16 +12,6 @@ const optionalTrimmedString = () =>
     .optional()
     .transform((val) => (val === '' ? undefined : val));
 
-const optionalUrlSchema = (message: string) =>
-  z
-    .string()
-    .trim()
-    .optional()
-    .refine((val) => !val || z.string().url().safeParse(val).success, {
-      message,
-    })
-    .transform((val) => (val === '' ? undefined : val));
-
 const productAttributeInputSchema = z.object({
   name: z.string().trim().min(1, 'Tên thuộc tính không được để trống'),
   values: z
@@ -36,12 +26,15 @@ const productAttributeInputSchema = z.object({
 // attributes[i].values. Service dùng đúng cặp (attribute, value theo vị trí)
 // này để build map "value string -> ProductAttributeValue.id" trong
 // transaction tạo/sửa Product.
+// Week5.md Bước 1.3/2.12 — nhiều ảnh/variant (thay cho `imageUrl` đơn cũ).
+// Request chỉ cần mảng URL (đã ký sẵn qua signed upload) — `position` suy
+// từ thứ tự trong mảng, không cần gửi tường minh.
 const productVariantInputSchema = z.object({
   sku: z.string().trim().min(1, 'SKU không được để trống'),
   price: z.number().positive('Giá phải lớn hơn 0'),
   stock: z.number().int().nonnegative('Tồn kho không được âm'),
   attributeValues: z.array(z.string().trim().min(1)).default([]),
-  imageUrl: optionalUrlSchema('URL ảnh không hợp lệ'),
+  images: z.array(z.string().trim().url('URL ảnh không hợp lệ')).default([]),
 });
 
 function validateAttributesAndVariants(
@@ -201,6 +194,14 @@ export const productVariantAttributeValueSchema = z.object({
   value: z.string(),
 });
 
+// Week5.md Bước 1.3/2.12 — sắp sẵn theo position (BE trả đã sort), FE không
+// cần tự sort lại.
+export const productImageSchema = z.object({
+  url: z.string(),
+  position: z.number(),
+});
+export type ProductImageDto = z.infer<typeof productImageSchema>;
+
 export const productVariantSchema = z.object({
   id: z.string(),
   sku: z.string(),
@@ -210,7 +211,7 @@ export const productVariantSchema = z.object({
   price: z.string(),
   stock: z.number(),
   isActive: z.boolean(),
-  imageUrl: z.string().nullable(),
+  images: z.array(productImageSchema),
   weightGram: z.number().nullable(),
   attributeValues: z.array(productVariantAttributeValueSchema),
 });
@@ -257,7 +258,7 @@ export const productListItemVariantSchema = z.object({
   price: z.string(),
   stock: z.number(),
   isActive: z.boolean(),
-  imageUrl: z.string().nullable(),
+  images: z.array(productImageSchema),
 });
 
 export const productListItemSchema = z.object({
@@ -306,6 +307,9 @@ export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
 
 // Card cho trang chủ/danh sách public — không trả description/attributes/
 // toàn bộ variant (rules/backend.md mục 4), chỉ đủ hiển thị 1 ô sản phẩm.
+// `imageUrl` (số ít, khác `productVariantSchema.images[]`) là 1 ảnh đại diện
+// đã flatten sẵn ở BE (ảnh đầu tiên, position=0, của variant active đầu
+// tiên) — card chỉ cần 1 ảnh bìa, không cần cả bộ ảnh/variant.
 export const productCardSchema = z.object({
   id: z.string(),
   categoryId: z.string(),

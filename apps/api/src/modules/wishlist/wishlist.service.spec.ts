@@ -20,7 +20,7 @@ function productRow(overrides: Record<string, unknown> = {}) {
     maxPrice: '150000',
     status: 'PUBLISHED',
     shop: { status: 'APPROVED' },
-    variants: [{ imageUrl: 'https://example.com/a.jpg' }],
+    variants: [{ images: [{ url: 'https://example.com/a.jpg', position: 0 }] }],
     ...overrides,
   };
 }

@@ -28,14 +28,14 @@ const baseDto: CreateProductDto = {
       price: 150000,
       stock: 10,
       attributeValues: ['Đỏ', 'M'],
-      imageUrl: undefined,
+      images: [],
     },
     {
       sku: 'AT-DO-L',
       price: 150000,
       stock: 8,
       attributeValues: ['Đỏ', 'L'],
-      imageUrl: undefined,
+      images: [],
     },
   ],
 };
@@ -64,6 +64,13 @@ describe('ProductService', () => {
       update: jest.Mock;
     };
     variantAttributeValue: { createMany: jest.Mock; deleteMany: jest.Mock };
+    productImage: {
+      create: jest.Mock;
+      createMany: jest.Mock;
+      findMany: jest.Mock;
+      update: jest.Mock;
+      deleteMany: jest.Mock;
+    };
     $transaction: jest.Mock;
     $queryRaw: jest.Mock;
   };
@@ -108,6 +115,13 @@ describe('ProductService', () => {
       },
       variantAttributeValue: {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      productImage: {
+        create: jest.fn().mockResolvedValue({}),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({}),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
@@ -178,7 +192,7 @@ describe('ProductService', () => {
           price: new Prisma.Decimal(150000),
           stock: 10,
           isActive: true,
-          imageUrl: null,
+          images: [],
           weightGram: null,
           attributeValues: [
             {
@@ -225,10 +239,11 @@ describe('ProductService', () => {
         sku: 'AT-DO-M',
         price: 150000,
         stock: 10,
-        imageUrl: undefined,
       },
       select: { id: true },
     });
+    // images rỗng (baseDto không kèm ảnh nào) -> không tạo ProductImage nào.
+    expect(prisma.productImage.createMany).not.toHaveBeenCalled();
 
     // attributeValues[0]="Đỏ" khớp attributes[0] (Màu sắc), attributeValues[1]="M"
     // khớp attributes[1] (Size) — tra theo vị trí, không theo tên.
@@ -261,7 +276,7 @@ describe('ProductService', () => {
           price: 50000,
           stock: 5,
           attributeValues: [],
-          imageUrl: undefined,
+          images: [],
         },
       ],
     };
@@ -283,7 +298,7 @@ describe('ProductService', () => {
           price: new Prisma.Decimal(50000),
           stock: 5,
           isActive: true,
-          imageUrl: null,
+          images: [],
           weightGram: null,
           attributeValues: [],
         },
@@ -295,6 +310,33 @@ describe('ProductService', () => {
     expect(prisma.productAttribute.create).not.toHaveBeenCalled();
     expect(prisma.productAttributeValue.create).not.toHaveBeenCalled();
     expect(prisma.variantAttributeValue.createMany).not.toHaveBeenCalled();
+  });
+
+  // Week5.md Bước 1.3/2.12 — tạo product kèm nhiều ảnh/variant đúng trong
+  // cùng transaction, position = đúng thứ tự trong mảng images.
+  it('tạo product kèm nhiều ảnh/variant, position theo đúng thứ tự mảng', async () => {
+    mockLoadedProduct({ variants: [] });
+
+    await service.createProduct('shop-1', {
+      ...baseDto,
+      attributes: [],
+      variants: [
+        {
+          sku: 'X',
+          price: 1,
+          stock: 1,
+          attributeValues: [],
+          images: ['https://x/a.jpg', 'https://x/b.jpg'],
+        },
+      ],
+    });
+
+    expect(prisma.productImage.createMany).toHaveBeenCalledWith({
+      data: [
+        { variantId: 'variant-X', url: 'https://x/a.jpg', position: 0 },
+        { variantId: 'variant-X', url: 'https://x/b.jpg', position: 1 },
+      ],
+    });
   });
 
   it('tự sinh slug, thêm hậu tố khi slug gốc đã bị chiếm', async () => {
@@ -324,7 +366,7 @@ describe('ProductService', () => {
           price: 1,
           stock: 1,
           attributeValues: [],
-          imageUrl: undefined,
+          images: [],
         },
       ],
     });
@@ -374,7 +416,7 @@ describe('ProductService', () => {
           price: 1,
           stock: 1,
           attributeValues: [],
-          imageUrl: undefined,
+          images: [],
         },
       ],
     });
@@ -477,7 +519,7 @@ describe('ProductService', () => {
             price: 1,
             stock: 1,
             attributeValues: ['Đỏ'],
-            imageUrl: undefined,
+            images: [],
           },
         ],
       });
@@ -512,14 +554,14 @@ describe('ProductService', () => {
             price: 200000,
             stock: 3,
             attributeValues: [],
-            imageUrl: undefined,
+            images: [],
           },
           {
             sku: 'NEW',
             price: 100000,
             stock: 1,
             attributeValues: [],
-            imageUrl: undefined,
+            images: [],
           },
         ],
       });
@@ -528,7 +570,7 @@ describe('ProductService', () => {
       expect(prisma.productVariant.create).toHaveBeenCalledTimes(1);
       expect(prisma.productVariant.update).toHaveBeenCalledWith({
         where: { id: 'variant-keep' },
-        data: { price: 200000, stock: 3, imageUrl: undefined, isActive: true },
+        data: { price: 200000, stock: 3, isActive: true },
       });
 
       // sku "NEW" không khớp -> tạo mới với đúng shopId đã xác nhận qua guard.
@@ -539,7 +581,6 @@ describe('ProductService', () => {
           sku: 'NEW',
           price: 100000,
           stock: 1,
-          imageUrl: undefined,
         },
         select: { id: true },
       });
@@ -564,6 +605,50 @@ describe('ProductService', () => {
       });
     });
 
+    // Week5.md Bước 1.3/2.12 — reconcile ảnh theo khoá tự nhiên (url), khác
+    // soft-delete của variant: ảnh không còn trong payload bị xoá hẳn row.
+    it('reconcile ảnh: giữ ảnh còn trong payload, thêm ảnh mới, xoá hẳn ảnh mất trong payload', async () => {
+      prisma.productVariant.findMany.mockResolvedValue([
+        { id: 'variant-keep', sku: 'KEEP' },
+      ]);
+      prisma.productImage.findMany.mockResolvedValue([
+        { id: 'img-old', url: 'https://x/old.jpg', position: 0 },
+        { id: 'img-move', url: 'https://x/move.jpg', position: 1 },
+      ]);
+      mockLoadedProduct();
+
+      await service.updateProduct('shop-1', 'product-1', {
+        attributes: [],
+        variants: [
+          {
+            sku: 'KEEP',
+            price: 1,
+            stock: 1,
+            attributeValues: [],
+            // "old.jpg" mất khỏi payload -> xoá hẳn. "move.jpg" còn nhưng đổi
+            // sang position 0 -> chỉ update position, giữ nguyên id. "new.jpg"
+            // chưa từng có -> tạo mới ở position 1.
+            images: ['https://x/move.jpg', 'https://x/new.jpg'],
+          },
+        ],
+      });
+
+      expect(prisma.productImage.deleteMany).toHaveBeenCalledWith({
+        where: { id: { in: ['img-old'] } },
+      });
+      expect(prisma.productImage.update).toHaveBeenCalledWith({
+        where: { id: 'img-move' },
+        data: { position: 0 },
+      });
+      expect(prisma.productImage.create).toHaveBeenCalledWith({
+        data: {
+          variantId: 'variant-keep',
+          url: 'https://x/new.jpg',
+          position: 1,
+        },
+      });
+    });
+
     it('P2002 do trùng SKU với variant khác trong shop báo đúng 409, không lộ lỗi Prisma thô', async () => {
       prisma.$transaction.mockRejectedValue(p2002('ProductVariant'));
 
@@ -576,7 +661,7 @@ describe('ProductService', () => {
               price: 1,
               stock: 1,
               attributeValues: [],
-              imageUrl: undefined,
+              images: [],
             },
           ],
         }),
@@ -632,7 +717,10 @@ describe('ProductService', () => {
               price: true,
               stock: true,
               isActive: true,
-              imageUrl: true,
+              images: {
+                orderBy: { position: 'asc' },
+                select: { url: true, position: true },
+              },
             },
           },
         },
@@ -765,7 +853,13 @@ describe('ProductService', () => {
             where: { isActive: true },
             orderBy: { createdAt: 'asc' },
             take: 1,
-            select: { imageUrl: true },
+            select: {
+              images: {
+                orderBy: { position: 'asc' },
+                take: 1,
+                select: { url: true },
+              },
+            },
           },
         },
       });
@@ -865,7 +959,9 @@ describe('ProductService', () => {
           slug: 'ao-thun',
           minPrice: '100000',
           maxPrice: '150000',
-          variants: [{ imageUrl: 'https://example.com/a.jpg' }],
+          variants: [
+            { images: [{ url: 'https://example.com/a.jpg', position: 0 }] },
+          ],
         },
         {
           id: 'p2',
