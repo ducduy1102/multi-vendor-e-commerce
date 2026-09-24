@@ -34,7 +34,7 @@ const mockProduct = {
       price: '150000',
       stock: 10,
       isActive: true,
-      imageUrl: null,
+      images: [],
       weightGram: null,
       attributeValues: [],
     },
@@ -64,7 +64,7 @@ describe('product.service', () => {
       name: 'Áo thun nam',
       categoryId: 'cat-1',
       attributes: [],
-      variants: [{ sku: 'AT-1', price: 150000, stock: 10, attributeValues: [] }],
+      variants: [{ sku: 'AT-1', price: 150000, stock: 10, attributeValues: [], images: [] }],
     });
 
     expect(result).toEqual(mockProduct);
@@ -82,7 +82,7 @@ describe('product.service', () => {
         name: 'Áo thun nam',
         categoryId: 'cat-1',
         attributes: [],
-        variants: [{ sku: 'AT-1', price: 150000, stock: 10, attributeValues: [] }],
+        variants: [{ sku: 'AT-1', price: 150000, stock: 10, attributeValues: [], images: [] }],
       }),
     ).rejects.toMatchObject(new ApiError('SKU already exists in this shop', 409));
   });
@@ -104,7 +104,7 @@ describe('product.service', () => {
         price: v.price,
         stock: v.stock,
         isActive: v.isActive,
-        imageUrl: v.imageUrl,
+        images: v.images,
       })),
     };
     mockFetchOnce({ success: true, data: { products: [listItem] } });

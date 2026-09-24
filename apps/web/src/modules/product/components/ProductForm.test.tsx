@@ -11,10 +11,10 @@ import { ProductForm } from './ProductForm';
 
 const categories: Category[] = [{ id: 'cat-1', name: 'Áo nam', slug: 'ao-nam', parentId: null }];
 
-// ProductForm giờ gián tiếp dùng useUploadSignature (VariantImageUpload,
-// Bước 3.8) — cần QueryClientProvider để render được, khác các test trước
-// đó (chỉ react-hook-form, không cần). 1 QueryClient mới mỗi lần render,
-// không cache chéo giữa các test.
+// ProductForm giờ gián tiếp dùng useUploadSignature (VariantImagesUpload,
+// Week4.md Bước 3.8, Week5.md Bước 3.13) — cần QueryClientProvider để render
+// được, khác các test trước đó (chỉ react-hook-form, không cần). 1
+// QueryClient mới mỗi lần render, không cache chéo giữa các test.
 function renderProductForm(ui: ReactElement) {
   const queryClient = new QueryClient();
   return render(withIntl(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>));
@@ -120,7 +120,7 @@ describe('ProductForm', () => {
         description: undefined,
         status: undefined,
         attributes: [{ name: 'Màu sắc', values: ['Đỏ'] }],
-        variants: [{ sku: 'AT-DO', price: 150000, stock: 10, attributeValues: ['Đỏ'] }],
+        variants: [{ sku: 'AT-DO', price: 150000, stock: 10, attributeValues: ['Đỏ'], images: [] }],
       }),
     );
   });
@@ -196,7 +196,7 @@ describe('ProductForm', () => {
           description: '',
           status: 'PUBLISHED',
           attributes: [],
-          variants: [{ sku: 'AT-1', price: '100000', stock: '5', attributeValues: [] }],
+          variants: [{ sku: 'AT-1', price: '100000', stock: '5', attributeValues: [], images: [] }],
         }}
       />,
     );

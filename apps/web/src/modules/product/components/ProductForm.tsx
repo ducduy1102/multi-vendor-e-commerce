@@ -19,7 +19,7 @@ import { Label } from '@/shared/components/ui/label';
 import { Textarea } from '@/shared/components/ui/textarea';
 import type { Category, Product } from '../types';
 import { buildVariantMatrix } from './ProductForm.utils';
-import { VariantImageUpload } from './VariantImageUpload';
+import { VariantImagesUpload } from './VariantImagesUpload';
 
 // Schema RIÊNG cho form (khác createProductSchema/updateProductSchema ở
 // @ecommerce/types) — chỉ validate UX tức thời ở FE, BE (ZodValidationPipe +
@@ -82,9 +82,10 @@ const productFormVariantSchema = z.object({
     .trim()
     .refine((v) => Number.isInteger(Number(v)) && Number(v) >= 0, 'Tồn kho phải là số nguyên >= 0'),
   attributeValues: z.array(z.string()),
-  // Gán qua VariantImageUpload (Controller, Bước 3.8) — không có <input
-  // type="text"> nào register trực tiếp field này.
-  imageUrl: z.string().optional(),
+  // Gán qua VariantImagesUpload (Controller, Week4.md Bước 3.8, mở rộng
+  // nhiều ảnh ở Week5.md Bước 3.13) — không có <input type="text"> nào
+  // register trực tiếp field này. Thứ tự mảng CHÍNH LÀ position gửi lên BE.
+  images: z.array(z.string()),
 });
 
 const productFormSchema = z
@@ -135,7 +136,7 @@ export interface ProductFormSubmitValues {
     price: number;
     stock: number;
     attributeValues: string[];
-    imageUrl?: string;
+    images: string[];
   }[];
 }
 
@@ -154,7 +155,7 @@ function toSubmitPayload(values: ProductFormValues): ProductFormSubmitValues {
       price: Number(variant.price),
       stock: Number(variant.stock),
       attributeValues: variant.attributeValues,
-      imageUrl: variant.imageUrl,
+      images: variant.images,
     })),
   };
 }
@@ -164,7 +165,7 @@ const EMPTY_DEFAULT_VALUES: ProductFormValues = {
   categoryId: '',
   description: '',
   attributes: [],
-  variants: [{ sku: '', price: '', stock: '', attributeValues: [], imageUrl: undefined }],
+  variants: [{ sku: '', price: '', stock: '', attributeValues: [], images: [] }],
 };
 
 // Chuyển response Product (GET /products/:id) thành defaultValues cho form
@@ -194,7 +195,7 @@ export function productToFormValues(product: Product): ProductFormValues {
           (attribute) =>
             variant.attributeValues.find((av) => av.attributeName === attribute.name)?.value ?? '',
         ),
-        imageUrl: variant.imageUrl ?? undefined,
+        images: variant.images.map((image) => image.url),
       })),
   };
 }
@@ -452,15 +453,16 @@ export function ProductForm({
                   <Label className="md:sr-only">{t('productFormImageLabel')}</Label>
                   <Controller
                     control={control}
-                    name={`variants.${variantIndex}.imageUrl`}
+                    name={`variants.${variantIndex}.images`}
                     render={({ field }) => (
-                      <VariantImageUpload
+                      <VariantImagesUpload
                         value={field.value}
                         onChange={field.onChange}
                         uploadLabel={t('productFormImageUpload')}
-                        changeLabel={t('productFormImageChange')}
                         uploadingLabel={t('productFormImageUploading')}
                         removeLabel={t('productFormImageRemove')}
+                        moveUpLabel={t('productFormImageMoveUp')}
+                        moveDownLabel={t('productFormImageMoveDown')}
                         errorLabel={t('productFormImageError')}
                       />
                     )}
