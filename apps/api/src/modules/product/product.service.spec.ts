@@ -19,8 +19,8 @@ const baseDto: CreateProductDto = {
   categoryId: 'cat-1',
   description: undefined,
   attributes: [
-    { name: 'Màu sắc', values: ['Đỏ', 'Xanh'] },
-    { name: 'Size', values: ['M', 'L'] },
+    { name: 'Màu sắc', values: [{ value: 'Đỏ' }, { value: 'Xanh' }] },
+    { name: 'Size', values: [{ value: 'M' }, { value: 'L' }] },
   ],
   variants: [
     {
@@ -58,7 +58,11 @@ describe('ProductService', () => {
       findFirst: jest.Mock;
       update: jest.Mock;
     };
-    productAttributeValue: { create: jest.Mock; findFirst: jest.Mock };
+    productAttributeValue: {
+      create: jest.Mock;
+      findFirst: jest.Mock;
+      update: jest.Mock;
+    };
     productVariant: {
       create: jest.Mock;
       findMany: jest.Mock;
@@ -107,6 +111,7 @@ describe('ProductService', () => {
             }),
         ),
         findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
       },
       productVariant: {
         create: jest.fn((args: { data: { sku: string } }) =>
@@ -504,40 +509,261 @@ describe('ProductService', () => {
       expect(prisma.productVariant.findMany).not.toHaveBeenCalled();
     });
 
-    it('reconcile attribute/value: reuse nếu đã tồn tại, tạo mới nếu chưa có', async () => {
-      prisma.productAttribute.findFirst.mockResolvedValueOnce({
-        id: 'attr-existing-Màu sắc',
-      });
-      prisma.productAttributeValue.findFirst
-        .mockResolvedValueOnce({ id: 'val-existing-Đỏ' }) // "Đỏ" đã tồn tại
-        .mockResolvedValueOnce(null); // "Vàng" chưa có, tạo mới
-      mockLoadedProduct();
+    // Reconcile attribute/value theo `id` (không còn theo name/value text) —
+    // bug thật đã fix: match theo text khiến ĐỔI TÊN (không phải xoá) bị
+    // hiểu nhầm thành "xoá cũ + tạo mới", để lại row rác vĩnh viễn (attribute/
+    // value không hard-delete, xem note-db.md mục 5d). Đã verify thực tế:
+    // đổi tên 1 attribute 4 lần liên tiếp qua API thật để lại 3 row
+    // product_attributes + 3 row product_attribute_values chết trước khi fix.
+    describe('reconcile attribute/value theo id', () => {
+      it('attribute rename qua id: update tại chỗ (không tạo mới), giữ nguyên id', async () => {
+        prisma.productAttribute.findFirst.mockResolvedValueOnce({
+          id: 'attr-1',
+        });
+        mockLoadedProduct();
 
-      await service.updateProduct('shop-1', 'product-1', {
-        attributes: [{ name: 'Màu sắc', values: ['Đỏ', 'Vàng'] }],
-        variants: [
-          {
-            sku: 'X',
-            price: 1,
-            stock: 1,
-            attributeValues: ['Đỏ'],
-            images: [],
-          },
-        ],
+        await service.updateProduct('shop-1', 'product-1', {
+          attributes: [
+            { id: 'attr-1', name: 'Màu sắc mới', values: [{ value: 'Đỏ' }] },
+          ],
+          variants: [
+            {
+              sku: 'X',
+              price: 1,
+              stock: 1,
+              attributeValues: ['Đỏ'],
+              images: [],
+            },
+          ],
+        });
+
+        expect(prisma.productAttribute.findFirst).toHaveBeenCalledWith({
+          where: { id: 'attr-1', productId: 'product-1' },
+          select: { id: true },
+        });
+        expect(prisma.productAttribute.create).not.toHaveBeenCalled();
+        expect(prisma.productAttribute.update).toHaveBeenCalledWith({
+          where: { id: 'attr-1' },
+          data: { name: 'Màu sắc mới', position: 0 },
+        });
       });
 
-      // Attribute "Màu sắc" đã tồn tại -> reuse, chỉ update lại position.
-      expect(prisma.productAttribute.create).not.toHaveBeenCalled();
-      expect(prisma.productAttribute.update).toHaveBeenCalledWith({
-        where: { id: 'attr-existing-Màu sắc' },
-        data: { position: 0 },
+      it('attribute không có id: luôn tạo mới, không gọi findFirst (short-circuit)', async () => {
+        mockLoadedProduct();
+
+        await service.updateProduct('shop-1', 'product-1', {
+          attributes: [{ name: 'Size', values: [{ value: 'M' }] }],
+          variants: [
+            {
+              sku: 'X',
+              price: 1,
+              stock: 1,
+              attributeValues: ['M'],
+              images: [],
+            },
+          ],
+        });
+
+        expect(prisma.productAttribute.findFirst).not.toHaveBeenCalled();
+        expect(prisma.productAttribute.create).toHaveBeenCalledWith({
+          data: { productId: 'product-1', name: 'Size', position: 0 },
+          select: { id: true },
+        });
       });
 
-      // "Đỏ" đã tồn tại -> reuse, không tạo mới. "Vàng" chưa có -> tạo mới.
-      expect(prisma.productAttributeValue.create).toHaveBeenCalledTimes(1);
-      expect(prisma.productAttributeValue.create).toHaveBeenCalledWith({
-        data: { attributeId: 'attr-existing-Màu sắc', value: 'Vàng' },
-        select: { id: true },
+      it('attribute có id nhưng không resolve được (lạ/thuộc product khác): fallback tạo mới, không lỗi', async () => {
+        prisma.productAttribute.findFirst.mockResolvedValueOnce(null);
+        mockLoadedProduct();
+
+        await service.updateProduct('shop-1', 'product-1', {
+          attributes: [
+            {
+              id: 'attr-of-other-product',
+              name: 'Màu sắc',
+              values: [{ value: 'Đỏ' }],
+            },
+          ],
+          variants: [
+            {
+              sku: 'X',
+              price: 1,
+              stock: 1,
+              attributeValues: ['Đỏ'],
+              images: [],
+            },
+          ],
+        });
+
+        expect(prisma.productAttribute.create).toHaveBeenCalledWith({
+          data: { productId: 'product-1', name: 'Màu sắc', position: 0 },
+          select: { id: true },
+        });
+        expect(prisma.productAttribute.update).not.toHaveBeenCalled();
+      });
+
+      it('value rename qua id (attribute name giữ nguyên): update tại chỗ, không tạo mới', async () => {
+        prisma.productAttribute.findFirst.mockResolvedValueOnce({
+          id: 'attr-1',
+        });
+        prisma.productAttributeValue.findFirst.mockResolvedValueOnce({
+          id: 'val-1',
+        });
+        mockLoadedProduct();
+
+        await service.updateProduct('shop-1', 'product-1', {
+          attributes: [
+            {
+              id: 'attr-1',
+              name: 'Màu sắc',
+              values: [{ id: 'val-1', value: 'Đỏ tươi' }],
+            },
+          ],
+          variants: [
+            {
+              sku: 'X',
+              price: 1,
+              stock: 1,
+              attributeValues: ['Đỏ tươi'],
+              images: [],
+            },
+          ],
+        });
+
+        expect(prisma.productAttributeValue.findFirst).toHaveBeenCalledWith({
+          where: { id: 'val-1', attributeId: 'attr-1' },
+          select: { id: true },
+        });
+        expect(prisma.productAttributeValue.create).not.toHaveBeenCalled();
+        expect(prisma.productAttributeValue.update).toHaveBeenCalledWith({
+          where: { id: 'val-1' },
+          data: { value: 'Đỏ tươi' },
+        });
+
+        // Variant vẫn link đúng valueId CŨ (val-1, không tạo id mới) — map
+        // valueIdByValue được rebuild dùng đúng text vừa rename ("Đỏ tươi"),
+        // khớp với attributeValues variant vừa gửi cùng request.
+        expect(prisma.variantAttributeValue.createMany).toHaveBeenCalledWith({
+          data: [{ variantId: 'variant-X', attributeValueId: 'val-1' }],
+        });
+      });
+
+      it('value không có id: luôn tạo mới, không gọi findFirst', async () => {
+        prisma.productAttribute.findFirst.mockResolvedValueOnce({
+          id: 'attr-1',
+        });
+        mockLoadedProduct();
+
+        await service.updateProduct('shop-1', 'product-1', {
+          attributes: [
+            { id: 'attr-1', name: 'Màu sắc', values: [{ value: 'Vàng' }] },
+          ],
+          variants: [
+            {
+              sku: 'X',
+              price: 1,
+              stock: 1,
+              attributeValues: ['Vàng'],
+              images: [],
+            },
+          ],
+        });
+
+        expect(prisma.productAttributeValue.findFirst).not.toHaveBeenCalled();
+        expect(prisma.productAttributeValue.create).toHaveBeenCalledWith({
+          data: { attributeId: 'attr-1', value: 'Vàng' },
+          select: { id: true },
+        });
+      });
+
+      it('value có id nhưng không thuộc attributeId đang resolve: fallback tạo mới', async () => {
+        prisma.productAttribute.findFirst.mockResolvedValueOnce({
+          id: 'attr-1',
+        });
+        prisma.productAttributeValue.findFirst.mockResolvedValueOnce(null);
+        mockLoadedProduct();
+
+        await service.updateProduct('shop-1', 'product-1', {
+          attributes: [
+            {
+              id: 'attr-1',
+              name: 'Màu sắc',
+              values: [{ id: 'val-of-other-attribute', value: 'Đỏ' }],
+            },
+          ],
+          variants: [
+            {
+              sku: 'X',
+              price: 1,
+              stock: 1,
+              attributeValues: ['Đỏ'],
+              images: [],
+            },
+          ],
+        });
+
+        expect(prisma.productAttributeValue.findFirst).toHaveBeenCalledWith({
+          where: { id: 'val-of-other-attribute', attributeId: 'attr-1' },
+          select: { id: true },
+        });
+        expect(prisma.productAttributeValue.create).toHaveBeenCalledWith({
+          data: { attributeId: 'attr-1', value: 'Đỏ' },
+          select: { id: true },
+        });
+        expect(prisma.productAttributeValue.update).not.toHaveBeenCalled();
+      });
+
+      it('đổi tên attribute+value 4 lần liên tiếp qua cùng id KHÔNG tạo row rác (regression bug thật đã fix)', async () => {
+        mockLoadedProduct();
+        const names = ['Mau', 'Size', 'Color', 'Loai'];
+        const values = ['Do', 'Do', 'Do', 'Do'];
+
+        for (let i = 0; i < names.length; i++) {
+          // Từ lần 2 trở đi, "đã tồn tại" đúng theo id đã có từ lần đầu —
+          // mô phỏng đúng cách 1 client thật (form đã giữ id) sẽ gửi lại.
+          if (i > 0) {
+            prisma.productAttribute.findFirst.mockResolvedValueOnce({
+              id: 'attr-1',
+            });
+            prisma.productAttributeValue.findFirst.mockResolvedValueOnce({
+              id: 'val-1',
+            });
+          }
+
+          await service.updateProduct('shop-1', 'product-1', {
+            attributes: [
+              {
+                id: i > 0 ? 'attr-1' : undefined,
+                name: names[i],
+                values: [{ id: i > 0 ? 'val-1' : undefined, value: values[i] }],
+              },
+            ],
+            variants: [
+              {
+                sku: 'X',
+                price: 1,
+                stock: 1,
+                attributeValues: [values[i]],
+                images: [],
+              },
+            ],
+          });
+        }
+
+        // Lần đầu (i=0, không có id) mới thật sự tạo mới — 3 lần sau chỉ
+        // update, không tạo thêm row nào (khác hành vi cũ: mỗi lần đổi tên
+        // đều tạo mới, để lại rác).
+        expect(prisma.productAttribute.create).toHaveBeenCalledTimes(1);
+        expect(prisma.productAttributeValue.create).toHaveBeenCalledTimes(1);
+        expect(prisma.productAttribute.update).toHaveBeenCalledTimes(3);
+        expect(prisma.productAttributeValue.update).toHaveBeenCalledTimes(3);
+        // Luôn nhắm đúng cùng 1 id qua cả 3 lần update — ép kiểu tường minh
+        // 1 lần (jest.Mock's .mock.calls vốn kiểu any[]), cùng pattern
+        // queryRawValues() đã dùng ở file này (Week5.md Bước 2.10).
+        const updateCalls = prisma.productAttribute.update.mock
+          .calls as unknown as { where: { id: string } }[][];
+        for (const [call] of updateCalls) {
+          expect(call.where).toEqual({ id: 'attr-1' });
+        }
       });
     });
 

@@ -294,13 +294,15 @@ export class ProductService {
         select: { id: true },
       });
 
+      // `value.id` (nếu FE lỡ gửi) bị bỏ qua có chủ đích — create luôn tạo
+      // mới toàn bộ, không có state cũ nào để match/reconcile theo id.
       const valueIdByValue = new Map<string, string>();
       for (const value of attribute.values) {
         const createdValue = await tx.productAttributeValue.create({
-          data: { attributeId: createdAttribute.id, value },
+          data: { attributeId: createdAttribute.id, value: value.value },
           select: { id: true },
         });
-        valueIdByValue.set(value, createdValue.id);
+        valueIdByValue.set(value.value, createdValue.id);
       }
       attributeValueIdsByPosition.push(valueIdByValue);
     }
@@ -624,12 +626,21 @@ export class ProductService {
   }
 
   // Không hard-delete ProductAttribute/ProductAttributeValue đã tồn tại —
-  // reconcile theo (productId, name)/(attributeId, value): đã có thì reuse
-  // đúng id (giữ nguyên metadata cho variant đã soft-delete còn trỏ tới),
-  // chưa có thì tạo mới. Attribute/value không còn trong payload KHÔNG bị
-  // xoá (chỉ trở thành "không dùng nữa", dọn dẹp riêng nếu cần sau này) —
-  // xem updateProduct-reconcile-decision.md mục 4 (đã xác nhận với người
-  // dùng trước khi code).
+  // attribute/value không còn trong payload KHÔNG bị xoá (chỉ trở thành
+  // "không dùng nữa", giữ nguyên metadata cho variant đã soft-delete còn trỏ
+  // tới) — xem note-db.md mục 5d (đã xác nhận với người dùng trước khi code).
+  //
+  // Reconcile theo `id` (không phải theo name/value text) — đúng cách
+  // Shopify productOptionUpdate làm (rename giữ nguyên id, không đụng
+  // variant). Có `id` VÀ resolve được (đúng scope productId/attributeId) ->
+  // UPDATE tại chỗ (rename). Không có `id` hoặc `id` không resolve được ->
+  // LUÔN tạo mới, KHÔNG fallback về match theo text — match theo text
+  // (name/value) là nguyên nhân bug thật đã gặp: mỗi lần seller đổi tên
+  // attribute/value (không phải xoá) bị hiểu nhầm thành "xoá cái cũ + tạo
+  // cái mới", để lại row rác vĩnh viễn (đã verify thực tế: đổi tên 1
+  // attribute 4 lần liên tiếp để lại 3 row `product_attributes` + 3 row
+  // `product_attribute_values` chết, dù value text không hề đổi — vì value
+  // bị nhân bản theo mỗi lần attributeId cha đổi).
   private async reconcileAttributesAndVariants(
     tx: Prisma.TransactionClient,
     shopId: string,
@@ -640,10 +651,20 @@ export class ProductService {
     const attributeValueIdsByPosition: Map<string, string>[] = [];
     for (let position = 0; position < attributes.length; position++) {
       const attribute = attributes[position];
-      const existingAttribute = await tx.productAttribute.findFirst({
-        where: { productId, name: attribute.name },
-        select: { id: true },
-      });
+
+      // Ternary tường minh (không gọi findFirst khi id vắng mặt) — Prisma bỏ
+      // qua key `undefined` trong `where`, nếu gọi thẳng
+      // findFirst({where:{id: attribute.id, productId}}) lúc attribute.id
+      // là undefined sẽ vô tình thành findFirst({where:{productId}}) và
+      // match nhầm attribute ĐẦU TIÊN của product. Scope thêm `productId`
+      // để 1 attributeId của product khác không "chiếm" được attribute ở
+      // đây qua request giả mạo.
+      const existingAttribute = attribute.id
+        ? await tx.productAttribute.findFirst({
+            where: { id: attribute.id, productId },
+            select: { id: true },
+          })
+        : null;
 
       const attributeId = existingAttribute
         ? existingAttribute.id
@@ -657,25 +678,44 @@ export class ProductService {
       if (existingAttribute) {
         await tx.productAttribute.update({
           where: { id: attributeId },
-          data: { position },
+          data: { name: attribute.name, position },
         });
       }
 
       const valueIdByValue = new Map<string, string>();
       for (const value of attribute.values) {
-        const existingValue = await tx.productAttributeValue.findFirst({
-          where: { attributeId, value },
-          select: { id: true },
-        });
+        // Scope theo attributeId VỪA resolve ở trên (không phải id cũ trong
+        // payload) — 1 valueId thuộc attribute khác (kể cả cùng product)
+        // không được phép "chiếm" qua request giả mạo.
+        const existingValue = value.id
+          ? await tx.productAttributeValue.findFirst({
+              where: { id: value.id, attributeId },
+              select: { id: true },
+            })
+          : null;
+
         const valueId = existingValue
           ? existingValue.id
           : (
               await tx.productAttributeValue.create({
-                data: { attributeId, value },
+                data: { attributeId, value: value.value },
                 select: { id: true },
               })
             ).id;
-        valueIdByValue.set(value, valueId);
+
+        if (existingValue) {
+          await tx.productAttributeValue.update({
+            where: { id: valueId },
+            data: { value: value.value },
+          });
+        }
+
+        // Vẫn key theo TEXT (không phải id) — resolveAttributeValueIds()
+        // tra theo variant.attributeValues[i] (text), map này được rebuild
+        // mới mỗi lần reconcile dùng đúng text vừa ghi (có thể vừa rename),
+        // nên vẫn khớp đúng dù value vừa đổi tên — không cần đổi gì ở tầng
+        // variant.
+        valueIdByValue.set(value.value, valueId);
       }
       attributeValueIdsByPosition.push(valueIdByValue);
     }

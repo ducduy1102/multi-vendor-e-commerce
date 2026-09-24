@@ -12,12 +12,25 @@ const optionalTrimmedString = () =>
     .optional()
     .transform((val) => (val === '' ? undefined : val));
 
+// `id` optional — có nghĩa "đây là giá trị/thuộc tính ĐÃ TỒN TẠI, update tại
+// chỗ theo id này" (giống Shopify productOptionUpdate) khi gửi trong
+// updateProductSchema. Không có `id` (hoặc `id` không resolve được ở
+// ProductService.reconcileAttributesAndVariants) -> LUÔN tạo mới, KHÔNG
+// fallback về match theo text — match theo text (name/value) là nguyên nhân
+// bug orphan row khi seller đổi tên (mỗi lần đổi tên bị hiểu nhầm thành xoá +
+// tạo mới, để lại row rác vĩnh viễn vì attribute/value không hard-delete).
+// `id` bị bỏ qua khi dùng ở createProductSchema (tạo mới hoàn toàn, không có
+// gì để match).
+const productAttributeValueInputSchema = z.object({
+  id: z.string().trim().min(1).optional(),
+  value: z.string().trim().min(1, 'Giá trị thuộc tính không được để trống'),
+});
+
 const productAttributeInputSchema = z.object({
+  id: z.string().trim().min(1).optional(),
   name: z.string().trim().min(1, 'Tên thuộc tính không được để trống'),
   values: z
-    .array(
-      z.string().trim().min(1, 'Giá trị thuộc tính không được để trống'),
-    )
+    .array(productAttributeValueInputSchema)
     .min(1, 'Thuộc tính cần ít nhất 1 giá trị'),
 });
 
@@ -38,7 +51,7 @@ const productVariantInputSchema = z.object({
 });
 
 function validateAttributesAndVariants(
-  attributes: { name: string; values: string[] }[],
+  attributes: { name: string; values: { id?: string; value: string }[] }[],
   variants: { sku: string; attributeValues: string[] }[],
   ctx: RefinementCtx,
 ) {
@@ -55,15 +68,17 @@ function validateAttributesAndVariants(
 
     // So sánh không phân biệt hoa/thường ("M" và "m" cùng bị coi là trùng) —
     // khớp với check FE ở ProductForm.tsx (cùng bất biến, 2 nơi validate
-    // cùng 1 rule không được lệch nhau).
+    // cùng 1 rule không được lệch nhau). Path trỏ vào `.value` (không phải
+    // cả phần tử values[valueIndex]) vì values giờ là object {id?, value},
+    // khớp đúng path FE dùng ở productFormAttributeSchema's superRefine.
     const seenValues = new Map<string, number>();
     attribute.values.forEach((value, valueIndex) => {
-      const key = value.trim().toLowerCase();
+      const key = value.value.trim().toLowerCase();
       if (seenValues.has(key)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Giá trị "${value}" bị lặp lại trong thuộc tính "${attribute.name}" (không phân biệt hoa/thường)`,
-          path: ['attributes', index, 'values', valueIndex],
+          message: `Giá trị "${value.value}" bị lặp lại trong thuộc tính "${attribute.name}" (không phân biệt hoa/thường)`,
+          path: ['attributes', index, 'values', valueIndex, 'value'],
         });
       } else {
         seenValues.set(key, valueIndex);
@@ -94,7 +109,7 @@ function validateAttributesAndVariants(
 
     variant.attributeValues.forEach((value, valueIndex) => {
       const attribute = attributes[valueIndex];
-      if (attribute && !attribute.values.includes(value)) {
+      if (attribute && !attribute.values.some((v) => v.value === value)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `Giá trị "${value}" không thuộc thuộc tính "${attribute.name}"`,
