@@ -1,16 +1,18 @@
-import createIntlMiddleware from "next-intl/middleware";
-import { NextRequest, NextResponse } from "next/server";
+import createIntlMiddleware from 'next-intl/middleware';
+import { NextRequest, NextResponse } from 'next/server';
 
-import { routing } from "@/i18n/routing";
+import { routing } from '@/i18n/routing';
 
 // Tên cookie phải khớp ACCESS_TOKEN_COOKIE ở
 // apps/api/src/modules/auth/auth.constants.ts.
-const ACCESS_TOKEN_COOKIE = "access_token";
-const GUEST_ONLY_PATHS = ["/login", "/register"];
+const ACCESS_TOKEN_COOKIE = 'access_token';
+const GUEST_ONLY_PATHS = ['/login', '/register'];
 // Chỉ check "đã đăng nhập chưa" (đọc được từ cookie tại edge) — KHÔNG check
 // "đã có shop chưa" ở đây (cần query DB, useMyShop() ở Client Component lo
 // việc đó, xem BecomeSellerFormContainer/ShopDashboardContainer Bước 3.7/3.8).
-const PROTECTED_PATH_PREFIXES = ["/seller"];
+// "/wishlist" thêm ở Week5.md Bước 3.7 — wishlist chỉ cho user đã đăng nhập
+// (Bước 1.12, guest không wishlist được, khác giỏ hàng).
+const PROTECTED_PATH_PREFIXES = ['/seller', '/wishlist'];
 
 const intlMiddleware = createIntlMiddleware(routing);
 
@@ -19,7 +21,7 @@ const intlMiddleware = createIntlMiddleware(routing);
 // tại (vd "/en/login" và "/login" đều phải bị chặn như nhau khi đã đăng nhập).
 function stripLocalePrefix(pathname: string): string {
   const match = pathname.match(/^\/(en)(?=\/|$)/);
-  return match ? pathname.slice(match[0].length) || "/" : pathname;
+  return match ? pathname.slice(match[0].length) || '/' : pathname;
 }
 
 function isProtectedPath(pathname: string): boolean {
@@ -36,11 +38,11 @@ export function proxy(request: NextRequest) {
   const pathWithoutLocale = stripLocalePrefix(request.nextUrl.pathname);
 
   if (isAuthenticated && GUEST_ONLY_PATHS.includes(pathWithoutLocale)) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL('/', request.url));
   }
 
   if (!isAuthenticated && isProtectedPath(pathWithoutLocale)) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   return intlMiddleware(request);
@@ -50,5 +52,5 @@ export const config = {
   // Bỏ qua asset tĩnh/API/file có phần mở rộng — đúng matcher mặc định
   // next-intl khuyến nghị, cần chạy trên hầu hết mọi route để tự thêm/detect
   // locale prefix, không chỉ riêng /login, /register như trước khi có i18n.
-  matcher: ["/((?!api|trpc|_next|_vercel|.*\\..*).*)"],
+  matcher: ['/((?!api|trpc|_next|_vercel|.*\\..*).*)'],
 };

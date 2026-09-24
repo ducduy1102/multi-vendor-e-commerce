@@ -4,7 +4,10 @@
 // consumer nào ở app/ cần trực tiếp sau khi page.tsx chuyển sang compose
 // HomeCatalog thay vì tự gọi 2 thứ này.
 export { createProductSchema, updateProductSchema } from './schemas/product.schema';
-export { PRODUCTS_PAGE_GRID_CLASS } from './components/HomeCatalog.constants';
+export {
+  HOME_CATALOG_GRID_CLASS,
+  PRODUCTS_PAGE_GRID_CLASS,
+} from './components/HomeCatalog.constants';
 export { ActiveFiltersSummary } from './components/ActiveFiltersSummary';
 export { CreateProductFormContainer } from './components/CreateProductFormContainer';
 export { EditProductFormContainer } from './components/EditProductFormContainer';

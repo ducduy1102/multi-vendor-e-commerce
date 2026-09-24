@@ -194,6 +194,10 @@
 
   "wishlist": {
     "addLabel": "Thêm vào yêu thích",
-    "removeLabel": "Bỏ khỏi yêu thích"
+    "removeLabel": "Bỏ khỏi yêu thích",
+    "pageTitle": "Sản phẩm yêu thích",
+    "loadError": "Không tải được danh sách yêu thích, vui lòng thử lại",
+    "emptyState": "Bạn chưa thích sản phẩm nào.",
+    "unavailableBadge": "Ngừng bán"
   }
 }

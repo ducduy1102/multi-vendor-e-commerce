@@ -194,6 +194,10 @@
 
   "wishlist": {
     "addLabel": "Add to wishlist",
-    "removeLabel": "Remove from wishlist"
+    "removeLabel": "Remove from wishlist",
+    "pageTitle": "Wishlist",
+    "loadError": "Couldn't load your wishlist, please try again",
+    "emptyState": "You haven't liked any products yet.",
+    "unavailableBadge": "Unavailable"
   }
 }
