@@ -35,13 +35,34 @@ const productWithRelationsSelect = {
   maxPrice: true,
   createdAt: true,
   updatedAt: true,
+  // reconcileAttributesAndVariants KHÔNG hard-delete ProductAttribute/
+  // ProductAttributeValue không còn trong payload update (giữ orphan row
+  // cho lịch sử variant đã soft-delete, xem note-db.md mục 5d) — nhưng
+  // response ở đây chỉ nên trả giá trị ĐANG THỰC SỰ SỐNG (còn ≥1 variant
+  // active tham chiếu), không phải mọi giá trị từng tồn tại. Thiếu `where`
+  // này là bug thật đã gặp: seller đổi "X, L" thành "Đỏ, Vàng", lưu xong "X,
+  // L" vẫn hiện lại ở cả form sửa lẫn trang chi tiết public vì response trả
+  // nguyên mọi ProductAttributeValue của attribute, không lọc theo variant
+  // active. Attribute không còn value nào active (seller đổi hết mọi giá
+  // trị) cũng bị ẩn luôn cả attribute đó — tránh hiện 1 nhóm thuộc tính rỗng
+  // không có lựa chọn nào.
   attributes: {
+    where: {
+      values: {
+        some: { variantValues: { some: { variant: { isActive: true } } } },
+      },
+    },
     orderBy: { position: 'asc' },
     select: {
       id: true,
       name: true,
       position: true,
-      values: { select: { id: true, value: true } },
+      values: {
+        where: {
+          variantValues: { some: { variant: { isActive: true } } },
+        },
+        select: { id: true, value: true },
+      },
     },
   },
   variants: {
