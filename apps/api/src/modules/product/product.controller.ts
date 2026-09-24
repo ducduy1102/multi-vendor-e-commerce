@@ -155,7 +155,9 @@ export class ProductController {
       example: {
         name: 'Áo thun nam',
         categoryId: PRODUCT_EXAMPLE.categoryId,
-        attributes: [{ name: 'Màu sắc', values: ['Đỏ', 'Xanh'] }],
+        attributes: [
+          { name: 'Màu sắc', values: [{ value: 'Đỏ' }, { value: 'Xanh' }] },
+        ],
         variants: [
           {
             sku: 'AT-DO-M',
@@ -212,10 +214,32 @@ export class ProductController {
   @ApiCookieAuth('access_token')
   @ApiOperation({
     summary:
-      'Cập nhật product — chỉ chủ shop. attributes/variants phải gửi cùng nhau (reconcile) hoặc cùng bỏ trống',
+      'Cập nhật product — chỉ chủ shop. attributes/variants phải gửi cùng nhau (reconcile) hoặc cùng bỏ trống. attributes[].id/attributes[].values[].id (optional): có + resolve được thì UPDATE tại chỗ (rename, giữ nguyên id) — không có hoặc không resolve được thì tạo mới. Không gửi id vẫn hợp lệ (coi như thuộc tính/giá trị mới hoàn toàn).',
   })
   @ApiBody({
-    schema: { example: { name: 'Tên product mới', status: 'PUBLISHED' } },
+    schema: {
+      example: {
+        name: 'Tên product mới',
+        status: 'PUBLISHED',
+        attributes: [
+          {
+            id: 'e1a2b3c4-1234-4a5b-8c9d-abcdef111111',
+            name: 'Màu sắc',
+            values: [
+              { id: 'f1a2b3c4-1234-4a5b-8c9d-abcdef222222', value: 'Đỏ tươi' },
+            ],
+          },
+        ],
+        variants: [
+          {
+            sku: 'AT-DO-M',
+            price: 150000,
+            stock: 10,
+            attributeValues: ['Đỏ tươi'],
+          },
+        ],
+      },
+    },
   })
   @ApiResponse({
     status: 200,
