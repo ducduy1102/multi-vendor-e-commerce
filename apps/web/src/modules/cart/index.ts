@@ -1,5 +1,6 @@
-// Barrel export cho module cart — export những gì cần dùng ở app/ và module
-// khác. Hook/component sẽ được thêm dần ở các bước sau của Tuần 6.
+// Barrel export cho module cart — API công khai của module: chỉ export những gì
+// app/ (layout, trang /cart) và module khác (product, header) cần dùng, không
+// export file nội bộ như CartItemRow/CartSummary.
 export { AddToCartButton } from './components/AddToCartButton';
 export { CartCountBadge } from './components/CartCountBadge';
 export { CartHydrator } from './components/CartHydrator';
