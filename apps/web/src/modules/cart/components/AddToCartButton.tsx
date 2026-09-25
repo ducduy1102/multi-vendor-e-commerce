@@ -5,10 +5,12 @@ import { useTranslations } from 'next-intl';
 import { useId, useState } from 'react';
 import { toast } from 'sonner';
 
+import { useAuthStore } from '@/modules/auth';
 import { Button } from '@/shared/components/ui/button';
 import { ApiError } from '@/shared/lib/api-client';
 
 import { useAddToCart } from '../hooks/useAddToCart';
+import { useCartStore } from '../store/cart.store';
 import { QuantityStepper } from './QuantityStepper';
 
 interface AddToCartButtonProps {
@@ -28,13 +30,31 @@ export function AddToCartButton({ productVariantId, stock }: AddToCartButtonProp
   const hintId = useId();
   const [requestedQuantity, setRequestedQuantity] = useState(1);
   const { mutate, isPending } = useAddToCart();
+  const isLoggedIn = useAuthStore((state) => state.user !== null);
+  // Số cái variant này ĐÃ có trong giỏ guest (localStorage). Guest không có
+  // API kiểm tồn kho lúc thêm nên phải tự trừ số đã có, nếu không thêm nhiều
+  // lần sẽ cộng dồn vượt kho (vd kho 15, thêm 15 rồi thêm 1 nữa thành 16). Đã
+  // đăng nhập thì BE tự chặn (409), không cần tự trừ ở đây.
+  const guestQuantityInCart = useCartStore((state) =>
+    isLoggedIn || !productVariantId
+      ? 0
+      : (state.items.find((item) => item.productVariantId === productVariantId)?.quantity ?? 0),
+  );
 
   const hasSelection = productVariantId !== null;
   const isOutOfStock = hasSelection && stock < 1;
-  const canAdd = hasSelection && !isOutOfStock;
+  const remaining = stock - guestQuantityInCart;
+  const isMaxInCart = hasSelection && !isOutOfStock && remaining < 1;
+  const canAdd = hasSelection && !isOutOfStock && !isMaxInCart;
   // Đổi sang combo tồn kho ít hơn thì kẹp số lượng xuống, không giữ số cũ vượt kho.
-  const quantity = Math.min(requestedQuantity, Math.max(stock, 1));
-  const hint = !hasSelection ? t('selectVariantHint') : isOutOfStock ? t('outOfStock') : null;
+  const quantity = Math.min(requestedQuantity, Math.max(remaining, 1));
+  const hint = !hasSelection
+    ? t('selectVariantHint')
+    : isOutOfStock
+      ? t('outOfStock')
+      : isMaxInCart
+        ? t('maxInCartHint', { count: guestQuantityInCart })
+        : null;
 
   function errorMessage(error: unknown): string {
     if (error instanceof ApiError) {
@@ -66,7 +86,7 @@ export function AddToCartButton({ productVariantId, stock }: AddToCartButtonProp
         <QuantityStepper
           value={quantity}
           onChange={setRequestedQuantity}
-          max={Math.max(stock, 1)}
+          max={Math.max(remaining, 1)}
           disabled={!canAdd || isPending}
         />
         <Button

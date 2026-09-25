@@ -1,11 +1,13 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useAuthStore } from '@/modules/auth';
 import { ApiError } from '@/shared/lib/api-client';
 import { withIntl } from '@/shared/lib/test-i18n';
 
 import { useAddToCart } from '../hooks/useAddToCart';
+import { useCartStore } from '../store/cart.store';
 import { AddToCartButton } from './AddToCartButton';
 
 const toastSuccess = vi.fn();
@@ -178,5 +180,93 @@ describe('AddToCartButton', () => {
 
     expect(screen.getByRole('button', { name: ADD_LABEL })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Tăng số lượng' })).toBeDisabled();
+  });
+
+  // Regression: guest thêm nhiều lần cộng dồn vượt kho (kho 15, đã có 15 mà vẫn
+  // thêm được 1 nữa thành 16, giỏ báo "Chỉ còn 15"). Guest không có API kiểm
+  // kho lúc thêm nên nút phải tự trừ số đã có trong localStorage.
+  describe('giỏ guest đã có sẵn variant này', () => {
+    beforeEach(() => {
+      act(() => {
+        useAuthStore.setState({ user: null, isHydrating: false });
+        useCartStore.setState({ items: [], hasHydrated: true });
+      });
+    });
+
+    afterEach(() => {
+      act(() => {
+        useAuthStore.setState({ user: null, isHydrating: true });
+        useCartStore.setState({ items: [], hasHydrated: false });
+      });
+    });
+
+    function setGuestCart(quantity: number, variantId = 'v1') {
+      act(() => {
+        useCartStore.setState({ items: [{ productVariantId: variantId, quantity }] });
+      });
+    }
+
+    it('đã có đủ số còn lại -> không cho thêm nữa, có gợi ý rõ ràng', async () => {
+      setGuestCart(15);
+      const mutate = mockMutation();
+      const user = userEvent.setup();
+      render(withIntl(<AddToCartButton productVariantId="v1" stock={15} />));
+
+      const button = screen.getByRole('button', { name: ADD_LABEL });
+      expect(button).toBeDisabled();
+      expect(
+        screen.getByText('Bạn đã có 15 sản phẩm này trong giỏ, đã đạt tối đa số lượng còn lại'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Tăng số lượng' })).toBeDisabled();
+
+      await user.click(button);
+      expect(mutate).not.toHaveBeenCalled();
+    });
+
+    it('còn dư ít -> stepper chỉ cho chọn tới số còn lại, và gửi đúng số đó', async () => {
+      setGuestCart(12);
+      const mutate = mockMutation();
+      const user = userEvent.setup();
+      render(withIntl(<AddToCartButton productVariantId="v1" stock={15} />));
+
+      const increase = screen.getByRole('button', { name: 'Tăng số lượng' });
+      await user.click(increase);
+      await user.click(increase);
+      await user.click(increase);
+      expect(screen.getByRole('status')).toHaveTextContent('3');
+      expect(increase).toBeDisabled();
+
+      await user.click(screen.getByRole('button', { name: ADD_LABEL }));
+      expect(mutate).toHaveBeenCalledWith(
+        { productVariantId: 'v1', quantity: 3 },
+        expect.any(Object),
+      );
+    });
+
+    it('chỉ tính đúng variant đang xem, giỏ có variant khác không ảnh hưởng', () => {
+      setGuestCart(15, 'other-variant');
+      render(withIntl(<AddToCartButton productVariantId="v1" stock={15} />));
+
+      expect(screen.getByRole('button', { name: ADD_LABEL })).toBeEnabled();
+    });
+
+    it('đã đăng nhập -> không tự trừ (BE chặn bằng 409), bỏ qua giỏ guest còn sót', () => {
+      act(() => {
+        useAuthStore.setState({
+          user: {
+            id: 'user-1',
+            email: 'a@example.com',
+            name: 'A',
+            role: 'USER',
+            emailVerifiedAt: null,
+          },
+          isHydrating: false,
+        });
+      });
+      setGuestCart(15);
+      render(withIntl(<AddToCartButton productVariantId="v1" stock={15} />));
+
+      expect(screen.getByRole('button', { name: ADD_LABEL })).toBeEnabled();
+    });
   });
 });
