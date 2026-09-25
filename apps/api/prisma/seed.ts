@@ -38,7 +38,40 @@ const categories: CategorySeed[] = [
   },
 ];
 
+type PlatformVoucherSeed = {
+  code: string;
+  type: 'PERCENT' | 'FIXED';
+  value: number;
+  minOrderAmount: number;
+  maxDiscountAmount?: number;
+};
+
+// Voucher toàn sàn (shopId = null) mẫu — chưa có Admin UI tạo voucher (Tuần
+// 11), Seller chỉ tạo được voucher theo shop của mình (Week6.md 1.14). Mã viết
+// HOA để khớp cách VoucherService.validate chuẩn hoá. Không giới hạn lượt
+// dùng/hạn dùng để dùng test tay thoải mái.
+const platformVouchers: PlatformVoucherSeed[] = [
+  {
+    code: 'CHAOMUNG10',
+    type: 'PERCENT',
+    value: 10,
+    minOrderAmount: 200000,
+    maxDiscountAmount: 50000,
+  },
+  { code: 'GIAM50K', type: 'FIXED', value: 50000, minOrderAmount: 300000 },
+];
+
 async function main() {
+  // update: {} — chạy lại seed không ghi đè usedCount/isActive đã đổi tay, chỉ
+  // tạo thêm mã còn thiếu.
+  for (const voucher of platformVouchers) {
+    await prisma.voucher.upsert({
+      where: { code: voucher.code },
+      update: {},
+      create: { shopId: null, ...voucher },
+    });
+  }
+
   for (const parent of categories) {
     const parentRecord = await prisma.category.upsert({
       where: { slug: parent.slug },
@@ -62,7 +95,7 @@ async function main() {
 
 main()
   .then(() => {
-    console.log('Seed category thành công.');
+    console.log('Seed category và voucher toàn sàn thành công.');
   })
   .catch((error) => {
     console.error(error);
