@@ -1,5 +1,6 @@
 'use client';
 
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import Image from 'next/image';
 import { useRef, useState, type ChangeEvent } from 'react';
 
@@ -105,7 +106,7 @@ export function VariantImagesUpload({
                   disabled={index === 0}
                   onClick={() => handleMove(index, -1)}
                 >
-                  ↑
+                  <ChevronUp />
                 </Button>
                 <Button
                   type="button"
@@ -115,7 +116,7 @@ export function VariantImagesUpload({
                   disabled={index === value.length - 1}
                   onClick={() => handleMove(index, 1)}
                 >
-                  ↓
+                  <ChevronDown />
                 </Button>
                 <Button
                   type="button"
@@ -124,7 +125,7 @@ export function VariantImagesUpload({
                   aria-label={removeLabel}
                   onClick={() => handleRemove(index)}
                 >
-                  ×
+                  <X />
                 </Button>
               </div>
             </li>
@@ -152,7 +153,11 @@ export function VariantImagesUpload({
         {status === 'uploading' ? uploadingLabel : uploadLabel}
       </Button>
 
-      {status === 'error' && <span className="text-xs text-destructive">{errorLabel}</span>}
+      {status === 'error' && (
+        <span role="alert" className="text-xs text-destructive">
+          {errorLabel}
+        </span>
+      )}
     </div>
   );
 }
