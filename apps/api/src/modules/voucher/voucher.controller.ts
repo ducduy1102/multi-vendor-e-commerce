@@ -11,6 +11,7 @@ import {
   ApiBody,
   ApiCookieAuth,
   ApiOperation,
+  ApiParam,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -46,6 +47,15 @@ const VOUCHER_EXAMPLE = {
   createdAt: '2026-09-25T00:00:00.000Z',
 };
 
+// shopId lấy qua @ShopOwnerContext() (do ShopOwnerGuard resolve sẵn) chứ không
+// qua @Param('shopId') nên Swagger không tự suy ra tham số đường dẫn này — phải
+// khai tay bằng @ApiParam, nếu không "Try it out" không có ô nhập shopId.
+const SHOP_ID_PARAM = {
+  name: 'shopId',
+  description: 'Id của shop mình sở hữu',
+  example: 'a1b2c3d4-1234-4a5b-8c9d-abcdef000001',
+};
+
 // Chỉ có route quản lý voucher theo shop (Seller). Áp mã cho giỏ hàng đi qua
 // /cart (GET /cart?voucherCode, POST /cart/quote) — không có route
 // /vouchers/validate riêng, và không có route tạo voucher toàn sàn (chỉ seed
@@ -57,6 +67,7 @@ export class VoucherController {
   constructor(private readonly voucherService: VoucherService) {}
 
   @Post('shops/:shopId/vouchers')
+  @ApiParam(SHOP_ID_PARAM)
   @UseGuards(JwtAuthGuard, ShopOwnerGuard)
   @ApiCookieAuth('access_token')
   @ApiOperation({
@@ -99,6 +110,7 @@ export class VoucherController {
   }
 
   @Get('shops/:shopId/vouchers')
+  @ApiParam(SHOP_ID_PARAM)
   @UseGuards(JwtAuthGuard, ShopOwnerGuard)
   @ApiCookieAuth('access_token')
   @ApiOperation({
@@ -120,6 +132,7 @@ export class VoucherController {
   // Route lồng 2 cấp (không phải PATCH /vouchers/:id) vì ShopOwnerGuard với
   // route phẳng tự tra shopId theo product id, không hiểu voucher.
   @Patch('shops/:shopId/vouchers/:voucherId')
+  @ApiParam(SHOP_ID_PARAM)
   @UseGuards(JwtAuthGuard, ShopOwnerGuard)
   @ApiCookieAuth('access_token')
   @ApiOperation({
