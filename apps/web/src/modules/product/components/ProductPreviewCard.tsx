@@ -71,14 +71,16 @@ export function ProductPreviewCard({
       )}
       {!isAvailable && unavailableLabel ? (
         <div className="absolute inset-0 flex items-center justify-center">
-          <Badge variant="secondary">{unavailableLabel}</Badge>
+          <Badge variant="outline" className="bg-background">
+            {unavailableLabel}
+          </Badge>
         </div>
       ) : null}
     </div>
   );
 
   const info = (
-    <div className="flex flex-col gap-1 p-3">
+    <div className={cn('flex flex-col gap-1 p-3', !isAvailable && 'opacity-60')}>
       <span className="line-clamp-2 text-sm font-medium text-foreground">{product.name}</span>
       <span className="text-sm font-semibold text-foreground">{priceLabel}</span>
     </div>
