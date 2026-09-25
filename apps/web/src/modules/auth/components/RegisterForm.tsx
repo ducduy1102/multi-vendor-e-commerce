@@ -1,15 +1,16 @@
-"use client";
+'use client';
 
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useTranslations } from "next-intl";
-import { useForm } from "react-hook-form";
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useTranslations } from 'next-intl';
+import { useForm } from 'react-hook-form';
 
-import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
-import { Label } from "@/shared/components/ui/label";
+import { Button } from '@/shared/components/ui/button';
+import { Input } from '@/shared/components/ui/input';
+import { Label } from '@/shared/components/ui/label';
+import { useValidationMessage } from '@/shared/hooks/useValidationMessage';
 
-import { registerFormSchema } from "../schemas/auth.schema";
-import type { RegisterFormInput } from "../types";
+import { registerFormSchema } from '../schemas/auth.schema';
+import type { RegisterFormInput } from '../types';
 
 interface RegisterFormProps {
   onSubmit: (values: RegisterFormInput) => void | Promise<void>;
@@ -19,7 +20,8 @@ interface RegisterFormProps {
 // Chỉ lo UI + validate — gọi API (Bước 3.5) và lưu user vào store (Bước 3.4)
 // do component cha truyền onSubmit vào, form không tự biết về service/store.
 export function RegisterForm({ onSubmit, isSubmitting }: RegisterFormProps) {
-  const t = useTranslations("auth");
+  const t = useTranslations('auth');
+  const tv = useValidationMessage();
   const {
     register,
     handleSubmit,
@@ -31,59 +33,59 @@ export function RegisterForm({ onSubmit, isSubmitting }: RegisterFormProps) {
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="register-name">{t("registerNameLabel")}</Label>
+        <Label htmlFor="register-name">{t('registerNameLabel')}</Label>
         <Input
           id="register-name"
           type="text"
           autoComplete="name"
           aria-invalid={!!errors.name}
-          {...register("name")}
+          {...register('name')}
         />
-        {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+        {errors.name && <p className="text-sm text-destructive">{tv(errors.name.message)}</p>}
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="register-email">{t("registerEmailLabel")}</Label>
+        <Label htmlFor="register-email">{t('registerEmailLabel')}</Label>
         <Input
           id="register-email"
           type="email"
           autoComplete="email"
           aria-invalid={!!errors.email}
-          {...register("email")}
+          {...register('email')}
         />
-        {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+        {errors.email && <p className="text-sm text-destructive">{tv(errors.email.message)}</p>}
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="register-password">{t("registerPasswordLabel")}</Label>
+        <Label htmlFor="register-password">{t('registerPasswordLabel')}</Label>
         <Input
           id="register-password"
           type="password"
           autoComplete="new-password"
           aria-invalid={!!errors.password}
-          {...register("password")}
+          {...register('password')}
         />
         {errors.password && (
-          <p className="text-sm text-destructive">{errors.password.message}</p>
+          <p className="text-sm text-destructive">{tv(errors.password.message)}</p>
         )}
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="register-confirm-password">{t("registerConfirmPasswordLabel")}</Label>
+        <Label htmlFor="register-confirm-password">{t('registerConfirmPasswordLabel')}</Label>
         <Input
           id="register-confirm-password"
           type="password"
           autoComplete="new-password"
           aria-invalid={!!errors.confirmPassword}
-          {...register("confirmPassword")}
+          {...register('confirmPassword')}
         />
         {errors.confirmPassword && (
-          <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
+          <p className="text-sm text-destructive">{tv(errors.confirmPassword.message)}</p>
         )}
       </div>
 
       <Button type="submit" disabled={isSubmitting} className="mt-2">
-        {isSubmitting ? t("registerSubmitting") : t("registerSubmit")}
+        {isSubmitting ? t('registerSubmitting') : t('registerSubmit')}
       </Button>
     </form>
   );

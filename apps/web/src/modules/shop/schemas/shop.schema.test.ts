@@ -13,7 +13,7 @@ describe('createShopSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe('Tên shop không được để trống');
+      expect(result.error.issues[0].message).toBe('shop.validationNameRequired');
     }
   });
 
@@ -39,7 +39,7 @@ describe('createShopSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe('URL logo không hợp lệ');
+      expect(result.error.issues[0].message).toBe('shop.validationLogoUrlInvalid');
     }
   });
 
@@ -63,7 +63,7 @@ describe('createShopSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe('Slug chỉ gồm chữ thường, số và dấu gạch ngang');
+      expect(result.error.issues[0].message).toBe('shop.validationSlugFormat');
     }
   });
 });

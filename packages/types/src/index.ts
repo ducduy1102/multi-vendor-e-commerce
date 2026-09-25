@@ -6,3 +6,4 @@ export * from './category';
 export * from './wishlist';
 export * from './cart';
 export * from './voucher';
+export * from './validation-message';

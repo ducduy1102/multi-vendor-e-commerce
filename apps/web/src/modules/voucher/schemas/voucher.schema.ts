@@ -4,8 +4,8 @@ import { z } from 'zod';
 // Form giữ MỌI field ở dạng chuỗi (đúng giá trị input HTML trả về) để input
 // === output type, tránh lỗi type khi ghép zodResolver + useForm<T>
 // (rules/frontend.md mục 4). Chuyển sang số/ISO ở toCreateVoucherInput ngay
-// trước khi gửi, không dựa vào Zod transform. Thông điệp lỗi viết thẳng tiếng
-// Việt như các schema form hiện có (auth/shop/product) — chưa qua next-intl.
+// trước khi gửi, không dựa vào Zod transform. Thông điệp lỗi là key i18n
+// (dịch bằng useValidationMessage khi hiển thị), cùng quy ước với packages/types.
 export interface VoucherFormValues {
   code: string;
   type: 'PERCENT' | 'FIXED';
@@ -29,9 +29,9 @@ export const EMPTY_VOUCHER_FORM_VALUES: VoucherFormValues = {
   expiresAt: '',
 };
 
-const INVALID_NUMBER = 'Vui lòng nhập số hợp lệ';
+const INVALID_NUMBER = 'voucher.validationNumberInvalid';
 const VOUCHER_CODE_PATTERN = /^[A-Za-z0-9_-]{3,32}$/;
-const VOUCHER_CODE_MESSAGE = 'Mã chỉ gồm chữ, số, gạch ngang/gạch dưới, dài 3-32 ký tự';
+const VOUCHER_CODE_MESSAGE = 'voucher.validationCodeFormat';
 
 function isBlank(value: string): boolean {
   return value.trim() === '';
@@ -99,7 +99,7 @@ export const voucherFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['value'],
-        message: 'Vui lòng nhập giá trị giảm',
+        message: 'voucher.validationValueRequired',
       });
       hasFormatError = true;
     } else if (!isValidNumber(values.value)) {
@@ -118,14 +118,14 @@ export const voucherFormSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['expiresAt'],
-          message: 'Ngày hết hạn không hợp lệ',
+          message: 'voucher.validationExpiresInvalid',
         });
         hasFormatError = true;
       } else if (expiresAt.getTime() <= Date.now()) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['expiresAt'],
-          message: 'Ngày hết hạn phải ở tương lai',
+          message: 'voucher.validationExpiresFuture',
         });
         hasFormatError = true;
       }

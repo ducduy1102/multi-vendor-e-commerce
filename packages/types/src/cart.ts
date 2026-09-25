@@ -9,7 +9,7 @@ const moneySchema = z.string();
 // kho KHÔNG nhận từ client — luôn đọc live từ DB (Week6.md 1.2/1.7).
 export const cartItemInputSchema = z.object({
   productVariantId: z.string().min(1),
-  quantity: z.number().int().min(1, 'Số lượng tối thiểu là 1'),
+  quantity: z.number().int().min(1, 'cart.validationQuantityMin'),
 });
 export type CartItemInput = z.infer<typeof cartItemInputSchema>;
 
@@ -43,7 +43,7 @@ export type AddCartItemInput = z.infer<typeof addCartItemSchema>;
 // PATCH /cart/items/:itemId — đặt số lượng mới (không phải cộng dồn); muốn
 // bỏ item thì dùng DELETE, không dùng quantity 0.
 export const updateCartItemSchema = z.object({
-  quantity: z.number().int().min(1, 'Số lượng tối thiểu là 1'),
+  quantity: z.number().int().min(1, 'cart.validationQuantityMin'),
 });
 export type UpdateCartItemInput = z.infer<typeof updateCartItemSchema>;
 

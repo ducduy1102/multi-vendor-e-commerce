@@ -1,6 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { validationMessage } from '@ecommerce/types';
 import { Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
@@ -17,6 +18,7 @@ import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
 import { Textarea } from '@/shared/components/ui/textarea';
+import { useValidationMessage } from '@/shared/hooks/useValidationMessage';
 import type { Category, Product } from '../types';
 import { buildVariantMatrix } from './ProductForm.utils';
 import { VariantImagesUpload } from './VariantImagesUpload';
@@ -48,14 +50,14 @@ import { VariantImagesUpload } from './VariantImagesUpload';
 // ở @ecommerce/types) chỉ tại 1 chỗ duy nhất: toSubmitPayload().
 const productFormValueSchema = z.object({
   valueId: z.string().optional(),
-  value: z.string().trim().min(1, 'Giá trị không được để trống'),
+  value: z.string().trim().min(1, 'product.validationValueRequired'),
 });
 
 const productFormAttributeSchema = z
   .object({
     attributeId: z.string().optional(),
-    name: z.string().trim().min(1, 'Tên thuộc tính không được để trống'),
-    values: z.array(productFormValueSchema).min(1, 'Cần ít nhất 1 giá trị'),
+    name: z.string().trim().min(1, 'product.validationAttributeNameRequired'),
+    values: z.array(productFormValueSchema).min(1, 'product.validationAttributeValuesMin'),
   })
   // Giá trị trùng (không phân biệt hoa/thường, vd "M" và "m") trong CÙNG 1
   // thuộc tính là lỗi cần chặn ngay tại tầng 1 (FE), không đợi tới khi BE
@@ -72,7 +74,10 @@ const productFormAttributeSchema = z
       if (seen.has(key)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Giá trị "${item.value}" đã tồn tại trong thuộc tính này (không phân biệt hoa/thường)`,
+          message: validationMessage('product.validationValueDuplicate', {
+            value: item.value,
+            attribute: attribute.name,
+          }),
           path: ['values', valueIndex, 'value'],
         });
       } else {
@@ -82,15 +87,15 @@ const productFormAttributeSchema = z
   });
 
 const productFormVariantSchema = z.object({
-  sku: z.string().trim().min(1, 'SKU không được để trống'),
+  sku: z.string().trim().min(1, 'product.validationSkuRequired'),
   price: z
     .string()
     .trim()
-    .refine((v) => Number(v) > 0, 'Giá phải lớn hơn 0'),
+    .refine((v) => Number(v) > 0, 'product.validationPricePositive'),
   stock: z
     .string()
     .trim()
-    .refine((v) => Number.isInteger(Number(v)) && Number(v) >= 0, 'Tồn kho phải là số nguyên >= 0'),
+    .refine((v) => Number.isInteger(Number(v)) && Number(v) >= 0, 'product.validationStockInvalid'),
   attributeValues: z.array(z.string()),
   // Gán qua VariantImagesUpload (Controller, Week4.md Bước 3.8, mở rộng
   // nhiều ảnh ở Week5.md Bước 3.13) — không có <input type="text"> nào
@@ -108,8 +113,8 @@ const productFormVariantSchema = z.object({
 
 const productFormSchema = z
   .object({
-    name: z.string().trim().min(1, 'Tên sản phẩm không được để trống'),
-    categoryId: z.string().trim().min(1, 'Vui lòng chọn danh mục'),
+    name: z.string().trim().min(1, 'product.validationNameRequired'),
+    categoryId: z.string().trim().min(1, 'product.validationCategoryRequired'),
     description: z.string().trim().optional(),
     // Cả 3 status (không chỉ DRAFT/PUBLISHED) — "Sửa" ở trang quản lý Seller
     // (Bước 3.6) không chặn sửa product đã ARCHIVED, nếu chỉ cho chọn 2 giá
@@ -123,7 +128,7 @@ const productFormSchema = z
     // stock). EMPTY_DEFAULT_VALUES bên dưới đã tự cung cấp `attributes: []`
     // qua defaultValues của react-hook-form, không cần default() ở schema.
     attributes: z.array(productFormAttributeSchema),
-    variants: z.array(productFormVariantSchema).min(1, 'Cần ít nhất 1 biến thể'),
+    variants: z.array(productFormVariantSchema).min(1, 'product.validationVariantsMin'),
   })
   .superRefine((data, ctx) => {
     const skuSet = new Set<string>();
@@ -131,7 +136,7 @@ const productFormSchema = z
       if (skuSet.has(variant.sku)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `SKU "${variant.sku}" bị lặp lại`,
+          message: validationMessage('product.validationSkuDuplicate', { sku: variant.sku }),
           path: ['variants', index, 'sku'],
         });
       }
@@ -261,6 +266,7 @@ export function ProductForm({
   submitError,
 }: ProductFormProps) {
   const t = useTranslations('product');
+  const tv = useValidationMessage();
   const {
     control,
     register,
@@ -312,7 +318,7 @@ export function ProductForm({
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="product-name">{t('productFormNameLabel')}</Label>
           <Input id="product-name" type="text" aria-invalid={!!errors.name} {...register('name')} />
-          {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+          {errors.name && <p className="text-sm text-destructive">{tv(errors.name.message)}</p>}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -331,7 +337,7 @@ export function ProductForm({
             ))}
           </select>
           {errors.categoryId && (
-            <p className="text-sm text-destructive">{errors.categoryId.message}</p>
+            <p className="text-sm text-destructive">{tv(errors.categoryId.message)}</p>
           )}
         </div>
 
@@ -391,7 +397,7 @@ export function ProductForm({
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">{t('productFormVariantsTitle')}</h2>
         {errors.variants?.root?.message && (
-          <p className="text-sm text-destructive">{errors.variants.root.message}</p>
+          <p className="text-sm text-destructive">{tv(errors.variants.root.message)}</p>
         )}
 
         <div
@@ -443,7 +449,7 @@ export function ProductForm({
                   />
                   {errors.variants?.[variantIndex]?.sku && (
                     <p className="text-sm text-destructive">
-                      {errors.variants[variantIndex]?.sku?.message}
+                      {tv(errors.variants[variantIndex]?.sku?.message)}
                     </p>
                   )}
                 </div>
@@ -460,7 +466,7 @@ export function ProductForm({
                   />
                   {errors.variants?.[variantIndex]?.price && (
                     <p className="text-sm text-destructive">
-                      {errors.variants[variantIndex]?.price?.message}
+                      {tv(errors.variants[variantIndex]?.price?.message)}
                     </p>
                   )}
                 </div>
@@ -478,7 +484,7 @@ export function ProductForm({
                   />
                   {errors.variants?.[variantIndex]?.stock && (
                     <p className="text-sm text-destructive">
-                      {errors.variants[variantIndex]?.stock?.message}
+                      {tv(errors.variants[variantIndex]?.stock?.message)}
                     </p>
                   )}
                 </div>
@@ -552,18 +558,20 @@ function AttributeRow({
   valuePlaceholder,
   attributeErrors,
 }: AttributeRowProps) {
+  const tv = useValidationMessage();
   const valuesFieldArray = useFieldArray({
     control,
     name: `attributes.${attributeIndex}.values`,
   });
   const nameRegister = register(`attributes.${attributeIndex}.name`);
-  const nameError = attributeErrors?.name?.message;
+  const nameError = tv(attributeErrors?.name?.message);
   // Lỗi cấp mảng (vd "Cần ít nhất 1 giá trị") khác `.root` với react-hook-
   // form khi field là mảng object có superRefine riêng — cả 2 dạng đều có
   // thể xuất hiện tuỳ tình huống nên đọc cả `.message` lẫn `.root?.message`.
-  const valuesArrayError =
+  const valuesArrayError = tv(
     attributeErrors?.values?.message ??
-    (attributeErrors?.values as { root?: { message?: string } } | undefined)?.root?.message;
+      (attributeErrors?.values as { root?: { message?: string } } | undefined)?.root?.message,
+  );
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
@@ -595,7 +603,7 @@ function AttributeRow({
       <div className="flex flex-wrap items-center gap-2">
         {valuesFieldArray.fields.map((valueField, valueIndex) => {
           const valueRegister = register(`attributes.${attributeIndex}.values.${valueIndex}.value`);
-          const valueError = attributeErrors?.values?.[valueIndex]?.value?.message;
+          const valueError = tv(attributeErrors?.values?.[valueIndex]?.value?.message);
           return (
             <div key={valueField.id} className="flex flex-col gap-1">
               <div className="flex items-center gap-1">

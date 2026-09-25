@@ -8,10 +8,7 @@ export type VoucherType = z.infer<typeof voucherTypeSchema>;
 const voucherCodeSchema = z
   .string()
   .trim()
-  .regex(
-    /^[A-Za-z0-9_-]{3,32}$/,
-    'Mã chỉ gồm chữ, số, gạch ngang/gạch dưới, dài 3-32 ký tự',
-  );
+  .regex(/^[A-Za-z0-9_-]{3,32}$/, 'voucher.validationCodeFormat');
 
 // POST /shops/:shopId/vouchers (Week6.md 2.5). shopId lấy từ route đã qua
 // ShopOwnerGuard, KHÔNG nhận từ body. Tiền là số nguyên đồng.
@@ -19,7 +16,7 @@ export const createVoucherSchema = z
   .object({
     code: voucherCodeSchema,
     type: voucherTypeSchema,
-    value: z.number().positive('Giá trị giảm phải lớn hơn 0'),
+    value: z.number().positive('voucher.validationValuePositive'),
     minOrderAmount: z.number().nonnegative().optional(),
     // Chỉ có nghĩa với PERCENT (trần số tiền giảm), xem refine bên dưới.
     maxDiscountAmount: z.number().positive().optional(),
@@ -32,21 +29,21 @@ export const createVoucherSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['value'],
-        message: 'Phần trăm giảm tối đa là 100',
+        message: 'voucher.validationPercentMax',
       });
     }
     if (data.type === 'FIXED' && !Number.isInteger(data.value)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['value'],
-        message: 'Số tiền giảm phải là số nguyên đồng',
+        message: 'voucher.validationFixedInteger',
       });
     }
     if (data.type === 'FIXED' && data.maxDiscountAmount !== undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['maxDiscountAmount'],
-        message: 'Mức giảm tối đa chỉ dùng cho voucher giảm theo phần trăm',
+        message: 'voucher.validationMaxDiscountPercentOnly',
       });
     }
   });

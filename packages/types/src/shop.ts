@@ -1,21 +1,13 @@
 import { z } from 'zod';
 
-export const shopStatusSchema = z.enum([
-  'PENDING',
-  'APPROVED',
-  'REJECTED',
-  'SUSPENDED',
-]);
+export const shopStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED']);
 export type ShopStatus = z.infer<typeof shopStatusSchema>;
 
 const slugSchema = z
   .string()
   .trim()
-  .min(1, 'Slug không được để trống')
-  .regex(
-    /^[a-z0-9]+(-[a-z0-9]+)*$/,
-    'Slug chỉ gồm chữ thường, số và dấu gạch ngang',
-  );
+  .min(1, 'shop.validationSlugRequired')
+  .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'shop.validationSlugFormat');
 
 // Input HTML bỏ trống gửi lên chuỗi rỗng "" (React Hook Form), không phải
 // undefined — coi "" như chưa nhập cho mọi field optional dạng string, để
@@ -45,13 +37,13 @@ const optionalUrlSchema = (message: string) =>
     .transform((val) => (val === '' ? undefined : val));
 
 export const createShopSchema = z.object({
-  name: z.string().trim().min(1, 'Tên shop không được để trống'),
+  name: z.string().trim().min(1, 'shop.validationNameRequired'),
   // Bỏ trống thì BE tự sinh slug từ name (xem ShopService.createShop, Week3.md
   // Bước 2.3) — nếu người dùng tự nhập, vẫn phải đúng định dạng slug.
   slug: slugSchema.optional(),
   description: optionalTrimmedString(),
-  logoUrl: optionalUrlSchema('URL logo không hợp lệ'),
-  bannerUrl: optionalUrlSchema('URL banner không hợp lệ'),
+  logoUrl: optionalUrlSchema('shop.validationLogoUrlInvalid'),
+  bannerUrl: optionalUrlSchema('shop.validationBannerUrlInvalid'),
 });
 export type CreateShopInput = z.infer<typeof createShopSchema>;
 

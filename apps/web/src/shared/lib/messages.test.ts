@@ -58,6 +58,13 @@ describe('số nhiều tiếng Anh', () => {
     expect(t('quantityAdjusted', { count: 1 })).toContain('1 item ');
     expect(t('quantityAdjusted', { count: 3 })).toContain('3 items ');
   });
+
+  it('product.resultCount: 1 product / N products', () => {
+    const tp = createTranslator({ locale: 'en', messages: en, namespace: 'product' });
+    expect(tp('resultCount', { count: 1 })).toBe('1 product');
+    expect(tp('resultCount', { count: 0 })).toBe('0 products');
+    expect(tp('resultCount', { count: 12 })).toBe('12 products');
+  });
 });
 
 describe('tiếng Việt không chia số nhiều', () => {

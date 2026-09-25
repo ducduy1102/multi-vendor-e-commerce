@@ -161,7 +161,7 @@ describe('ProductForm', () => {
 
     expect(
       await screen.findByText(
-        'Giá trị "M" đã tồn tại trong thuộc tính này (không phân biệt hoa/thường)',
+        'Giá trị "M" bị lặp lại trong thuộc tính "Size" (không phân biệt hoa/thường)',
       ),
     ).toBeInTheDocument();
 

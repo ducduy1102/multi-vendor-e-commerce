@@ -7,6 +7,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
+import { useValidationMessage } from '@/shared/hooks/useValidationMessage';
 
 import {
   EMPTY_VOUCHER_FORM_VALUES,
@@ -29,6 +30,7 @@ const SELECT_CLASS =
 // việc đổi sang số/ISO làm ở toCreateVoucherInput ngay trước khi gửi.
 export function VoucherForm({ onSubmit, isSubmitting = false }: VoucherFormProps) {
   const t = useTranslations('voucher');
+  const tv = useValidationMessage();
   const {
     register,
     handleSubmit,
@@ -59,7 +61,7 @@ export function VoucherForm({ onSubmit, isSubmitting = false }: VoucherFormProps
           <p id="voucher-code-hint" className="text-xs text-muted-foreground">
             {t('codeHint')}
           </p>
-          {errors.code && <p className="text-sm text-destructive">{errors.code.message}</p>}
+          {errors.code && <p className="text-sm text-destructive">{tv(errors.code.message)}</p>}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -82,7 +84,7 @@ export function VoucherForm({ onSubmit, isSubmitting = false }: VoucherFormProps
             aria-invalid={!!errors.value}
             {...register('value')}
           />
-          {errors.value && <p className="text-sm text-destructive">{errors.value.message}</p>}
+          {errors.value && <p className="text-sm text-destructive">{tv(errors.value.message)}</p>}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -96,7 +98,7 @@ export function VoucherForm({ onSubmit, isSubmitting = false }: VoucherFormProps
             {...register('minOrderAmount')}
           />
           {errors.minOrderAmount && (
-            <p className="text-sm text-destructive">{errors.minOrderAmount.message}</p>
+            <p className="text-sm text-destructive">{tv(errors.minOrderAmount.message)}</p>
           )}
         </div>
 
@@ -112,7 +114,7 @@ export function VoucherForm({ onSubmit, isSubmitting = false }: VoucherFormProps
               {...register('maxDiscountAmount')}
             />
             {errors.maxDiscountAmount && (
-              <p className="text-sm text-destructive">{errors.maxDiscountAmount.message}</p>
+              <p className="text-sm text-destructive">{tv(errors.maxDiscountAmount.message)}</p>
             )}
           </div>
         ) : null}
@@ -128,7 +130,7 @@ export function VoucherForm({ onSubmit, isSubmitting = false }: VoucherFormProps
             {...register('usageLimit')}
           />
           {errors.usageLimit && (
-            <p className="text-sm text-destructive">{errors.usageLimit.message}</p>
+            <p className="text-sm text-destructive">{tv(errors.usageLimit.message)}</p>
           )}
         </div>
 
@@ -143,7 +145,7 @@ export function VoucherForm({ onSubmit, isSubmitting = false }: VoucherFormProps
             {...register('perUserLimit')}
           />
           {errors.perUserLimit && (
-            <p className="text-sm text-destructive">{errors.perUserLimit.message}</p>
+            <p className="text-sm text-destructive">{tv(errors.perUserLimit.message)}</p>
           )}
         </div>
 
@@ -156,7 +158,7 @@ export function VoucherForm({ onSubmit, isSubmitting = false }: VoucherFormProps
             {...register('expiresAt')}
           />
           {errors.expiresAt && (
-            <p className="text-sm text-destructive">{errors.expiresAt.message}</p>
+            <p className="text-sm text-destructive">{tv(errors.expiresAt.message)}</p>
           )}
         </div>
       </div>

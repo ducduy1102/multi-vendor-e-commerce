@@ -98,9 +98,7 @@ describe('voucherFormSchema', () => {
       ['có ký tự đặc biệt', 'SALE%10'],
       ['quá dài', 'A'.repeat(33)],
     ])('%s -> báo lỗi ở ô mã', (_label, code) => {
-      expect(messagesByField(values({ code })).code).toBe(
-        'Mã chỉ gồm chữ, số, gạch ngang/gạch dưới, dài 3-32 ký tự',
-      );
+      expect(messagesByField(values({ code })).code).toBe('voucher.validationCodeFormat');
     });
 
     it('nhận chữ thường (BE tự chuẩn hoá chữ hoa)', () => {
@@ -110,15 +108,17 @@ describe('voucherFormSchema', () => {
 
   describe('giá trị giảm', () => {
     it('để trống -> yêu cầu nhập', () => {
-      expect(messagesByField(values({ value: '' })).value).toBe('Vui lòng nhập giá trị giảm');
+      expect(messagesByField(values({ value: '' })).value).toBe('voucher.validationValueRequired');
     });
 
     it('không phải số -> báo số không hợp lệ (không lộ lỗi "nan" của Zod)', () => {
-      expect(messagesByField(values({ value: 'abc' })).value).toBe('Vui lòng nhập số hợp lệ');
+      expect(messagesByField(values({ value: 'abc' })).value).toBe(
+        'voucher.validationNumberInvalid',
+      );
     });
 
     it('PERCENT vượt 100 -> tái dùng luật của BE', () => {
-      expect(messagesByField(values({ value: '150' })).value).toBe('Phần trăm giảm tối đa là 100');
+      expect(messagesByField(values({ value: '150' })).value).toBe('voucher.validationPercentMax');
     });
 
     it('PERCENT đúng 100 hợp lệ', () => {
@@ -132,7 +132,7 @@ describe('voucherFormSchema', () => {
 
     it('FIXED phải là số nguyên đồng', () => {
       expect(messagesByField(values({ type: 'FIXED', value: '50000.5' })).value).toBe(
-        'Số tiền giảm phải là số nguyên đồng',
+        'voucher.validationFixedInteger',
       );
       expect(voucherFormSchema.safeParse(values({ type: 'FIXED', value: '50000' })).success).toBe(
         true,
@@ -144,7 +144,9 @@ describe('voucherFormSchema', () => {
     it.each(['minOrderAmount', 'maxDiscountAmount', 'usageLimit', 'perUserLimit'] as const)(
       '%s nhập chữ -> báo số không hợp lệ',
       (field) => {
-        expect(messagesByField(values({ [field]: 'abc' }))[field]).toBe('Vui lòng nhập số hợp lệ');
+        expect(messagesByField(values({ [field]: 'abc' }))[field]).toBe(
+          'voucher.validationNumberInvalid',
+        );
       },
     );
 
@@ -165,13 +167,13 @@ describe('voucherFormSchema', () => {
   describe('ngày hết hạn', () => {
     it('ở quá khứ -> bị từ chối', () => {
       expect(messagesByField(values({ expiresAt: '2020-01-01T00:00' })).expiresAt).toBe(
-        'Ngày hết hạn phải ở tương lai',
+        'voucher.validationExpiresFuture',
       );
     });
 
     it('sai định dạng -> bị từ chối', () => {
       expect(messagesByField(values({ expiresAt: 'ngày mai' })).expiresAt).toBe(
-        'Ngày hết hạn không hợp lệ',
+        'voucher.validationExpiresInvalid',
       );
     });
 

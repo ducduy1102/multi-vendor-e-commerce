@@ -8,6 +8,7 @@ import { Button } from '@/shared/components/ui/button';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/shared/components/ui/field';
 import { Input } from '@/shared/components/ui/input';
 import { Textarea } from '@/shared/components/ui/textarea';
+import { useValidationMessage } from '@/shared/hooks/useValidationMessage';
 
 import { createShopSchema } from '../schemas/shop.schema';
 import type { CreateShopInput } from '../types';
@@ -24,6 +25,7 @@ interface BecomeSellerFormProps {
 // convention skill shadcn cho form, cùng pattern UpdateShopForm.tsx.
 export function BecomeSellerForm({ onSubmit, isSubmitting }: BecomeSellerFormProps) {
   const t = useTranslations('shop');
+  const tv = useValidationMessage();
   const {
     register,
     handleSubmit,
@@ -43,7 +45,7 @@ export function BecomeSellerForm({ onSubmit, isSubmitting }: BecomeSellerFormPro
             aria-invalid={!!errors.name}
             {...register('name')}
           />
-          {errors.name && <FieldError>{errors.name.message}</FieldError>}
+          {errors.name && <FieldError>{tv(errors.name.message)}</FieldError>}
         </Field>
 
         <Field data-invalid={!!errors.description}>
@@ -55,7 +57,7 @@ export function BecomeSellerForm({ onSubmit, isSubmitting }: BecomeSellerFormPro
             aria-invalid={!!errors.description}
             {...register('description')}
           />
-          {errors.description && <FieldError>{errors.description.message}</FieldError>}
+          {errors.description && <FieldError>{tv(errors.description.message)}</FieldError>}
         </Field>
 
         <Field data-invalid={!!errors.logoUrl}>
@@ -67,7 +69,7 @@ export function BecomeSellerForm({ onSubmit, isSubmitting }: BecomeSellerFormPro
             aria-invalid={!!errors.logoUrl}
             {...register('logoUrl')}
           />
-          {errors.logoUrl && <FieldError>{errors.logoUrl.message}</FieldError>}
+          {errors.logoUrl && <FieldError>{tv(errors.logoUrl.message)}</FieldError>}
         </Field>
 
         <Field data-invalid={!!errors.bannerUrl}>
@@ -81,7 +83,7 @@ export function BecomeSellerForm({ onSubmit, isSubmitting }: BecomeSellerFormPro
             aria-invalid={!!errors.bannerUrl}
             {...register('bannerUrl')}
           />
-          {errors.bannerUrl && <FieldError>{errors.bannerUrl.message}</FieldError>}
+          {errors.bannerUrl && <FieldError>{tv(errors.bannerUrl.message)}</FieldError>}
         </Field>
 
         <Button type="submit" disabled={isSubmitting} className="mt-2">

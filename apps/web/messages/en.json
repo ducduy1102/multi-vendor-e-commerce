@@ -33,6 +33,14 @@
     "bannerCta": "Explore products"
   },
   "auth": {
+    "validationEmailInvalid": "Invalid email address",
+    "validationPasswordMin": "Password must be at least 8 characters",
+    "validationPasswordMax": "Password must be at most 72 characters",
+    "validationPasswordRequired": "Please enter your password",
+    "validationNameRequired": "Name is required",
+    "validationTokenInvalid": "Invalid token",
+    "validationConfirmPasswordRequired": "Please re-enter your password",
+    "validationConfirmPasswordMismatch": "Passwords do not match",
     "loginTitle": "Log in",
     "loginEmailLabel": "Email",
     "loginPasswordLabel": "Password",
@@ -79,6 +87,11 @@
     "emailVerificationBannerMessage": "Your email hasn't been verified yet."
   },
   "shop": {
+    "validationSlugRequired": "Slug is required",
+    "validationSlugFormat": "Slug may only contain lowercase letters, numbers and hyphens",
+    "validationNameRequired": "Shop name is required",
+    "validationLogoUrlInvalid": "Invalid logo URL",
+    "validationBannerUrlInvalid": "Invalid banner URL",
     "becomeSellerTitle": "Become a seller",
     "becomeSellerNameLabel": "Shop name",
     "becomeSellerDescriptionLabel": "Description",
@@ -102,6 +115,23 @@
     "updateShopGenericError": "Failed to update shop, please try again"
   },
   "product": {
+    "validationNameRequired": "Product name is required",
+    "validationCategoryRequired": "Please select a category",
+    "validationVariantsMin": "At least 1 variant is required",
+    "validationAttributeNameRequired": "Attribute name is required",
+    "validationAttributeValuesMin": "An attribute needs at least 1 value",
+    "validationValueRequired": "Value is required",
+    "validationSkuRequired": "SKU is required",
+    "validationPricePositive": "Price must be greater than 0",
+    "validationStockInvalid": "Stock must be a non-negative integer",
+    "validationImageUrlInvalid": "Invalid image URL",
+    "validationAttributeNameDuplicate": "Attribute name \"{name}\" is duplicated",
+    "validationValueDuplicate": "Value \"{value}\" is duplicated in attribute \"{attribute}\" (case-insensitive)",
+    "validationSkuDuplicate": "SKU \"{sku}\" is duplicated",
+    "validationVariantValueCountMismatch": "The number of variant values does not match the declared attributes",
+    "validationVariantValueNotInAttribute": "Value \"{value}\" does not belong to attribute \"{attribute}\"",
+    "validationVariantComboDuplicate": "Two variants have the same attribute combination",
+    "validationAttributesVariantsTogether": "Attributes and variants must be sent together or both omitted",
     "homeCategoriesTitle": "Categories",
     "homeNewestTitle": "Newest products",
     "viewAllLink": "View all",
@@ -109,7 +139,7 @@
     "homeLoadingSrOnly": "Loading categories and products...",
 
     "listTitle": "All products",
-    "resultCount": "{count} products",
+    "resultCount": "{count, plural, one {# product} other {# products}}",
     "filterEmptyState": "No products match this filter. Try adjusting it.",
     "filterRemoveSearch": "Remove search term",
     "filterRemoveCategory": "Remove category filter",
@@ -204,6 +234,7 @@
     "unavailableBadge": "Unavailable"
   },
   "cart": {
+    "validationQuantityMin": "Minimum quantity is 1",
     "addToCart": "Add to cart",
     "addToCartSuccess": "Added to cart",
     "addToCartConflict": "Couldn't add: quantity exceeds stock or the product is no longer available",
@@ -251,6 +282,15 @@
     "checkoutSoon": "Checkout is coming soon"
   },
   "voucher": {
+    "validationCodeFormat": "Code may only contain letters, numbers, hyphens/underscores, 3-32 characters",
+    "validationValuePositive": "Discount value must be greater than 0",
+    "validationValueRequired": "Please enter the discount value",
+    "validationPercentMax": "Maximum percentage is 100",
+    "validationFixedInteger": "Discount amount must be a whole number",
+    "validationMaxDiscountPercentOnly": "Maximum discount only applies to percentage vouchers",
+    "validationNumberInvalid": "Please enter a valid number",
+    "validationExpiresInvalid": "Invalid expiry date",
+    "validationExpiresFuture": "Expiry date must be in the future",
     "pageTitle": "Shop vouchers",
     "manageLink": "Vouchers",
     "backToProducts": "Back to products",

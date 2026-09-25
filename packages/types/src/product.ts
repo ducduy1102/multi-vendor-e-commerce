@@ -1,4 +1,5 @@
 import { z, type RefinementCtx } from 'zod';
+import { validationMessage } from './validation-message';
 
 export const productStatusSchema = z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']);
 export type ProductStatus = z.infer<typeof productStatusSchema>;
@@ -23,15 +24,13 @@ const optionalTrimmedString = () =>
 // gì để match).
 const productAttributeValueInputSchema = z.object({
   id: z.string().trim().min(1).optional(),
-  value: z.string().trim().min(1, 'Giá trị thuộc tính không được để trống'),
+  value: z.string().trim().min(1, 'product.validationValueRequired'),
 });
 
 const productAttributeInputSchema = z.object({
   id: z.string().trim().min(1).optional(),
-  name: z.string().trim().min(1, 'Tên thuộc tính không được để trống'),
-  values: z
-    .array(productAttributeValueInputSchema)
-    .min(1, 'Thuộc tính cần ít nhất 1 giá trị'),
+  name: z.string().trim().min(1, 'product.validationAttributeNameRequired'),
+  values: z.array(productAttributeValueInputSchema).min(1, 'product.validationAttributeValuesMin'),
 });
 
 // attributeValues[i] tương ứng THEO VỊ TRÍ với attributes[i] cùng cấp (không
@@ -43,11 +42,11 @@ const productAttributeInputSchema = z.object({
 // Request chỉ cần mảng URL (đã ký sẵn qua signed upload) — `position` suy
 // từ thứ tự trong mảng, không cần gửi tường minh.
 const productVariantInputSchema = z.object({
-  sku: z.string().trim().min(1, 'SKU không được để trống'),
-  price: z.number().positive('Giá phải lớn hơn 0'),
-  stock: z.number().int().nonnegative('Tồn kho không được âm'),
+  sku: z.string().trim().min(1, 'product.validationSkuRequired'),
+  price: z.number().positive('product.validationPricePositive'),
+  stock: z.number().int().nonnegative('product.validationStockInvalid'),
   attributeValues: z.array(z.string().trim().min(1)).default([]),
-  images: z.array(z.string().trim().url('URL ảnh không hợp lệ')).default([]),
+  images: z.array(z.string().trim().url('product.validationImageUrlInvalid')).default([]),
 });
 
 function validateAttributesAndVariants(
@@ -60,7 +59,9 @@ function validateAttributesAndVariants(
     if (attributeNames.has(attribute.name)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `Tên thuộc tính "${attribute.name}" bị lặp lại`,
+        message: validationMessage('product.validationAttributeNameDuplicate', {
+          name: attribute.name,
+        }),
         path: ['attributes', index, 'name'],
       });
     }
@@ -77,7 +78,10 @@ function validateAttributesAndVariants(
       if (seenValues.has(key)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Giá trị "${value.value}" bị lặp lại trong thuộc tính "${attribute.name}" (không phân biệt hoa/thường)`,
+          message: validationMessage('product.validationValueDuplicate', {
+            value: value.value,
+            attribute: attribute.name,
+          }),
           path: ['attributes', index, 'values', valueIndex, 'value'],
         });
       } else {
@@ -92,7 +96,9 @@ function validateAttributesAndVariants(
     if (skuSet.has(variant.sku)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `SKU "${variant.sku}" bị lặp lại trong cùng request`,
+        message: validationMessage('product.validationSkuDuplicate', {
+          sku: variant.sku,
+        }),
         path: ['variants', index, 'sku'],
       });
     }
@@ -101,7 +107,7 @@ function validateAttributesAndVariants(
     if (variant.attributeValues.length !== attributes.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Số giá trị thuộc tính của biến thể không khớp số thuộc tính đã khai',
+        message: 'product.validationVariantValueCountMismatch',
         path: ['variants', index, 'attributeValues'],
       });
       return;
@@ -112,7 +118,10 @@ function validateAttributesAndVariants(
       if (attribute && !attribute.values.some((v) => v.value === value)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Giá trị "${value}" không thuộc thuộc tính "${attribute.name}"`,
+          message: validationMessage('product.validationVariantValueNotInAttribute', {
+            value,
+            attribute: attribute.name,
+          }),
           path: ['variants', index, 'attributeValues', valueIndex],
         });
       }
@@ -122,7 +131,7 @@ function validateAttributesAndVariants(
     if (comboSet.has(combo)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Có 2 biến thể trùng tổ hợp thuộc tính',
+        message: 'product.validationVariantComboDuplicate',
         path: ['variants', index, 'attributeValues'],
       });
     }
@@ -132,17 +141,13 @@ function validateAttributesAndVariants(
 
 export const createProductSchema = z
   .object({
-    name: z.string().trim().min(1, 'Tên sản phẩm không được để trống'),
-    categoryId: z.string().trim().min(1, 'Vui lòng chọn danh mục'),
+    name: z.string().trim().min(1, 'product.validationNameRequired'),
+    categoryId: z.string().trim().min(1, 'product.validationCategoryRequired'),
     description: optionalTrimmedString(),
     attributes: z.array(productAttributeInputSchema).default([]),
-    variants: z
-      .array(productVariantInputSchema)
-      .min(1, 'Cần ít nhất 1 biến thể'),
+    variants: z.array(productVariantInputSchema).min(1, 'product.validationVariantsMin'),
   })
-  .superRefine((data, ctx) =>
-    validateAttributesAndVariants(data.attributes, data.variants, ctx),
-  );
+  .superRefine((data, ctx) => validateAttributesAndVariants(data.attributes, data.variants, ctx));
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 
 // status cho sửa qua đây (DRAFT -> PUBLISHED "đăng bán", hoặc ngược lại) —
@@ -155,15 +160,12 @@ export type CreateProductInput = z.infer<typeof createProductSchema>;
 // trong 2 là lỗi.
 export const updateProductSchema = z
   .object({
-    name: z.string().trim().min(1, 'Tên sản phẩm không được để trống').optional(),
-    categoryId: z.string().trim().min(1, 'Vui lòng chọn danh mục').optional(),
+    name: z.string().trim().min(1, 'product.validationNameRequired').optional(),
+    categoryId: z.string().trim().min(1, 'product.validationCategoryRequired').optional(),
     description: optionalTrimmedString(),
     status: productStatusSchema.optional(),
     attributes: z.array(productAttributeInputSchema).optional(),
-    variants: z
-      .array(productVariantInputSchema)
-      .min(1, 'Cần ít nhất 1 biến thể')
-      .optional(),
+    variants: z.array(productVariantInputSchema).min(1, 'product.validationVariantsMin').optional(),
   })
   .superRefine((data, ctx) => {
     const hasAttributes = data.attributes !== undefined;
@@ -171,7 +173,7 @@ export const updateProductSchema = z
     if (hasAttributes !== hasVariants) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'attributes và variants phải cùng được gửi hoặc cùng bỏ trống',
+        message: 'product.validationAttributesVariantsTogether',
         path: hasAttributes ? ['variants'] : ['attributes'],
       });
       return;
@@ -189,9 +191,7 @@ export const productAttributeValueSchema = z.object({
   id: z.string(),
   value: z.string(),
 });
-export type ProductAttributeValueDto = z.infer<
-  typeof productAttributeValueSchema
->;
+export type ProductAttributeValueDto = z.infer<typeof productAttributeValueSchema>;
 
 export const productAttributeSchema = z.object({
   id: z.string(),
@@ -311,9 +311,7 @@ export const listProductsQuerySchema = z.object({
   attributeValues: z
     .union([z.string(), z.array(z.string())])
     .optional()
-    .transform((val) =>
-      val === undefined ? undefined : Array.isArray(val) ? val : [val],
-    ),
+    .transform((val) => (val === undefined ? undefined : Array.isArray(val) ? val : [val])),
   // Search full-text (Week5.md Bước 1.6/1.8-1.9) — mở rộng GET /products có
   // sẵn thay vì tách endpoint riêng, kết hợp AND với các filter khác ở trên.
   q: z.string().trim().optional(),

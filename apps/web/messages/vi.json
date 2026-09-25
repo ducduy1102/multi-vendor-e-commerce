@@ -33,6 +33,14 @@
     "bannerCta": "Khám phá sản phẩm"
   },
   "auth": {
+    "validationEmailInvalid": "Email không hợp lệ",
+    "validationPasswordMin": "Mật khẩu tối thiểu 8 ký tự",
+    "validationPasswordMax": "Mật khẩu tối đa 72 ký tự",
+    "validationPasswordRequired": "Vui lòng nhập mật khẩu",
+    "validationNameRequired": "Tên không được để trống",
+    "validationTokenInvalid": "Token không hợp lệ",
+    "validationConfirmPasswordRequired": "Vui lòng nhập lại mật khẩu",
+    "validationConfirmPasswordMismatch": "Mật khẩu nhập lại không khớp",
     "loginTitle": "Đăng nhập",
     "loginEmailLabel": "Email",
     "loginPasswordLabel": "Mật khẩu",
@@ -79,6 +87,11 @@
     "emailVerificationBannerMessage": "Email của bạn chưa được xác thực."
   },
   "shop": {
+    "validationSlugRequired": "Slug không được để trống",
+    "validationSlugFormat": "Slug chỉ gồm chữ thường, số và dấu gạch ngang",
+    "validationNameRequired": "Tên shop không được để trống",
+    "validationLogoUrlInvalid": "URL logo không hợp lệ",
+    "validationBannerUrlInvalid": "URL banner không hợp lệ",
     "becomeSellerTitle": "Trở thành Seller",
     "becomeSellerNameLabel": "Tên shop",
     "becomeSellerDescriptionLabel": "Mô tả",
@@ -102,6 +115,23 @@
     "updateShopGenericError": "Cập nhật shop thất bại, vui lòng thử lại"
   },
   "product": {
+    "validationNameRequired": "Tên sản phẩm không được để trống",
+    "validationCategoryRequired": "Vui lòng chọn danh mục",
+    "validationVariantsMin": "Cần ít nhất 1 biến thể",
+    "validationAttributeNameRequired": "Tên thuộc tính không được để trống",
+    "validationAttributeValuesMin": "Thuộc tính cần ít nhất 1 giá trị",
+    "validationValueRequired": "Giá trị không được để trống",
+    "validationSkuRequired": "SKU không được để trống",
+    "validationPricePositive": "Giá phải lớn hơn 0",
+    "validationStockInvalid": "Tồn kho phải là số nguyên không âm",
+    "validationImageUrlInvalid": "URL ảnh không hợp lệ",
+    "validationAttributeNameDuplicate": "Tên thuộc tính \"{name}\" bị lặp lại",
+    "validationValueDuplicate": "Giá trị \"{value}\" bị lặp lại trong thuộc tính \"{attribute}\" (không phân biệt hoa/thường)",
+    "validationSkuDuplicate": "SKU \"{sku}\" bị lặp lại",
+    "validationVariantValueCountMismatch": "Số giá trị thuộc tính của biến thể không khớp số thuộc tính đã khai",
+    "validationVariantValueNotInAttribute": "Giá trị \"{value}\" không thuộc thuộc tính \"{attribute}\"",
+    "validationVariantComboDuplicate": "Có 2 biến thể trùng tổ hợp thuộc tính",
+    "validationAttributesVariantsTogether": "Thuộc tính và biến thể phải cùng được gửi hoặc cùng bỏ trống",
     "homeCategoriesTitle": "Danh mục",
     "homeNewestTitle": "Sản phẩm mới nhất",
     "viewAllLink": "Xem tất cả",
@@ -204,6 +234,7 @@
     "unavailableBadge": "Ngừng bán"
   },
   "cart": {
+    "validationQuantityMin": "Số lượng tối thiểu là 1",
     "addToCart": "Thêm vào giỏ hàng",
     "addToCartSuccess": "Đã thêm vào giỏ hàng",
     "addToCartConflict": "Không thể thêm: số lượng vượt tồn kho hoặc sản phẩm không còn bán",
@@ -251,6 +282,15 @@
     "checkoutSoon": "Tính năng thanh toán sắp ra mắt"
   },
   "voucher": {
+    "validationCodeFormat": "Mã chỉ gồm chữ, số, gạch ngang/gạch dưới, dài 3-32 ký tự",
+    "validationValuePositive": "Giá trị giảm phải lớn hơn 0",
+    "validationValueRequired": "Vui lòng nhập giá trị giảm",
+    "validationPercentMax": "Phần trăm giảm tối đa là 100",
+    "validationFixedInteger": "Số tiền giảm phải là số nguyên đồng",
+    "validationMaxDiscountPercentOnly": "Mức giảm tối đa chỉ dùng cho voucher giảm theo phần trăm",
+    "validationNumberInvalid": "Vui lòng nhập số hợp lệ",
+    "validationExpiresInvalid": "Ngày hết hạn không hợp lệ",
+    "validationExpiresFuture": "Ngày hết hạn phải ở tương lai",
     "pageTitle": "Mã giảm giá của shop",
     "manageLink": "Mã giảm giá",
     "backToProducts": "Quay lại sản phẩm",
