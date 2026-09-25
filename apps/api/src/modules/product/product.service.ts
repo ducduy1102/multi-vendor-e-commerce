@@ -15,6 +15,14 @@ import type { UpdateProductDto } from './dto/update-product.dto';
 // nhập (khác Shop) nên không cần nhánh "explicit slug", chỉ có 1 chiến lược.
 const MAX_GENERATED_SLUG_ATTEMPTS = 20;
 
+// Week5.md Bước 1.3/2.12 — dùng chung ở mọi nơi select ảnh/variant (đủ
+// dùng cho cả chi tiết lẫn danh sách, tránh lặp lại đúng shape 3 lần trong
+// file này). Sắp theo position để FE không cần tự sort lại.
+const variantImagesSelect = {
+  orderBy: { position: 'asc' },
+  select: { url: true, position: true },
+} satisfies Prisma.ProductVariant$imagesArgs;
+
 const productWithRelationsSelect = {
   id: true,
   shopId: true,
@@ -27,13 +35,34 @@ const productWithRelationsSelect = {
   maxPrice: true,
   createdAt: true,
   updatedAt: true,
+  // reconcileAttributesAndVariants KHÔNG hard-delete ProductAttribute/
+  // ProductAttributeValue không còn trong payload update (giữ orphan row
+  // cho lịch sử variant đã soft-delete, xem note-db.md mục 5d) — nhưng
+  // response ở đây chỉ nên trả giá trị ĐANG THỰC SỰ SỐNG (còn ≥1 variant
+  // active tham chiếu), không phải mọi giá trị từng tồn tại. Thiếu `where`
+  // này là bug thật đã gặp: seller đổi "X, L" thành "Đỏ, Vàng", lưu xong "X,
+  // L" vẫn hiện lại ở cả form sửa lẫn trang chi tiết public vì response trả
+  // nguyên mọi ProductAttributeValue của attribute, không lọc theo variant
+  // active. Attribute không còn value nào active (seller đổi hết mọi giá
+  // trị) cũng bị ẩn luôn cả attribute đó — tránh hiện 1 nhóm thuộc tính rỗng
+  // không có lựa chọn nào.
   attributes: {
+    where: {
+      values: {
+        some: { variantValues: { some: { variant: { isActive: true } } } },
+      },
+    },
     orderBy: { position: 'asc' },
     select: {
       id: true,
       name: true,
       position: true,
-      values: { select: { id: true, value: true } },
+      values: {
+        where: {
+          variantValues: { some: { variant: { isActive: true } } },
+        },
+        select: { id: true, value: true },
+      },
     },
   },
   variants: {
@@ -43,7 +72,7 @@ const productWithRelationsSelect = {
       price: true,
       stock: true,
       isActive: true,
-      imageUrl: true,
+      images: variantImagesSelect,
       weightGram: true,
       attributeValues: {
         select: {
@@ -63,13 +92,15 @@ type ProductWithRelations = Prisma.ProductGetPayload<{
   select: typeof productWithRelationsSelect;
 }>;
 
-// Chỉ dùng nội bộ cho getProduct để quyết định quyền xem (không lộ ra
-// response — shop bị strip trước khi map, xem getProduct) — không gộp vào
-// productWithRelationsSelect vì createProduct/updateProduct/archiveProduct
-// không cần join thêm bảng shops.
+// Chỉ dùng nội bộ cho getProduct — ownerId/status dùng để quyết định quyền
+// xem, không lộ ra response; name/slug (Week5.md Bước 1.5 hướng a) thì có
+// lộ ra, dưới dạng object `shop: {name, slug}` map riêng trong getProduct(),
+// không đưa nguyên object `shop` này ra ngoài (xem comment ở getProduct).
+// Không gộp vào productWithRelationsSelect vì createProduct/updateProduct/
+// archiveProduct không cần join thêm bảng shops.
 const productDetailSelect = {
   ...productWithRelationsSelect,
-  shop: { select: { ownerId: true, status: true } },
+  shop: { select: { name: true, slug: true, ownerId: true, status: true } },
 } satisfies Prisma.ProductSelect;
 
 // Danh sách seller (GET /shops/:shopId/products) không cần join
@@ -92,7 +123,7 @@ const productListItemSelect = {
       price: true,
       stock: true,
       isActive: true,
-      imageUrl: true,
+      images: variantImagesSelect,
     },
   },
 } satisfies Prisma.ProductSelect;
@@ -102,9 +133,9 @@ export type ProductListItemSummary = Prisma.ProductGetPayload<{
 }>;
 
 // Card cho trang chủ/danh sách public (Bước 2.10) — không trả description/
-// attributes/toàn bộ variant (rules/backend.md mục 4). imageUrl lấy từ 1
-// variant active duy nhất (variant active đầu tiên tạo — không có khái
-// niệm "ảnh đại diện" riêng ở Product, chỉ ProductVariant.imageUrl).
+// attributes/toàn bộ variant (rules/backend.md mục 4). imageUrl (số ít) lấy
+// từ ảnh đầu tiên (position=0) của 1 variant active duy nhất — card chỉ cần
+// 1 ảnh bìa, không cần cả bộ ảnh (Week5.md Bước 2.12).
 const productCardSelect = {
   id: true,
   categoryId: true,
@@ -116,7 +147,9 @@ const productCardSelect = {
     where: { isActive: true },
     orderBy: { createdAt: 'asc' },
     take: 1,
-    select: { imageUrl: true },
+    select: {
+      images: { orderBy: { position: 'asc' }, take: 1, select: { url: true } },
+    },
   },
 } satisfies Prisma.ProductSelect;
 
@@ -165,6 +198,13 @@ export type ProductSummary = Omit<ProductWithRelations, 'variants'> & {
   > & {
     attributeValues: { attributeName: string; value: string }[];
   })[];
+};
+
+// Chỉ getProduct() (chi tiết public/chủ shop) trả thêm `shop` — createProduct/
+// updateProduct/archiveProduct dùng productWithRelationsSelect, không join
+// bảng shops nên không có field này (Week5.md Bước 1.5/2.2).
+export type ProductDetailSummary = ProductSummary & {
+  shop: { name: string; slug: string };
 };
 
 @Injectable()
@@ -254,13 +294,15 @@ export class ProductService {
         select: { id: true },
       });
 
+      // `value.id` (nếu FE lỡ gửi) bị bỏ qua có chủ đích — create luôn tạo
+      // mới toàn bộ, không có state cũ nào để match/reconcile theo id.
       const valueIdByValue = new Map<string, string>();
       for (const value of attribute.values) {
         const createdValue = await tx.productAttributeValue.create({
-          data: { attributeId: createdAttribute.id, value },
+          data: { attributeId: createdAttribute.id, value: value.value },
           select: { id: true },
         });
-        valueIdByValue.set(value, createdValue.id);
+        valueIdByValue.set(value.value, createdValue.id);
       }
       attributeValueIdsByPosition.push(valueIdByValue);
     }
@@ -276,7 +318,6 @@ export class ProductService {
           sku: variant.sku,
           price: variant.price,
           stock: variant.stock,
-          imageUrl: variant.imageUrl,
         },
         select: { id: true },
       });
@@ -291,6 +332,16 @@ export class ProductService {
           data: attributeValueIds.map((attributeValueId) => ({
             variantId: createdVariant.id,
             attributeValueId,
+          })),
+        });
+      }
+
+      if (variant.images.length > 0) {
+        await tx.productImage.createMany({
+          data: variant.images.map((url, position) => ({
+            variantId: createdVariant.id,
+            url,
+            position,
           })),
         });
       }
@@ -358,20 +409,31 @@ export class ProductService {
     return this.loadProductSummary(this.prisma, productId);
   }
 
-  // Route GET /products/:id là PUBLIC (không JwtAuthGuard bắt buộc, guest
-  // xem được) — viewerUserId chỉ có giá trị nếu request có cookie hợp lệ
-  // (optional-auth, wiring guard cụ thể để dành Bước 2.12). Không phải chủ
-  // shop mà product.status !== PUBLISHED hoặc shop.status !== APPROVED thì
-  // 404 y hệt "không tồn tại" — KHÔNG lộ sản phẩm nháp/shop chưa duyệt qua
-  // URL trực tiếp (đúng Bước 2.9 + rules/backend.md mục 6). Là chủ shop thì
-  // xem được mọi status (dùng lại đúng endpoint này cho trang seller xem
-  // lại/sửa, không tách route riêng).
+  // Route GET /products/:idOrSlug là PUBLIC (không JwtAuthGuard bắt buộc,
+  // guest xem được) — viewerUserId chỉ có giá trị nếu request có cookie hợp
+  // lệ (OptionalJwtAuthGuard). Không phải chủ shop mà product.status !==
+  // PUBLISHED hoặc shop.status !== APPROVED thì 404 y hệt "không tồn tại" —
+  // KHÔNG lộ sản phẩm nháp/shop chưa duyệt qua URL trực tiếp (đúng Bước 2.9
+  // + rules/backend.md mục 6). Là chủ shop thì xem được mọi status (dùng
+  // lại đúng endpoint này cho trang seller xem lại/sửa, không tách route
+  // riêng).
+  //
+  // Lookup theo id HOẶC slug (Week5.md Bước 1.4 quay lại hướng a, sau khi
+  // phát hiện bug thật: hướng b — lookup CHỈ theo slug — đã bịt luôn đường
+  // FE seller fetch lại product của mình theo id thật lúc mở trang edit
+  // (modules/product/services/product.service.ts FE, hàm getProduct(id),
+  // dùng từ Tuần 4, gọi CHUNG endpoint này). Verify lúc chốt hướng b chỉ rà
+  // soát call site phía BE (ProductController), bỏ sót call site phía FE
+  // cùng tên hàm. findFirst + OR (không phải findUnique, vì Prisma không
+  // cho where nhiều field unique cùng lúc kiểu OR trong findUnique) — public
+  // detail page (Bước 3.1) truyền slug, trang seller edit truyền id, cùng 1
+  // endpoint xử lý được cả 2.
   async getProduct(
-    productId: string,
+    idOrSlug: string,
     viewerUserId?: string,
-  ): Promise<ProductSummary> {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
+  ): Promise<ProductDetailSummary> {
+    const product = await this.prisma.product.findFirst({
+      where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
       select: productDetailSelect,
     });
     if (!product) {
@@ -385,15 +447,24 @@ export class ProductService {
       throw new NotFoundException('Product not found');
     }
 
-    // Bug thật phát hiện qua test tay bằng curl thật (Bước 2.15): trước đây
-    // truyền thẳng `product` (có thêm field `shop` từ productDetailSelect)
-    // vào mapProduct() — TypeScript không báo lỗi vì đây không phải object
-    // literal (chỉ excess-property-check literal, không áp dụng cho biến),
-    // nhưng RUNTIME thì `{...product}` copy nguyên `shop.ownerId` ra ngoài
-    // response — lộ cho cả guest chưa đăng nhập. Phải destructure bỏ `shop`
-    // tường minh trước khi map, không dựa vào type hẹp hơn để "ẩn" field.
+    // Bug thật phát hiện qua test tay bằng curl thật (Tuần 4 Bước 2.15):
+    // trước đây truyền thẳng `product` (có thêm field `shop` từ
+    // productDetailSelect) vào mapProduct() — TypeScript không báo lỗi vì
+    // đây không phải object literal (chỉ excess-property-check literal,
+    // không áp dụng cho biến), nhưng RUNTIME thì `{...product}` copy nguyên
+    // `shop.ownerId`/`shop.status` ra ngoài response — lộ cho cả guest chưa
+    // đăng nhập. Phải destructure bỏ `shop` tường minh trước khi map, không
+    // dựa vào type hẹp hơn để "ẩn" field.
+    //
+    // Week5.md Bước 1.5/2.2: chỉ `name`/`slug` của shop mới lộ ra response
+    // (destructure lấy đúng 2 field này từ `shop`, không đưa nguyên object
+    // `shop` — vẫn giữ ownerId/status ở lại bên trong, không lặp lại đúng
+    // bug cũ theo hướng ngược lại).
     const { shop, ...productWithoutShop } = product;
-    return this.mapProduct(productWithoutShop);
+    return {
+      ...this.mapProduct(productWithoutShop),
+      shop: { name: shop.name, slug: shop.slug },
+    };
   }
 
   // Query chính cho CẢ trang chủ lẫn trang danh sách public (Week4.md Bước
@@ -438,12 +509,67 @@ export class ProductService {
       }));
     }
 
+    // Week5.md Bước 1.8/1.9/2.5 — search full-text theo `q` (name trọng số A
+    // + description trọng số B, đã có sẵn trong cột search_vector qua
+    // trigger Bước 2.4b). Prisma chưa hỗ trợ native query tsvector nên chỉ
+    // dùng $queryRaw để xác định TẬP id khớp + rank — mọi filter khác
+    // (status/shop/category/giá/attributeValues) vẫn chạy qua Prisma `where`
+    // như cũ (AND với `id IN (...)`), không viết lại logic filter đó bằng
+    // raw SQL (tránh 2 nguồn logic filter lệch nhau).
+    let rankById: Map<string, number> | undefined;
+    if (query.q) {
+      const ranked = await this.prisma.$queryRaw<
+        { id: string; rank: number }[]
+      >`
+        SELECT id, ts_rank(search_vector, plainto_tsquery('simple', unaccent(${query.q}))) AS rank
+        FROM products
+        WHERE search_vector @@ plainto_tsquery('simple', unaccent(${query.q}))
+      `;
+      if (ranked.length === 0) {
+        return { items: [], total: 0, page: query.page, limit: query.limit };
+      }
+      rankById = new Map(ranked.map((row) => [row.id, row.rank]));
+      where.id = { in: [...rankById.keys()] };
+    }
+
     const orderBy: Prisma.ProductOrderByWithRelationInput =
       query.sort === 'price-asc'
         ? { minPrice: 'asc' }
         : query.sort === 'price-desc'
           ? { minPrice: 'desc' }
           : { createdAt: 'desc' };
+
+    // Có `q` và user KHÔNG tự chọn sort khác (vẫn 'newest' mặc định từ Zod)
+    // -> xếp theo độ liên quan (ts_rank) thay vì mới nhất, đúng 1.8. Chọn
+    // hẳn price-asc/price-desc thì vẫn tôn trọng lựa chọn đó.
+    const useRankOrder = rankById !== undefined && query.sort === 'newest';
+
+    if (useRankOrder) {
+      // Prisma không orderBy được theo đúng thứ tự 1 mảng id tuỳ ý — lấy hết
+      // row đã khớp mọi filter (không skip/take ở Prisma) rồi tự sắp/xén
+      // trang theo rank ở tầng service. Chấp nhận được ở quy mô project hiện
+      // tại (không tối ưu cho catalog cực lớn, giống nhiều đánh đổi đơn giản
+      // hoá khác đã chọn xuyên suốt project).
+      const rows = await this.prisma.product.findMany({
+        where,
+        select: productCardSelect,
+      });
+      const sorted = rows
+        .slice()
+        .sort(
+          (a, b) => (rankById!.get(b.id) ?? 0) - (rankById!.get(a.id) ?? 0),
+        );
+      const total = sorted.length;
+      const start = (query.page - 1) * query.limit;
+      const page = sorted.slice(start, start + query.limit);
+
+      return {
+        items: page.map((row) => this.mapProductCard(row)),
+        total,
+        page: query.page,
+        limit: query.limit,
+      };
+    }
 
     const [rows, total] = await Promise.all([
       this.prisma.product.findMany({
@@ -466,7 +592,7 @@ export class ProductService {
 
   private mapProductCard(row: ProductCardRow): ProductCardSummary {
     const { variants, ...rest } = row;
-    return { ...rest, imageUrl: variants[0]?.imageUrl ?? null };
+    return { ...rest, imageUrl: variants[0]?.images[0]?.url ?? null };
   }
 
   // shopId đã qua ShopOwnerGuard xác nhận đúng chủ (route lồng
@@ -500,12 +626,21 @@ export class ProductService {
   }
 
   // Không hard-delete ProductAttribute/ProductAttributeValue đã tồn tại —
-  // reconcile theo (productId, name)/(attributeId, value): đã có thì reuse
-  // đúng id (giữ nguyên metadata cho variant đã soft-delete còn trỏ tới),
-  // chưa có thì tạo mới. Attribute/value không còn trong payload KHÔNG bị
-  // xoá (chỉ trở thành "không dùng nữa", dọn dẹp riêng nếu cần sau này) —
-  // xem updateProduct-reconcile-decision.md mục 4 (đã xác nhận với người
-  // dùng trước khi code).
+  // attribute/value không còn trong payload KHÔNG bị xoá (chỉ trở thành
+  // "không dùng nữa", giữ nguyên metadata cho variant đã soft-delete còn trỏ
+  // tới) — xem note-db.md mục 5d (đã xác nhận với người dùng trước khi code).
+  //
+  // Reconcile theo `id` (không phải theo name/value text) — đúng cách
+  // Shopify productOptionUpdate làm (rename giữ nguyên id, không đụng
+  // variant). Có `id` VÀ resolve được (đúng scope productId/attributeId) ->
+  // UPDATE tại chỗ (rename). Không có `id` hoặc `id` không resolve được ->
+  // LUÔN tạo mới, KHÔNG fallback về match theo text — match theo text
+  // (name/value) là nguyên nhân bug thật đã gặp: mỗi lần seller đổi tên
+  // attribute/value (không phải xoá) bị hiểu nhầm thành "xoá cái cũ + tạo
+  // cái mới", để lại row rác vĩnh viễn (đã verify thực tế: đổi tên 1
+  // attribute 4 lần liên tiếp để lại 3 row `product_attributes` + 3 row
+  // `product_attribute_values` chết, dù value text không hề đổi — vì value
+  // bị nhân bản theo mỗi lần attributeId cha đổi).
   private async reconcileAttributesAndVariants(
     tx: Prisma.TransactionClient,
     shopId: string,
@@ -516,10 +651,20 @@ export class ProductService {
     const attributeValueIdsByPosition: Map<string, string>[] = [];
     for (let position = 0; position < attributes.length; position++) {
       const attribute = attributes[position];
-      const existingAttribute = await tx.productAttribute.findFirst({
-        where: { productId, name: attribute.name },
-        select: { id: true },
-      });
+
+      // Ternary tường minh (không gọi findFirst khi id vắng mặt) — Prisma bỏ
+      // qua key `undefined` trong `where`, nếu gọi thẳng
+      // findFirst({where:{id: attribute.id, productId}}) lúc attribute.id
+      // là undefined sẽ vô tình thành findFirst({where:{productId}}) và
+      // match nhầm attribute ĐẦU TIÊN của product. Scope thêm `productId`
+      // để 1 attributeId của product khác không "chiếm" được attribute ở
+      // đây qua request giả mạo.
+      const existingAttribute = attribute.id
+        ? await tx.productAttribute.findFirst({
+            where: { id: attribute.id, productId },
+            select: { id: true },
+          })
+        : null;
 
       const attributeId = existingAttribute
         ? existingAttribute.id
@@ -533,25 +678,44 @@ export class ProductService {
       if (existingAttribute) {
         await tx.productAttribute.update({
           where: { id: attributeId },
-          data: { position },
+          data: { name: attribute.name, position },
         });
       }
 
       const valueIdByValue = new Map<string, string>();
       for (const value of attribute.values) {
-        const existingValue = await tx.productAttributeValue.findFirst({
-          where: { attributeId, value },
-          select: { id: true },
-        });
+        // Scope theo attributeId VỪA resolve ở trên (không phải id cũ trong
+        // payload) — 1 valueId thuộc attribute khác (kể cả cùng product)
+        // không được phép "chiếm" qua request giả mạo.
+        const existingValue = value.id
+          ? await tx.productAttributeValue.findFirst({
+              where: { id: value.id, attributeId },
+              select: { id: true },
+            })
+          : null;
+
         const valueId = existingValue
           ? existingValue.id
           : (
               await tx.productAttributeValue.create({
-                data: { attributeId, value },
+                data: { attributeId, value: value.value },
                 select: { id: true },
               })
             ).id;
-        valueIdByValue.set(value, valueId);
+
+        if (existingValue) {
+          await tx.productAttributeValue.update({
+            where: { id: valueId },
+            data: { value: value.value },
+          });
+        }
+
+        // Vẫn key theo TEXT (không phải id) — resolveAttributeValueIds()
+        // tra theo variant.attributeValues[i] (text), map này được rebuild
+        // mới mỗi lần reconcile dùng đúng text vừa ghi (có thể vừa rename),
+        // nên vẫn khớp đúng dù value vừa đổi tên — không cần đổi gì ở tầng
+        // variant.
+        valueIdByValue.set(value.value, valueId);
       }
       attributeValueIdsByPosition.push(valueIdByValue);
     }
@@ -582,7 +746,6 @@ export class ProductService {
                 sku: variant.sku,
                 price: variant.price,
                 stock: variant.stock,
-                imageUrl: variant.imageUrl,
               },
               select: { id: true },
             })
@@ -594,9 +757,20 @@ export class ProductService {
           data: {
             price: variant.price,
             stock: variant.stock,
-            imageUrl: variant.imageUrl,
             isActive: true,
           },
+        });
+        // Variant đã có sẵn — reconcile ảnh theo url (Week5.md Bước 2.12).
+        await this.reconcileVariantImages(tx, variantId, variant.images);
+      } else if (variant.images.length > 0) {
+        // Variant mới tạo, chắc chắn chưa có ảnh nào — tạo thẳng, không cần
+        // fetch/diff như reconcileVariantImages.
+        await tx.productImage.createMany({
+          data: variant.images.map((url, position) => ({
+            variantId,
+            url,
+            position,
+          })),
         });
       }
 
@@ -633,6 +807,48 @@ export class ProductService {
       where: { id: productId },
       data: { minPrice, maxPrice },
     });
+  }
+
+  // Reconcile ảnh của 1 variant theo khoá tự nhiên (url) — KHÁC soft-delete
+  // của variant (mục trên): ảnh không có FK nào khác tham chiếu tới, không
+  // cần giữ lịch sử, nên ảnh không còn trong payload bị xoá hẳn (Week5.md
+  // Bước 1.3/2.12). Ảnh còn trong payload giữ nguyên id (chỉ update lại
+  // position nếu thứ tự đổi), ảnh mới thì tạo.
+  private async reconcileVariantImages(
+    tx: Prisma.TransactionClient,
+    variantId: string,
+    urls: string[],
+  ): Promise<void> {
+    const existingImages = await tx.productImage.findMany({
+      where: { variantId },
+      select: { id: true, url: true, position: true },
+    });
+    const existingByUrl = new Map(
+      existingImages.map((image) => [image.url, image]),
+    );
+    const payloadUrls = new Set(urls);
+
+    for (let position = 0; position < urls.length; position++) {
+      const url = urls[position];
+      const existingImage = existingByUrl.get(url);
+      if (!existingImage) {
+        await tx.productImage.create({ data: { variantId, url, position } });
+      } else if (existingImage.position !== position) {
+        await tx.productImage.update({
+          where: { id: existingImage.id },
+          data: { position },
+        });
+      }
+    }
+
+    const staleImageIds = existingImages
+      .filter((image) => !payloadUrls.has(image.url))
+      .map((image) => image.id);
+    if (staleImageIds.length > 0) {
+      await tx.productImage.deleteMany({
+        where: { id: { in: staleImageIds } },
+      });
+    }
   }
 
   // Denormalize minPrice/maxPrice lên Product từ tập variant ACTIVE hiện tại

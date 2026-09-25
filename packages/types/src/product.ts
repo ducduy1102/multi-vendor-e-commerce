@@ -12,22 +12,25 @@ const optionalTrimmedString = () =>
     .optional()
     .transform((val) => (val === '' ? undefined : val));
 
-const optionalUrlSchema = (message: string) =>
-  z
-    .string()
-    .trim()
-    .optional()
-    .refine((val) => !val || z.string().url().safeParse(val).success, {
-      message,
-    })
-    .transform((val) => (val === '' ? undefined : val));
+// `id` optional — có nghĩa "đây là giá trị/thuộc tính ĐÃ TỒN TẠI, update tại
+// chỗ theo id này" (giống Shopify productOptionUpdate) khi gửi trong
+// updateProductSchema. Không có `id` (hoặc `id` không resolve được ở
+// ProductService.reconcileAttributesAndVariants) -> LUÔN tạo mới, KHÔNG
+// fallback về match theo text — match theo text (name/value) là nguyên nhân
+// bug orphan row khi seller đổi tên (mỗi lần đổi tên bị hiểu nhầm thành xoá +
+// tạo mới, để lại row rác vĩnh viễn vì attribute/value không hard-delete).
+// `id` bị bỏ qua khi dùng ở createProductSchema (tạo mới hoàn toàn, không có
+// gì để match).
+const productAttributeValueInputSchema = z.object({
+  id: z.string().trim().min(1).optional(),
+  value: z.string().trim().min(1, 'Giá trị thuộc tính không được để trống'),
+});
 
 const productAttributeInputSchema = z.object({
+  id: z.string().trim().min(1).optional(),
   name: z.string().trim().min(1, 'Tên thuộc tính không được để trống'),
   values: z
-    .array(
-      z.string().trim().min(1, 'Giá trị thuộc tính không được để trống'),
-    )
+    .array(productAttributeValueInputSchema)
     .min(1, 'Thuộc tính cần ít nhất 1 giá trị'),
 });
 
@@ -36,16 +39,19 @@ const productAttributeInputSchema = z.object({
 // attributes[i].values. Service dùng đúng cặp (attribute, value theo vị trí)
 // này để build map "value string -> ProductAttributeValue.id" trong
 // transaction tạo/sửa Product.
+// Week5.md Bước 1.3/2.12 — nhiều ảnh/variant (thay cho `imageUrl` đơn cũ).
+// Request chỉ cần mảng URL (đã ký sẵn qua signed upload) — `position` suy
+// từ thứ tự trong mảng, không cần gửi tường minh.
 const productVariantInputSchema = z.object({
   sku: z.string().trim().min(1, 'SKU không được để trống'),
   price: z.number().positive('Giá phải lớn hơn 0'),
   stock: z.number().int().nonnegative('Tồn kho không được âm'),
   attributeValues: z.array(z.string().trim().min(1)).default([]),
-  imageUrl: optionalUrlSchema('URL ảnh không hợp lệ'),
+  images: z.array(z.string().trim().url('URL ảnh không hợp lệ')).default([]),
 });
 
 function validateAttributesAndVariants(
-  attributes: { name: string; values: string[] }[],
+  attributes: { name: string; values: { id?: string; value: string }[] }[],
   variants: { sku: string; attributeValues: string[] }[],
   ctx: RefinementCtx,
 ) {
@@ -62,15 +68,17 @@ function validateAttributesAndVariants(
 
     // So sánh không phân biệt hoa/thường ("M" và "m" cùng bị coi là trùng) —
     // khớp với check FE ở ProductForm.tsx (cùng bất biến, 2 nơi validate
-    // cùng 1 rule không được lệch nhau).
+    // cùng 1 rule không được lệch nhau). Path trỏ vào `.value` (không phải
+    // cả phần tử values[valueIndex]) vì values giờ là object {id?, value},
+    // khớp đúng path FE dùng ở productFormAttributeSchema's superRefine.
     const seenValues = new Map<string, number>();
     attribute.values.forEach((value, valueIndex) => {
-      const key = value.trim().toLowerCase();
+      const key = value.value.trim().toLowerCase();
       if (seenValues.has(key)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Giá trị "${value}" bị lặp lại trong thuộc tính "${attribute.name}" (không phân biệt hoa/thường)`,
-          path: ['attributes', index, 'values', valueIndex],
+          message: `Giá trị "${value.value}" bị lặp lại trong thuộc tính "${attribute.name}" (không phân biệt hoa/thường)`,
+          path: ['attributes', index, 'values', valueIndex, 'value'],
         });
       } else {
         seenValues.set(key, valueIndex);
@@ -101,7 +109,7 @@ function validateAttributesAndVariants(
 
     variant.attributeValues.forEach((value, valueIndex) => {
       const attribute = attributes[valueIndex];
-      if (attribute && !attribute.values.includes(value)) {
+      if (attribute && !attribute.values.some((v) => v.value === value)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `Giá trị "${value}" không thuộc thuộc tính "${attribute.name}"`,
@@ -201,6 +209,14 @@ export const productVariantAttributeValueSchema = z.object({
   value: z.string(),
 });
 
+// Week5.md Bước 1.3/2.12 — sắp sẵn theo position (BE trả đã sort), FE không
+// cần tự sort lại.
+export const productImageSchema = z.object({
+  url: z.string(),
+  position: z.number(),
+});
+export type ProductImageDto = z.infer<typeof productImageSchema>;
+
 export const productVariantSchema = z.object({
   id: z.string(),
   sku: z.string(),
@@ -210,7 +226,7 @@ export const productVariantSchema = z.object({
   price: z.string(),
   stock: z.number(),
   isActive: z.boolean(),
-  imageUrl: z.string().nullable(),
+  images: z.array(productImageSchema),
   weightGram: z.number().nullable(),
   attributeValues: z.array(productVariantAttributeValueSchema),
 });
@@ -236,6 +252,17 @@ export const productSchema = z.object({
 });
 export type Product = z.infer<typeof productSchema>;
 
+// Chỉ GET /products/:slug (chi tiết — ProductService.getProduct) trả thêm
+// `shop` — create/update/archive dùng chung productSchema ở trên, không join
+// bảng shops nên không có field này (Week5.md Bước 1.5/2.2-2.3, khớp
+// ProductDetailSummary ở apps/api). Tách schema riêng thay vì thêm `shop`
+// optional vào productSchema dùng chung, tránh mọi chỗ khác phải tự lường
+// field này có mặt hay không.
+export const productDetailSchema = productSchema.extend({
+  shop: z.object({ name: z.string(), slug: z.string() }),
+});
+export type ProductDetail = z.infer<typeof productDetailSchema>;
+
 // Response gọn cho danh sách Product của seller (GET /shops/:shopId/products,
 // ProductService.getMyProducts) — không cần attributeValues/attributeName đã
 // resolve (chỉ cần cho form sửa, xem productSchema), tránh join dư thừa cho
@@ -246,7 +273,7 @@ export const productListItemVariantSchema = z.object({
   price: z.string(),
   stock: z.number(),
   isActive: z.boolean(),
-  imageUrl: z.string().nullable(),
+  images: z.array(productImageSchema),
 });
 
 export const productListItemSchema = z.object({
@@ -287,11 +314,17 @@ export const listProductsQuerySchema = z.object({
     .transform((val) =>
       val === undefined ? undefined : Array.isArray(val) ? val : [val],
     ),
+  // Search full-text (Week5.md Bước 1.6/1.8-1.9) — mở rộng GET /products có
+  // sẵn thay vì tách endpoint riêng, kết hợp AND với các filter khác ở trên.
+  q: z.string().trim().optional(),
 });
 export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
 
 // Card cho trang chủ/danh sách public — không trả description/attributes/
 // toàn bộ variant (rules/backend.md mục 4), chỉ đủ hiển thị 1 ô sản phẩm.
+// `imageUrl` (số ít, khác `productVariantSchema.images[]`) là 1 ảnh đại diện
+// đã flatten sẵn ở BE (ảnh đầu tiên, position=0, của variant active đầu
+// tiên) — card chỉ cần 1 ảnh bìa, không cần cả bộ ảnh/variant.
 export const productCardSchema = z.object({
   id: z.string(),
   categoryId: z.string(),

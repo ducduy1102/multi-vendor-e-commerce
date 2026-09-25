@@ -45,6 +45,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
           <ActiveFiltersSummary
             query={query}
             categories={categories}
+            removeSearchLabel={t('filterRemoveSearch')}
             removeCategoryLabel={t('filterRemoveCategory')}
             removePriceLabel={t('filterRemovePrice')}
           />
@@ -57,6 +58,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
               <ProductFilterBar
                 categories={categories}
                 initialFilters={{
+                  q: query.q,
                   categoryId: query.categoryId,
                   minPrice: query.minPrice,
                   maxPrice: query.maxPrice,

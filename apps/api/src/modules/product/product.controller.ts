@@ -70,11 +70,20 @@ const PRODUCT_EXAMPLE = {
       price: '150000',
       stock: 10,
       isActive: true,
-      imageUrl: null,
+      images: [],
       weightGram: null,
       attributeValues: [{ attributeName: 'Màu sắc', value: 'Đỏ' }],
     },
   ],
+};
+
+// Chỉ GET /products/:idOrSlug (chi tiết) trả thêm `shop` — create/update/
+// archive dùng chung PRODUCT_EXAMPLE, không join bảng shops (Week5.md Bước
+// 1.5/2.2), nên tách example riêng thay vì thêm field vào PRODUCT_EXAMPLE
+// dùng chung.
+const PRODUCT_DETAIL_EXAMPLE = {
+  ...PRODUCT_EXAMPLE,
+  shop: { name: 'ABC Shop', slug: 'abc-shop' },
 };
 
 const PRODUCT_LIST_ITEM_EXAMPLE = {
@@ -94,7 +103,7 @@ const PRODUCT_LIST_ITEM_EXAMPLE = {
       price: PRODUCT_EXAMPLE.variants[0].price,
       stock: PRODUCT_EXAMPLE.variants[0].stock,
       isActive: true,
-      imageUrl: null,
+      images: [],
     },
   ],
 };
@@ -146,7 +155,9 @@ export class ProductController {
       example: {
         name: 'Áo thun nam',
         categoryId: PRODUCT_EXAMPLE.categoryId,
-        attributes: [{ name: 'Màu sắc', values: ['Đỏ', 'Xanh'] }],
+        attributes: [
+          { name: 'Màu sắc', values: [{ value: 'Đỏ' }, { value: 'Xanh' }] },
+        ],
         variants: [
           {
             sku: 'AT-DO-M',
@@ -203,10 +214,32 @@ export class ProductController {
   @ApiCookieAuth('access_token')
   @ApiOperation({
     summary:
-      'Cập nhật product — chỉ chủ shop. attributes/variants phải gửi cùng nhau (reconcile) hoặc cùng bỏ trống',
+      'Cập nhật product — chỉ chủ shop. attributes/variants phải gửi cùng nhau (reconcile) hoặc cùng bỏ trống. attributes[].id/attributes[].values[].id (optional): có + resolve được thì UPDATE tại chỗ (rename, giữ nguyên id) — không có hoặc không resolve được thì tạo mới. Không gửi id vẫn hợp lệ (coi như thuộc tính/giá trị mới hoàn toàn).',
   })
   @ApiBody({
-    schema: { example: { name: 'Tên product mới', status: 'PUBLISHED' } },
+    schema: {
+      example: {
+        name: 'Tên product mới',
+        status: 'PUBLISHED',
+        attributes: [
+          {
+            id: 'e1a2b3c4-1234-4a5b-8c9d-abcdef111111',
+            name: 'Màu sắc',
+            values: [
+              { id: 'f1a2b3c4-1234-4a5b-8c9d-abcdef222222', value: 'Đỏ tươi' },
+            ],
+          },
+        ],
+        variants: [
+          {
+            sku: 'AT-DO-M',
+            price: 150000,
+            stock: 10,
+            attributeValues: ['Đỏ tươi'],
+          },
+        ],
+      },
+    },
   })
   @ApiResponse({
     status: 200,
@@ -283,6 +316,13 @@ export class ProductController {
     description:
       'Lặp lại param cho nhiều giá trị, vd ?attributeValues=Đỏ&attributeValues=M',
   })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description:
+      'Search full-text theo name+description (Postgres tsvector, không phân biệt dấu). Có q + sort mặc định (newest) sẽ tự đổi sang xếp theo độ liên quan, trừ khi tự chọn price-asc/price-desc',
+    example: 'áo thun',
+  })
   @ApiResponse({
     status: 200,
     schema: {
@@ -299,15 +339,19 @@ export class ProductController {
     return this.productService.listPublicProducts(query);
   }
 
-  @Get('products/:id')
+  @Get('products/:idOrSlug')
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     summary:
-      'Chi tiết 1 product — public (PUBLISHED+APPROVED) hoặc chủ shop xem mọi status',
+      'Chi tiết 1 product theo id HOẶC slug — public (PUBLISHED+APPROVED) hoặc chủ shop xem mọi status. ' +
+      'Nhận cả 2 kiểu (không chỉ slug) vì trang seller sửa sản phẩm (FE modules/product) gọi lại đúng ' +
+      'endpoint này theo id thật, trang chi tiết public gọi theo slug (Week5.md Bước 1.4).',
   })
   @ApiResponse({
     status: 200,
-    schema: { example: { success: true, data: { product: PRODUCT_EXAMPLE } } },
+    schema: {
+      example: { success: true, data: { product: PRODUCT_DETAIL_EXAMPLE } },
+    },
   })
   @ApiResponse({
     status: 404,
@@ -315,10 +359,13 @@ export class ProductController {
       'Không tồn tại, hoặc chưa PUBLISHED/shop chưa APPROVED (ẩn với guest)',
   })
   async getOne(
-    @Param('id') id: string,
+    @Param('idOrSlug') idOrSlug: string,
     @CurrentUserOptional() user?: AuthenticatedUser,
   ) {
-    const product = await this.productService.getProduct(id, user?.userId);
+    const product = await this.productService.getProduct(
+      idOrSlug,
+      user?.userId,
+    );
     return { product };
   }
 

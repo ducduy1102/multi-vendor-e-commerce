@@ -19,7 +19,7 @@ import { Label } from '@/shared/components/ui/label';
 import { Textarea } from '@/shared/components/ui/textarea';
 import type { Category, Product } from '../types';
 import { buildVariantMatrix } from './ProductForm.utils';
-import { VariantImageUpload } from './VariantImageUpload';
+import { VariantImagesUpload } from './VariantImagesUpload';
 
 // Schema RIÊNG cho form (khác createProductSchema/updateProductSchema ở
 // @ecommerce/types) — chỉ validate UX tức thời ở FE, BE (ZodValidationPipe +
@@ -38,12 +38,22 @@ import { VariantImageUpload } from './VariantImageUpload';
 //    "Two different types with this name exist, but they are unrelated" dù
 //    logic runtime đúng. Convert sang number bằng tay ở toSubmitPayload()
 //    ngay trước khi gọi onSubmit, tránh toàn bộ vấn đề generic này.
+// `attributeId`/`valueId` (KHÔNG đặt tên `id`) — cố tình tránh trùng tên với
+// key `id` mà react-hook-form's useFieldArray tự inject vào từng phần tử
+// `fields` (dùng làm React key nội bộ), tránh phụ thuộc hành vi chưa verify
+// của thư viện. Có giá trị = record đã tồn tại (từ productToFormValues, lấy
+// từ response GET) -> gửi lại lên BE để reconcile UPDATE tại chỗ khi rename;
+// không có = record mới thêm ở form, BE tự tạo mới. Convert sang tên field
+// `id` thật (khớp productAttributeInputSchema/productAttributeValueInputSchema
+// ở @ecommerce/types) chỉ tại 1 chỗ duy nhất: toSubmitPayload().
 const productFormValueSchema = z.object({
+  valueId: z.string().optional(),
   value: z.string().trim().min(1, 'Giá trị không được để trống'),
 });
 
 const productFormAttributeSchema = z
   .object({
+    attributeId: z.string().optional(),
     name: z.string().trim().min(1, 'Tên thuộc tính không được để trống'),
     values: z.array(productFormValueSchema).min(1, 'Cần ít nhất 1 giá trị'),
   })
@@ -82,9 +92,18 @@ const productFormVariantSchema = z.object({
     .trim()
     .refine((v) => Number.isInteger(Number(v)) && Number(v) >= 0, 'Tồn kho phải là số nguyên >= 0'),
   attributeValues: z.array(z.string()),
-  // Gán qua VariantImageUpload (Controller, Bước 3.8) — không có <input
-  // type="text"> nào register trực tiếp field này.
-  imageUrl: z.string().optional(),
+  // Gán qua VariantImagesUpload (Controller, Week4.md Bước 3.8, mở rộng
+  // nhiều ảnh ở Week5.md Bước 3.13) — không có <input type="text"> nào
+  // register trực tiếp field này. Thứ tự mảng CHÍNH LÀ position gửi lên BE.
+  images: z.array(z.string()),
+  // Key nội bộ CHỈ để ProductForm.utils.ts's buildVariantMatrix() match lại
+  // đúng dòng khi 1 giá trị thuộc tính bị ĐỔI TÊN lúc đang sửa form (trước
+  // khi submit) — tránh mất sku/giá/tồn kho/ảnh đã gõ dở của dòng đó. KHÔNG
+  // có input/Controller nào gán trực tiếp field này (chỉ regenerateVariants()
+  // ghi lại qua variantsFieldArray.replace()) và KHÔNG gửi lên BE —
+  // toSubmitPayload() build lại variant object field-by-field, tự loại field
+  // này (không thuộc CreateProductInput/UpdateProductInput).
+  attributeValueIds: z.array(z.string().optional()).optional(),
 });
 
 const productFormSchema = z
@@ -129,13 +148,13 @@ export interface ProductFormSubmitValues {
   categoryId: string;
   description?: string;
   status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
-  attributes: { name: string; values: string[] }[];
+  attributes: { id?: string; name: string; values: { id?: string; value: string }[] }[];
   variants: {
     sku: string;
     price: number;
     stock: number;
     attributeValues: string[];
-    imageUrl?: string;
+    images: string[];
   }[];
 }
 
@@ -146,15 +165,16 @@ function toSubmitPayload(values: ProductFormValues): ProductFormSubmitValues {
     description: values.description ? values.description : undefined,
     status: values.status,
     attributes: values.attributes.map((attribute) => ({
+      id: attribute.attributeId,
       name: attribute.name,
-      values: attribute.values.map((v) => v.value),
+      values: attribute.values.map((v) => ({ id: v.valueId, value: v.value })),
     })),
     variants: values.variants.map((variant) => ({
       sku: variant.sku,
       price: Number(variant.price),
       stock: Number(variant.stock),
       attributeValues: variant.attributeValues,
-      imageUrl: variant.imageUrl,
+      images: variant.images,
     })),
   };
 }
@@ -164,7 +184,7 @@ const EMPTY_DEFAULT_VALUES: ProductFormValues = {
   categoryId: '',
   description: '',
   attributes: [],
-  variants: [{ sku: '', price: '', stock: '', attributeValues: [], imageUrl: undefined }],
+  variants: [{ sku: '', price: '', stock: '', attributeValues: [], images: [] }],
 };
 
 // Chuyển response Product (GET /products/:id) thành defaultValues cho form
@@ -181,8 +201,9 @@ export function productToFormValues(product: Product): ProductFormValues {
     description: product.description ?? '',
     status: product.status,
     attributes: product.attributes.map((attribute) => ({
+      attributeId: attribute.id,
       name: attribute.name,
-      values: attribute.values.map((v) => ({ value: v.value })),
+      values: attribute.values.map((v) => ({ valueId: v.id, value: v.value })),
     })),
     variants: product.variants
       .filter((variant) => variant.isActive)
@@ -194,7 +215,21 @@ export function productToFormValues(product: Product): ProductFormValues {
           (attribute) =>
             variant.attributeValues.find((av) => av.attributeName === attribute.name)?.value ?? '',
         ),
-        imageUrl: variant.imageUrl ?? undefined,
+        // Populate NGAY từ lúc load (không đợi tới lần regenerateVariants()
+        // đầu tiên) — nếu không, lần đầu seller đổi tên 1 giá trị của sản
+        // phẩm ĐÃ CÓ SẴN, buildVariantMatrix() vẫn không có id nào để match
+        // (chỉ có tác dụng với sản phẩm mới tạo trong cùng phiên chưa
+        // submit), mất hẳn ý nghĩa của companion fix ở ProductForm.utils.ts.
+        // variant.attributeValues (response) chỉ có {attributeName, value},
+        // không có id riêng — phải tra chéo qua attribute.values để lấy id
+        // của đúng value đang dùng.
+        attributeValueIds: product.attributes.map((attribute) => {
+          const usedValue = variant.attributeValues.find(
+            (av) => av.attributeName === attribute.name,
+          )?.value;
+          return attribute.values.find((v) => v.value === usedValue)?.id;
+        }),
+        images: variant.images.map((image) => image.url),
       })),
   };
 }
@@ -452,15 +487,16 @@ export function ProductForm({
                   <Label className="md:sr-only">{t('productFormImageLabel')}</Label>
                   <Controller
                     control={control}
-                    name={`variants.${variantIndex}.imageUrl`}
+                    name={`variants.${variantIndex}.images`}
                     render={({ field }) => (
-                      <VariantImageUpload
+                      <VariantImagesUpload
                         value={field.value}
                         onChange={field.onChange}
                         uploadLabel={t('productFormImageUpload')}
-                        changeLabel={t('productFormImageChange')}
                         uploadingLabel={t('productFormImageUploading')}
                         removeLabel={t('productFormImageRemove')}
+                        moveUpLabel={t('productFormImageMoveUp')}
+                        moveDownLabel={t('productFormImageMoveDown')}
                         errorLabel={t('productFormImageError')}
                       />
                     )}

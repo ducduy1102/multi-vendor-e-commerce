@@ -1,9 +1,10 @@
 'use client';
 
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Search, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
-import { Link, usePathname } from '@/i18n/navigation';
+import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { LogoutButton, useAuthStore } from '@/modules/auth';
 import { ChotMark } from '@/shared/components/ChotMark';
 import { Container } from '@/shared/components/Container';
@@ -40,17 +41,78 @@ export function UserAvatar({ name }: { name: string }) {
   );
 }
 
-// 1 component dùng chung cho cả 2 mục điều hướng ngang hàng ("Sản phẩm",
-// "Kênh người bán") — đảm bảo cùng kiểu chữ/hover, không lặp lại className
-// ở 2 nơi rồi lệch nhau khi sửa sau này.
-function HeaderNavLink({ href, children }: { href: string; children: React.ReactNode }) {
+// Week5.md Bước 3.5 (desktop) + theo yêu cầu bổ sung sau đó (mobile) — điều
+// hướng sang /products?q=... (tái dùng trang danh sách đã có sẵn filter/
+// sort/pagination — Bước 3.6 đọc lại `q` từ đó), không tạo trang kết quả
+// riêng. Input luôn bắt đầu rỗng (không tự đọc lại `q` hiện tại trên URL
+// nếu đang ở /products — Header là component toàn cục, không có sẵn
+// searchParams qua props như page.tsx; giữ đơn giản đúng phạm vi roadmap,
+// không thêm useSearchParams() chỉ để đồng bộ ngược 1 chiều này).
+//
+// Desktop: 1 hàng ngang cùng logo/theme/locale/account (w-auto, flex-1 chiếm
+// khoảng trống còn lại). Mobile: `w-full` khiến flex item này không đủ chỗ
+// nằm cạnh logo trên cùng 1 hàng (Container cha bật `flex-wrap` ở mobile),
+// tự động rớt xuống hàng riêng bên dưới — vẫn ĐÚNG 1 component/1 input DOM
+// duy nhất cho mọi breakpoint (không render 2 bản JSX riêng theo
+// mobile/desktop — đúng rules/frontend.md mục 5, tránh lỗi input bị đúp/mất
+// liên kết label khi có ≥2 bản cùng mount).
+//
+// `type="text"` thay vì `type="search"` — input kiểu search tự có nút "x"
+// xoá của trình duyệt (`::-webkit-search-cancel-button`), không style lại
+// màu được nhất quán giữa các trình duyệt (Firefox không hỗ trợ tương tự).
+// Tự vẽ nút xoá riêng (X, chỉ hiện khi có chữ) để chủ động màu/style.
+//
+// Bố cục 1 khối viền chung (input thô, không dùng component `Input` — viền/
+// nền riêng của nó không hợp khi cần input trong suốt lồng bên trong 1 khối
+// viền lớn hơn, giống cách ProductFilterBar.tsx dùng `<select>` thô thay vì
+// cố ép primitive có sẵn) — nút search nằm THỤT VÀO BÊN TRONG khối đó (bố
+// cục kiểu Shopee, khác Lazada nút dính liền cạnh phải), nền `bg-primary` +
+// icon trắng (`text-primary-foreground`) theo yêu cầu — không phải viền
+// rỗng như bản đầu.
+function HeaderSearchForm() {
+  const t = useTranslations('header');
+  const router = useRouter();
+  const [query, setQuery] = useState('');
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = query.trim();
+    router.push({ pathname: '/products', query: trimmed ? { q: trimmed } : {} });
+  }
+
   return (
-    <Link
-      href={href}
-      className="text-sm font-medium text-foreground transition-colors hover:text-primary"
-    >
-      {children}
-    </Link>
+    <form role="search" onSubmit={handleSubmit} className="flex w-full sm:w-auto sm:flex-1">
+      <label htmlFor="header-search" className="sr-only">
+        {t('searchLabel')}
+      </label>
+      <div className="flex h-10 w-full items-center gap-1 rounded-lg border border-input bg-transparent pr-1 pl-3 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30">
+        <input
+          id="header-search"
+          type="text"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t('searchPlaceholder')}
+          className="h-full min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground md:text-sm"
+        />
+        {query ? (
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            aria-label={t('searchClearLabel')}
+            className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <X className="size-4" />
+          </button>
+        ) : null}
+        <button
+          type="submit"
+          aria-label={t('searchSubmitLabel')}
+          className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors outline-none hover:bg-primary/80 focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <Search className="size-4" />
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -92,8 +154,8 @@ export function Header() {
     // tài khoản, tránh nháy 1 nhịp sai trạng thái cho người đã đăng nhập
     // lúc F5 trang.
     <div className="flex items-center gap-1.5 sm:gap-2" aria-hidden="true">
-      <div className="h-8 w-16 animate-pulse rounded-lg bg-muted sm:w-20" />
-      <div className="h-8 w-16 animate-pulse rounded-lg bg-muted sm:w-20" />
+      <div className="h-8 w-16 animate-pulse rounded-lg motion-reduce:animate-none bg-muted sm:w-20" />
+      <div className="h-8 w-16 animate-pulse rounded-lg motion-reduce:animate-none bg-muted sm:w-20" />
     </div>
   ) : !user ? (
     <div className="flex items-center gap-1.5 sm:gap-2">
@@ -127,10 +189,13 @@ export function Header() {
           "Sản phẩm của tôi" trên 1 dòng. */}
       <DropdownMenuContent align="end" className="min-w-48">
         {/* TODO: bật lại mục "Trang cá nhân" (key i18n header.myAccountLink,
-            giữ nguyên trong messages/*.json) khi có trang thật để trỏ tới —
-            hiện chưa route nào trong roadmap làm riêng trang này, gần nhất
-            là Wishlist (Tuần 5) hoặc "Đơn hàng của tôi" (Tuần 8). Ẩn tạm vì
-            trỏ "/" không có đích thật, dễ gây hiểu nhầm là bug. */}
+            giữ nguyên trong messages/*.json) khi có trang "tài khoản tổng"
+            thật để trỏ tới. Week5.md Bước 1.13/3.8: Wishlist (Tuần 5) đã
+            xong nhưng cố tình làm route RIÊNG (/wishlist, không có link nào
+            trỏ tới từ đây) — "Trang cá nhân" chỉ đáng bật lại khi có thêm
+            "Đơn hàng của tôi" (Tuần 8) để gộp chung thành 1 trang tài khoản
+            thật sự. Ẩn tạm vì trỏ "/" không có đích thật, dễ gây hiểu nhầm
+            là bug. */}
         {shopLink && (
           <>
             <DropdownMenuItem render={<Link href={shopLink.href} />}>
@@ -147,29 +212,26 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background">
-      {/* Mobile (< sm): chỉ còn logo — điều hướng, ThemeToggle, LocaleSwitcher
-          và cụm tài khoản đã chuyển hết vào BottomTabBar/AccountSheet
-          (shared/components/BottomTabBar.tsx, AccountSheet.tsx). Desktop
-          (>= sm, khớp breakpoint BottomTabBar ẩn đi — trước đây header dùng
-          md: cho các cụm này, để hở khoảng 640-768px không có điều hướng
-          nào cả sau khi bỏ hamburger, nay đổi về sm: cho khớp): trái — logo +
-          điều hướng ngang hàng ("Sản phẩm", "Kênh người bán"); phải —
-          ThemeToggle, LocaleSwitcher, cụm tài khoản. */}
-      <Container className="flex h-14 items-center gap-3">
+      {/* Mobile (< sm): logo hàng 1, search hàng 2 (Container bật flex-wrap,
+          HeaderSearchForm w-full khiến nó không đủ chỗ nằm cạnh logo nên tự
+          rớt xuống dòng — xem comment ở HeaderSearchForm). ThemeToggle/
+          LocaleSwitcher/cụm tài khoản vẫn KHÔNG hiện ở mobile (đã chuyển hết
+          vào BottomTabBar/AccountSheet, shared/components/BottomTabBar.tsx,
+          AccountSheet.tsx) — chỉ riêng search là ngoại lệ mới. Desktop (>= sm,
+          khớp breakpoint BottomTabBar ẩn đi): 1 hàng duy nhất — trái logo,
+          giữa search (flex-1), phải ThemeToggle/LocaleSwitcher/cụm tài khoản.
+          Nav ngang hàng "Sản phẩm"/"Kênh người bán" đã bỏ (theo yêu cầu) —
+          vào /products qua thanh search hoặc trang chủ, vào khu seller qua
+          dropdown tài khoản (shopLink vẫn còn ở đó). */}
+      <Container className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2 sm:h-14 sm:flex-nowrap sm:py-0">
         <Link href="/" className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          <ChotMark className="size-7 shrink-0" />
-          <span className="font-semibold whitespace-nowrap text-brand">{t('siteName')}</span>
+          <ChotMark className="size-8 shrink-0" />
+          <span className="text-lg font-semibold whitespace-nowrap text-brand">
+            {t('siteName')}
+          </span>
         </Link>
 
-        {/* sm:ml-4 — cách logo 1 khoảng rõ ràng, không dính sát. */}
-        <nav className="hidden items-center gap-4 sm:ml-4 sm:flex">
-          <HeaderNavLink href="/products">{t('productsLink')}</HeaderNavLink>
-          {shopLink && <HeaderNavLink href={shopLink.href}>{shopLink.label}</HeaderNavLink>}
-        </nav>
-
-        {/* TODO: thanh search (Tuần 5) — chiếm khoảng giữa linh hoạt này,
-            đặt giữa điều hướng và giỏ hàng/ThemeToggle/LocaleSwitcher. */}
-        <div className="flex-1" />
+        <HeaderSearchForm />
 
         {/* TODO: icon/nút giỏ hàng (Tuần 6) — đặt ngay trước cụm dưới đây. */}
 

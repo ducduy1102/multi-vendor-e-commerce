@@ -12,7 +12,7 @@ import { createProductSchema, updateProductSchema } from './product.schema';
 const validPayload = {
   name: 'Áo thun nam',
   categoryId: 'cat-1',
-  attributes: [{ name: 'Màu sắc', values: ['Đỏ', 'Xanh'] }],
+  attributes: [{ name: 'Màu sắc', values: [{ value: 'Đỏ' }, { value: 'Xanh' }] }],
   variants: [
     { sku: 'AT-DO', price: 100000, stock: 10, attributeValues: ['Đỏ'] },
     { sku: 'AT-XANH', price: 100000, stock: 5, attributeValues: ['Xanh'] },
@@ -51,8 +51,8 @@ describe('createProductSchema', () => {
     const result = createProductSchema.safeParse({
       ...validPayload,
       attributes: [
-        { name: 'Màu sắc', values: ['Đỏ'] },
-        { name: 'Màu sắc', values: ['Xanh'] },
+        { name: 'Màu sắc', values: [{ value: 'Đỏ' }] },
+        { name: 'Màu sắc', values: [{ value: 'Xanh' }] },
       ],
       variants: [{ sku: 'AT-1', price: 100000, stock: 10, attributeValues: ['Đỏ'] }],
     });
@@ -70,7 +70,7 @@ describe('createProductSchema', () => {
     const result = createProductSchema.safeParse({
       name: 'Áo thun nam',
       categoryId: 'cat-1',
-      attributes: [{ name: 'Size', values: ['M', 'm'] }],
+      attributes: [{ name: 'Size', values: [{ value: 'M' }, { value: 'm' }] }],
       variants: [
         { sku: 'AT-M1', price: 100000, stock: 10, attributeValues: ['M'] },
         { sku: 'AT-M2', price: 100000, stock: 10, attributeValues: ['m'] },
@@ -169,7 +169,7 @@ describe('updateProductSchema', () => {
 
   it('fails when chỉ gửi attributes mà không gửi variants (hoặc ngược lại)', () => {
     const onlyAttributes = updateProductSchema.safeParse({
-      attributes: [{ name: 'Màu sắc', values: ['Đỏ'] }],
+      attributes: [{ name: 'Màu sắc', values: [{ value: 'Đỏ' }] }],
     });
     const onlyVariants = updateProductSchema.safeParse({
       variants: [{ sku: 'AT-1', price: 100000, stock: 10, attributeValues: [] }],

@@ -21,7 +21,11 @@
     "productsLink": "Products",
     "homeLink": "Home",
     "accountTabLabel": "Account",
-    "mobileNavLabel": "Quick navigation"
+    "mobileNavLabel": "Quick navigation",
+    "searchLabel": "Search products",
+    "searchPlaceholder": "Search products...",
+    "searchClearLabel": "Clear search",
+    "searchSubmitLabel": "Search"
   },
   "home": {
     "bannerHeading": "Shop from many stores, check out fast",
@@ -106,6 +110,7 @@
     "listTitle": "All products",
     "resultCount": "{count} products",
     "filterEmptyState": "No products match this filter. Try adjusting it.",
+    "filterRemoveSearch": "Remove search term",
     "filterRemoveCategory": "Remove category filter",
     "filterRemovePrice": "Remove price filter",
     "productsLoadingSrOnly": "Loading products...",
@@ -164,10 +169,11 @@
     "productFormPriceLabel": "Price",
     "productFormStockLabel": "Stock",
     "productFormImageLabel": "Image",
-    "productFormImageUpload": "Choose image",
-    "productFormImageChange": "Change image",
+    "productFormImageUpload": "Add image",
     "productFormImageUploading": "Uploading...",
     "productFormImageRemove": "Remove image",
+    "productFormImageMoveUp": "Move up",
+    "productFormImageMoveDown": "Move down",
     "productFormImageError": "Upload failed, try again",
     "productFormSubmitCreate": "Create product",
     "productFormSubmitCreating": "Creating...",
@@ -177,6 +183,23 @@
     "productFormUpdateGenericError": "Failed to update the product, please try again",
     "createProductTitle": "Create new product",
     "editProductTitle": "Edit product",
-    "loadProductError": "Couldn't load the product, please try again"
+    "loadProductError": "Couldn't load the product, please try again",
+
+    "detailLoadingSrOnly": "Loading product details...",
+    "detailShopLabel": "Shop",
+    "detailNoDescription": "No description yet for this product.",
+    "detailOutOfStock": "Out of stock",
+    "detailThumbnailLabel": "Photo {index}",
+    "detailThumbnailPrev": "Previous photos",
+    "detailThumbnailNext": "Next photos"
+  },
+
+  "wishlist": {
+    "addLabel": "Add to wishlist",
+    "removeLabel": "Remove from wishlist",
+    "pageTitle": "Wishlist",
+    "loadError": "Couldn't load your wishlist, please try again",
+    "emptyState": "You haven't liked any products yet.",
+    "unavailableBadge": "Unavailable"
   }
 }

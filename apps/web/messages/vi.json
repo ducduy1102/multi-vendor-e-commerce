@@ -21,7 +21,11 @@
     "productsLink": "Sản phẩm",
     "homeLink": "Trang chủ",
     "accountTabLabel": "Tài khoản",
-    "mobileNavLabel": "Điều hướng nhanh"
+    "mobileNavLabel": "Điều hướng nhanh",
+    "searchLabel": "Tìm sản phẩm",
+    "searchPlaceholder": "Tìm sản phẩm...",
+    "searchClearLabel": "Xoá nội dung tìm kiếm",
+    "searchSubmitLabel": "Tìm kiếm"
   },
   "home": {
     "bannerHeading": "Chốt đơn nhanh, mua sắm từ nhiều shop",
@@ -106,6 +110,7 @@
     "listTitle": "Tất cả sản phẩm",
     "resultCount": "{count} sản phẩm",
     "filterEmptyState": "Không có sản phẩm khớp bộ lọc, thử điều chỉnh lại.",
+    "filterRemoveSearch": "Xoá từ khoá tìm kiếm",
     "filterRemoveCategory": "Xoá bộ lọc danh mục",
     "filterRemovePrice": "Xoá bộ lọc giá",
     "productsLoadingSrOnly": "Đang tải sản phẩm...",
@@ -164,10 +169,11 @@
     "productFormPriceLabel": "Giá",
     "productFormStockLabel": "Tồn kho",
     "productFormImageLabel": "Ảnh",
-    "productFormImageUpload": "Chọn ảnh",
-    "productFormImageChange": "Đổi ảnh",
+    "productFormImageUpload": "Thêm ảnh",
     "productFormImageUploading": "Đang tải lên...",
     "productFormImageRemove": "Xoá ảnh",
+    "productFormImageMoveUp": "Di chuyển lên",
+    "productFormImageMoveDown": "Di chuyển xuống",
     "productFormImageError": "Tải ảnh thất bại, thử lại",
     "productFormSubmitCreate": "Tạo sản phẩm",
     "productFormSubmitCreating": "Đang tạo...",
@@ -177,6 +183,23 @@
     "productFormUpdateGenericError": "Cập nhật sản phẩm thất bại, vui lòng thử lại",
     "createProductTitle": "Tạo sản phẩm mới",
     "editProductTitle": "Sửa sản phẩm",
-    "loadProductError": "Không tải được sản phẩm, vui lòng thử lại"
+    "loadProductError": "Không tải được sản phẩm, vui lòng thử lại",
+
+    "detailLoadingSrOnly": "Đang tải thông tin sản phẩm...",
+    "detailShopLabel": "Shop",
+    "detailNoDescription": "Chưa có mô tả cho sản phẩm này.",
+    "detailOutOfStock": "Hết hàng",
+    "detailThumbnailLabel": "Ảnh {index}",
+    "detailThumbnailPrev": "Ảnh trước",
+    "detailThumbnailNext": "Ảnh sau"
+  },
+
+  "wishlist": {
+    "addLabel": "Thêm vào yêu thích",
+    "removeLabel": "Bỏ khỏi yêu thích",
+    "pageTitle": "Sản phẩm yêu thích",
+    "loadError": "Không tải được danh sách yêu thích, vui lòng thử lại",
+    "emptyState": "Bạn chưa thích sản phẩm nào.",
+    "unavailableBadge": "Ngừng bán"
   }
 }

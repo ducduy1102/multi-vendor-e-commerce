@@ -11,6 +11,7 @@ import { PriceRangeFilter } from './PriceRangeFilter';
 interface ProductFilterBarProps {
   categories: Category[];
   initialFilters: {
+    q?: string;
     categoryId?: string;
     minPrice?: number;
     maxPrice?: number;
@@ -65,9 +66,10 @@ export function ProductFilterBar({ categories, initialFilters }: ProductFilterBa
   const router = useRouter();
 
   function pushQuery(
-    overrides: Partial<Record<'categoryId' | 'minPrice' | 'maxPrice' | 'sort', string>>,
+    overrides: Partial<Record<'q' | 'categoryId' | 'minPrice' | 'maxPrice' | 'sort', string>>,
   ) {
     const next = {
+      q: initialFilters.q,
       categoryId: initialFilters.categoryId,
       minPrice: initialFilters.minPrice?.toString(),
       maxPrice: initialFilters.maxPrice?.toString(),

@@ -8,6 +8,7 @@ import {
   getCategories,
   getMyProducts,
   getProduct,
+  getProductBySlug,
   getUploadSignature,
   listProducts,
   updateProduct,
@@ -33,7 +34,7 @@ const mockProduct = {
       price: '150000',
       stock: 10,
       isActive: true,
-      imageUrl: null,
+      images: [],
       weightGram: null,
       attributeValues: [],
     },
@@ -63,7 +64,7 @@ describe('product.service', () => {
       name: 'Áo thun nam',
       categoryId: 'cat-1',
       attributes: [],
-      variants: [{ sku: 'AT-1', price: 150000, stock: 10, attributeValues: [] }],
+      variants: [{ sku: 'AT-1', price: 150000, stock: 10, attributeValues: [], images: [] }],
     });
 
     expect(result).toEqual(mockProduct);
@@ -81,7 +82,7 @@ describe('product.service', () => {
         name: 'Áo thun nam',
         categoryId: 'cat-1',
         attributes: [],
-        variants: [{ sku: 'AT-1', price: 150000, stock: 10, attributeValues: [] }],
+        variants: [{ sku: 'AT-1', price: 150000, stock: 10, attributeValues: [], images: [] }],
       }),
     ).rejects.toMatchObject(new ApiError('SKU already exists in this shop', 409));
   });
@@ -103,7 +104,7 @@ describe('product.service', () => {
         price: v.price,
         stock: v.stock,
         isActive: v.isActive,
-        imageUrl: v.imageUrl,
+        images: v.images,
       })),
     };
     mockFetchOnce({ success: true, data: { products: [listItem] } });
@@ -154,6 +155,42 @@ describe('product.service', () => {
     );
   });
 
+  it('getProductBySlug GETs /products/:slug, parse kèm field shop (khác getProduct)', async () => {
+    const productDetail = {
+      ...mockProduct,
+      variants: [
+        {
+          id: 'variant-1',
+          sku: 'AT-1',
+          price: '150000',
+          stock: 10,
+          isActive: true,
+          images: [],
+          weightGram: null,
+          attributeValues: [],
+        },
+      ],
+      shop: { name: 'Shop ABC', slug: 'shop-abc' },
+    };
+    mockFetchOnce({ success: true, data: { product: productDetail } });
+
+    const result = await getProductBySlug('ao-thun-nam');
+
+    expect(result).toEqual(productDetail);
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/products/ao-thun-nam'),
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('getProductBySlug rethrows ApiError 404 khi slug không tồn tại/không được xem', async () => {
+    mockFetchOnce({ success: false, data: null, message: 'Product not found' }, 404);
+
+    await expect(getProductBySlug('khong-ton-tai')).rejects.toMatchObject(
+      new ApiError('Product not found', 404),
+    );
+  });
+
   it('listProducts chỉ gửi param đã có giá trị, bỏ qua field undefined (để BE tự áp default)', async () => {
     mockFetchOnce({ success: true, data: { items: [], total: 0, page: 1, limit: 12 } });
 
@@ -165,6 +202,16 @@ describe('product.service', () => {
     expect(calledUrl).not.toContain('page=');
     expect(calledUrl).not.toContain('limit=');
     expect(calledUrl).not.toContain('minPrice=');
+    expect(calledUrl).not.toContain('q=');
+  });
+
+  it('listProducts gửi kèm param q khi có (Week5.md Bước 3.6 — thanh search)', async () => {
+    mockFetchOnce({ success: true, data: { items: [], total: 0, page: 1, limit: 12 } });
+
+    await listProducts({ q: 'áo thun' });
+
+    const calledUrl = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(new URL(calledUrl).searchParams.get('q')).toBe('áo thun');
   });
 
   it('listProducts append nhiều lần cho attributeValues[] (không ghi đè, mỗi giá trị 1 param riêng)', async () => {
