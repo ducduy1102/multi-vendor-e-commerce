@@ -34,8 +34,8 @@ describe('AuthService', () => {
   let prisma: {
     user: {
       findUnique: jest.Mock;
-      create: jest.Mock<unknown, [CreateUserArgs]>;
-      update: jest.Mock<unknown, [UpdateUserArgs]>;
+      create: jest.Mock<Promise<unknown>, [CreateUserArgs]>;
+      update: jest.Mock<Promise<unknown>, [UpdateUserArgs]>;
     };
     oAuthAccount: {
       findUnique: jest.Mock;
@@ -71,8 +71,8 @@ describe('AuthService', () => {
     prisma = {
       user: {
         findUnique: jest.fn(),
-        create: jest.fn<unknown, [CreateUserArgs]>(),
-        update: jest.fn<unknown, [UpdateUserArgs]>(),
+        create: jest.fn<Promise<unknown>, [CreateUserArgs]>(),
+        update: jest.fn<Promise<unknown>, [UpdateUserArgs]>(),
       },
       oAuthAccount: {
         findUnique: jest.fn(),
