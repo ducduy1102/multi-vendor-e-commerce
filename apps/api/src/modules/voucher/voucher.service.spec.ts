@@ -208,6 +208,45 @@ describe('VoucherService.validate', () => {
     expect(result.amount).toBe('80000');
   });
 
+  it('FIXED lớn hơn subtotal của shop áp dụng — chỉ giảm tối đa bằng subtotal đó', async () => {
+    prisma.voucher.findUnique.mockResolvedValue(
+      voucherRow({
+        shopId: 'shop-b',
+        type: 'FIXED',
+        value: new Prisma.Decimal('300000'),
+      }),
+    );
+
+    const result = await service.validate('SALE10', cartView());
+
+    // shop-b chỉ có 200.000 dù tổng giỏ 500.000
+    expect(result.amount).toBe('200000');
+  });
+
+  it('PERCENT ra số lẻ — làm tròn xuống tới đồng (khớp quy tắc 1.11b)', async () => {
+    const cart: CartView = {
+      ...cartView(),
+      shops: [
+        {
+          shopId: 'shop-a',
+          shopName: 'a',
+          shopSlug: 'a',
+          items: [],
+          subtotal: '99990',
+        },
+      ],
+      subtotal: '99990',
+      grandTotal: '99990',
+    };
+    prisma.voucher.findUnique.mockResolvedValue(
+      voucherRow({ value: new Prisma.Decimal('15') }),
+    );
+
+    const result = await service.validate('SALE10', cart);
+
+    expect(result.amount).toBe('14998');
+  });
+
   describe('perUserLimit', () => {
     beforeEach(() => {
       prisma.voucher.findUnique.mockResolvedValue(

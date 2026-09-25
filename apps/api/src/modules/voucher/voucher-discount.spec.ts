@@ -22,6 +22,15 @@ describe('calculateDiscount', () => {
     expect(calculateDiscount(percent(15), 99990)).toBe(14998);
   });
 
+  it('PERCENT — giá trị phần trăm có phần lẻ (12,5%) vẫn làm tròn xuống', () => {
+    // 12,5% của 100.001đ = 12.500,125đ → 12.500đ
+    expect(calculateDiscount(percent(12.5), 100001)).toBe(12500);
+  });
+
+  it('PERCENT — cap cũng làm tròn xuống khi maxDiscountAmount có phần lẻ', () => {
+    expect(calculateDiscount(percent(50, 30000.9), 500000)).toBe(30000);
+  });
+
   it('PERCENT — chạm maxDiscountAmount thì bị cap', () => {
     expect(calculateDiscount(percent(50, 30000), 500000)).toBe(30000);
   });
