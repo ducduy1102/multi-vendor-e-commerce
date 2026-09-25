@@ -14,47 +14,60 @@ interface ProductGalleryProps {
   productName: string;
 }
 
-// Week5.md Bước 3.3 — đổi CẢ BỘ `variant.images[]` theo variant đang chọn
-// (không còn giới hạn 1 ảnh/variant, đúng quyết định 1.3/2.12). Đọc
-// `selectedValues` qua context chung với `VariantSelector`/`ProductVariantSection`
-// (xem VariantSelectionContext.tsx) — variant dùng cho gallery tính bằng
-// `findGalleryVariant` (khớp SUBSET lựa chọn, khác `findMatchingVariant` yêu
-// cầu chọn đủ, đúng 1.15: đổi ảnh ngay khi mới chọn 1 phần thuộc tính).
+interface GalleryImage {
+  url: string;
+  position: number;
+}
+
+// Gộp ảnh của MỌI variant active thành 1 dải thumbnail duy nhất (đúng UX
+// Shopee/Lazada: thumbnail luôn đủ ảnh của cả sản phẩm, chọn màu chỉ nhảy
+// ảnh chính tới ảnh của màu đó). Thứ tự = thứ tự variant, rồi `position`
+// trong từng variant; trùng URL (nhiều variant dùng chung 1 ảnh) chỉ giữ
+// lần đầu để không lặp thumbnail.
+function collectGalleryImages(variants: SelectorVariant[]): GalleryImage[] {
+  const seen = new Set<string>();
+  const images: GalleryImage[] = [];
+  for (const variant of variants) {
+    if (!variant.isActive) continue;
+    const sorted = [...variant.images].sort((a, b) => a.position - b.position);
+    for (const image of sorted) {
+      if (!seen.has(image.url)) {
+        seen.add(image.url);
+        images.push(image);
+      }
+    }
+  }
+  return images;
+}
+
+// Ảnh chính theo variant đang chọn (`findGalleryVariant` — khớp SUBSET lựa
+// chọn, đổi ngay khi mới chọn 1 phần thuộc tính, xem VariantSelector.utils).
+// Người dùng bấm thumbnail thì ghi nhớ kèm `variantId` tại thời điểm bấm:
+// đổi variant khác thì lựa chọn thủ công cũ tự hết hiệu lực (id không còn
+// khớp) và ảnh chính quay về ảnh đầu tiên của variant mới — suy ra lúc
+// render, không dùng useEffect + setState (bị react-hooks/set-state-in-effect
+// chặn, gây render thừa).
 export function ProductGallery({ variants, productName }: ProductGalleryProps) {
-  const { selectedValues } = useVariantSelection();
-  const galleryVariant = findGalleryVariant(variants, selectedValues);
-
-  // `key={galleryVariant?.id}` — đổi variant thì remount hẳn
-  // GalleryImages (đúng pattern React khuyến nghị để "reset state khi 1
-  // giá trị đổi": https://react.dev/learn/you-might-not-need-an-effect,
-  // mục "Resetting all state when a prop changes"), tự đưa `activeIndex`
-  // (thumbnail đang chọn) về 0 — không dùng useEffect + setState (bị
-  // react-hooks/set-state-in-effect chặn, gây cascading render thừa).
-  return (
-    <GalleryImages
-      key={galleryVariant?.id ?? 'none'}
-      images={galleryVariant?.images ?? []}
-      productName={productName}
-    />
-  );
-}
-
-interface GalleryImagesProps {
-  images: { url: string; position: number }[];
-  productName: string;
-}
-
-function GalleryImages({ images, productName }: GalleryImagesProps) {
   const t = useTranslations('product');
-  const [activeIndex, setActiveIndex] = useState(0);
-  const activeImage = images[activeIndex] ?? images[0];
+  const { selectedValues } = useVariantSelection();
+  const [picked, setPicked] = useState<{ variantId: string | null; url: string } | null>(null);
+
+  const images = collectGalleryImages(variants);
+  const galleryVariant = findGalleryVariant(variants, selectedValues);
+  const galleryVariantId = galleryVariant?.id ?? null;
+  const variantFirstUrl = [...(galleryVariant?.images ?? [])].sort(
+    (a, b) => a.position - b.position,
+  )[0]?.url;
+
+  const pickedUrl = picked?.variantId === galleryVariantId ? picked.url : undefined;
+  const activeUrl = pickedUrl ?? variantFirstUrl ?? images[0]?.url;
 
   return (
     <div className="flex flex-col gap-2">
       <div className="relative aspect-square w-full overflow-hidden rounded-lg border border-border bg-muted">
-        {activeImage ? (
+        {activeUrl ? (
           <Image
-            src={activeImage.url}
+            src={activeUrl}
             alt={productName}
             fill
             sizes="(min-width: 1024px) 50vw, 100vw"
@@ -74,12 +87,14 @@ function GalleryImages({ images, productName }: GalleryImagesProps) {
             <button
               key={image.url}
               type="button"
-              aria-pressed={index === activeIndex}
+              aria-pressed={image.url === activeUrl}
               aria-label={t('detailThumbnailLabel', { index: index + 1 })}
-              onClick={() => setActiveIndex(index)}
+              onClick={() => setPicked({ variantId: galleryVariantId, url: image.url })}
               className={cn(
                 'relative size-14 shrink-0 overflow-hidden rounded-md border-2 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-                index === activeIndex ? 'border-primary' : 'border-transparent hover:border-border',
+                image.url === activeUrl
+                  ? 'border-primary'
+                  : 'border-transparent hover:border-border',
               )}
             >
               <Image src={image.url} alt="" fill sizes="56px" className="object-cover" />

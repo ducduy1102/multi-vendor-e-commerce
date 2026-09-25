@@ -107,10 +107,13 @@ describe('ProductGallery', () => {
     expect(getMainImageSrc(container)).toContain('do-1.jpg');
     expect(screen.getByRole('button', { name: 'Ảnh 2' })).toBeInTheDocument();
 
-    // Đổi màu -> đổi CẢ BỘ ảnh sang của v-xanh, không còn thumbnail (chỉ 1 ảnh).
+    // Đổi màu -> ảnh chính nhảy sang ảnh của v-xanh, dải thumbnail vẫn đủ
+    // ảnh của cả sản phẩm (do-1, do-2, xanh-1), không thu lại theo variant.
     await user.click(screen.getByRole('button', { name: 'Xanh' }));
     expect(getMainImageSrc(container)).toContain('xanh-1.jpg');
-    expect(screen.queryByRole('button', { name: 'Ảnh 2' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ảnh 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ảnh 2' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ảnh 3' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('bấm thumbnail để đổi ảnh chính trong cùng 1 variant', async () => {
@@ -179,5 +182,42 @@ describe('ProductGallery', () => {
     // giữ index 1 cũ (sẽ ra xanh-2 nếu còn giữ index cũ — sai).
     await user.click(screen.getByRole('button', { name: 'Xanh' }));
     expect(getMainImageSrc(container)).toContain('xanh-1.jpg');
+  });
+
+  it('thumbnail gộp ảnh mọi variant, bỏ trùng URL, bấm thumbnail của variant khác vẫn hiện được', async () => {
+    const variants = [
+      variant(
+        'v-do',
+        [{ attributeName: 'Màu sắc', value: 'Đỏ' }],
+        [
+          { url: 'https://img/do-1.jpg', position: 0 },
+          { url: 'https://img/chung.jpg', position: 1 },
+        ],
+      ),
+      variant(
+        'v-xanh',
+        [{ attributeName: 'Màu sắc', value: 'Xanh' }],
+        [
+          { url: 'https://img/chung.jpg', position: 0 },
+          { url: 'https://img/xanh-2.jpg', position: 1 },
+        ],
+      ),
+    ];
+
+    const user = userEvent.setup();
+    const { container } = render(
+      withIntl(
+        <VariantSelectionProvider>
+          <ProductGallery variants={variants} productName="Áo thun" />
+        </VariantSelectionProvider>,
+      ),
+    );
+
+    // 3 thumbnail (chung.jpg chỉ xuất hiện 1 lần), không có "Ảnh 4".
+    expect(screen.getByRole('button', { name: 'Ảnh 3' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ảnh 4' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Ảnh 3' }));
+    expect(getMainImageSrc(container)).toContain('xanh-2.jpg');
   });
 });
