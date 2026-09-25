@@ -31,23 +31,38 @@ export async function ProductDetailSkeleton() {
         </div>
       </div>
       <div aria-hidden="true" className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-7 w-3/4 motion-reduce:animate-none" />
-          <Skeleton className="h-6 w-32 motion-reduce:animate-none" />
+        {/* Tiêu đề (text-xl) */}
+        <Skeleton className="h-7 w-3/4 motion-reduce:animate-none" />
+
+        {/* Giá (text-lg) + các nhóm thuộc tính (nhãn + hàng nút), khớp
+            ProductVariantSection/VariantSelector — ước lượng 2 nhóm. */}
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-7 w-40 motion-reduce:animate-none" />
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-5 w-16 motion-reduce:animate-none" />
+            <div className="flex gap-2">
+              <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
+              <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
+              <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-5 w-16 motion-reduce:animate-none" />
+            <div className="flex gap-2">
+              <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
+              <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
+              <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
+            </div>
+          </div>
         </div>
 
-        {/* VariantSelector (Bước 3.2) — 1 hàng "nút thuộc tính" ước lượng. */}
-        <div className="flex gap-2">
-          <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
-          <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
-          <Skeleton className="h-7 w-14 motion-reduce:animate-none" />
+        {/* Shop + danh mục (dl) */}
+        <div className="flex flex-col gap-1">
+          <Skeleton className="h-5 w-48 motion-reduce:animate-none" />
+          <Skeleton className="h-5 w-40 motion-reduce:animate-none" />
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-40 motion-reduce:animate-none" />
-          <Skeleton className="h-4 w-32 motion-reduce:animate-none" />
-        </div>
-
+        {/* Mô tả */}
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-full motion-reduce:animate-none" />
           <Skeleton className="h-4 w-full motion-reduce:animate-none" />

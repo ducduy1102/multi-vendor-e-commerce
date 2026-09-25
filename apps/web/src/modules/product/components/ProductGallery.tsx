@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 
+import { Skeleton } from '@/shared/components/ui/skeleton';
 import { cn } from '@/shared/lib/utils';
 import { useVariantSelection } from './VariantSelectionContext';
 import { GALLERY_THUMBNAILS_PER_VIEW } from './ProductDetail.constants';
@@ -67,13 +68,12 @@ export function ProductGallery({ variants, productName }: ProductGalleryProps) {
     <div className="flex w-full max-w-md flex-col gap-2">
       <div className="relative aspect-square w-full overflow-hidden rounded-lg border border-border bg-muted">
         {activeUrl ? (
-          <Image
+          <GalleryImage
+            key={activeUrl}
             src={activeUrl}
             alt={productName}
-            fill
-            sizes="(min-width: 1024px) 50vw, 100vw"
+            sizes="(min-width: 1024px) 28rem, 100vw"
             priority
-            className="object-cover"
           />
         ) : (
           <div className="flex size-full items-center justify-center" aria-hidden="true">
@@ -151,7 +151,7 @@ function ThumbnailStrip({ images, activeUrl, onSelect }: ThumbnailStripProps) {
                   : 'border-transparent hover:border-primary',
               )}
             >
-              <Image src={image.url} alt="" fill sizes="88px" className="object-cover" />
+              <GalleryImage src={image.url} alt="" sizes="88px" />
             </button>
           ))}
         </div>
@@ -199,5 +199,39 @@ function ThumbnailArrow({ direction, label, disabled, onClick }: ThumbnailArrowP
     >
       <Icon className="size-4" />
     </button>
+  );
+}
+
+interface GalleryImageProps {
+  src: string;
+  alt: string;
+  sizes: string;
+  priority?: boolean;
+}
+
+// Ảnh gallery kèm skeleton nhấp nháy (Skeleton, aria-hidden) nằm dưới ảnh cho
+// tới khi ảnh tải xong — tránh ô xám tĩnh khi ảnh Cloudinary chậm. next/image
+// tự gọi onLoad cả với ảnh đã tải xong trước lúc hydrate nên không bị kẹt.
+function GalleryImage({ src, alt, sizes, priority }: GalleryImageProps) {
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  return (
+    <>
+      {isLoaded ? null : (
+        <Skeleton
+          aria-hidden="true"
+          className="absolute inset-0 rounded-none motion-reduce:animate-none"
+        />
+      )}
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        sizes={sizes}
+        priority={priority}
+        onLoad={() => setIsLoaded(true)}
+        className="object-cover"
+      />
+    </>
   );
 }
