@@ -9,6 +9,7 @@ import { Button } from '@/shared/components/ui/button';
 import { ApiError } from '@/shared/lib/api-client';
 
 import { useCart } from '../hooks/useCart';
+import { useClampCartToStock } from '../hooks/useClampCartToStock';
 import { useRemoveCartItem } from '../hooks/useRemoveCartItem';
 import { useUpdateCartItem } from '../hooks/useUpdateCartItem';
 import type { CartLine } from '../types';
@@ -25,6 +26,9 @@ export function CartPageContainer() {
   const tCommon = useTranslations('common');
   const [appliedCode, setAppliedCode] = useState('');
   const cartQuery = useCart(appliedCode);
+  // Số lượng vượt tồn kho (giỏ guest cộng dồn quá kho, shop giảm tồn...) được
+  // tự hạ về đúng tồn kho khi mở giỏ, kèm 1 thông báo gộp.
+  useClampCartToStock(cartQuery.cart);
   const updateItem = useUpdateCartItem();
   const removeItem = useRemoveCartItem();
   const isBusy = updateItem.isPending || removeItem.isPending;

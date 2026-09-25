@@ -14,7 +14,11 @@ import { CartPageContainer } from './CartPageContainer';
 const toastError = vi.fn();
 
 vi.mock('sonner', () => ({
-  toast: { error: (...args: unknown[]) => toastError(...args), success: vi.fn() },
+  toast: {
+    error: (...args: unknown[]) => toastError(...args),
+    success: vi.fn(),
+    info: vi.fn(),
+  },
 }));
 vi.mock('../hooks/useCart', () => ({ useCart: vi.fn() }));
 vi.mock('../hooks/useUpdateCartItem', () => ({ useUpdateCartItem: vi.fn() }));
@@ -90,15 +94,18 @@ function mockMutations(failWith?: Error) {
     if (failWith) options?.onError?.(failWith);
   });
   const remove = vi.fn();
+  // useClampCartToStock (tự hạ số lượng vượt kho) dùng mutateAsync của cùng hook.
+  const updateAsync = vi.fn().mockResolvedValue(undefined);
   vi.mocked(useUpdateCartItem).mockReturnValue({
     mutate: update,
+    mutateAsync: updateAsync,
     isPending: false,
   } as unknown as ReturnType<typeof useUpdateCartItem>);
   vi.mocked(useRemoveCartItem).mockReturnValue({
     mutate: remove,
     isPending: false,
   } as unknown as ReturnType<typeof useRemoveCartItem>);
-  return { update, remove };
+  return { update, remove, updateAsync };
 }
 
 function renderContainer() {
@@ -220,6 +227,32 @@ describe('CartPageContainer', () => {
         { itemId: 'item-1', productVariantId: 'v1' },
         expect.any(Object),
       );
+    });
+
+    it('mở giỏ có dòng vượt tồn kho -> tự hạ về đúng tồn kho', async () => {
+      const { updateAsync } = mockMutations();
+      mockCart({
+        cart: cartView({ shops: [group({ items: [line({ quantity: 16, stock: 15 })] })] }),
+      });
+
+      renderContainer();
+
+      await vi.waitFor(() =>
+        expect(updateAsync).toHaveBeenCalledWith({
+          itemId: 'item-1',
+          productVariantId: 'v1',
+          quantity: 15,
+        }),
+      );
+    });
+
+    it('giỏ hợp lệ (không vượt kho) -> không tự cập nhật gì', () => {
+      const { updateAsync } = mockMutations();
+      mockCart({ cart: cartView() });
+
+      renderContainer();
+
+      expect(updateAsync).not.toHaveBeenCalled();
     });
 
     it('số lượng vượt tồn kho -> cảnh báo còn N, không cho tăng thêm', () => {

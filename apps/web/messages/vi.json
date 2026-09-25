@@ -212,6 +212,7 @@
     "selectVariantHint": "Vui lòng chọn đủ phân loại hàng",
     "outOfStock": "Phân loại này đã hết hàng",
     "maxInCartHint": "Bạn đã có {count} sản phẩm này trong giỏ, đã đạt tối đa số lượng còn lại",
+    "quantityAdjusted": "Đã điều chỉnh số lượng của {count} sản phẩm theo tồn kho hiện có",
     "quantityLabel": "Số lượng",
     "quantityDecrease": "Giảm số lượng",
     "quantityIncrease": "Tăng số lượng",
