@@ -64,7 +64,15 @@ describe('composeCartView', () => {
     expect(view.shops[1].subtotal).toBe('200000');
     expect(view.subtotal).toBe('550000');
     expect(view.grandTotal).toBe('550000');
-    expect(view.itemCount).toBe(6);
+    expect(view.itemCount).toBe(3); // 3 dòng (a1, a2, b1), không phải tổng số lượng 6
+  });
+
+  // Regression: badge giỏ hàng từng cộng số lượng nên giỏ 1 sản phẩm x16 hiện
+  // 16 — sai với thực tế các sàn (đếm số sản phẩm khác nhau).
+  it('itemCount đếm số dòng, không cộng số lượng: 1 sản phẩm x16 -> 1', () => {
+    const view = composeCartView([line(16, variant())]);
+
+    expect(view.itemCount).toBe(1);
   });
 
   it('tính lineTotal = giá × số lượng và lấy giá live theo variant', () => {

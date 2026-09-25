@@ -72,7 +72,7 @@ const CART_VIEW_EXAMPLE = {
   subtotal: '300000',
   discount: { code: 'SALE10', shopId: null, amount: '30000' },
   grandTotal: '270000',
-  itemCount: 2,
+  itemCount: 1,
 };
 
 const CART_ITEM_EXAMPLE = {

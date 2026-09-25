@@ -47,7 +47,9 @@ export interface CartLineSource {
 
 // Hàm thuần dùng chung cho GET /cart (đăng nhập) và POST /cart/quote (guest)
 // — Week6.md 1.7: nhóm theo shop, tính subtotal, đánh dấu isAvailable. Tiền
-// tính bằng số nguyên đồng (VND không có phần lẻ), xuất ra chuỗi. Item không
+// tính bằng số nguyên đồng (VND không có phần lẻ), xuất ra chuỗi. itemCount đếm
+// số DÒNG (sản phẩm khác nhau) chứ không cộng số lượng — giống badge giỏ hàng
+// của các sàn (giỏ 1 sản phẩm x16 hiện 1, không phải 16). Item không
 // khả dụng (1.9) vẫn hiện nhưng KHÔNG cộng vào subtotal/tổng.
 export function composeCartView(lines: CartLineSource[]): CartView {
   const groups = new Map<string, CartShopGroup & { subtotalValue: number }>();
@@ -97,7 +99,7 @@ export function composeCartView(lines: CartLineSource[]): CartView {
       groups.set(variant.shop.id, group);
     }
     group.items.push(line);
-    itemCount += source.quantity;
+    itemCount += 1;
     if (isAvailable) {
       group.subtotalValue += lineTotal;
       subtotal += lineTotal;

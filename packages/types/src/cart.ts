@@ -93,7 +93,8 @@ export const cartViewSchema = z.object({
   subtotal: moneySchema,
   discount: cartDiscountSchema.nullable(),
   grandTotal: moneySchema,
-  // Tổng quantity của mọi dòng (kể cả không khả dụng) — cho badge giỏ hàng.
+  // Số DÒNG (sản phẩm/variant khác nhau) trong giỏ, kể cả dòng không khả dụng —
+  // cho badge giỏ hàng. Không phải tổng số lượng: 1 sản phẩm x16 vẫn là 1.
   itemCount: z.number().int(),
 });
 export type CartView = z.infer<typeof cartViewSchema>;

@@ -92,7 +92,7 @@ describe('useCartCount', () => {
       expect(result.current).toBeNull();
     });
 
-    it('cộng số lượng của mọi dòng trong store, KHÔNG gọi mạng', () => {
+    it('đếm số sản phẩm khác nhau (số dòng) trong store, KHÔNG gọi mạng', () => {
       setAuth(null);
       setGuestCart([
         { productVariantId: 'v1', quantity: 2 },
@@ -101,9 +101,20 @@ describe('useCartCount', () => {
 
       const { result } = renderHook(() => useCartCount(), { wrapper: createWrapper() });
 
-      expect(result.current).toBe(5);
+      expect(result.current).toBe(2);
       expect(cartService.quoteCart).not.toHaveBeenCalled();
       expect(cartService.getCart).not.toHaveBeenCalled();
+    });
+
+    // Regression: badge từng cộng số lượng nên 1 sản phẩm x16 hiện 16 — sai với
+    // các sàn thực tế (Shopee/Lazada đếm số sản phẩm khác nhau).
+    it('1 sản phẩm số lượng 16 -> badge là 1, không phải 16', () => {
+      setAuth(null);
+      setGuestCart([{ productVariantId: 'v1', quantity: 16 }]);
+
+      const { result } = renderHook(() => useCartCount(), { wrapper: createWrapper() });
+
+      expect(result.current).toBe(1);
     });
 
     it('giỏ trống -> 0', () => {
@@ -115,7 +126,7 @@ describe('useCartCount', () => {
       expect(result.current).toBe(0);
     });
 
-    it('cập nhật ngay khi store đổi', () => {
+    it('cập nhật ngay khi store đổi: thêm sản phẩm KHÁC thì tăng, thêm cùng sản phẩm thì giữ nguyên', () => {
       setAuth(null);
       setGuestCart([{ productVariantId: 'v1', quantity: 1 }]);
       const { result } = renderHook(() => useCartCount(), { wrapper: createWrapper() });
@@ -124,8 +135,12 @@ describe('useCartCount', () => {
       act(() => {
         useCartStore.getState().addItem('v1', 4);
       });
+      expect(result.current).toBe(1);
 
-      expect(result.current).toBe(5);
+      act(() => {
+        useCartStore.getState().addItem('v2', 1);
+      });
+      expect(result.current).toBe(2);
     });
   });
 
