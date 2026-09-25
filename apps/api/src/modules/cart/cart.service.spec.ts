@@ -442,5 +442,45 @@ describe('CartService', () => {
 
       expect(quantitiesWritten()).toEqual({ ok: 1 });
     });
+
+    it('Cart được tạo kèm userId (không bao giờ có Cart thiếu userId)', async () => {
+      prisma.productVariant.findMany.mockResolvedValue([variantRow()]);
+
+      await service.mergeGuestCart('user-1', [
+        { productVariantId: 'variant-1', quantity: 1 },
+      ]);
+
+      const [args] = prisma.cart.upsert.mock.calls[0] as [
+        { where: unknown; create: unknown },
+      ];
+      expect(args.where).toEqual({ userId: 'user-1' });
+      expect(args.create).toEqual({ userId: 'user-1' });
+    });
+
+    it('mọi thao tác ghi gộp trong đúng 1 $transaction (hoặc tất cả, hoặc không gì)', async () => {
+      prisma.productVariant.findMany.mockResolvedValue([
+        variantRow({ id: 'a' }),
+        variantRow({ id: 'b' }),
+      ]);
+
+      await service.mergeGuestCart('user-1', [
+        { productVariantId: 'a', quantity: 1 },
+        { productVariantId: 'b', quantity: 1 },
+      ]);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      const [ops] = prisma.$transaction.mock.calls[0] as [unknown[]];
+      expect(ops).toHaveLength(2);
+    });
+
+    it('variant chưa có trong giỏ DB — tạo mới đúng số lượng guest gửi', async () => {
+      prisma.productVariant.findMany.mockResolvedValue([variantRow()]);
+
+      await service.mergeGuestCart('user-1', [
+        { productVariantId: 'variant-1', quantity: 4 },
+      ]);
+
+      expect(quantitiesWritten()).toEqual({ 'variant-1': 4 });
+    });
   });
 });

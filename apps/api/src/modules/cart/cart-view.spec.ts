@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import {
+  applyDiscount,
   composeCartView,
   type CartLineSource,
   type CartVariantRow,
@@ -158,5 +159,36 @@ describe('composeCartView', () => {
       { name: 'Màu', value: 'Đỏ' },
       { name: 'Size', value: 'M' },
     ]);
+  });
+});
+
+describe('applyDiscount', () => {
+  const discount = { code: 'SALE10', shopId: null, amount: '30000' };
+
+  it('gắn discount và trừ vào grandTotal, subtotal giữ nguyên', () => {
+    const base = composeCartView([line(3, variant())]); // 300.000
+
+    const result = applyDiscount(base, discount);
+
+    expect(result.discount).toEqual(discount);
+    expect(result.subtotal).toBe('300000');
+    expect(result.grandTotal).toBe('270000');
+  });
+
+  it('không sửa đổi view gốc (hàm thuần)', () => {
+    const base = composeCartView([line(1, variant())]);
+
+    applyDiscount(base, discount);
+
+    expect(base.discount).toBeNull();
+    expect(base.grandTotal).toBe('100000');
+  });
+
+  it('giảm đúng bằng subtotal thì grandTotal là 0, không âm', () => {
+    const base = composeCartView([line(1, variant())]); // 100.000
+
+    const result = applyDiscount(base, { ...discount, amount: '100000' });
+
+    expect(result.grandTotal).toBe('0');
   });
 });
