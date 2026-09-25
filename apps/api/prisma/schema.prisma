@@ -390,10 +390,11 @@ model Cart {
 }
 
 model CartItem {
-  id               String @id @default(uuid())
-  cartId           String @map("cart_id")
-  productVariantId String @map("product_variant_id")
-  quantity         Int    @default(1)
+  id               String   @id @default(uuid())
+  cartId           String   @map("cart_id")
+  productVariantId String   @map("product_variant_id")
+  quantity         Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at")
 
   cart           Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
   productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
