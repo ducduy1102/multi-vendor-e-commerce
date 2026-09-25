@@ -20,7 +20,7 @@ export function useRemoveCartItem() {
     mutationFn: async ({ itemId, productVariantId }: RemoveCartItemVariables) => {
       if (useAuthStore.getState().user) {
         if (!itemId) {
-          throw new Error('Thiếu itemId của dòng giỏ hàng');
+          throw new Error('Missing itemId for the cart line');
         }
         await cartService.removeCartItem(itemId);
         return;

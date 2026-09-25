@@ -23,7 +23,7 @@ export function useUpdateCartItem() {
     mutationFn: async ({ itemId, productVariantId, quantity }: UpdateCartItemVariables) => {
       if (useAuthStore.getState().user) {
         if (!itemId) {
-          throw new Error('Thiếu itemId của dòng giỏ hàng');
+          throw new Error('Missing itemId for the cart line');
         }
         await cartService.updateCartItem(itemId, quantity);
         return;
