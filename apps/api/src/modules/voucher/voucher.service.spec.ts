@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { CartView } from '@ecommerce/types';
 import { PrismaService } from '../../shared/prisma/prisma.service';
@@ -254,5 +258,134 @@ describe('VoucherService.validate', () => {
 
     expect(writes.update).not.toHaveBeenCalled();
     expect(writes.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('VoucherService (seller)', () => {
+  let service: VoucherService;
+  let prisma: {
+    voucher: {
+      findFirst: jest.Mock;
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+  };
+
+  function p2002(): Prisma.PrismaClientKnownRequestError {
+    return new Prisma.PrismaClientKnownRequestError('Unique constraint', {
+      code: 'P2002',
+      clientVersion: '6.19.3',
+      meta: { modelName: 'Voucher' },
+    });
+  }
+
+  beforeEach(() => {
+    prisma = {
+      voucher: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn((args: { data: Record<string, unknown> }) => ({
+          id: 'new-voucher',
+          ...args.data,
+        })),
+        update: jest.fn((args: { data: Record<string, unknown> }) => ({
+          id: 'voucher-1',
+          ...args.data,
+        })),
+      },
+    };
+    service = new VoucherService(prisma as unknown as PrismaService);
+  });
+
+  describe('createVoucher', () => {
+    const dto = {
+      code: ' summer-10 ',
+      type: 'PERCENT' as const,
+      value: 10,
+    };
+
+    it('gắn shopId từ tham số (đã qua guard), chuẩn hoá mã viết hoa', async () => {
+      await service.createVoucher('shop-1', dto);
+
+      const [args] = prisma.voucher.create.mock.calls[0] as [
+        { data: { shopId: string; code: string } },
+      ];
+      expect(args.data.shopId).toBe('shop-1');
+      expect(args.data.code).toBe('SUMMER-10');
+    });
+
+    it('trùng mã (P2002) — 409, không phải 500', async () => {
+      prisma.voucher.create.mockRejectedValue(p2002());
+
+      await expect(service.createVoucher('shop-1', dto)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('lỗi khác P2002 vẫn ném ra nguyên vẹn', async () => {
+      const error = new Error('DB down');
+      prisma.voucher.create.mockRejectedValue(error);
+
+      await expect(service.createVoucher('shop-1', dto)).rejects.toBe(error);
+    });
+
+    it('ngày hết hạn ở quá khứ — 400, không ghi DB', async () => {
+      await expect(
+        service.createVoucher('shop-1', {
+          ...dto,
+          expiresAt: new Date(Date.now() - 1000).toISOString(),
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.voucher.create).not.toHaveBeenCalled();
+    });
+
+    it('ngày hết hạn ở tương lai — được chuyển thành Date', async () => {
+      const future = new Date(Date.now() + 86400000).toISOString();
+
+      await service.createVoucher('shop-1', { ...dto, expiresAt: future });
+
+      const [args] = prisma.voucher.create.mock.calls[0] as [
+        { data: { expiresAt: Date } },
+      ];
+      expect(args.data.expiresAt).toEqual(new Date(future));
+    });
+  });
+
+  describe('listMyVouchers', () => {
+    it('chỉ lấy voucher của đúng shop, mới nhất trước', async () => {
+      await service.listMyVouchers('shop-1');
+
+      const [args] = prisma.voucher.findMany.mock.calls[0] as [
+        { where: unknown; orderBy: unknown },
+      ];
+      expect(args.where).toEqual({ shopId: 'shop-1' });
+      expect(args.orderBy).toEqual({ createdAt: 'desc' });
+    });
+  });
+
+  describe('setVoucherActive', () => {
+    it('voucher thuộc shop — cập nhật đúng isActive', async () => {
+      prisma.voucher.findFirst.mockResolvedValue({ id: 'voucher-1' });
+
+      await service.setVoucherActive('shop-1', 'voucher-1', false);
+
+      expect(prisma.voucher.findFirst).toHaveBeenCalledWith({
+        where: { id: 'voucher-1', shopId: 'shop-1' },
+        select: { id: true },
+      });
+      const [args] = prisma.voucher.update.mock.calls[0] as [
+        { where: unknown; data: unknown },
+      ];
+      expect(args.where).toEqual({ id: 'voucher-1' });
+      expect(args.data).toEqual({ isActive: false });
+    });
+
+    it('voucher của shop khác hoặc không tồn tại — 404, không update', async () => {
+      await expect(
+        service.setVoucherActive('shop-1', 'someone-elses', true),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.voucher.update).not.toHaveBeenCalled();
+    });
   });
 });

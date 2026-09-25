@@ -1,11 +1,31 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { CartDiscount, CartView } from '@ecommerce/types';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import type { CreateVoucherDto } from './dto/create-voucher.dto';
 import { calculateDiscount } from './voucher-discount';
+
+// Chỉ field cần trả cho Seller (khớp voucherSchema ở packages/types).
+const voucherSummarySelect = {
+  id: true,
+  shopId: true,
+  code: true,
+  type: true,
+  value: true,
+  minOrderAmount: true,
+  maxDiscountAmount: true,
+  usageLimit: true,
+  perUserLimit: true,
+  usedCount: true,
+  isActive: true,
+  expiresAt: true,
+  createdAt: true,
+} satisfies Prisma.VoucherSelect;
 
 @Injectable()
 export class VoucherService {
@@ -101,6 +121,66 @@ export class VoucherService {
       shopId: voucher.shopId,
       amount: String(amount),
     };
+  }
+
+  // shopId luôn lấy từ shop đã xác thực qua ShopOwnerGuard, không bao giờ từ
+  // body (rules/backend.md mục 5). Voucher toàn sàn (shopId = null) không có
+  // đường tạo qua API ở Tuần 6 — chỉ seed tay (Week6.md 1.14).
+  async createVoucher(shopId: string, dto: CreateVoucherDto) {
+    if (dto.expiresAt && new Date(dto.expiresAt) <= new Date()) {
+      throw new BadRequestException('Expiry date must be in the future');
+    }
+    try {
+      return await this.prisma.voucher.create({
+        data: {
+          shopId,
+          code: dto.code.trim().toUpperCase(),
+          type: dto.type,
+          value: dto.value,
+          minOrderAmount: dto.minOrderAmount,
+          maxDiscountAmount: dto.maxDiscountAmount,
+          usageLimit: dto.usageLimit,
+          perUserLimit: dto.perUserLimit,
+          expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : undefined,
+        },
+        select: voucherSummarySelect,
+      });
+    } catch (error) {
+      // code là @unique toàn hệ thống (không riêng từng shop) — model Voucher
+      // là model unique duy nhất trong lệnh này nên P2002 chắc chắn do code.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Voucher code already exists');
+      }
+      throw error;
+    }
+  }
+
+  async listMyVouchers(shopId: string) {
+    return this.prisma.voucher.findMany({
+      where: { shopId },
+      orderBy: { createdAt: 'desc' },
+      select: voucherSummarySelect,
+    });
+  }
+
+  // Bật/tắt tường minh (idempotent). Voucher của shop khác (hoặc toàn sàn)
+  // coi như không tồn tại — cùng 404, không lộ voucher đó có thật hay không.
+  async setVoucherActive(shopId: string, voucherId: string, isActive: boolean) {
+    const existing = await this.prisma.voucher.findFirst({
+      where: { id: voucherId, shopId },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Voucher not found');
+    }
+    return this.prisma.voucher.update({
+      where: { id: voucherId },
+      data: { isActive },
+      select: voucherSummarySelect,
+    });
   }
 
   private resolveBase(shopId: string | null, cart: CartView): number {
