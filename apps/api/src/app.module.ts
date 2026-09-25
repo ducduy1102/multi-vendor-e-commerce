@@ -6,6 +6,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ShopModule } from './modules/shop/shop.module';
 import { ProductModule } from './modules/product/product.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
+import { CartModule } from './modules/cart/cart.module';
+import { VoucherModule } from './modules/voucher/voucher.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { WishlistModule } from './modules/wishlist/wishlist.module';
     ShopModule,
     ProductModule,
     WishlistModule,
+    CartModule,
+    VoucherModule,
   ],
   controllers: [AppController],
   providers: [AppService],
