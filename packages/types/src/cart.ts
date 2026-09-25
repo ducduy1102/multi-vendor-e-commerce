@@ -13,11 +13,39 @@ export const cartItemInputSchema = z.object({
 });
 export type CartItemInput = z.infer<typeof cartItemInputSchema>;
 
-// Body của POST /cart/quote (guest) và POST /cart/merge (đã đăng nhập).
+// Body của POST /cart/merge (đã đăng nhập, gộp giỏ guest vào DB).
 export const cartItemsBodySchema = z.object({
   items: z.array(cartItemInputSchema).max(100),
 });
 export type CartItemsBody = z.infer<typeof cartItemsBodySchema>;
+
+// Mã voucher tuỳ chọn (Week6.md 1.12: đúng 1 mã/lần). Chuỗi rỗng/khoảng trắng
+// hợp lệ và coi như không có mã — BE bỏ qua thay vì 400, vì ô nhập bỏ trống
+// gửi lên "" chứ không phải undefined.
+const optionalVoucherCodeSchema = z.string().trim().max(32).optional();
+
+// Body của POST /cart/quote (public, guest): items lấy từ localStorage.
+export const cartQuoteBodySchema = cartItemsBodySchema.extend({
+  voucherCode: optionalVoucherCodeSchema,
+});
+export type CartQuoteBody = z.infer<typeof cartQuoteBodySchema>;
+
+// Query của GET /cart (đã đăng nhập): ?voucherCode=...
+export const cartQuerySchema = z.object({
+  voucherCode: optionalVoucherCodeSchema,
+});
+export type CartQuery = z.infer<typeof cartQuerySchema>;
+
+// POST /cart/items — thêm (cộng dồn) 1 variant vào giỏ.
+export const addCartItemSchema = cartItemInputSchema;
+export type AddCartItemInput = z.infer<typeof addCartItemSchema>;
+
+// PATCH /cart/items/:itemId — đặt số lượng mới (không phải cộng dồn); muốn
+// bỏ item thì dùng DELETE, không dùng quantity 0.
+export const updateCartItemSchema = z.object({
+  quantity: z.number().int().min(1, 'Số lượng tối thiểu là 1'),
+});
+export type UpdateCartItemInput = z.infer<typeof updateCartItemSchema>;
 
 export const cartLineSchema = z.object({
   // id của CartItem trong DB — chỉ có với user đã đăng nhập (FE cần để gọi
@@ -69,3 +97,19 @@ export const cartViewSchema = z.object({
   itemCount: z.number().int(),
 });
 export type CartView = z.infer<typeof cartViewSchema>;
+
+// Response của GET /cart, POST /cart/quote, POST /cart/merge — cùng bọc
+// { cart } để FE parse 1 schema duy nhất cho mọi nhánh (Week6.md 1.7).
+export const cartResponseSchema = z.object({ cart: cartViewSchema });
+export type CartResponse = z.infer<typeof cartResponseSchema>;
+
+// Dòng giỏ thô trả về sau POST /cart/items và PATCH /cart/items/:itemId.
+export const cartItemRowSchema = z.object({
+  id: z.string(),
+  productVariantId: z.string(),
+  quantity: z.number().int(),
+});
+export type CartItemRow = z.infer<typeof cartItemRowSchema>;
+
+export const cartItemResponseSchema = z.object({ item: cartItemRowSchema });
+export type CartItemResponse = z.infer<typeof cartItemResponseSchema>;
