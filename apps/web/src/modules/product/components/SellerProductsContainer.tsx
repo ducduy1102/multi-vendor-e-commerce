@@ -79,6 +79,7 @@ const STATUS_BADGE_SIZE_CLASS = 'h-7 rounded-[min(var(--radius-md),12px)] px-2.5
 export function SellerProductsContainer({ shopId }: SellerProductsContainerProps) {
   const t = useTranslations('product');
   const tShop = useTranslations('shop');
+  const tVoucher = useTranslations('voucher');
   const tCommon = useTranslations('common');
   const myProductsQuery = useMyProducts(shopId);
   const archiveProductMutation = useUpdateProductStatus('ARCHIVED');
@@ -132,6 +133,14 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
             className="shrink-0 text-sm font-medium text-foreground hover:underline"
           >
             {tShop('shopInfoLink')}
+          </Link>
+          {/* Chỉ là 1 link tới route /seller/vouchers, không import gì từ
+              modules/voucher (chỉ mượn chuỗi dịch theo namespace). */}
+          <Link
+            href="/seller/vouchers"
+            className="shrink-0 text-sm font-medium text-foreground hover:underline"
+          >
+            {tVoucher('manageLink')}
           </Link>
           <Link
             href="/seller/products/new"
