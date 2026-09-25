@@ -1,9 +1,10 @@
 'use client';
 
+import useEmblaCarousel from 'embla-carousel-react';
 import { ImageOff } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Image from 'next/image';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { cn } from '@/shared/lib/utils';
 import { useVariantSelection } from './VariantSelectionContext';
@@ -48,7 +49,6 @@ function collectGalleryImages(variants: SelectorVariant[]): GalleryImage[] {
 // render, không dùng useEffect + setState (bị react-hooks/set-state-in-effect
 // chặn, gây render thừa).
 export function ProductGallery({ variants, productName }: ProductGalleryProps) {
-  const t = useTranslations('product');
   const { selectedValues } = useVariantSelection();
   const [picked, setPicked] = useState<{ variantId: string | null; url: string } | null>(null);
 
@@ -82,26 +82,57 @@ export function ProductGallery({ variants, productName }: ProductGalleryProps) {
       </div>
 
       {images.length > 1 ? (
-        <div className="flex flex-wrap gap-2">
-          {images.map((image, index) => (
-            <button
-              key={image.url}
-              type="button"
-              aria-pressed={image.url === activeUrl}
-              aria-label={t('detailThumbnailLabel', { index: index + 1 })}
-              onClick={() => setPicked({ variantId: galleryVariantId, url: image.url })}
-              className={cn(
-                'relative size-14 shrink-0 overflow-hidden rounded-md border-2 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-                image.url === activeUrl
-                  ? 'border-primary'
-                  : 'border-transparent hover:border-border',
-              )}
-            >
-              <Image src={image.url} alt="" fill sizes="56px" className="object-cover" />
-            </button>
-          ))}
-        </div>
+        <ThumbnailStrip
+          images={images}
+          activeUrl={activeUrl}
+          onSelect={(url) => setPicked({ variantId: galleryVariantId, url })}
+        />
       ) : null}
+    </div>
+  );
+}
+
+interface ThumbnailStripProps {
+  images: GalleryImage[];
+  activeUrl: string | undefined;
+  onSelect: (url: string) => void;
+}
+
+// 1 hàng thumbnail kéo/vuốt ngang (embla-carousel, dragFree) thay vì xuống
+// dòng nhiều hàng khi sản phẩm có nhiều ảnh. Thumbnail đang active tự cuộn
+// vào khung nhìn khi ảnh chính đổi (bấm thumbnail hoặc đổi màu). Nút bên
+// trong vẫn là <button> thường nên bàn phím/screen reader dùng như cũ; embla
+// tự chặn click sau khi kéo nên kéo không vô tình chọn nhầm ảnh.
+function ThumbnailStrip({ images, activeUrl, onSelect }: ThumbnailStripProps) {
+  const t = useTranslations('product');
+  const [emblaRef, emblaApi] = useEmblaCarousel({ dragFree: true, containScroll: 'keepSnaps' });
+  const activeIndex = images.findIndex((image) => image.url === activeUrl);
+
+  useEffect(() => {
+    if (emblaApi && activeIndex >= 0) {
+      emblaApi.scrollTo(activeIndex);
+    }
+  }, [emblaApi, activeIndex]);
+
+  return (
+    <div ref={emblaRef} className="overflow-hidden">
+      <div className="flex gap-2">
+        {images.map((image, index) => (
+          <button
+            key={image.url}
+            type="button"
+            aria-pressed={image.url === activeUrl}
+            aria-label={t('detailThumbnailLabel', { index: index + 1 })}
+            onClick={() => onSelect(image.url)}
+            className={cn(
+              'relative size-14 shrink-0 overflow-hidden rounded-md border-2 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+              image.url === activeUrl ? 'border-primary' : 'border-transparent hover:border-border',
+            )}
+          >
+            <Image src={image.url} alt="" fill sizes="56px" className="object-cover" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
