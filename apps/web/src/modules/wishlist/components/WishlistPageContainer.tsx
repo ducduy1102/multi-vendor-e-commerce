@@ -2,6 +2,9 @@
 
 import { useTranslations } from 'next-intl';
 
+import { Link } from '@/i18n/navigation';
+import { Button } from '@/shared/components/ui/button';
+
 import {
   HOME_CATALOG_GRID_CLASS,
   ProductGridSkeleton,
@@ -18,6 +21,7 @@ import { useMyWishlist } from '../hooks/useMyWishlist';
 export function WishlistPageContainer() {
   const t = useTranslations('wishlist');
   const tCommon = useTranslations('common');
+  const tHome = useTranslations('home');
   const wishlistQuery = useMyWishlist();
 
   if (wishlistQuery.isPending) {
@@ -30,11 +34,22 @@ export function WishlistPageContainer() {
   }
 
   if (wishlistQuery.isError) {
-    return <p className="text-sm text-destructive">{t('loadError')}</p>;
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        {t('loadError')}
+      </p>
+    );
   }
 
   if (wishlistQuery.data.items.length === 0) {
-    return <p className="text-sm text-muted-foreground">{t('emptyState')}</p>;
+    return (
+      <div className="flex flex-col items-start gap-3">
+        <p className="text-sm text-muted-foreground">{t('emptyState')}</p>
+        <Button nativeButton={false} render={<Link href="/products" />}>
+          {tHome('bannerCta')}
+        </Button>
+      </div>
+    );
   }
 
   return (
