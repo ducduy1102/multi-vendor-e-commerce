@@ -59,6 +59,18 @@ function shouldRetry(failureCount: number, error: Error): boolean {
   return failureCount < 2;
 }
 
+// Option của query giỏ hàng của USER đã đăng nhập — dùng chung giữa useCart
+// (trang /cart) và useCartCount (badge Header/BottomTabBar) để cả hai chung 1
+// key + 1 hàm fetch: cache dùng chung, /cart không phải gọi thêm request thứ 2
+// chỉ vì badge đã tải rồi (badge chỉ khác ở `select`).
+export function userCartQueryOptions(userId: string, voucherCode: string) {
+  return {
+    queryKey: cartQueryKeys.user(userId, voucherCode),
+    queryFn: () => fetchWithVoucherFallback((voucher) => cartService.getCart(voucher), voucherCode),
+    retry: shouldRetry,
+  };
+}
+
 // Hook hợp nhất (Week6.md 1.7): user đã đăng nhập gọi GET /cart, guest đọc
 // useCartStore rồi gọi POST /cart/quote — cả 2 nhánh trả về CÙNG shape
 // CartView nên component /cart không cần biết đang ở nhánh nào. Chờ
@@ -76,12 +88,13 @@ export function useCart(voucherCode = '') {
   const isGuestEmpty = user === null && items.length === 0;
   const scope = user ? `user:${user.id}` : 'guest';
 
+  const userOptions = user ? userCartQueryOptions(user.id, code) : null;
+
   const query = useQuery({
-    queryKey: user ? cartQueryKeys.user(user.id, code) : cartQueryKeys.guest(code, items),
-    queryFn: () =>
-      user
-        ? fetchWithVoucherFallback((voucher) => cartService.getCart(voucher), code)
-        : fetchWithVoucherFallback((voucher) => cartService.quoteCart(items, voucher), code),
+    queryKey: userOptions ? userOptions.queryKey : cartQueryKeys.guest(code, items),
+    queryFn: userOptions
+      ? userOptions.queryFn
+      : () => fetchWithVoucherFallback((voucher) => cartService.quoteCart(items, voucher), code),
     enabled: isReady && !isGuestEmpty,
     // Giữ dữ liệu cũ khi số lượng/mã đổi để giỏ không nháy skeleton mỗi lần
     // bấm +/-, NHƯNG chỉ trong cùng 1 scope — không bao giờ mượn dữ liệu của
