@@ -189,7 +189,9 @@
     "detailShopLabel": "Shop",
     "detailNoDescription": "Chưa có mô tả cho sản phẩm này.",
     "detailOutOfStock": "Hết hàng",
-    "detailThumbnailLabel": "Ảnh {index}"
+    "detailThumbnailLabel": "Ảnh {index}",
+    "detailThumbnailPrev": "Ảnh trước",
+    "detailThumbnailNext": "Ảnh sau"
   },
 
   "wishlist": {

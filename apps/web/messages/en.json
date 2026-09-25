@@ -189,7 +189,9 @@
     "detailShopLabel": "Shop",
     "detailNoDescription": "No description yet for this product.",
     "detailOutOfStock": "Out of stock",
-    "detailThumbnailLabel": "Photo {index}"
+    "detailThumbnailLabel": "Photo {index}",
+    "detailThumbnailPrev": "Previous photos",
+    "detailThumbnailNext": "Next photos"
   },
 
   "wishlist": {
