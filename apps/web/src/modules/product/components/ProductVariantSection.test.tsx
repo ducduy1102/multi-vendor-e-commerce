@@ -1,11 +1,30 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { withIntl } from '@/shared/lib/test-i18n';
 import { ProductVariantSection } from './ProductVariantSection';
 import { VariantSelectionProvider } from './VariantSelectionContext';
 import type { SelectorAttribute, SelectorVariant } from './VariantSelector.utils';
+
+// AddToCartButton thật cần QueryClient + hook giỏ hàng — đã có test riêng ở
+// modules/cart. Ở đây chỉ kiểm ProductVariantSection truyền ĐÚNG variant/tồn
+// kho đang chọn xuống nút, nên thay bằng stub phơi props ra data-attribute.
+vi.mock('@/modules/cart', () => ({
+  AddToCartButton: ({
+    productVariantId,
+    stock,
+  }: {
+    productVariantId: string | null;
+    stock: number;
+  }) => (
+    <div
+      data-testid="add-to-cart"
+      data-variant-id={productVariantId ?? ''}
+      data-stock={String(stock)}
+    />
+  ),
+}));
 
 function variant(
   id: string,
@@ -130,5 +149,96 @@ describe('ProductVariantSection', () => {
     );
 
     expect(screen.getByText('200.000 ₫')).toBeInTheDocument();
+  });
+
+  describe('nút thêm vào giỏ hàng', () => {
+    const attributes: SelectorAttribute[] = [attribute('attr-size', 'Size', ['M', 'L'])];
+
+    function renderSection(variants: SelectorVariant[]) {
+      render(
+        withIntl(
+          <VariantSelectionProvider>
+            <ProductVariantSection
+              attributes={attributes}
+              variants={variants}
+              minPrice="100000"
+              maxPrice="150000"
+            />
+          </VariantSelectionProvider>,
+        ),
+      );
+    }
+
+    it('chưa chọn đủ combo -> truyền variant null, tồn kho 0', () => {
+      renderSection([
+        variant('v-m', '100000', [{ attributeName: 'Size', value: 'M' }]),
+        variant('v-l', '150000', [{ attributeName: 'Size', value: 'L' }]),
+      ]);
+
+      const button = screen.getByTestId('add-to-cart');
+      expect(button).toHaveAttribute('data-variant-id', '');
+      expect(button).toHaveAttribute('data-stock', '0');
+    });
+
+    it('chọn đủ combo -> truyền đúng id và tồn kho của variant khớp', async () => {
+      const user = userEvent.setup();
+      renderSection([
+        { ...variant('v-m', '100000', [{ attributeName: 'Size', value: 'M' }]), stock: 4 },
+        { ...variant('v-l', '150000', [{ attributeName: 'Size', value: 'L' }]), stock: 7 },
+      ]);
+
+      await user.click(screen.getByRole('button', { name: 'L' }));
+
+      const button = screen.getByTestId('add-to-cart');
+      expect(button).toHaveAttribute('data-variant-id', 'v-l');
+      expect(button).toHaveAttribute('data-stock', '7');
+    });
+
+    it('đổi sang combo khác -> nút nhận tồn kho của combo mới', async () => {
+      const user = userEvent.setup();
+      renderSection([
+        { ...variant('v-m', '100000', [{ attributeName: 'Size', value: 'M' }]), stock: 4 },
+        { ...variant('v-l', '150000', [{ attributeName: 'Size', value: 'L' }]), stock: 7 },
+      ]);
+
+      await user.click(screen.getByRole('button', { name: 'M' }));
+      expect(screen.getByTestId('add-to-cart')).toHaveAttribute('data-stock', '4');
+
+      await user.click(screen.getByRole('button', { name: 'L' }));
+      expect(screen.getByTestId('add-to-cart')).toHaveAttribute('data-stock', '7');
+    });
+
+    it('bỏ chọn combo -> quay lại variant null', async () => {
+      const user = userEvent.setup();
+      renderSection([
+        variant('v-m', '100000', [{ attributeName: 'Size', value: 'M' }]),
+        variant('v-l', '150000', [{ attributeName: 'Size', value: 'L' }]),
+      ]);
+
+      const lButton = screen.getByRole('button', { name: 'L' });
+      await user.click(lButton);
+      await user.click(lButton);
+
+      expect(screen.getByTestId('add-to-cart')).toHaveAttribute('data-variant-id', '');
+    });
+
+    it('sản phẩm không có attribute -> tự khớp variant duy nhất', () => {
+      render(
+        withIntl(
+          <VariantSelectionProvider>
+            <ProductVariantSection
+              attributes={[]}
+              variants={[{ ...variant('v-default', '200000', []), stock: 3 }]}
+              minPrice="200000"
+              maxPrice="200000"
+            />
+          </VariantSelectionProvider>,
+        ),
+      );
+
+      const button = screen.getByTestId('add-to-cart');
+      expect(button).toHaveAttribute('data-variant-id', 'v-default');
+      expect(button).toHaveAttribute('data-stock', '3');
+    });
   });
 });

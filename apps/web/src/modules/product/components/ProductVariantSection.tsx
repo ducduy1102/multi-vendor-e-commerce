@@ -1,5 +1,6 @@
 'use client';
 
+import { AddToCartButton } from '@/modules/cart';
 import { formatPrice } from '../format-price';
 import { useVariantSelection } from './VariantSelectionContext';
 import { VariantSelector } from './VariantSelector';
@@ -39,6 +40,13 @@ export function ProductVariantSection({
     <div className="flex flex-col gap-3">
       <p className="text-lg font-semibold text-foreground">{priceLabel}</p>
       <VariantSelector attributes={attributes} variants={variants} />
+      {/* AddToCartButton import từ modules/cart qua barrel — component tự chứa
+          như WishlistButton (rules/frontend.md mục 1); variant đang chọn
+          truyền vào qua props (findMatchingVariant chỉ trả variant đang bật). */}
+      <AddToCartButton
+        productVariantId={matchedVariant?.id ?? null}
+        stock={matchedVariant?.stock ?? 0}
+      />
     </div>
   );
 }
