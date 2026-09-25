@@ -507,6 +507,7 @@ model Voucher {
   usageLimit        Int?        @map("usage_limit")
   perUserLimit      Int?        @map("per_user_limit")
   usedCount         Int         @default(0) @map("used_count")
+  isActive          Boolean     @default(true) @map("is_active")
   expiresAt         DateTime?   @map("expires_at")
   createdAt         DateTime    @default(now()) @map("created_at")
 
