@@ -99,7 +99,7 @@ function HeaderSearchForm() {
             type="button"
             onClick={() => setQuery('')}
             aria-label={t('searchClearLabel')}
-            className="flex shrink-0 cursor-pointer items-center justify-center rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <X className="size-4" />
           </button>
@@ -107,7 +107,7 @@ function HeaderSearchForm() {
         <button
           type="submit"
           aria-label={t('searchSubmitLabel')}
-          className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/80"
+          className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors outline-none hover:bg-primary/80 focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           <Search className="size-4" />
         </button>
@@ -154,8 +154,8 @@ export function Header() {
     // tài khoản, tránh nháy 1 nhịp sai trạng thái cho người đã đăng nhập
     // lúc F5 trang.
     <div className="flex items-center gap-1.5 sm:gap-2" aria-hidden="true">
-      <div className="h-8 w-16 animate-pulse rounded-lg bg-muted sm:w-20" />
-      <div className="h-8 w-16 animate-pulse rounded-lg bg-muted sm:w-20" />
+      <div className="h-8 w-16 animate-pulse rounded-lg motion-reduce:animate-none bg-muted sm:w-20" />
+      <div className="h-8 w-16 animate-pulse rounded-lg motion-reduce:animate-none bg-muted sm:w-20" />
     </div>
   ) : !user ? (
     <div className="flex items-center gap-1.5 sm:gap-2">

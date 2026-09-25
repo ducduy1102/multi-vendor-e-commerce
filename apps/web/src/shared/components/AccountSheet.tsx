@@ -50,7 +50,10 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
             nháy sai icon Guest/đã đăng nhập lúc F5 (cùng lý do accountCluster
             của Header.tsx có nhánh isHydrating riêng). */}
         {isHydrating ? (
-          <span className="size-5 animate-pulse rounded-full bg-muted" aria-hidden="true" />
+          <span
+            className="size-5 animate-pulse rounded-full motion-reduce:animate-none bg-muted"
+            aria-hidden="true"
+          />
         ) : (
           <User className="size-5" aria-hidden="true" />
         )}
@@ -77,8 +80,8 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
             // skeleton, và isHydrating thường rất ngắn nên chấp nhận đổi
             // hình dạng khối (không chỉ đổi kích thước) ở lần hydrate xong.
             <div className="flex flex-col gap-2" aria-hidden="true">
-              <div className="h-8 w-full animate-pulse rounded-lg bg-muted" />
-              <div className="h-8 w-full animate-pulse rounded-lg bg-muted" />
+              <div className="h-8 w-full animate-pulse rounded-lg motion-reduce:animate-none bg-muted" />
+              <div className="h-8 w-full animate-pulse rounded-lg motion-reduce:animate-none bg-muted" />
             </div>
           ) : !user ? (
             <div className="flex flex-col gap-2">
