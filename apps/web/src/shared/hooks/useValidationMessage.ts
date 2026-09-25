@@ -25,3 +25,24 @@ export function useValidationMessage() {
     return t.has(key) ? t(key, params) : message;
   };
 }
+
+// Lỗi 400 của BE (ZodValidationPipe) ghép các issue thành 1 chuỗi
+// "email: auth.validationEmailInvalid; name: auth.validationNameRequired".
+// Dịch từng phần là key i18n (bỏ tiền tố "path: " vì UI chỉ hiện nội dung
+// lỗi), phần không phải key (lỗi nghiệp vụ thường) giữ nguyên.
+const ISSUE_SEPARATOR = /; (?=[\w.[\]-]+: )/;
+const ISSUE_PATH_PREFIX = /^[\w.[\]-]+: /;
+
+export function useApiErrorMessage() {
+  const t = useTranslations() as unknown as LooseTranslator;
+
+  return (message: string): string =>
+    message
+      .split(ISSUE_SEPARATOR)
+      .map((part) => {
+        const content = part.replace(ISSUE_PATH_PREFIX, '');
+        const { key, params } = parseValidationMessage(content);
+        return t.has(key) ? t(key, params) : part;
+      })
+      .join('; ');
+}

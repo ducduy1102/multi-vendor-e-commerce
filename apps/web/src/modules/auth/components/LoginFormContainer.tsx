@@ -1,17 +1,18 @@
-"use client";
+'use client';
 
-import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
-import { Link, useRouter } from "@/i18n/navigation";
-import { FieldSeparator } from "@/shared/components/ui/field";
-import { ApiError } from "@/shared/lib/api-client";
+import { Link, useRouter } from '@/i18n/navigation';
+import { FieldSeparator } from '@/shared/components/ui/field';
+import { ApiError } from '@/shared/lib/api-client';
+import { useApiErrorMessage } from '@/shared/hooks/useValidationMessage';
 
-import { login } from "../services/auth.service";
-import { useAuthStore } from "../store/auth.store";
-import type { LoginInput } from "../types";
-import { GoogleLoginButton } from "./GoogleLoginButton";
-import { LoginForm } from "./LoginForm";
+import { login } from '../services/auth.service';
+import { useAuthStore } from '../store/auth.store';
+import type { LoginInput } from '../types';
+import { GoogleLoginButton } from './GoogleLoginButton';
+import { LoginForm } from './LoginForm';
 
 interface LoginFormContainerProps {
   // Lỗi đọc từ query param ?error= sau khi Google OAuth callback thất bại
@@ -24,8 +25,9 @@ interface LoginFormContainerProps {
 // store (Bước 3.4) — đặt trong modules/ để app/login/page.tsx chỉ compose,
 // không viết logic nghiệp vụ trực tiếp (rules/frontend.md mục 1).
 export function LoginFormContainer({ initialError }: LoginFormContainerProps) {
-  const t = useTranslations("auth");
-  const tCommon = useTranslations("common");
+  const t = useTranslations('auth');
+  const tApi = useApiErrorMessage();
+  const tCommon = useTranslations('common');
   const router = useRouter();
   const setUser = useAuthStore((state) => state.setUser);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,9 +39,9 @@ export function LoginFormContainer({ initialError }: LoginFormContainerProps) {
     try {
       const user = await login(values);
       setUser(user);
-      router.push("/");
+      router.push('/');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("loginGenericError"));
+      setError(err instanceof ApiError ? tApi(err.message) : t('loginGenericError'));
     } finally {
       setIsSubmitting(false);
     }
@@ -49,15 +51,15 @@ export function LoginFormContainer({ initialError }: LoginFormContainerProps) {
     <div className="flex flex-col gap-4">
       {error && <p className="text-sm text-destructive">{error}</p>}
       <LoginForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
-      <FieldSeparator>{tCommon("or")}</FieldSeparator>
+      <FieldSeparator>{tCommon('or')}</FieldSeparator>
       <GoogleLoginButton />
       <p className="text-center text-sm text-muted-foreground">
-        {t("loginNoAccountPrompt")}{" "}
+        {t('loginNoAccountPrompt')}{' '}
         <Link
           href="/register"
           className="font-medium text-primary underline-offset-4 hover:underline"
         >
-          {t("loginRegisterLink")}
+          {t('loginRegisterLink')}
         </Link>
       </p>
     </div>
