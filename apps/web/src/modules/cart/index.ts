@@ -1,5 +1,8 @@
 // Barrel export cho module cart — export những gì cần dùng ở app/ và module
 // khác. Hook/component sẽ được thêm dần ở các bước sau của Tuần 6.
+export { AddToCartButton } from './components/AddToCartButton';
+export { CartHydrator } from './components/CartHydrator';
+export { QuantityStepper } from './components/QuantityStepper';
 export { cartQueryKeys, EMPTY_CART_VIEW, useCart } from './hooks/useCart';
 export { useAddToCart } from './hooks/useAddToCart';
 export { useRemoveCartItem } from './hooks/useRemoveCartItem';

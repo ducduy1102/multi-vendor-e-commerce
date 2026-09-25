@@ -201,5 +201,17 @@
     "loadError": "Couldn't load your wishlist, please try again",
     "emptyState": "You haven't liked any products yet.",
     "unavailableBadge": "Unavailable"
+  },
+  "cart": {
+    "addToCart": "Add to cart",
+    "addToCartSuccess": "Added to cart",
+    "addToCartConflict": "Couldn't add: quantity exceeds stock or the product is no longer available",
+    "addToCartUnauthorized": "Your session has expired, please sign in again",
+    "addToCartError": "Couldn't add to cart, please try again",
+    "selectVariantHint": "Please select all options",
+    "outOfStock": "This option is out of stock",
+    "quantityLabel": "Quantity",
+    "quantityDecrease": "Decrease quantity",
+    "quantityIncrease": "Increase quantity"
   }
 }

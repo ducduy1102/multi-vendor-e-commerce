@@ -201,5 +201,17 @@
     "loadError": "Không tải được danh sách yêu thích, vui lòng thử lại",
     "emptyState": "Bạn chưa thích sản phẩm nào.",
     "unavailableBadge": "Ngừng bán"
+  },
+  "cart": {
+    "addToCart": "Thêm vào giỏ hàng",
+    "addToCartSuccess": "Đã thêm vào giỏ hàng",
+    "addToCartConflict": "Không thể thêm: số lượng vượt tồn kho hoặc sản phẩm không còn bán",
+    "addToCartUnauthorized": "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại",
+    "addToCartError": "Không thêm được vào giỏ hàng, vui lòng thử lại",
+    "selectVariantHint": "Vui lòng chọn đủ phân loại hàng",
+    "outOfStock": "Phân loại này đã hết hàng",
+    "quantityLabel": "Số lượng",
+    "quantityDecrease": "Giảm số lượng",
+    "quantityIncrease": "Tăng số lượng"
   }
 }

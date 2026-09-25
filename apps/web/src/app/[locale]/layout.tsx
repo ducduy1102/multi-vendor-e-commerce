@@ -6,10 +6,12 @@ import { Geist, Geist_Mono } from 'next/font/google';
 
 import { routing } from '@/i18n/routing';
 import { AuthHydrator, EmailVerificationBanner } from '@/modules/auth';
+import { CartHydrator } from '@/modules/cart';
 import { BottomTabBar, MobileTabBarSpacer } from '@/shared/components/BottomTabBar';
 import { Header } from '@/shared/components/Header';
 import { QueryProvider } from '@/shared/components/QueryProvider';
 import { ThemeProvider } from '@/shared/components/ThemeProvider';
+import { Toaster } from '@/shared/components/ui/sonner';
 
 import '../globals.css';
 
@@ -89,11 +91,14 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
           <ThemeProvider>
             <QueryProvider>
               <AuthHydrator />
+              <CartHydrator />
               <Header />
               <EmailVerificationBanner />
               <MobileTabBarSpacer>{children}</MobileTabBarSpacer>
               <BottomTabBar />
             </QueryProvider>
+            {/* Đặt trên cùng (top-center) để không đè BottomTabBar ở mobile. */}
+            <Toaster position="top-center" />
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>
