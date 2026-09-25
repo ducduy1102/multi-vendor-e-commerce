@@ -1,11 +1,12 @@
 'use client';
 
-import { ChevronDown, Search, X } from 'lucide-react';
+import { ChevronDown, Search, ShoppingCart, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Link, useRouter, usePathname } from '@/i18n/navigation';
 import { LogoutButton, useAuthStore } from '@/modules/auth';
+import { CartCountBadge, useCartCount } from '@/modules/cart';
 import { ChotMark } from '@/shared/components/ChotMark';
 import { Container } from '@/shared/components/Container';
 import { Button } from '@/shared/components/ui/button';
@@ -127,9 +128,11 @@ function HeaderSearchForm() {
 export function Header() {
   const t = useTranslations('header');
   const tAuth = useTranslations('auth');
+  const tCart = useTranslations('cart');
   const pathname = usePathname();
   const user = useAuthStore((state) => state.user);
   const isHydrating = useAuthStore((state) => state.isHydrating);
+  const cartCount = useCartCount();
 
   // href/icon/label (guest -> onboarding, có shop -> quản lý sản phẩm...)
   // dùng chung với AccountSheet.tsx qua đúng 1 hook — useSellerChannelLink
@@ -233,7 +236,26 @@ export function Header() {
 
         <HeaderSearchForm />
 
-        {/* TODO: icon/nút giỏ hàng (Tuần 6) — đặt ngay trước cụm dưới đây. */}
+        {/* Icon giỏ hàng chỉ hiện >= sm (đúng cặp với BottomTabBar `sm:hidden`
+            — mobile dùng tab Giỏ hàng ở đó, Week6.md 3.7), đọc số item qua
+            useCartCount (guest lẫn đã đăng nhập). */}
+        <div className="hidden sm:flex">
+          <Button
+            variant="ghost"
+            size="icon"
+            nativeButton={false}
+            render={<Link href="/cart" aria-current={pathname === '/cart' ? 'page' : undefined} />}
+          >
+            <span className="relative flex">
+              <ShoppingCart aria-hidden="true" />
+              <CartCountBadge count={cartCount} />
+            </span>
+            <span className="sr-only">
+              {t('cartLink')}
+              {cartCount ? `: ${tCart('itemsCount', { count: cartCount })}` : ''}
+            </span>
+          </Button>
+        </div>
 
         <div className="hidden items-center gap-3 sm:flex">
           <ThemeToggle />
