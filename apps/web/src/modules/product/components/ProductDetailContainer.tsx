@@ -45,7 +45,7 @@ export async function ProductDetailContainer({ slug }: ProductDetailContainerPro
   return (
     <VariantSelectionProvider>
       <div className={PRODUCT_DETAIL_LAYOUT_CLASS}>
-        <ProductGallery variants={product.variants} />
+        <ProductGallery variants={product.variants} productName={product.name} />
 
         <div className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-2">

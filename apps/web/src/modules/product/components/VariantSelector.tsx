@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/shared/components/ui/button';
+import { cn } from '@/shared/lib/utils';
 import { useVariantSelection } from './VariantSelectionContext';
 import {
   isValueAvailable,
@@ -49,6 +50,7 @@ export function VariantSelector({ attributes, variants }: VariantSelectorProps) 
                   variant={isSelected ? 'default' : 'outline'}
                   size="sm"
                   disabled={!isAvailable}
+                  className={cn(!isAvailable && 'line-through')}
                   aria-pressed={isSelected}
                   aria-label={
                     isAvailable ? undefined : `${attributeValue.value} — ${t('detailOutOfStock')}`

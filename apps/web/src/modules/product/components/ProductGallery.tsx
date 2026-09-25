@@ -11,6 +11,7 @@ import { findGalleryVariant, type SelectorVariant } from './VariantSelector.util
 
 interface ProductGalleryProps {
   variants: SelectorVariant[];
+  productName: string;
 }
 
 // Week5.md Bước 3.3 — đổi CẢ BỘ `variant.images[]` theo variant đang chọn
@@ -19,7 +20,7 @@ interface ProductGalleryProps {
 // (xem VariantSelectionContext.tsx) — variant dùng cho gallery tính bằng
 // `findGalleryVariant` (khớp SUBSET lựa chọn, khác `findMatchingVariant` yêu
 // cầu chọn đủ, đúng 1.15: đổi ảnh ngay khi mới chọn 1 phần thuộc tính).
-export function ProductGallery({ variants }: ProductGalleryProps) {
+export function ProductGallery({ variants, productName }: ProductGalleryProps) {
   const { selectedValues } = useVariantSelection();
   const galleryVariant = findGalleryVariant(variants, selectedValues);
 
@@ -29,14 +30,21 @@ export function ProductGallery({ variants }: ProductGalleryProps) {
   // mục "Resetting all state when a prop changes"), tự đưa `activeIndex`
   // (thumbnail đang chọn) về 0 — không dùng useEffect + setState (bị
   // react-hooks/set-state-in-effect chặn, gây cascading render thừa).
-  return <GalleryImages key={galleryVariant?.id ?? 'none'} images={galleryVariant?.images ?? []} />;
+  return (
+    <GalleryImages
+      key={galleryVariant?.id ?? 'none'}
+      images={galleryVariant?.images ?? []}
+      productName={productName}
+    />
+  );
 }
 
 interface GalleryImagesProps {
   images: { url: string; position: number }[];
+  productName: string;
 }
 
-function GalleryImages({ images }: GalleryImagesProps) {
+function GalleryImages({ images, productName }: GalleryImagesProps) {
   const t = useTranslations('product');
   const [activeIndex, setActiveIndex] = useState(0);
   const activeImage = images[activeIndex] ?? images[0];
@@ -47,7 +55,7 @@ function GalleryImages({ images }: GalleryImagesProps) {
         {activeImage ? (
           <Image
             src={activeImage.url}
-            alt=""
+            alt={productName}
             fill
             sizes="(min-width: 1024px) 50vw, 100vw"
             priority
@@ -70,7 +78,7 @@ function GalleryImages({ images }: GalleryImagesProps) {
               aria-label={t('detailThumbnailLabel', { index: index + 1 })}
               onClick={() => setActiveIndex(index)}
               className={cn(
-                'relative size-14 shrink-0 overflow-hidden rounded-md border-2 transition-colors',
+                'relative size-14 shrink-0 overflow-hidden rounded-md border-2 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
                 index === activeIndex ? 'border-primary' : 'border-transparent hover:border-border',
               )}
             >

@@ -42,7 +42,7 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
   return (
     <div className="flex flex-1 flex-col">
       <main className="flex flex-1 flex-col">
-        <Container className="flex flex-1 flex-col py-10">
+        <Container className="flex flex-1 flex-col py-6">
           <Suspense key={slug} fallback={<ProductDetailSkeleton />}>
             <ProductDetailContainer slug={slug} />
           </Suspense>

@@ -36,10 +36,8 @@ function attribute(id: string, name: string, values: string[]): SelectorAttribut
   };
 }
 
-// Image chính có `alt=""` (thuần trang trí, đúng convention ProductPreviewCard
-// — tên/nhãn đã hiện gần đó) nên KHÔNG có accessible role "img", phải query
-// bằng CSS thay vì getByRole('img'). Ảnh chính luôn là <img> đầu tiên nằm
-// trong khối vuông aspect-square (khác thumbnail, nằm trong <button>).
+// Query bằng CSS: ảnh chính luôn là <img> đầu tiên nằm trong khối vuông
+// aspect-square (khác thumbnail, nằm trong <button> và có alt="").
 function getMainImageSrc(container: HTMLElement): string | null {
   return container.querySelector('.aspect-square img')?.getAttribute('src') ?? null;
 }
@@ -54,7 +52,7 @@ describe('ProductGallery', () => {
     const { container } = render(
       withIntl(
         <VariantSelectionProvider>
-          <ProductGallery variants={variants} />
+          <ProductGallery variants={variants} productName="Áo thun" />
         </VariantSelectionProvider>,
       ),
     );
@@ -68,7 +66,7 @@ describe('ProductGallery', () => {
     const { container } = render(
       withIntl(
         <VariantSelectionProvider>
-          <ProductGallery variants={variants} />
+          <ProductGallery variants={variants} productName="Áo thun" />
         </VariantSelectionProvider>,
       ),
     );
@@ -99,7 +97,7 @@ describe('ProductGallery', () => {
       withIntl(
         <VariantSelectionProvider>
           <VariantSelector attributes={attributes} variants={variants} />
-          <ProductGallery variants={variants} />
+          <ProductGallery variants={variants} productName="Áo thun" />
         </VariantSelectionProvider>,
       ),
     );
@@ -131,7 +129,7 @@ describe('ProductGallery', () => {
     const { container } = render(
       withIntl(
         <VariantSelectionProvider>
-          <ProductGallery variants={variants} />
+          <ProductGallery variants={variants} productName="Áo thun" />
         </VariantSelectionProvider>,
       ),
     );
@@ -168,7 +166,7 @@ describe('ProductGallery', () => {
       withIntl(
         <VariantSelectionProvider>
           <VariantSelector attributes={attributes} variants={variants} />
-          <ProductGallery variants={variants} />
+          <ProductGallery variants={variants} productName="Áo thun" />
         </VariantSelectionProvider>,
       ),
     );
