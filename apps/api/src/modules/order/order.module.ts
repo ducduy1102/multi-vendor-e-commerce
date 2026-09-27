@@ -4,15 +4,18 @@ import { ProductModule } from '../product/product.module';
 import { VoucherModule } from '../voucher/voucher.module';
 import { OrderController } from './order.controller';
 import { OrderService } from './order.service';
+import { PaymentExpiryJob } from './payment-expiry.job';
 import { PaymentService } from './payment.service';
 
 // Chiều phụ thuộc (Week7.md 1.14): order → { voucher, product, shared/payment }.
 // order KHÔNG được import checkout/cart — checkout gọi OrderService.createOrders(tx, ...) và
 // PaymentService (confirmPayment/reclaimCheckoutGroup/retryPayment/getCheckoutGroup, 2.9).
+// PaymentExpiryJob (2.10) chỉ dùng nội bộ (không export) — ScheduleModule.forRoot() đăng ký 1 lần ở
+// AppModule, còn @Cron() tự hoạt động miễn provider có trong graph của app.
 @Module({
   imports: [PaymentModule, ProductModule, VoucherModule],
   controllers: [OrderController],
-  providers: [OrderService, PaymentService],
+  providers: [OrderService, PaymentService, PaymentExpiryJob],
   exports: [OrderService, PaymentService],
 })
 export class OrderModule {}
