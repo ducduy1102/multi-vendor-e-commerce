@@ -10,6 +10,7 @@ function row(
 ): VariantAvailabilityRow {
   return {
     stock: 5,
+    reservedStock: 0,
     isActive,
     product: { status: productStatus },
     shop: { status: shopStatus },

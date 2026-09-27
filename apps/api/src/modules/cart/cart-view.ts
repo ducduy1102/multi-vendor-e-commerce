@@ -5,6 +5,7 @@ import type {
   CartShopGroup,
   CartView,
 } from '@ecommerce/types';
+import { availableStock } from '../../shared/utils/available-stock';
 import { isVariantAvailable } from './cart-availability';
 
 // Mọi thứ cần để dựng 1 dòng giỏ hiển thị được: giá live, tồn kho, tên
@@ -13,6 +14,7 @@ export const cartVariantSelect = {
   id: true,
   price: true,
   stock: true,
+  reservedStock: true,
   isActive: true,
   product: {
     select: { id: true, name: true, slug: true, status: true },
@@ -82,7 +84,7 @@ export function composeCartView(lines: CartLineSource[]): CartView {
         })),
       unitPrice: String(unitPrice),
       lineTotal: String(lineTotal),
-      stock: variant.stock,
+      stock: availableStock(variant),
       isAvailable,
     };
 

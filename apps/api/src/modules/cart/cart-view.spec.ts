@@ -11,6 +11,7 @@ function variant(overrides: Record<string, unknown> = {}): CartVariantRow {
     id: 'v1',
     price: new Prisma.Decimal('100000'),
     stock: 10,
+    reservedStock: 0,
     isActive: true,
     product: {
       id: 'p1',
@@ -34,6 +35,14 @@ function line(
 }
 
 describe('composeCartView', () => {
+  it('field stock trả về là available (stock - reservedStock)', () => {
+    const v1 = variant({ stock: 10, reservedStock: 4 });
+
+    const view = composeCartView([line(1, v1)]);
+
+    expect(view.shops[0].items[0].stock).toBe(6);
+  });
+
   it('giỏ rỗng — mọi tổng bằng 0, không có shop', () => {
     expect(composeCartView([])).toEqual({
       shops: [],

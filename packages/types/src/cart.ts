@@ -114,3 +114,15 @@ export type CartItemRow = z.infer<typeof cartItemRowSchema>;
 
 export const cartItemResponseSchema = z.object({ item: cartItemRowSchema });
 export type CartItemResponse = z.infer<typeof cartItemResponseSchema>;
+
+// Trần số DÒNG (variant khác nhau) trong 1 giỏ. Checkout thanh toán cả giỏ trong
+// 1 transaction (chưa có ô chọn sản phẩm — Week7.md 1.12) nên giỏ dài vô hạn sẽ thành
+// 1 giao dịch khổng lồ. Cộng dồn số lượng vào dòng có sẵn không bị giới hạn bởi trần này.
+export const MAX_CART_LINES = 50;
+
+// Response của POST /cart/merge: giỏ mới kèm số dòng của giỏ guest bị bỏ vì giỏ đã đủ
+// MAX_CART_LINES (dòng không khả dụng/hết hàng bị bỏ thầm lặng thì KHÔNG tính vào đây).
+export const mergeCartResponseSchema = cartResponseSchema.extend({
+  droppedLineCount: z.number().int().nonnegative(),
+});
+export type MergeCartResponse = z.infer<typeof mergeCartResponseSchema>;

@@ -146,7 +146,8 @@ export class CartController {
   @ApiResponse({ status: 404, description: 'Variant không tồn tại' })
   @ApiResponse({
     status: 409,
-    description: 'Vượt tồn kho, hoặc sản phẩm/shop không còn bán',
+    description:
+      'Vượt số lượng còn đặt được (stock - đang giữ chỗ), giỏ đã đủ 50 dòng, hoặc sản phẩm/shop không còn bán',
   })
   async addItem(
     @CurrentUser() user: AuthenticatedUser,
@@ -184,7 +185,8 @@ export class CartController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Vượt tồn kho, hoặc sản phẩm/shop không còn bán',
+    description:
+      'Vượt số lượng còn đặt được (stock - đang giữ chỗ), giỏ đã đủ 50 dòng, hoặc sản phẩm/shop không còn bán',
   })
   async updateItem(
     @CurrentUser() user: AuthenticatedUser,
@@ -241,16 +243,26 @@ export class CartController {
   })
   @ApiResponse({
     status: 200,
-    schema: { example: { success: true, data: { cart: CART_VIEW_EXAMPLE } } },
+    description:
+      'droppedLineCount = số dòng giỏ guest bị bỏ vì giỏ đã đủ 50 dòng (không tính dòng không khả dụng/hết hàng)',
+    schema: {
+      example: {
+        success: true,
+        data: { cart: CART_VIEW_EXAMPLE, droppedLineCount: 0 },
+      },
+    },
   })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   async merge(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(cartItemsBodySchema)) dto: MergeCartDto,
   ) {
-    await this.cartService.mergeGuestCart(user.userId, dto.items);
+    const { droppedLineCount } = await this.cartService.mergeGuestCart(
+      user.userId,
+      dto.items,
+    );
     const cart = await this.cartService.getCart(user.userId);
-    return { cart };
+    return { cart, droppedLineCount };
   }
 
   // Public cho guest (Week6.md 1.7/1.13): client gửi items[] từ localStorage,

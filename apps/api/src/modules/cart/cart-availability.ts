@@ -5,6 +5,7 @@ import { ProductStatus, ShopStatus, type Prisma } from '@prisma/client';
 // khi variant/product/shop đều đang hoạt động.
 export const variantAvailabilitySelect = {
   stock: true,
+  reservedStock: true,
   isActive: true,
   product: { select: { status: true } },
   shop: { select: { status: true } },

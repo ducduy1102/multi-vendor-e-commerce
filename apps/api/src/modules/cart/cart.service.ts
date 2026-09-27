@@ -8,7 +8,8 @@ import {
   isVariantAvailable,
   variantAvailabilitySelect,
 } from './cart-availability';
-import type { CartView } from '@ecommerce/types';
+import { MAX_CART_LINES, type CartView } from '@ecommerce/types';
+import { availableStock } from '../../shared/utils/available-stock';
 import { VoucherService } from '../voucher/voucher.service';
 import { applyDiscount, cartVariantSelect, composeCartView } from './cart-view';
 
@@ -109,9 +110,11 @@ export class CartService {
     return composeCartView(lines);
   }
 
-  // Cộng dồn nếu variant đã có trong giỏ, chặn mềm theo stock (1.10). Check
-  // rồi ghi là read-then-write có chủ đích: đây chỉ là chặn mềm cho UX, chặn
-  // thật (trừ kho có điều kiện trong transaction) thuộc Tuần 7.
+  // Cộng dồn nếu variant đã có trong giỏ, chặn mềm theo số lượng còn đặt được
+  // (available = stock - reservedStock, Week7.md 1.3). Check rồi ghi là
+  // read-then-write có chủ đích: đây chỉ là chặn mềm cho UX, chặn thật (giữ chỗ
+  // tồn kho có điều kiện trong transaction) nằm ở checkout. Trần MAX_CART_LINES
+  // cũng chặn mềm như vậy (2 request đồng thời có thể vượt 1-2 dòng, không đáng khoá).
   async addItem(
     userId: string,
     productVariantId: string,
@@ -124,8 +127,11 @@ export class CartService {
       where: { cartId_productVariantId: { cartId, productVariantId } },
       select: { quantity: true },
     });
+    if (!existing && (await this.countCartLines(cartId)) >= MAX_CART_LINES) {
+      throw new ConflictException(`Cart is full (max ${MAX_CART_LINES} items)`);
+    }
     const nextQuantity = (existing?.quantity ?? 0) + quantity;
-    this.assertWithinStock(nextQuantity, variant.stock);
+    this.assertWithinStock(nextQuantity, availableStock(variant));
 
     return this.prisma.cartItem.upsert({
       where: { cartId_productVariantId: { cartId, productVariantId } },
@@ -152,7 +158,7 @@ export class CartService {
     if (!isVariantAvailable(item.productVariant)) {
       throw new ConflictException('This product is no longer available');
     }
-    this.assertWithinStock(quantity, item.productVariant.stock);
+    this.assertWithinStock(quantity, availableStock(item.productVariant));
 
     return this.prisma.cartItem.update({
       where: { id: itemId },
@@ -170,12 +176,17 @@ export class CartService {
   }
 
   // Gộp giỏ guest vào giỏ DB sau khi đăng nhập (1.8): cộng dồn theo variant,
-  // clamp theo stock, bỏ qua thầm lặng variant không còn tồn tại/không khả
-  // dụng/hết hàng thay vì lỗi cả request.
-  async mergeGuestCart(userId: string, items: CartItemInput[]): Promise<void> {
+  // clamp theo số lượng còn đặt được, bỏ qua thầm lặng variant không còn tồn
+  // tại/không khả dụng/hết hàng thay vì lỗi cả request. Giỏ đã đủ
+  // MAX_CART_LINES thì giữ dòng có sẵn trước, thêm dòng guest theo thứ tự tới đủ
+  // trần, phần thừa bị bỏ và ĐƯỢC ĐẾM để FE báo (Week7.md 1.12).
+  async mergeGuestCart(
+    userId: string,
+    items: CartItemInput[],
+  ): Promise<{ droppedLineCount: number }> {
     const wanted = this.sumByVariant(items);
     if (wanted.size === 0) {
-      return;
+      return { droppedLineCount: 0 };
     }
     const variantIds = [...wanted.keys()];
 
@@ -192,16 +203,33 @@ export class CartService {
       existingItems.map((item) => [item.productVariantId, item.quantity]),
     );
 
-    const writes = variants.flatMap((variant) => {
+    // findMany không đảm bảo thứ tự — sắp lại theo thứ tự dòng guest để "thêm theo
+    // thứ tự tới đủ trần" xác định được.
+    const orderIndex = new Map(variantIds.map((id, index) => [id, index]));
+    const orderedVariants = [...variants].sort(
+      (a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0),
+    );
+
+    let freeSlots = MAX_CART_LINES - (await this.countCartLines(cartId));
+    let droppedLineCount = 0;
+    const writes = orderedVariants.flatMap((variant) => {
       if (!isVariantAvailable(variant)) {
         return [];
       }
+      const isNewLine = !existingByVariant.has(variant.id);
       const total =
         (existingByVariant.get(variant.id) ?? 0) +
         (wanted.get(variant.id) ?? 0);
-      const quantity = Math.min(total, variant.stock);
+      const quantity = Math.min(total, availableStock(variant));
       if (quantity <= 0) {
         return [];
+      }
+      if (isNewLine) {
+        if (freeSlots <= 0) {
+          droppedLineCount += 1;
+          return [];
+        }
+        freeSlots -= 1;
       }
       return [
         this.prisma.cartItem.upsert({
@@ -214,6 +242,11 @@ export class CartService {
       ];
     });
     await this.prisma.$transaction(writes);
+    return { droppedLineCount };
+  }
+
+  private countCartLines(cartId: string): Promise<number> {
+    return this.prisma.cartItem.count({ where: { cartId } });
   }
 
   private sumByVariant(items: CartItemInput[]): Map<string, number> {

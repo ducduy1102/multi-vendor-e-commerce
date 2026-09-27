@@ -1,4 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { MAX_CART_LINES } from '@ecommerce/types';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { VoucherService } from '../voucher/voucher.service';
 import { CartService } from './cart.service';
@@ -7,6 +8,7 @@ function variantRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'variant-1',
     stock: 10,
+    reservedStock: 0,
     isActive: true,
     product: { status: 'PUBLISHED' },
     shop: { status: 'APPROVED' },
@@ -23,6 +25,7 @@ describe('CartService', () => {
       findUnique: jest.Mock;
       findFirst: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       upsert: jest.Mock;
       update: jest.Mock;
       deleteMany: jest.Mock;
@@ -41,6 +44,7 @@ describe('CartService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
         upsert: jest.fn((args: { create: { quantity: number } }) => ({
           id: 'item-1',
           productVariantId: 'variant-1',
@@ -270,6 +274,64 @@ describe('CartService', () => {
       expect(result.quantity).toBe(5);
     });
 
+    it('chặn theo available = stock - reservedStock, không phải stock vật lý', async () => {
+      prisma.productVariant.findUnique.mockResolvedValue(
+        variantRow({ stock: 10, reservedStock: 8 }),
+      );
+
+      await expect(service.addItem('user-1', 'variant-1', 3)).rejects.toThrow(
+        'Quantity exceeds available stock (2)',
+      );
+      expect(prisma.cartItem.upsert).not.toHaveBeenCalled();
+
+      const result = await service.addItem('user-1', 'variant-1', 2);
+      expect(result.quantity).toBe(2);
+    });
+
+    it('giữ chỗ hết sạch (available = 0) — không thêm được', async () => {
+      prisma.productVariant.findUnique.mockResolvedValue(
+        variantRow({ stock: 5, reservedStock: 5 }),
+      );
+
+      await expect(service.addItem('user-1', 'variant-1', 1)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    describe('trần MAX_CART_LINES', () => {
+      it.each([
+        [MAX_CART_LINES - 1, true],
+        [MAX_CART_LINES, false],
+        [MAX_CART_LINES + 1, false],
+      ])(
+        'giỏ đang %i dòng, thêm dòng mới → cho phép = %s',
+        async (lines, isAllowed) => {
+          prisma.cartItem.count.mockResolvedValue(lines);
+
+          const promise = service.addItem('user-1', 'variant-1', 1);
+
+          if (isAllowed) {
+            await expect(promise).resolves.toMatchObject({ quantity: 1 });
+          } else {
+            await expect(promise).rejects.toThrow(
+              `Cart is full (max ${MAX_CART_LINES} items)`,
+            );
+            expect(prisma.cartItem.upsert).not.toHaveBeenCalled();
+          }
+        },
+      );
+
+      it('giỏ đã đủ trần vẫn cộng dồn được vào dòng có sẵn', async () => {
+        prisma.cartItem.count.mockResolvedValue(MAX_CART_LINES);
+        prisma.cartItem.findUnique.mockResolvedValue({ quantity: 1 });
+
+        const result = await service.addItem('user-1', 'variant-1', 2);
+
+        expect(result.quantity).toBe(3);
+        expect(prisma.cartItem.count).not.toHaveBeenCalled();
+      });
+    });
+
     it('variant không tồn tại — 404', async () => {
       prisma.productVariant.findUnique.mockResolvedValue(null);
 
@@ -340,6 +402,19 @@ describe('CartService', () => {
       await expect(
         service.updateItemQuantity('user-1', 'item-1', 1),
       ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('updateItemQuantity — kho giữ chỗ', () => {
+    it('chặn theo available, không phải stock vật lý', async () => {
+      prisma.cartItem.findFirst.mockResolvedValue({
+        productVariant: variantRow({ stock: 10, reservedStock: 9 }),
+      });
+
+      await expect(
+        service.updateItemQuantity('user-1', 'item-1', 2),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.cartItem.update).not.toHaveBeenCalled();
     });
   });
 
@@ -422,7 +497,7 @@ describe('CartService', () => {
           { productVariantId: 'gone', quantity: 1 },
           { productVariantId: 'variant-1', quantity: 2 },
         ]),
-      ).resolves.toBeUndefined();
+      ).resolves.toEqual({ droppedLineCount: 0 });
 
       expect(quantitiesWritten()).toEqual({ 'variant-1': 2 });
     });
@@ -441,6 +516,81 @@ describe('CartService', () => {
       ]);
 
       expect(quantitiesWritten()).toEqual({ ok: 1 });
+    });
+
+    it('clamp theo available (stock - reservedStock)', async () => {
+      prisma.productVariant.findMany.mockResolvedValue([
+        variantRow({ stock: 10, reservedStock: 7 }),
+      ]);
+
+      await service.mergeGuestCart('user-1', [
+        { productVariantId: 'variant-1', quantity: 5 },
+      ]);
+
+      expect(quantitiesWritten()).toEqual({ 'variant-1': 3 });
+    });
+
+    describe('trần MAX_CART_LINES', () => {
+      const guestLines = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({
+          productVariantId: `g${i}`,
+          quantity: 1,
+        }));
+      // findMany trả ngược thứ tự để chứng minh service tự sắp theo thứ tự dòng guest.
+      const guestVariants = (n: number) =>
+        Array.from({ length: n }, (_, i) =>
+          variantRow({ id: `g${i}` }),
+        ).reverse();
+
+      it('giỏ còn đủ chỗ — thêm hết, dropped = 0', async () => {
+        prisma.cartItem.count.mockResolvedValue(10);
+        prisma.productVariant.findMany.mockResolvedValue(guestVariants(3));
+
+        const result = await service.mergeGuestCart('user-1', guestLines(3));
+
+        expect(result).toEqual({ droppedLineCount: 0 });
+        expect(Object.keys(quantitiesWritten())).toHaveLength(3);
+      });
+
+      it('vượt trần — thêm dòng guest theo thứ tự tới đủ trần, báo số dòng bỏ', async () => {
+        prisma.cartItem.count.mockResolvedValue(MAX_CART_LINES - 2);
+        prisma.productVariant.findMany.mockResolvedValue(guestVariants(5));
+
+        const result = await service.mergeGuestCart('user-1', guestLines(5));
+
+        expect(result).toEqual({ droppedLineCount: 3 });
+        expect(Object.keys(quantitiesWritten()).sort()).toEqual(['g0', 'g1']);
+      });
+
+      it('giỏ đã đủ trần — dòng mới bị bỏ, dòng trùng với giỏ vẫn cộng dồn', async () => {
+        prisma.cartItem.count.mockResolvedValue(MAX_CART_LINES);
+        prisma.productVariant.findMany.mockResolvedValue([
+          variantRow({ id: 'g1' }),
+          variantRow({ id: 'g0' }),
+        ]);
+        prisma.cartItem.findMany.mockResolvedValue([
+          { productVariantId: 'g0', quantity: 2 },
+        ]);
+
+        const result = await service.mergeGuestCart('user-1', guestLines(2));
+
+        expect(result).toEqual({ droppedLineCount: 1 });
+        expect(quantitiesWritten()).toEqual({ g0: 3 });
+      });
+
+      it('dòng không khả dụng/hết hàng bị bỏ thầm lặng: không tính vào dropped, không chiếm chỗ', async () => {
+        prisma.cartItem.count.mockResolvedValue(MAX_CART_LINES - 1);
+        prisma.productVariant.findMany.mockResolvedValue([
+          variantRow({ id: 'g0', isActive: false }),
+          variantRow({ id: 'g1', stock: 0 }),
+          variantRow({ id: 'g2' }),
+        ]);
+
+        const result = await service.mergeGuestCart('user-1', guestLines(3));
+
+        expect(result).toEqual({ droppedLineCount: 0 });
+        expect(quantitiesWritten()).toEqual({ g2: 1 });
+      });
     });
 
     it('Cart được tạo kèm userId (không bao giờ có Cart thiếu userId)', async () => {
