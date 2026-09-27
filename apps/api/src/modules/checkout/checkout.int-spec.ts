@@ -333,6 +333,71 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
     });
   });
 
+  // 2.8 (d): voucher theo shop dùng CHUNG cơ chế VoucherUsageService với voucher toàn sàn — khác
+  // biệt duy nhất là số giảm chỉ rơi vào đúng 1 Order (đơn của shop khác không bị đụng tới).
+  describe('voucher theo shop', () => {
+    it('chỉ giảm đúng đơn của shop đó — đơn shop khác discountAmount = 0, VoucherUsage vẫn đúng 1 bản ghi', async () => {
+      const user = await createUser(prisma, TAG);
+      const address = await createAddress(prisma, user.id);
+      const baseA = await createShopWithProduct(prisma, TAG);
+      const baseB = await createShopWithProduct(prisma, TAG);
+      const variantA = await createVariant(prisma, baseA, {
+        stock: 5,
+        price: 100_000,
+      });
+      const variantB = await createVariant(prisma, baseB, {
+        stock: 5,
+        price: 300_000,
+      });
+      await addCartItem(prisma, user.id, variantA.id, 1);
+      await addCartItem(prisma, user.id, variantB.id, 1);
+      const voucher = await prisma.voucher.create({
+        data: {
+          shopId: baseB.shopId,
+          code: `${TAG.toUpperCase()}SHOP${Date.now().toString(36).toUpperCase()}`,
+          type: 'FIXED',
+          value: 50_000,
+        },
+        select: { id: true, code: true },
+      });
+      const shipping = shippingFeeFor(500, 1) * 2;
+      const expectedTotal = 100_000 + (300_000 - 50_000) + shipping;
+
+      const result = await place(user.id, {
+        addressId: address.id,
+        paymentMethod: 'VNPAY',
+        voucherCode: voucher.code,
+        expectedTotal,
+      });
+
+      expect(result.orders).toHaveLength(2);
+      const orders = await prisma.order.findMany({
+        where: { checkoutGroupId: result.checkoutGroupId },
+        select: { shopId: true, discountAmount: true },
+      });
+      expect(
+        orders
+          .find((o) => o.shopId === baseA.shopId)
+          ?.discountAmount.toString(),
+      ).toBe('0');
+      expect(
+        orders
+          .find((o) => o.shopId === baseB.shopId)
+          ?.discountAmount.toString(),
+      ).toBe('50000');
+
+      const usages = await prisma.voucherUsage.findMany({
+        where: { voucherId: voucher.id },
+      });
+      expect(usages).toHaveLength(1);
+      expect(usages[0].discountAmount.toString()).toBe('50000');
+      expect(
+        (await prisma.voucher.findUniqueOrThrow({ where: { id: voucher.id } }))
+          .usedCount,
+      ).toBe(1);
+    });
+  });
+
   describe('Idempotency-Key — race thật (Week7.md 1.11 (4))', () => {
     it('2 request đồng thời cùng key ⇒ đúng 1 CheckoutGroup tạo ra, cả 2 nhận CÙNG kết quả, không deadlock', async () => {
       const { user, address, variant, expectedTotal } =

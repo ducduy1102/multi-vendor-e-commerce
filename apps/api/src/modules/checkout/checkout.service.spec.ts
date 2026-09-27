@@ -647,6 +647,97 @@ describe('CheckoutService.placeOrder', () => {
     });
   });
 
+  // 2.8 (d): voucher theo shop dùng CHUNG cơ chế consume()/resolveDiscountByShop với voucher toàn
+  // sàn (VoucherUsageService không phân biệt shop hay toàn sàn) — khác biệt DUY NHẤT là số giảm chỉ
+  // rơi vào đúng 1 đơn, đơn còn lại discountAmount = 0.
+  describe('voucher theo shop', () => {
+    const SHOP2_SUBTOTAL = 100_000; // unitPrice 50_000 × quantity 2
+
+    beforeEach(() => {
+      tx.voucher.findUnique.mockResolvedValue({
+        id: 'voucher-shop2',
+        perUserLimit: null,
+      });
+      voucherService.validate.mockResolvedValue({
+        code: 'SHOP10',
+        shopId: 'shop-2',
+        amount: '15000',
+      });
+      cartService.buildCartView.mockResolvedValue(
+        cartView([
+          {
+            shopId: 'shop-1',
+            items: [cartLine({ id: 'item-1', productVariantId: 'variant-1' })],
+          },
+          {
+            shopId: 'shop-2',
+            items: [
+              cartLine({
+                id: 'item-2',
+                productVariantId: 'variant-2',
+                unitPrice: '50000',
+              }),
+            ],
+          },
+        ]),
+      );
+      tx.cartItem.deleteMany.mockResolvedValue({ count: 2 });
+      tx.productVariant.findMany.mockResolvedValue([
+        variantMetaRow('variant-1'),
+        variantMetaRow('variant-2'),
+      ]);
+      inventoryService.reserve.mockResolvedValue(
+        new Map([
+          ['variant-1', new Prisma.Decimal(100_000)],
+          ['variant-2', new Prisma.Decimal(50_000)],
+        ]),
+      );
+    });
+
+    it('chỉ giảm đúng đơn của shop đó — đơn shop khác discountAmount = 0, tổng khớp expectedTotal', async () => {
+      await service.placeOrder('user-1', {
+        ...INPUT,
+        voucherCode: 'SHOP10',
+        expectedTotal:
+          SUBTOTAL_1_LINE +
+          (SHOP2_SUBTOTAL - 15_000) +
+          2 * SHIPPING_FEE_2_ITEMS,
+      });
+
+      const [, orderArgs] = orderService.createOrders.mock.calls[0] as [
+        unknown,
+        {
+          orders: Array<{ shopId: string; discountAmount: number }>;
+        },
+      ];
+      expect(
+        orderArgs.orders.find((o) => o.shopId === 'shop-1')?.discountAmount,
+      ).toBe(0);
+      expect(
+        orderArgs.orders.find((o) => o.shopId === 'shop-2')?.discountAmount,
+      ).toBe(15_000);
+    });
+
+    it('consume() nhận discountAmount = số giảm của ĐÚNG shop đó (không phải tổng 2 shop)', async () => {
+      await service.placeOrder('user-1', {
+        ...INPUT,
+        voucherCode: 'SHOP10',
+        expectedTotal:
+          SUBTOTAL_1_LINE +
+          (SHOP2_SUBTOTAL - 15_000) +
+          2 * SHIPPING_FEE_2_ITEMS,
+      });
+
+      expect(voucherUsageService.consume).toHaveBeenCalledWith(tx, {
+        voucherId: 'voucher-shop2',
+        userId: 'user-1',
+        checkoutGroupId: 'group-1',
+        discountAmount: 15_000,
+        perUserLimit: null,
+      });
+    });
+  });
+
   describe('Idempotency-Key', () => {
     it('có key và tra thấy nhóm cũ — trả lại kết quả cũ, không đọc giỏ/mở transaction', async () => {
       prisma.checkoutGroup.findUnique.mockResolvedValue({
@@ -783,6 +874,42 @@ describe('CheckoutService.placeOrder', () => {
         error,
       );
       // Không tra lại thêm lần nào ngoài lần [0] ban đầu.
+      expect(prisma.checkoutGroup.findUnique).toHaveBeenCalledTimes(1);
+    });
+
+    // 2.8: transaction ghi ≥ 2 model có unique riêng (CheckoutGroup, Payment.txnRef, VoucherUsage
+    // [voucherId, checkoutGroupId]) — P2002 trên VoucherUsage KHÔNG được hiểu nhầm thành race
+    // Idempotency-Key (rules/backend.md mục 4: soi error.meta trước khi quyết định xử lý).
+    it('P2002 trên VoucherUsage (voucherId+checkoutGroupId) — KHÔNG bị coi là idempotency race, báo lỗi thật', async () => {
+      tx.voucher.findUnique.mockResolvedValue({
+        id: 'voucher-1',
+        perUserLimit: null,
+      });
+      voucherService.validate.mockResolvedValue({
+        code: 'SALE10',
+        shopId: null,
+        amount: '20000',
+      });
+      const error = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        {
+          code: 'P2002',
+          clientVersion: 'test',
+          meta: {
+            modelName: 'VoucherUsage',
+            target: ['voucherId', 'checkoutGroupId'],
+          },
+        },
+      );
+      voucherUsageService.consume.mockRejectedValue(error);
+
+      await expect(
+        service.placeOrder(
+          'user-1',
+          { ...INPUT, voucherCode: 'SALE10' },
+          'key-1',
+        ),
+      ).rejects.toBe(error);
       expect(prisma.checkoutGroup.findUnique).toHaveBeenCalledTimes(1);
     });
 
