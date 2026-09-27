@@ -5,6 +5,7 @@ import type { App } from 'supertest/types';
 import { AppModule } from '../../app.module';
 import { AllExceptionsFilter } from '../../shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from '../../shared/interceptors/transform-response.interceptor';
+import { MockPaymentProvider } from '../../shared/payment/mock-payment.provider';
 
 // Integration test qua HTTP THẬT (supertest, cần Postgres đang chạy) — chứng minh cái mà unit test
 // gọi thẳng service KHÔNG chứng minh được: endpoint IPN của VNPay trả đúng {RspCode, Message} Ở MỨC
@@ -72,5 +73,78 @@ describe('OrderController — payment gateway endpoints (HTTP thật)', () => {
     );
 
     expect(res.status).toBe(404);
+  });
+
+  // ĐÚNG 1 route (route chốt ở 1.14: "GET /payments/mock/pay", 302) xử lý cả 2 nhánh — chưa có
+  // `outcome` (trang chọn, 200) và có `outcome` (xử lý + redirect, 302). Bật cờ CHỈ trong khối này,
+  // trả lại giá trị cũ ở afterAll — `--runInBand` chạy mọi file *.int-spec.ts trong CÙNG 1 process
+  // nên `process.env` rò sang file khác nếu không dọn.
+  describe('GET /payments/mock/pay khi PAYMENT_MOCK_ENABLED=true', () => {
+    const originalFlag = process.env.PAYMENT_MOCK_ENABLED;
+    const provider = new MockPaymentProvider();
+
+    beforeAll(() => {
+      process.env.PAYMENT_MOCK_ENABLED = 'true';
+    });
+
+    afterAll(() => {
+      if (originalFlag === undefined) {
+        delete process.env.PAYMENT_MOCK_ENABLED;
+      } else {
+        process.env.PAYMENT_MOCK_ENABLED = originalFlag;
+      }
+    });
+
+    async function signedPayPath(txnRef: string): Promise<string> {
+      const { payUrl } = await provider.createPayment({
+        txnRef,
+        amountVnd: 50_000,
+        returnUrl: 'http://localhost:4000/api/v1/payments/mock/return',
+        expiresAt: new Date(Date.now() + 15 * 60_000),
+        locale: 'vi',
+      });
+      const url = new URL(payUrl);
+      return `${url.pathname}${url.search}`;
+    }
+
+    it('chưa truyền outcome — 200, trang HTML cho chọn kết quả (mỗi link tự trỏ lại route này)', async () => {
+      const path = await signedPayPath('ITMOCKPAY1');
+
+      const res = await request(app.getHttpServer()).get(path);
+
+      expect(res.status).toBe(200);
+      expect(res.type).toBe('text/html');
+      expect(res.text).toContain('outcome=SUCCESS');
+      expect(res.text).toContain('outcome=FAILED');
+    });
+
+    it('outcome=SUCCESS — đi qua confirmPayment thật rồi 302 (txnRef lạ ⇒ error=invalid, nhưng ĐÃ xử lý chứ không phải 200)', async () => {
+      const path = await signedPayPath('ITMOCKPAY2');
+
+      const res = await request(app.getHttpServer()).get(
+        `${path}&outcome=SUCCESS`,
+      );
+
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toContain('/checkout/result');
+    });
+
+    it('sig sai — 404, không xử lý dù có outcome hợp lệ', async () => {
+      const res = await request(app.getHttpServer()).get(
+        '/api/v1/payments/mock/pay?txnRef=X&amount=50000&sig=bad&outcome=SUCCESS',
+      );
+
+      expect(res.status).toBe(404);
+    });
+
+    it('outcome không hợp lệ — 404', async () => {
+      const path = await signedPayPath('ITMOCKPAY3');
+
+      const res = await request(app.getHttpServer()).get(
+        `${path}&outcome=NOT_A_REAL_OUTCOME`,
+      );
+
+      expect(res.status).toBe(404);
+    });
   });
 });

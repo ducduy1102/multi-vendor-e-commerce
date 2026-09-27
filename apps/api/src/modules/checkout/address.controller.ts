@@ -16,6 +16,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { MAX_ADDRESSES_PER_USER } from '@ecommerce/types';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
@@ -60,6 +61,7 @@ export class AddressController {
       example: { success: true, data: { addresses: [ADDRESS_EXAMPLE] } },
     },
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   async list(@CurrentUser() user: AuthenticatedUser) {
     const addresses = await this.addressService.listMyAddresses(user.userId);
     return { addresses };
@@ -73,9 +75,10 @@ export class AddressController {
     status: 201,
     schema: { example: { success: true, data: { address: ADDRESS_EXAMPLE } } },
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 409,
-    description: `Đã đủ ${10} địa chỉ (code: ADDRESS_LIMIT_REACHED)`,
+    description: `Đã đủ ${MAX_ADDRESSES_PER_USER} địa chỉ (code: ADDRESS_LIMIT_REACHED)`,
   })
   async create(
     @CurrentUser() user: AuthenticatedUser,
@@ -91,6 +94,7 @@ export class AddressController {
     status: 200,
     schema: { example: { success: true, data: { address: ADDRESS_EXAMPLE } } },
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 404,
     description: 'Địa chỉ không tồn tại hoặc không phải của bạn',
@@ -118,6 +122,7 @@ export class AddressController {
     status: 200,
     schema: { example: { success: true, data: null } },
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 404,
     description: 'Địa chỉ không tồn tại hoặc không phải của bạn',
@@ -136,6 +141,7 @@ export class AddressController {
     status: 200,
     schema: { example: { success: true, data: { address: ADDRESS_EXAMPLE } } },
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 404,
     description: 'Địa chỉ không tồn tại hoặc không phải của bạn',

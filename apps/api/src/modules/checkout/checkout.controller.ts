@@ -124,6 +124,7 @@ export class CheckoutController {
     status: 400,
     description: 'Giỏ rỗng/không còn item khả dụng',
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 404,
     description:
@@ -160,6 +161,7 @@ export class CheckoutController {
     status: 400,
     description: 'Giỏ rỗng/không còn item khả dụng, thiếu expectedTotal',
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 403,
     description: 'Email chưa xác thực (code: EMAIL_NOT_VERIFIED)',
@@ -194,6 +196,7 @@ export class CheckoutController {
     status: 200,
     schema: { example: { success: true, data: CHECKOUT_GROUP_EXAMPLE } },
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 404,
     description: 'Nhóm không tồn tại hoặc không phải của bạn',
@@ -217,6 +220,7 @@ export class CheckoutController {
   })
   @ApiResponse({
     status: 201,
+    description: 'Vừa tạo lần thử thanh toán MỚI (txnRef mới)',
     schema: {
       example: {
         success: true,
@@ -227,6 +231,21 @@ export class CheckoutController {
       },
     },
   })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Trả lại payUrl đã lưu của lần thử còn hiệu lực (không tạo lần thử mới)',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          paymentUrl: 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?...',
+          expiresAt: '2026-09-27T04:15:00.000Z',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 404,
     description: 'Nhóm không tồn tại hoặc không phải của bạn',

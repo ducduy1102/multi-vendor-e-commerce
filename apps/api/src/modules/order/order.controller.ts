@@ -95,45 +95,29 @@ export class OrderController {
   }
 
   // Chỉ dev/test — vô hiệu hoá cứng ở production (3 lớp: đây + MockPaymentProvider.isConfigured() +
-  // createPayment(), Week7.md 1.9). Trang cho chọn thành công/thất bại/bỏ qua, đi ĐÚNG đường xác
-  // nhận thật (confirmPayment) như cổng thật — dùng cho Playwright/demo sau này.
+  // createPayment(), Week7.md 1.9). ĐÚNG 1 route (route chốt ở 1.14: "GET /payments/mock/pay, 302,
+  // chỉ dev") — chưa có `outcome` ⇒ hiện trang cho chọn thành công/thất bại/bỏ qua (200, mỗi link
+  // quay lại CHÍNH route này kèm `&outcome=`), có `outcome` ⇒ đi ĐÚNG đường xác nhận thật
+  // (confirmPayment) như cổng thật rồi 302 — dùng cho Playwright/demo sau này.
   @Get('mock/pay')
   @ApiExcludeEndpoint()
-  mockPay(@Req() req: Request, @Res() res: Response): void {
+  async mockPay(@Req() req: Request, @Res() res: Response): Promise<void> {
     if (!isMockPaymentEnabled()) throw new NotFoundException();
     const { txnRef, amount, sig } = this.readMockQuery(req);
     if (!this.mockPaymentProvider.verifyPayLink(txnRef, amount, sig)) {
       throw new NotFoundException();
     }
-    const link = (outcome: string) =>
-      `/api/v1/payments/mock/confirm?txnRef=${encodeURIComponent(txnRef)}&amount=${encodeURIComponent(amount)}&sig=${encodeURIComponent(sig)}&outcome=${outcome}`;
-    res
-      .status(200)
-      .type('html')
-      .send(
-        `<!doctype html><html><body style="font-family:sans-serif">
-          <h1>Mock payment</h1>
-          <p>txnRef: ${escapeHtml(txnRef)} — amount: ${escapeHtml(amount)}</p>
-          <p><a href="${link('SUCCESS')}">Thành công</a></p>
-          <p><a href="${link('FAILED')}">Thất bại</a></p>
-          <p><a href="${link('PENDING')}">Bỏ qua (không xác định)</a></p>
-        </body></html>`,
-      );
-  }
 
-  @Get('mock/confirm')
-  @ApiExcludeEndpoint()
-  async mockConfirm(@Req() req: Request, @Res() res: Response): Promise<void> {
-    if (!isMockPaymentEnabled()) throw new NotFoundException();
-    const { txnRef, amount, sig } = this.readMockQuery(req);
     const outcome =
-      typeof req.query.outcome === 'string' ? req.query.outcome : '';
-    if (
-      !this.mockPaymentProvider.verifyPayLink(txnRef, amount, sig) ||
-      !['SUCCESS', 'FAILED', 'PENDING'].includes(outcome)
-    ) {
+      typeof req.query.outcome === 'string' ? req.query.outcome : null;
+    if (outcome === null) {
+      this.renderMockChoicePage(res, txnRef, amount, sig);
+      return;
+    }
+    if (!['SUCCESS', 'FAILED', 'PENDING'].includes(outcome)) {
       throw new NotFoundException();
     }
+
     const rawCallback = this.mockPaymentProvider.buildCallback(
       txnRef,
       Number(amount),
@@ -148,10 +132,32 @@ export class OrderController {
       );
       checkoutGroupId = result.checkoutGroupId;
     } catch (error) {
-      this.logger.error('confirmPayment failed on mock confirm', error);
+      this.logger.error('confirmPayment failed on mock pay', error);
     }
     if (!checkoutGroupId) return this.redirectToResultError(res);
     return this.redirectToResultSuccess(res, checkoutGroupId);
+  }
+
+  private renderMockChoicePage(
+    res: Response,
+    txnRef: string,
+    amount: string,
+    sig: string,
+  ): void {
+    const link = (outcome: string) =>
+      `?txnRef=${encodeURIComponent(txnRef)}&amount=${encodeURIComponent(amount)}&sig=${encodeURIComponent(sig)}&outcome=${outcome}`;
+    res
+      .status(200)
+      .type('html')
+      .send(
+        `<!doctype html><html><body style="font-family:sans-serif">
+          <h1>Mock payment</h1>
+          <p>txnRef: ${escapeHtml(txnRef)} — amount: ${escapeHtml(amount)}</p>
+          <p><a href="${link('SUCCESS')}">Thành công</a></p>
+          <p><a href="${link('FAILED')}">Thất bại</a></p>
+          <p><a href="${link('PENDING')}">Bỏ qua (không xác định)</a></p>
+        </body></html>`,
+      );
   }
 
   private readMockQuery(req: Request): {
