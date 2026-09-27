@@ -454,4 +454,70 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
       });
     });
   });
+
+  // Week7.md 2.13: khác race Idempotency-Key ở trên (CÙNG user, cùng key) — đây là N NGƯỜI MUA
+  // KHÁC NHAU cùng tranh 1 variant qua ĐÚNG luồng placeOrder đầy đủ (không gọi thẳng
+  // InventoryService.reserve() như inventory.service.int-spec.ts), chứng minh cả transaction
+  // (xoá giỏ + giữ chỗ + tạo đơn) không oversell khi chạy thật trên Postgres.
+  describe('race thật — N người mua khác nhau tranh 1 variant còn ít hàng (Week7.md 2.13)', () => {
+    it('8 người đặt đồng thời, variant chỉ còn 5 — đúng 5 đơn thành công, 3 còn lại 409 OUT_OF_STOCK, reservedStock = 5 (available = 0)', async () => {
+      const STOCK = 5;
+      const CONCURRENT = 8;
+      const base = await createShopWithProduct(prisma, TAG);
+      const variant = await createVariant(prisma, base, {
+        stock: STOCK,
+        price: 100_000,
+      });
+      const expectedTotal = 100_000 * 1 + shippingFeeFor(500, 1);
+
+      const buyers = await Promise.all(
+        Array.from({ length: CONCURRENT }, async () => {
+          const user = await createUser(prisma, TAG);
+          const address = await createAddress(prisma, user.id);
+          await addCartItem(prisma, user.id, variant.id, 1);
+          return { user, address };
+        }),
+      );
+
+      const results = await Promise.allSettled(
+        buyers.map(({ user, address }) =>
+          place(user.id, {
+            addressId: address.id,
+            paymentMethod: 'VNPAY',
+            expectedTotal,
+          }),
+        ),
+      );
+
+      const succeeded = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter(
+        (r): r is PromiseRejectedResult => r.status === 'rejected',
+      );
+      expect(succeeded).toHaveLength(STOCK);
+      expect(rejected).toHaveLength(CONCURRENT - STOCK);
+      expect(
+        rejected.every(
+          (r) => (r.reason as { code?: string }).code === 'OUT_OF_STOCK',
+        ),
+      ).toBe(true);
+
+      // available = stock - reservedStock = 0; không bao giờ reservedStock > stock (CHECK ở DB
+      // là lưới cuối, đã kiểm riêng ở inventory.service.int-spec.ts).
+      expect(await stockOf(variant.id)).toEqual({
+        stock: STOCK,
+        reservedStock: STOCK,
+      });
+      expect(await prisma.order.count({ where: { shopId: base.shopId } })).toBe(
+        STOCK,
+      );
+
+      // Người mua KHÔNG thành công vẫn còn nguyên dòng giỏ (transaction rollback không để lại gì
+      // dở dang) — không phân biệt được ai thắng/thua trước khi chạy nên kiểm tổng dòng giỏ còn
+      // lại đúng bằng số người thua.
+      const remainingCartLines = await prisma.cartItem.count({
+        where: { cart: { userId: { in: buyers.map((b) => b.user.id) } } },
+      });
+      expect(remainingCartLines).toBe(CONCURRENT - STOCK);
+    });
+  });
 });
