@@ -14,9 +14,11 @@ import {
   ApiBody,
   ApiCookieAuth,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { safeNextPath } from '@ecommerce/types';
 import type { Request, Response } from 'express';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { GoogleAuthGuard } from '../../shared/guards/google-auth.guard';
@@ -27,7 +29,8 @@ import {
   ACCESS_TOKEN_COOKIE,
   REFRESH_TOKEN_COOKIE,
   accessTokenCookieOptions,
-  getFrontendUrl,
+  googleFailureRedirectUrl,
+  googleSuccessRedirectUrl,
   refreshTokenCookieOptions,
 } from './auth.constants';
 import { AuthService, type TokenPair } from './auth.service';
@@ -101,7 +104,7 @@ export class AuthController {
   @ApiResponse({
     status: 401,
     description:
-      'Email hoặc mật khẩu không đúng, hoặc tài khoản không ở trạng thái ACTIVE (message: "ACCOUNT_NOT_ACTIVE")',
+      'Email hoặc mật khẩu không đúng, hoặc tài khoản không ở trạng thái ACTIVE (message + code: "ACCOUNT_NOT_ACTIVE")',
   })
   async login(
     @Body(new ZodValidationPipe(loginSchema)) dto: LoginDto,
@@ -172,6 +175,13 @@ export class AuthController {
   @ApiOperation({
     summary: 'Redirect sang Google để đăng nhập/đăng ký bằng tài khoản Google',
   })
+  @ApiQuery({
+    name: 'next',
+    required: false,
+    description:
+      'Đường dẫn nội bộ (không kèm locale, thuộc allow-list như /checkout) để quay lại sau khi đăng nhập; giá trị không hợp lệ bị bỏ qua',
+    example: '/checkout',
+  })
   @ApiResponse({
     status: 302,
     description: 'Redirect sang trang đăng nhập Google',
@@ -197,18 +207,21 @@ export class AuthController {
     @Req() req: Request & { user: GoogleProfile },
     @Res() res: Response,
   ): Promise<void> {
+    // `state` đã đi vòng qua trình duyệt và Google nên KHÔNG tin — kiểm lại; không có/không hợp
+    // lệ thì giữ hành vi cũ (redirect về trang chủ).
+    const next = safeNextPath(req.query.state);
     try {
       const { accessToken, refreshToken } =
         await this.authService.loginWithGoogle(req.user);
       this.setTokenCookies(res, { accessToken, refreshToken });
-      res.redirect(getFrontendUrl());
+      res.redirect(googleSuccessRedirectUrl(next));
     } catch (error) {
       const reason =
         error instanceof UnauthorizedException &&
         error.message === 'ACCOUNT_NOT_ACTIVE'
           ? 'account_not_active'
           : 'google_login_failed';
-      res.redirect(`${getFrontendUrl()}/login?error=${reason}`);
+      res.redirect(googleFailureRedirectUrl(reason, next));
     }
   }
 
@@ -225,7 +238,7 @@ export class AuthController {
   @ApiResponse({
     status: 401,
     description:
-      'Chưa đăng nhập, session hết hạn, hoặc tài khoản không còn ACTIVE (message: "ACCOUNT_NOT_ACTIVE")',
+      'Chưa đăng nhập, session hết hạn, hoặc tài khoản không còn ACTIVE (message + code: "ACCOUNT_NOT_ACTIVE")',
   })
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.me(user.userId);

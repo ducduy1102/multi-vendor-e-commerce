@@ -37,3 +37,18 @@ export const EMAIL_VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
 export function getFrontendUrl(): string {
   return process.env.FRONTEND_URL?.trim() || 'http://localhost:3000';
 }
+
+// Đích redirect sau Google OAuth callback. `next` phải là kết quả của safeNextPath (đã kiểm) hoặc
+// null; không có next thì về trang chủ như trước khi có tính năng này.
+export function googleSuccessRedirectUrl(next: string | null): string {
+  return `${getFrontendUrl()}${next ?? ''}`;
+}
+
+// Nhánh lỗi giữ lại next để người dùng đăng nhập lại bằng cách khác vẫn quay về đúng chỗ.
+export function googleFailureRedirectUrl(
+  reason: string,
+  next: string | null,
+): string {
+  const nextParam = next ? `&next=${encodeURIComponent(next)}` : '';
+  return `${getFrontendUrl()}/login?error=${reason}${nextParam}`;
+}
