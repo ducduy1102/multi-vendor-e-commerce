@@ -224,7 +224,10 @@ export const productVariantSchema = z.object({
   // FE tự Number() khi cần tính toán, không parse thành number ở schema này
   // để không mất độ chính xác thập phân.
   price: z.string(),
+  // stock = số buyer đặt được (kho vật lý - đang giữ chỗ). reservedStock chỉ có khi viewer là
+  // chủ shop (kho vật lý = stock + reservedStock) — Week7.md 1.3.
   stock: z.number(),
+  reservedStock: z.number().int().nonnegative().optional(),
   isActive: z.boolean(),
   images: z.array(productImageSchema),
   weightGram: z.number().nullable(),
@@ -271,7 +274,10 @@ export const productListItemVariantSchema = z.object({
   id: z.string(),
   sku: z.string(),
   price: z.string(),
+  // stock = số buyer đặt được (kho vật lý - đang giữ chỗ). reservedStock chỉ có khi viewer là
+  // chủ shop (kho vật lý = stock + reservedStock) — Week7.md 1.3.
   stock: z.number(),
+  reservedStock: z.number().int().nonnegative().optional(),
   isActive: z.boolean(),
   images: z.array(productImageSchema),
 });

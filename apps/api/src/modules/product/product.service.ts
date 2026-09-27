@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { availableStock } from '../../shared/utils/available-stock';
 import { slugify } from '../../shared/utils/slugify';
 import type { CreateProductDto } from './dto/create-product.dto';
 import type { ListProductsQueryDto } from './dto/list-products-query.dto';
@@ -71,6 +72,7 @@ const productWithRelationsSelect = {
       sku: true,
       price: true,
       stock: true,
+      reservedStock: true,
       isActive: true,
       images: variantImagesSelect,
       weightGram: true,
@@ -122,6 +124,7 @@ const productListItemSelect = {
       sku: true,
       price: true,
       stock: true,
+      reservedStock: true,
       isActive: true,
       images: variantImagesSelect,
     },
@@ -191,11 +194,15 @@ export interface PaginatedProductCards {
 // Không trả nguyên bảng nối VariantAttributeValue/ProductAttributeValue ra
 // ngoài — flatten thành cặp tên thuộc tính + giá trị đã resolve sẵn, khớp
 // đúng shape productSchema ở packages/types.
+//
+// `stock` trong response = available (kho vật lý - đang giữ chỗ, Week7.md 1.3), field
+// `reservedStock` chỉ có khi viewer là chủ shop (kho vật lý = stock + reservedStock).
 export type ProductSummary = Omit<ProductWithRelations, 'variants'> & {
   variants: (Omit<
     ProductWithRelations['variants'][number],
-    'attributeValues'
+    'attributeValues' | 'reservedStock'
   > & {
+    reservedStock?: number;
     attributeValues: { attributeName: string; value: string }[];
   })[];
 };
@@ -462,7 +469,8 @@ export class ProductService {
     // bug cũ theo hướng ngược lại).
     const { shop, ...productWithoutShop } = product;
     return {
-      ...this.mapProduct(productWithoutShop),
+      // reservedStock lộ nhu cầu mua của sản phẩm — chỉ trả cho chủ shop.
+      ...this.mapProduct(productWithoutShop, isOwner),
       shop: { name: shop.name, slug: shop.slug },
     };
   }
@@ -600,11 +608,19 @@ export class ProductService {
   // khác listPublicProducts (Bước 2.10), đây là trang quản lý của chính
   // seller, không phải view public.
   async getMyProducts(shopId: string): Promise<ProductListItemSummary[]> {
-    return this.prisma.product.findMany({
+    const products = await this.prisma.product.findMany({
       where: { shopId },
       orderBy: { createdAt: 'desc' },
       select: productListItemSelect,
     });
+    // `stock` = available, cùng nghĩa với mọi API khác; reservedStock đi kèm cho chủ shop.
+    return products.map((product) => ({
+      ...product,
+      variants: product.variants.map((variant) => ({
+        ...variant,
+        stock: availableStock(variant),
+      })),
+    }));
   }
 
   async getCategories(): Promise<CategorySummary[]> {
@@ -622,7 +638,8 @@ export class ProductService {
       where: { id: productId },
       select: productWithRelationsSelect,
     });
-    return this.mapProduct(product);
+    // Chỉ create/update/archive (đã qua ShopOwnerGuard) gọi tới đây — luôn là chủ shop.
+    return this.mapProduct(product, true);
   }
 
   // Không hard-delete ProductAttribute/ProductAttributeValue đã tồn tại —
@@ -752,14 +769,26 @@ export class ProductService {
           ).id;
 
       if (existing) {
-        await tx.productVariant.update({
-          where: { id: variantId },
+        // Seller chỉ ghi KHO VẬT LÝ; số đang giữ chỗ do đơn hàng quản lý. Điều kiện
+        // `reservedStock <= stock mới` nằm ngay trong câu UPDATE (không đọc-rồi-ghi) nên
+        // 1 đơn giữ chỗ chen vào giữa chừng cũng không làm vỡ bất biến (CHECK ở DB).
+        const { count } = await tx.productVariant.updateMany({
+          where: { id: variantId, reservedStock: { lte: variant.stock } },
           data: {
             price: variant.price,
             stock: variant.stock,
             isActive: true,
           },
         });
+        if (count === 0) {
+          const current = await tx.productVariant.findUnique({
+            where: { id: variantId },
+            select: { reservedStock: true },
+          });
+          throw new ConflictException(
+            `Stock of SKU ${variant.sku} cannot be lower than the quantity reserved by pending orders (${current?.reservedStock ?? 0})`,
+          );
+        }
         // Variant đã có sẵn — reconcile ảnh theo url (Week5.md Bước 2.12).
         await this.reconcileVariantImages(tx, variantId, variant.images);
       } else if (variant.images.length > 0) {
@@ -880,16 +909,26 @@ export class ProductService {
       .filter((id): id is string => id !== undefined);
   }
 
-  private mapProduct(product: ProductWithRelations): ProductSummary {
+  // includeReserved=false phải loại reservedStock TƯỜNG MINH khỏi response (destructure) —
+  // type hẹp hơn không tự xoá field lúc runtime (rules/backend.md mục 4).
+  private mapProduct(
+    product: ProductWithRelations,
+    includeReserved: boolean,
+  ): ProductSummary {
     return {
       ...product,
-      variants: product.variants.map((variant) => ({
-        ...variant,
-        attributeValues: variant.attributeValues.map((link) => ({
-          attributeName: link.attributeValue.attribute.name,
-          value: link.attributeValue.value,
-        })),
-      })),
+      variants: product.variants.map((variant) => {
+        const { reservedStock, attributeValues, ...rest } = variant;
+        return {
+          ...rest,
+          stock: availableStock(variant),
+          ...(includeReserved ? { reservedStock } : {}),
+          attributeValues: attributeValues.map((link) => ({
+            attributeName: link.attributeValue.attribute.name,
+            value: link.attributeValue.value,
+          })),
+        };
+      }),
     };
   }
 
