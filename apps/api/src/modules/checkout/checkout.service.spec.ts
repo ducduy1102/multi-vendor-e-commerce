@@ -57,6 +57,35 @@ function cartView(
   };
 }
 
+// Khác cartView() ở trên (subtotal cố định '0', đủ dùng cho placeOrder vì service đó không đọc
+// field này — giá THẬT lấy từ inventoryService.reserve()) — preview() đọc THẲNG shop.subtotal/
+// cartView.subtotal (không có bước khoá giá riêng) nên fixture này phải tính đúng, giống hệt
+// composeCartView() thật (chỉ cộng item isAvailable).
+function previewCartView(
+  shops: Array<{ shopId: string; items: ReturnType<typeof cartLine>[] }>,
+): CartView {
+  const built = shops.map((s) => {
+    const subtotal = s.items
+      .filter((i) => i.isAvailable)
+      .reduce((sum, i) => sum + Number(i.unitPrice) * i.quantity, 0);
+    return {
+      shopId: s.shopId,
+      shopName: `Shop ${s.shopId}`,
+      shopSlug: s.shopId,
+      items: s.items as never,
+      subtotal: String(subtotal),
+    };
+  });
+  const subtotal = built.reduce((sum, s) => sum + Number(s.subtotal), 0);
+  return {
+    shops: built,
+    subtotal: String(subtotal),
+    discount: null,
+    grandTotal: String(subtotal),
+    itemCount: shops.reduce((sum, s) => sum + s.items.length, 0),
+  };
+}
+
 // Cân nặng mặc định của test (500g/sản phẩm, quantity 2) = đúng 1.000g cơ sở, không có bậc vượt —
 // tính bằng ĐÚNG hàm thật (calculateShippingFee) thay vì đoán số, để không phải sửa tay mỗi khi đổi
 // bảng giá mặc định. originProvince mặc định (readDefaultOriginProvince()) trùng ADDRESS.province
@@ -82,6 +111,7 @@ describe('CheckoutService.placeOrder', () => {
     checkoutGroup: { findUnique: jest.Mock };
     order: { findMany: jest.Mock };
     payment: { update: jest.Mock };
+    productVariant: { findMany: jest.Mock };
   };
   let tx: {
     cartItem: { deleteMany: jest.Mock };
@@ -96,7 +126,11 @@ describe('CheckoutService.placeOrder', () => {
   let inventoryService: { reserve: jest.Mock };
   let orderService: { createOrders: jest.Mock };
   let addressService: { getOwnedAddressOrThrow: jest.Mock };
-  let paymentGateway: { availabilityOf: jest.Mock; getConfigured: jest.Mock };
+  let paymentGateway: {
+    availabilityOf: jest.Mock;
+    getConfigured: jest.Mock;
+    getAvailability: jest.Mock;
+  };
 
   const variantMetaRow = (
     id: string,
@@ -129,6 +163,11 @@ describe('CheckoutService.placeOrder', () => {
       checkoutGroup: { findUnique: jest.fn().mockResolvedValue(null) },
       order: { findMany: jest.fn().mockResolvedValue([]) },
       payment: { update: jest.fn().mockResolvedValue({}) },
+      productVariant: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 'variant-1', weightGram: 500 }]),
+      },
     };
     cartService = {
       getCartItems: jest
@@ -176,6 +215,9 @@ describe('CheckoutService.placeOrder', () => {
           .fn()
           .mockResolvedValue({ payUrl: 'https://pay.example/url' }),
       }),
+      getAvailability: jest
+        .fn()
+        .mockReturnValue([{ method: 'VNPAY', available: true }]),
     };
 
     service = new CheckoutService(
@@ -797,6 +839,285 @@ describe('CheckoutService.placeOrder', () => {
       expect(result.checkoutGroupId).toBe('group-1');
       expect(result.paymentUrl).toBeNull();
       expect(prisma.payment.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // Nested trong cùng describe để tái dùng đúng service/mock đã dựng ở beforeEach (Week7.md 2.7b) —
+  // preview() và placeOrder() cùng 1 CheckoutService instance.
+  describe('preview (2.7b)', () => {
+    it('1 shop, có địa chỉ, không voucher — subtotal/shippingFee/total khớp tính tay, không ghi DB', async () => {
+      cartService.buildCartView.mockResolvedValue(
+        previewCartView([{ shopId: 'shop-1', items: [cartLine()] }]),
+      );
+
+      const result = await service.preview('user-1', { addressId: 'addr-1' });
+
+      expect(addressService.getOwnedAddressOrThrow).toHaveBeenCalledWith(
+        'user-1',
+        'addr-1',
+      );
+      expect(result.needsAddress).toBe(false);
+      expect(result.orders).toEqual([
+        expect.objectContaining({
+          shopId: 'shop-1',
+          subtotal: String(SUBTOTAL_1_LINE),
+          shippingFee: String(SHIPPING_FEE_2_ITEMS),
+          discountAmount: '0',
+          total: String(SUBTOTAL_1_LINE + SHIPPING_FEE_2_ITEMS),
+        }) as unknown,
+      ]);
+      expect(result.subtotal).toBe(String(SUBTOTAL_1_LINE));
+      expect(result.shippingTotal).toBe(String(SHIPPING_FEE_2_ITEMS));
+      expect(result.discountTotal).toBe('0');
+      expect(result.grandTotal).toBe(
+        String(SUBTOTAL_1_LINE + SHIPPING_FEE_2_ITEMS),
+      );
+      expect(result.canPlaceOrder).toBe(true);
+      expect(result.excludedItems).toEqual([]);
+      expect(result.blockingIssues).toEqual([]);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(voucherUsageService.consume).not.toHaveBeenCalled();
+      expect(inventoryService.reserve).not.toHaveBeenCalled();
+      expect(orderService.createOrders).not.toHaveBeenCalled();
+    });
+
+    it('chưa chọn địa chỉ — needsAddress true, KHÔNG đoán phí ship, không gọi AddressService/query weightGram', async () => {
+      cartService.buildCartView.mockResolvedValue(
+        previewCartView([{ shopId: 'shop-1', items: [cartLine()] }]),
+      );
+
+      const result = await service.preview('user-1', {});
+
+      expect(addressService.getOwnedAddressOrThrow).not.toHaveBeenCalled();
+      expect(prisma.productVariant.findMany).not.toHaveBeenCalled();
+      expect(result.needsAddress).toBe(true);
+      expect(result.orders[0].shippingFee).toBeNull();
+      expect(result.orders[0].total).toBeNull();
+      expect(result.orders[0].subtotal).toBe(String(SUBTOTAL_1_LINE));
+      expect(result.shippingTotal).toBeNull();
+      expect(result.grandTotal).toBeNull();
+    });
+
+    it('địa chỉ không thuộc user — lỗi 404 được đẩy nguyên vẹn', async () => {
+      addressService.getOwnedAddressOrThrow.mockRejectedValue(
+        new NotFoundException('Address not found'),
+      );
+      cartService.buildCartView.mockResolvedValue(
+        previewCartView([{ shopId: 'shop-1', items: [cartLine()] }]),
+      );
+
+      await expect(
+        service.preview('user-1', { addressId: 'addr-x' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('giỏ rỗng — 400 NO_PURCHASABLE_ITEMS', async () => {
+      cartService.buildCartView.mockResolvedValue(previewCartView([]));
+
+      await expectAppException(service.preview('user-1', {}), {
+        status: 400,
+        code: 'NO_PURCHASABLE_ITEMS',
+      });
+    });
+
+    it('không còn dòng khả dụng nào (toàn bộ isAvailable=false) — 400 NO_PURCHASABLE_ITEMS', async () => {
+      cartService.buildCartView.mockResolvedValue(
+        previewCartView([
+          { shopId: 'shop-1', items: [cartLine({ isAvailable: false })] },
+        ]),
+      );
+
+      await expectAppException(service.preview('user-1', {}), {
+        status: 400,
+        code: 'NO_PURCHASABLE_ITEMS',
+      });
+    });
+
+    it('item không khả dụng — vào excludedItems, không nằm trong order, không chặn canPlaceOrder', async () => {
+      cartService.buildCartView.mockResolvedValue(
+        previewCartView([
+          {
+            shopId: 'shop-1',
+            items: [
+              cartLine({ id: 'item-1', productVariantId: 'variant-1' }),
+              cartLine({
+                id: 'item-2',
+                productVariantId: 'variant-2',
+                productName: 'Hết hàng',
+                isAvailable: false,
+              }),
+            ],
+          },
+        ]),
+      );
+
+      const result = await service.preview('user-1', {});
+
+      expect(result.excludedItems).toEqual([
+        { cartItemId: 'item-2', name: 'Hết hàng', reason: 'UNAVAILABLE' },
+      ]);
+      expect(result.orders[0].items).toHaveLength(1);
+      expect(result.orders[0].items[0].id).toBe('item-1');
+      expect(result.canPlaceOrder).toBe(true);
+    });
+
+    it('dòng vượt tồn kho — vào blockingIssues, canPlaceOrder=false, KHÔNG tự loại/hạ số lượng khỏi đơn', async () => {
+      cartService.buildCartView.mockResolvedValue(
+        previewCartView([
+          {
+            shopId: 'shop-1',
+            items: [cartLine({ quantity: 5, stock: 2 })],
+          },
+        ]),
+      );
+
+      const result = await service.preview('user-1', {});
+
+      expect(result.blockingIssues).toEqual([
+        { cartItemId: 'item-1', type: 'INSUFFICIENT_STOCK', available: 2 },
+      ]);
+      expect(result.canPlaceOrder).toBe(false);
+      expect(result.orders[0].items).toHaveLength(1);
+    });
+
+    describe('voucher toàn sàn', () => {
+      it('chia theo allocateDiscount, validate() nhận ĐÚNG cartView thật (không dựng synthetic)', async () => {
+        voucherService.validate.mockResolvedValue({
+          code: 'SALE10',
+          shopId: null,
+          amount: '20000',
+        });
+        cartService.buildCartView.mockResolvedValue(
+          previewCartView([
+            {
+              shopId: 'shop-1',
+              items: [
+                cartLine({
+                  id: 'item-1',
+                  productVariantId: 'variant-1',
+                  unitPrice: '100000',
+                  quantity: 1,
+                }),
+              ],
+            },
+            {
+              shopId: 'shop-2',
+              items: [
+                cartLine({
+                  id: 'item-2',
+                  productVariantId: 'variant-2',
+                  unitPrice: '300000',
+                  quantity: 1,
+                }),
+              ],
+            },
+          ]),
+        );
+
+        const result = await service.preview('user-1', {
+          voucherCode: 'SALE10',
+        });
+
+        expect(voucherService.validate).toHaveBeenCalledWith(
+          'SALE10',
+          expect.objectContaining({ subtotal: '400000' }),
+          'user-1',
+        );
+        expect(
+          result.orders.find((o) => o.shopId === 'shop-1')?.discountAmount,
+        ).toBe('5000');
+        expect(
+          result.orders.find((o) => o.shopId === 'shop-2')?.discountAmount,
+        ).toBe('15000');
+        expect(result.discountTotal).toBe('20000');
+        expect(result.discount).toEqual({
+          code: 'SALE10',
+          shopId: null,
+          amount: '20000',
+        });
+      });
+    });
+
+    it('voucher theo shop — chỉ giảm đúng đơn của shop đó, đơn khác discountAmount=0', async () => {
+      voucherService.validate.mockResolvedValue({
+        code: 'SHOPSALE',
+        shopId: 'shop-2',
+        amount: '15000',
+      });
+      cartService.buildCartView.mockResolvedValue(
+        previewCartView([
+          {
+            shopId: 'shop-1',
+            items: [
+              cartLine({
+                id: 'item-1',
+                productVariantId: 'variant-1',
+                unitPrice: '100000',
+                quantity: 1,
+              }),
+            ],
+          },
+          {
+            shopId: 'shop-2',
+            items: [
+              cartLine({
+                id: 'item-2',
+                productVariantId: 'variant-2',
+                unitPrice: '300000',
+                quantity: 1,
+              }),
+            ],
+          },
+        ]),
+      );
+
+      const result = await service.preview('user-1', {
+        voucherCode: 'SHOPSALE',
+      });
+
+      expect(
+        result.orders.find((o) => o.shopId === 'shop-1')?.discountAmount,
+      ).toBe('0');
+      expect(
+        result.orders.find((o) => o.shopId === 'shop-2')?.discountAmount,
+      ).toBe('15000');
+    });
+
+    it('voucherCode chỉ khoảng trắng — coi như không có voucher, không gọi validate', async () => {
+      cartService.buildCartView.mockResolvedValue(
+        previewCartView([{ shopId: 'shop-1', items: [cartLine()] }]),
+      );
+
+      const result = await service.preview('user-1', { voucherCode: '   ' });
+
+      expect(voucherService.validate).not.toHaveBeenCalled();
+      expect(result.discount).toBeNull();
+    });
+
+    describe('paymentMethods', () => {
+      it('có địa chỉ — tính theo grandTotal (đã gồm phí ship)', async () => {
+        cartService.buildCartView.mockResolvedValue(
+          previewCartView([{ shopId: 'shop-1', items: [cartLine()] }]),
+        );
+
+        await service.preview('user-1', { addressId: 'addr-1' });
+
+        expect(paymentGateway.getAvailability).toHaveBeenCalledWith(
+          SUBTOTAL_1_LINE + SHIPPING_FEE_2_ITEMS,
+        );
+      });
+
+      it('chưa có địa chỉ — dùng subtotal đã trừ giảm giá (chưa cộng ship) làm số tạm', async () => {
+        cartService.buildCartView.mockResolvedValue(
+          previewCartView([{ shopId: 'shop-1', items: [cartLine()] }]),
+        );
+
+        await service.preview('user-1', {});
+
+        expect(paymentGateway.getAvailability).toHaveBeenCalledWith(
+          SUBTOTAL_1_LINE,
+        );
+      });
     });
   });
 });

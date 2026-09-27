@@ -2,6 +2,8 @@ import {
   BadRequestException,
   Body,
   Controller,
+  HttpCode,
+  HttpStatus,
   Headers,
   Post,
   UseGuards,
@@ -22,8 +24,35 @@ import { CheckoutService } from './checkout.service';
 import {
   idempotencyKeySchema,
   placeOrderSchema,
+  previewCheckoutSchema,
   type PlaceOrderDto,
+  type PreviewCheckoutDto,
 } from './dto/checkout.dto';
+
+const CHECKOUT_PREVIEW_EXAMPLE = {
+  orders: [
+    {
+      shopId: 'c1b2c3d4-1234-4a5b-8c9d-abcdef000003',
+      shopName: 'Shop Áo Xinh',
+      shopSlug: 'shop-ao-xinh',
+      items: [],
+      subtotal: '300000',
+      shippingFee: '16500',
+      discountAmount: '20000',
+      total: '296500',
+    },
+  ],
+  subtotal: '300000',
+  shippingTotal: '16500',
+  discountTotal: '20000',
+  grandTotal: '296500',
+  discount: { code: 'SALE10', shopId: null, amount: '20000' },
+  needsAddress: false,
+  paymentMethods: [{ method: 'VNPAY', available: true }],
+  excludedItems: [],
+  blockingIssues: [],
+  canPlaceOrder: true,
+};
 
 const CHECKOUT_RESULT_EXAMPLE = {
   checkoutGroupId: 'a1b2c3d4-1234-4a5b-8c9d-abcdef000001',
@@ -48,6 +77,37 @@ const CHECKOUT_RESULT_EXAMPLE = {
 @Controller('checkout')
 export class CheckoutController {
   constructor(private readonly checkoutService: CheckoutService) {}
+
+  // Xem trước trước khi đặt hàng (2.7b) — chỉ cần đăng nhập, KHÔNG cần EmailVerifiedGuard vì không
+  // ghi gì. Không tạo resource nên 200, không phải 201 mặc định của @Post().
+  @Post('preview')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({
+    summary:
+      'Xem trước từng đơn (theo shop) trước khi đặt hàng — phí ship/giảm giá/tổng; không ghi DB, không giữ chỗ tồn kho',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: { success: true, data: CHECKOUT_PREVIEW_EXAMPLE } },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Giỏ rỗng/không còn item khả dụng',
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Địa chỉ không tồn tại/không phải của bạn, hoặc mã voucher không tồn tại',
+  })
+  async preview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(previewCheckoutSchema))
+    dto: PreviewCheckoutDto,
+  ) {
+    return this.checkoutService.preview(user.userId, dto);
+  }
 
   // Bắt buộc đăng nhập + đã xác thực email (Week7.md 1.2) — check ở route-level qua guard, không
   // check lại trong service.

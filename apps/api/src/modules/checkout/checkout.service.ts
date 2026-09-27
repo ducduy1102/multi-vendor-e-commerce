@@ -1,6 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { CartView, PaymentMethod } from '@ecommerce/types';
+import type {
+  BlockingIssue,
+  CartView,
+  CheckoutPreview,
+  CheckoutPreviewOrder,
+  ExcludedItem,
+  PaymentMethod,
+  PreviewCheckoutInput,
+} from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { TxClient } from '../../shared/prisma/tx-client';
@@ -19,10 +27,14 @@ import { AddressService } from './address.service';
 import { readMaxPendingCheckouts } from './checkout-config';
 import {
   buildCheckoutPlan,
+  resolveDiscountByShop,
   type CheckoutPlanShop,
   type CheckoutPlanVoucher,
 } from './checkout-pricing';
-import { readDefaultOriginProvince } from './shipping-rates';
+import {
+  calculateShippingFee,
+  readDefaultOriginProvince,
+} from './shipping-rates';
 
 export interface PlaceOrderInput {
   addressId: string;
@@ -369,6 +381,171 @@ export class CheckoutService {
       paymentMethod: input.paymentMethod,
       expiresAt: created.expiresAt.toISOString(),
       paymentUrl,
+    };
+  }
+
+  // POST /checkout/preview (2.7b) — xem trước, KHÔNG ghi DB/giữ chỗ/tăng usedCount. Dùng đúng
+  // resolveDiscountByShop mà buildCheckoutPlan/placeOrder dùng (1 nguồn chia giảm giá duy nhất);
+  // khác placeOrder ở chỗ giá LUÔN đọc live (không có bước khoá/reserve) và `items` trả nguyên
+  // CartLine của CartView (đúng checkoutPreviewSchema — không cần snapshot sku/ảnh như OrderItem).
+  async preview(
+    userId: string,
+    input: PreviewCheckoutInput,
+  ): Promise<CheckoutPreview> {
+    const cartItems = await this.cartService.getCartItems(userId);
+    const cartView = await this.cartService.buildCartView(cartItems);
+
+    const excludedItems: ExcludedItem[] = cartView.shops.flatMap((shop) =>
+      shop.items
+        .filter((item) => !item.isAvailable)
+        .map((item) => ({
+          cartItemId: item.id as string,
+          name: item.productName,
+          reason: 'UNAVAILABLE' as const,
+        })),
+    );
+
+    const blockingIssues: BlockingIssue[] = cartView.shops.flatMap((shop) =>
+      shop.items
+        .filter((item) => item.isAvailable && item.quantity > item.stock)
+        .map((item) => ({
+          cartItemId: item.id as string,
+          type: 'INSUFFICIENT_STOCK' as const,
+          available: item.stock,
+        })),
+    );
+
+    // Cùng luật "khả dụng để mua" với placeOrder (1.12: mọi dòng isAvailable, không tự lọc theo
+    // tồn kho — vượt tồn kho chỉ được BÁO qua blockingIssues, không bị loại khỏi tổng ở đây).
+    const purchasableShops = cartView.shops
+      .map((shop) => ({
+        ...shop,
+        items: shop.items.filter((item) => item.isAvailable),
+      }))
+      .filter((shop) => shop.items.length > 0);
+    if (purchasableShops.length === 0) {
+      throw new AppException(
+        400,
+        'NO_PURCHASABLE_ITEMS',
+        'Cart has no purchasable items',
+      );
+    }
+
+    // Địa chỉ TUỲ CHỌN (khác placeOrder) — chưa chọn thì không đoán phí ship (needsAddress).
+    const address = input.addressId
+      ? await this.addressService.getOwnedAddressOrThrow(
+          userId,
+          input.addressId,
+        )
+      : null;
+
+    // Voucher validate trên CHÍNH cartView (giá live, chưa khoá) — không cần dựng CartView tổng hợp
+    // như placeOrder vì preview không có bước khoá giá; nhờ vậy số giảm ở đây LUÔN khớp với
+    // GET /cart, POST /cart/quote cho cùng giỏ + cùng mã (cùng input, cùng hàm validate).
+    let discount: CartView['discount'] = null;
+    let voucherContext: CheckoutPlanVoucher | null = null;
+    if (input.voucherCode?.trim()) {
+      discount = await this.voucherService.validate(
+        input.voucherCode,
+        cartView,
+        userId,
+      );
+      voucherContext = {
+        shopId: discount.shopId,
+        amount: Number(discount.amount),
+      };
+    }
+
+    const discountByShop = resolveDiscountByShop(
+      purchasableShops.map((shop) => ({
+        shopId: shop.shopId,
+        subtotal: Number(shop.subtotal),
+      })),
+      voucherContext,
+    );
+
+    // weightGram chỉ cần khi ĐÃ có địa chỉ (mới tính shippingFee) — không đoán/không query thừa khi
+    // needsAddress.
+    let weightByVariant: Map<string, number | null> | null = null;
+    if (address) {
+      const variantIds = [
+        ...new Set(
+          purchasableShops.flatMap((s) =>
+            s.items.map((i) => i.productVariantId),
+          ),
+        ),
+      ];
+      const rows = await this.prisma.productVariant.findMany({
+        where: { id: { in: variantIds } },
+        select: { id: true, weightGram: true },
+      });
+      weightByVariant = new Map(rows.map((r) => [r.id, r.weightGram]));
+    }
+    const originProvince = readDefaultOriginProvince();
+
+    const orders: CheckoutPreviewOrder[] = purchasableShops.map((shop) => {
+      const subtotalValue = Number(shop.subtotal);
+      const discountAmount = discountByShop.get(shop.shopId) ?? 0;
+      const shippingFee = address
+        ? calculateShippingFee({
+            originProvince,
+            destinationProvince: address.province,
+            items: shop.items.map((item) => ({
+              weightGram: weightByVariant!.get(item.productVariantId) ?? null,
+              quantity: item.quantity,
+            })),
+          })
+        : null;
+      const total =
+        shippingFee === null
+          ? null
+          : subtotalValue - discountAmount + shippingFee;
+      return {
+        shopId: shop.shopId,
+        shopName: shop.shopName,
+        shopSlug: shop.shopSlug,
+        items: shop.items,
+        subtotal: shop.subtotal,
+        shippingFee: shippingFee === null ? null : String(shippingFee),
+        discountAmount: String(discountAmount),
+        total: total === null ? null : String(total),
+      };
+    });
+
+    const subtotalTotal = orders.reduce(
+      (sum, o) => sum + Number(o.subtotal),
+      0,
+    );
+    const discountTotal = orders.reduce(
+      (sum, o) => sum + Number(o.discountAmount),
+      0,
+    );
+    const shippingTotal = address
+      ? orders.reduce((sum, o) => sum + Number(o.shippingFee), 0)
+      : null;
+    const grandTotal = address
+      ? orders.reduce((sum, o) => sum + Number(o.total), 0)
+      : null;
+
+    // needsAddress ⇒ chưa biết shippingFee thật; dùng subtotal đã trừ giảm giá làm số tạm để quyết
+    // định phương thức khả dụng (shipping chỉ CỘNG THÊM, placeOrder luôn kiểm lại nên sai lệch ở
+    // đây không mở đường vượt qua sàn/trần thật).
+    const paymentMethods = this.paymentGateway.getAvailability(
+      grandTotal ?? subtotalTotal - discountTotal,
+    );
+
+    return {
+      orders,
+      subtotal: String(subtotalTotal),
+      shippingTotal: shippingTotal === null ? null : String(shippingTotal),
+      discountTotal: String(discountTotal),
+      grandTotal: grandTotal === null ? null : String(grandTotal),
+      discount,
+      needsAddress: !address,
+      paymentMethods,
+      excludedItems,
+      blockingIssues,
+      canPlaceOrder: blockingIssues.length === 0,
     };
   }
 

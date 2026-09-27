@@ -123,7 +123,11 @@ export interface CheckoutPlan {
   grandTotal: number;
 }
 
-function subtotalOf(shop: CheckoutPlanShop): number {
+// Xuất riêng (không chỉ dùng nội bộ buildCheckoutPlan) — POST /checkout/preview (2.7b) cần đúng
+// hàm này để chia giảm giá theo shop khi CHƯA có địa chỉ giao hàng (chưa tính được shippingFee/
+// totalAmount nên không gọi buildCheckoutPlan trọn vẹn được, nhưng phần discount không phụ thuộc
+// địa chỉ) — 1 nguồn logic chia duy nhất cho cả xem trước lẫn đặt hàng thật.
+export function subtotalOf(shop: CheckoutPlanShop): number {
   return shop.items.reduce(
     (sum, item) => sum + item.unitPrice * item.quantity,
     0,
@@ -135,7 +139,7 @@ function subtotalOf(shop: CheckoutPlanShop): number {
 // thường không chạm ngưỡng này). Shop trong voucher không có trong danh sách đơn (vd toàn bộ item
 // của shop đã bị loại vì hết hàng) ⇒ không giảm gì, không ném lỗi — nơi gọi chịu trách nhiệm đảm bảo
 // voucher chỉ áp khi shop đó còn ít nhất 1 đơn.
-function resolveDiscountByShop(
+export function resolveDiscountByShop(
   orders: ReadonlyArray<{ shopId: string; subtotal: number }>,
   voucher: CheckoutPlanVoucher | null,
 ): Map<string, number> {
