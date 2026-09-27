@@ -4,7 +4,7 @@ import type { CartDiscount, CartView } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { CreateVoucherDto } from './dto/create-voucher.dto';
-import { calculateDiscount } from './voucher-discount';
+import { calculateDiscount } from '../../shared/utils/calculate-discount';
 
 // Chỉ field cần trả cho Seller (khớp voucherSchema ở packages/types).
 const voucherSummarySelect = {
