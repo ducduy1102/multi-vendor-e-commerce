@@ -22,7 +22,7 @@ export type CartItemsBody = z.infer<typeof cartItemsBodySchema>;
 // Mã voucher tuỳ chọn (Week6.md 1.12: đúng 1 mã/lần). Chuỗi rỗng/khoảng trắng
 // hợp lệ và coi như không có mã — BE bỏ qua thay vì 400, vì ô nhập bỏ trống
 // gửi lên "" chứ không phải undefined.
-const optionalVoucherCodeSchema = z.string().trim().max(32).optional();
+export const optionalVoucherCodeSchema = z.string().trim().max(32).optional();
 
 // Body của POST /cart/quote (public, guest): items lấy từ localStorage.
 export const cartQuoteBodySchema = cartItemsBodySchema.extend({

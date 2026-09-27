@@ -7,3 +7,8 @@ export * from './wishlist';
 export * from './cart';
 export * from './voucher';
 export * from './validation-message';
+export * from './province';
+export * from './address';
+export * from './payment';
+export * from './order-status';
+export * from './checkout';
