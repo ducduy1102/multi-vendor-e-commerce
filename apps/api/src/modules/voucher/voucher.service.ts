@@ -5,6 +5,7 @@ import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { CreateVoucherDto } from './dto/create-voucher.dto';
 import { calculateDiscount } from '../../shared/utils/calculate-discount';
+import { VoucherUsageService } from './voucher-usage.service';
 
 // Chỉ field cần trả cho Seller (khớp voucherSchema ở packages/types).
 const voucherSummarySelect = {
@@ -25,7 +26,10 @@ const voucherSummarySelect = {
 
 @Injectable()
 export class VoucherService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly voucherUsageService: VoucherUsageService,
+  ) {}
 
   // Kiểm tra 1 mã với giỏ hiện tại rồi trả số tiền giảm dự kiến (Week6.md
   // 1.11-1.13). Chỉ đọc để preview: KHÔNG tăng usedCount, không gắn vào Order
@@ -76,14 +80,18 @@ export class VoucherService {
 
     // Guest (không có userId) bỏ qua perUserLimit khi preview (1.13) — Tuần 7
     // bắt buộc enforce lại lúc tạo Order thật.
+    //
+    // Đếm theo VoucherUsage CHƯA NHẢ (không phải Order.count) — "1 lần dùng mã" = 1 lần checkout,
+    // không suy ra được từ số Order: voucher toàn sàn tách N đơn trong 1 lần checkout trước đây bị
+    // đếm N lần (Week6.md 1.5b, chuyển giao #1; sửa dứt điểm ở Week7.md 2.8). Đây chỉ là pre-check
+    // KHÔNG atomic (đọc rồi mới quyết định) — chặn thật (không đọc-rồi-ghi) nằm ở
+    // VoucherUsageService.consume(), chạy trong transaction tạo Order (2.7/2.8).
     if (voucher.perUserLimit !== null && userId) {
-      const used = await this.prisma.order.count({
-        where: {
-          voucherId: voucher.id,
-          userId,
-          status: { not: 'CANCELLED' },
-        },
-      });
+      const used = await this.voucherUsageService.countActiveByUser(
+        this.prisma,
+        voucher.id,
+        userId,
+      );
       if (used >= voucher.perUserLimit) {
         throw new AppException(
           400,

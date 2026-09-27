@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import type { CartView } from '@ecommerce/types';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
+import type { VoucherUsageService } from './voucher-usage.service';
 import { VoucherService } from './voucher.service';
 
 function cartView(): CartView {
@@ -44,15 +45,18 @@ describe('VoucherService.validate', () => {
   let service: VoucherService;
   let prisma: {
     voucher: { findUnique: jest.Mock };
-    order: { count: jest.Mock };
   };
+  let voucherUsageService: { countActiveByUser: jest.Mock };
 
   beforeEach(() => {
     prisma = {
       voucher: { findUnique: jest.fn().mockResolvedValue(voucherRow()) },
-      order: { count: jest.fn().mockResolvedValue(0) },
     };
-    service = new VoucherService(prisma as unknown as PrismaService);
+    voucherUsageService = { countActiveByUser: jest.fn().mockResolvedValue(0) };
+    service = new VoucherService(
+      prisma as unknown as PrismaService,
+      voucherUsageService as unknown as VoucherUsageService,
+    );
   });
 
   it('mã không tồn tại — 404', async () => {
@@ -264,15 +268,15 @@ describe('VoucherService.validate', () => {
       );
     });
 
-    it('guest (không có userId) — bỏ qua, không đếm Order (1.13)', async () => {
+    it('guest (không có userId) — bỏ qua, không đếm VoucherUsage (1.13)', async () => {
       await expect(
         service.validate('SALE10', cartView()),
       ).resolves.toBeDefined();
-      expect(prisma.order.count).not.toHaveBeenCalled();
+      expect(voucherUsageService.countActiveByUser).not.toHaveBeenCalled();
     });
 
     it('user đã dùng đủ số lần — 400', async () => {
-      prisma.order.count.mockResolvedValue(1);
+      voucherUsageService.countActiveByUser.mockResolvedValue(1);
 
       await expectAppException(
         service.validate('SALE10', cartView(), 'user-1'),
@@ -284,16 +288,16 @@ describe('VoucherService.validate', () => {
       );
     });
 
-    it('đếm đúng theo voucher + user, không tính đơn đã huỷ', async () => {
+    // Đếm theo VoucherUsage chưa nhả (không phải Order.count) — "1 lần dùng mã" = 1 lần checkout,
+    // đúng cả khi 1 checkout tách N Order theo shop (Week7.md 1.5b/2.8).
+    it('đếm đúng theo voucher + user qua VoucherUsageService (không suy ra từ số Order)', async () => {
       await service.validate('SALE10', cartView(), 'user-1');
 
-      expect(prisma.order.count).toHaveBeenCalledWith({
-        where: {
-          voucherId: 'voucher-1',
-          userId: 'user-1',
-          status: { not: 'CANCELLED' },
-        },
-      });
+      expect(voucherUsageService.countActiveByUser).toHaveBeenCalledWith(
+        prisma,
+        'voucher-1',
+        'user-1',
+      );
     });
 
     it('user chưa dùng lần nào — áp được', async () => {
@@ -349,7 +353,11 @@ describe('VoucherService (seller)', () => {
         })),
       },
     };
-    service = new VoucherService(prisma as unknown as PrismaService);
+    // createVoucher/listMyVouchers/setVoucherActive không chạm VoucherUsageService.
+    service = new VoucherService(
+      prisma as unknown as PrismaService,
+      undefined as unknown as VoucherUsageService,
+    );
   });
 
   describe('createVoucher', () => {
