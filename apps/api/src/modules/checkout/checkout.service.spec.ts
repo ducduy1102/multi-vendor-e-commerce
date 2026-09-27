@@ -10,6 +10,7 @@ import type { VoucherService } from '../voucher/voucher.service';
 import type { VoucherUsageService } from '../voucher/voucher-usage.service';
 import type { AddressService } from './address.service';
 import type { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
+import type { PaymentService } from '../order/payment.service';
 import { CheckoutService, type PlaceOrderInput } from './checkout.service';
 import { calculateShippingFee } from './shipping-rates';
 
@@ -131,6 +132,9 @@ describe('CheckoutService.placeOrder', () => {
     getConfigured: jest.Mock;
     getAvailability: jest.Mock;
   };
+  // getCheckoutGroup/retryPayment (2.9) đều delegate nguyên vẹn sang PaymentService — không có test
+  // riêng ở đây (xem payment.service.spec.ts), chỉ cần mock đủ để dựng CheckoutService.
+  let paymentService: { getCheckoutGroup: jest.Mock; retryPayment: jest.Mock };
 
   const variantMetaRow = (
     id: string,
@@ -219,6 +223,10 @@ describe('CheckoutService.placeOrder', () => {
         .fn()
         .mockReturnValue([{ method: 'VNPAY', available: true }]),
     };
+    paymentService = {
+      getCheckoutGroup: jest.fn(),
+      retryPayment: jest.fn(),
+    };
 
     service = new CheckoutService(
       prisma as unknown as PrismaService,
@@ -229,7 +237,42 @@ describe('CheckoutService.placeOrder', () => {
       orderService,
       addressService as unknown as AddressService,
       paymentGateway as unknown as PaymentGatewayService,
+      paymentService as unknown as PaymentService,
     );
+  });
+
+  describe('getCheckoutGroup / retryPayment — delegate nguyên vẹn sang PaymentService (2.9)', () => {
+    it('getCheckoutGroup truyền đúng userId/groupId, trả nguyên kết quả', async () => {
+      paymentService.getCheckoutGroup.mockResolvedValue({ id: 'group-1' });
+
+      const result = await service.getCheckoutGroup('user-1', 'group-1');
+
+      expect(paymentService.getCheckoutGroup).toHaveBeenCalledWith(
+        'user-1',
+        'group-1',
+      );
+      expect(result).toEqual({ id: 'group-1' });
+    });
+
+    it('retryPayment truyền đúng userId/groupId, trả nguyên kết quả', async () => {
+      paymentService.retryPayment.mockResolvedValue({
+        paymentUrl: 'https://pay.example/x',
+        expiresAt: '2026-09-27T00:00:00.000Z',
+        created: true,
+      });
+
+      const result = await service.retryPayment('user-1', 'group-1');
+
+      expect(paymentService.retryPayment).toHaveBeenCalledWith(
+        'user-1',
+        'group-1',
+      );
+      expect(result).toEqual({
+        paymentUrl: 'https://pay.example/x',
+        expiresAt: '2026-09-27T00:00:00.000Z',
+        created: true,
+      });
+    });
   });
 
   describe('đường vui vẻ — 1 shop, không voucher', () => {

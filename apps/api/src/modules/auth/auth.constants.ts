@@ -1,4 +1,7 @@
 import type { CookieOptions } from 'express';
+import { getFrontendUrl } from '../../shared/utils/frontend-url';
+
+export { getFrontendUrl };
 
 export const ACCESS_TOKEN_COOKIE = 'access_token';
 export const REFRESH_TOKEN_COOKIE = 'refresh_token';
@@ -30,13 +33,6 @@ export function refreshTokenCookieOptions(): CookieOptions {
 // Phase 5), chỉ là safeguard tối thiểu cho riêng flow này.
 export const EMAIL_VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 export const EMAIL_VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
-
-// Dùng chung ở cả AuthService (build link verify email) và AuthController
-// (redirect sau Google OAuth callback) — 1 chỗ duy nhất để không lặp lại
-// cùng 1 fallback expression ở 2 nơi.
-export function getFrontendUrl(): string {
-  return process.env.FRONTEND_URL?.trim() || 'http://localhost:3000';
-}
 
 // Đích redirect sau Google OAuth callback. `next` phải là kết quả của safeNextPath (đã kiểm) hoặc
 // null; không có next thì về trang chủ như trước khi có tính năng này.

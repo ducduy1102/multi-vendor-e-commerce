@@ -14,6 +14,7 @@ import { VnpayProvider } from '../../shared/payment/vnpay.provider';
 import { CartService } from '../cart/cart.service';
 import { InventoryService } from '../product/inventory.service';
 import { OrderService } from '../order/order.service';
+import { PaymentService } from '../order/payment.service';
 import { VoucherService } from '../voucher/voucher.service';
 import { VoucherUsageService } from '../voucher/voucher-usage.service';
 import { AddressService } from './address.service';
@@ -49,6 +50,12 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
     new VnpayProvider(),
     new MockPaymentProvider(),
   );
+  const paymentService = new PaymentService(
+    prisma as unknown as PrismaService,
+    inventoryService,
+    voucherUsageService,
+    paymentGateway,
+  );
   const checkoutService = new CheckoutService(
     prisma as unknown as PrismaService,
     cartService,
@@ -58,6 +65,7 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
     orderService,
     addressService,
     paymentGateway,
+    paymentService,
   );
 
   const stockOf = (id: string) =>

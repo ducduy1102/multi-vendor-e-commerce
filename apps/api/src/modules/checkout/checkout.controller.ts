@@ -2,12 +2,16 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Headers,
+  Param,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiCookieAuth,
   ApiHeader,
@@ -52,6 +56,30 @@ const CHECKOUT_PREVIEW_EXAMPLE = {
   excludedItems: [],
   blockingIssues: [],
   canPlaceOrder: true,
+};
+
+const CHECKOUT_GROUP_EXAMPLE = {
+  id: 'a1b2c3d4-1234-4a5b-8c9d-abcdef000001',
+  status: 'AWAITING_PAYMENT',
+  canRetry: true,
+  expiresAt: '2026-09-27T04:15:00.000Z',
+  createdAt: '2026-09-27T04:00:00.000Z',
+  totalAmount: '320000',
+  paymentMethod: 'VNPAY',
+  latestPaymentStatus: 'PENDING',
+  orders: [
+    {
+      id: 'b1b2c3d4-1234-4a5b-8c9d-abcdef000002',
+      shopId: 'c1b2c3d4-1234-4a5b-8c9d-abcdef000003',
+      shopName: 'Shop Áo Xinh',
+      status: 'AWAITING_PAYMENT',
+      subtotal: '300000',
+      discountAmount: '0',
+      shippingFee: '20000',
+      totalAmount: '320000',
+      items: [],
+    },
+  ],
 };
 
 const CHECKOUT_RESULT_EXAMPLE = {
@@ -152,6 +180,73 @@ export class CheckoutController {
   ) {
     const idempotencyKey = this.parseIdempotencyKey(idempotencyKeyHeader);
     return this.checkoutService.placeOrder(user.userId, dto, idempotencyKey);
+  }
+
+  // Chỉ chủ nhóm xem được — người khác coi như không tồn tại (404, cùng luật /addresses).
+  @Get('groups/:groupId')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({
+    summary:
+      'Trạng thái 1 nhóm thanh toán + danh sách đơn — cho trang /checkout/result',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: { success: true, data: CHECKOUT_GROUP_EXAMPLE } },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Nhóm không tồn tại hoặc không phải của bạn',
+  })
+  async getCheckoutGroup(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('groupId') groupId: string,
+  ) {
+    return this.checkoutService.getCheckoutGroup(user.userId, groupId);
+  }
+
+  // "Tiếp tục thanh toán" / thanh toán lại (1.11 (4b), 1.4) — trả lại payUrl đã lưu nếu còn dùng
+  // được (200), hoặc tạo lần thử mới (201, khớp default @Post() — route chốt ở 1.14). Status ĐỘNG
+  // theo `created` nên dùng @Res({passthrough:true}) tự set thay vì @HttpCode() tĩnh.
+  @Post('groups/:groupId/pay')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({
+    summary:
+      'Tiếp tục thanh toán / thanh toán lại — trả payUrl đã lưu nếu còn dùng được, hoặc tạo lần thử mới',
+  })
+  @ApiResponse({
+    status: 201,
+    schema: {
+      example: {
+        success: true,
+        data: {
+          paymentUrl: 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?...',
+          expiresAt: '2026-09-27T04:15:00.000Z',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Nhóm không tồn tại hoặc không phải của bạn',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'PAYMENT_RETRY_NOT_ALLOWED (đã trả tiền/đã hết hạn giữ) / PAYMENT_METHOD_UNAVAILABLE',
+  })
+  async retryPayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('groupId') groupId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { paymentUrl, expiresAt, created } =
+      await this.checkoutService.retryPayment(user.userId, groupId);
+    // 201 khi vừa tạo lần thử mới, 200 khi trả lại payUrl đã lưu của lần thử còn hiệu lực
+    // (route chốt ở Week7.md 1.14) — `created` không lộ ra body, chỉ payAttemptResultSchema.
+    res.status(created ? HttpStatus.CREATED : HttpStatus.OK);
+    return { paymentUrl, expiresAt };
   }
 
   private parseIdempotencyKey(raw: string | undefined): string | undefined {

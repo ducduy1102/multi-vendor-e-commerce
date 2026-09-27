@@ -21,6 +21,11 @@ import {
   InventoryService,
 } from '../product/inventory.service';
 import { OrderService } from '../order/order.service';
+import {
+  PaymentService,
+  type CheckoutGroupView,
+  type RetryPaymentResult,
+} from '../order/payment.service';
 import { VoucherService } from '../voucher/voucher.service';
 import { VoucherUsageService } from '../voucher/voucher-usage.service';
 import { AddressService } from './address.service';
@@ -94,7 +99,21 @@ export class CheckoutService {
     private readonly orderService: OrderService,
     private readonly addressService: AddressService,
     private readonly paymentGateway: PaymentGatewayService,
+    private readonly paymentService: PaymentService,
   ) {}
+
+  // Route đặt ở checkout (nhóm thanh toán là thực thể của checkout theo domain-erd.md) nhưng đơn
+  // thuần gọi qua PaymentService của module order — order sở hữu Order/Payment (Week7.md 1.14).
+  getCheckoutGroup(
+    userId: string,
+    groupId: string,
+  ): Promise<CheckoutGroupView> {
+    return this.paymentService.getCheckoutGroup(userId, groupId);
+  }
+
+  retryPayment(userId: string, groupId: string): Promise<RetryPaymentResult> {
+    return this.paymentService.retryPayment(userId, groupId);
+  }
 
   async placeOrder(
     userId: string,

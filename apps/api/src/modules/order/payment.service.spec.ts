@@ -1,0 +1,655 @@
+import { NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import type { VerifiedCallback } from '../../shared/payment/payment-gateway.interface';
+import { PrismaService } from '../../shared/prisma/prisma.service';
+import { expectAppException } from '../../shared/testing/expect-app-exception';
+import type { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
+import type { InventoryService } from '../product/inventory.service';
+import type { VoucherUsageService } from '../voucher/voucher-usage.service';
+import { PaymentService } from './payment.service';
+
+const SUCCESS_CALLBACK: VerifiedCallback = {
+  isSignatureValid: true,
+  txnRef: 'TXN1',
+  amountVnd: 100_000,
+  gatewayTransactionId: 'GW1',
+  outcome: 'SUCCESS',
+};
+
+const FAILED_CALLBACK: VerifiedCallback = {
+  ...SUCCESS_CALLBACK,
+  outcome: 'FAILED',
+};
+
+describe('PaymentService', () => {
+  let service: PaymentService;
+  let prisma: {
+    payment: {
+      findUnique: jest.Mock;
+      updateMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+    checkoutGroup: { findFirst: jest.Mock };
+    $transaction: jest.Mock;
+  };
+  let tx: {
+    $queryRaw: jest.Mock;
+    order: { updateMany: jest.Mock };
+    payment: { update: jest.Mock; count: jest.Mock; updateMany: jest.Mock };
+    orderItem: { findMany: jest.Mock };
+  };
+  let inventoryService: { commit: jest.Mock; release: jest.Mock };
+  let voucherUsageService: { release: jest.Mock };
+  let paymentGateway: { availabilityOf: jest.Mock; getConfigured: jest.Mock };
+
+  beforeEach(() => {
+    tx = {
+      $queryRaw: jest.fn(),
+      order: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      payment: {
+        update: jest.fn().mockResolvedValue({}),
+        count: jest.fn().mockResolvedValue(0),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      orderItem: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    prisma = {
+      payment: {
+        findUnique: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        create: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      checkoutGroup: { findFirst: jest.fn() },
+      $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(tx)),
+    };
+    inventoryService = {
+      commit: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+    };
+    voucherUsageService = { release: jest.fn().mockResolvedValue(0) };
+    paymentGateway = {
+      availabilityOf: jest.fn().mockReturnValue({ available: true }),
+      getConfigured: jest.fn().mockReturnValue({
+        createPayment: jest
+          .fn()
+          .mockResolvedValue({ payUrl: 'https://pay.example/new' }),
+      }),
+    };
+
+    service = new PaymentService(
+      prisma as unknown as PrismaService,
+      inventoryService as unknown as InventoryService,
+      voucherUsageService as unknown as VoucherUsageService,
+      paymentGateway as unknown as PaymentGatewayService,
+    );
+  });
+
+  describe('confirmPayment — fail-fast trước khi chạm nhánh SUCCESS/FAILED', () => {
+    it('chữ ký sai — INVALID_SIGNATURE, không đọc DB', async () => {
+      const result = await service.confirmPayment(
+        { ...SUCCESS_CALLBACK, isSignatureValid: false },
+        'IPN',
+      );
+      expect(result).toEqual({
+        outcome: 'INVALID_SIGNATURE',
+        checkoutGroupId: null,
+      });
+      expect(prisma.payment.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('không có txnRef dù chữ ký hợp lệ — INVALID_SIGNATURE', async () => {
+      const result = await service.confirmPayment(
+        { ...SUCCESS_CALLBACK, txnRef: null },
+        'IPN',
+      );
+      expect(result.outcome).toBe('INVALID_SIGNATURE');
+    });
+
+    it('txnRef không tồn tại — NOT_FOUND', async () => {
+      prisma.payment.findUnique.mockResolvedValue(null);
+
+      const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+
+      expect(result).toEqual({ outcome: 'NOT_FOUND', checkoutGroupId: null });
+    });
+
+    it('số tiền lệch — AMOUNT_MISMATCH, kèm checkoutGroupId để redirect', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'PENDING',
+        amount: new Prisma.Decimal(999_999),
+        checkoutGroupId: 'g1',
+      });
+
+      const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+
+      expect(result).toEqual({
+        outcome: 'AMOUNT_MISMATCH',
+        checkoutGroupId: 'g1',
+      });
+    });
+
+    it('amountVnd null (callback không hợp lệ dù chữ ký đúng) — AMOUNT_MISMATCH', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'PENDING',
+        amount: new Prisma.Decimal(100_000),
+        checkoutGroupId: 'g1',
+      });
+
+      const result = await service.confirmPayment(
+        { ...SUCCESS_CALLBACK, amountVnd: null },
+        'IPN',
+      );
+
+      expect(result.outcome).toBe('AMOUNT_MISMATCH');
+    });
+
+    it('outcome PENDING/không xác định — UNRECOGNIZED, không ghi DB', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'PENDING',
+        amount: new Prisma.Decimal(100_000),
+        checkoutGroupId: 'g1',
+      });
+
+      const result = await service.confirmPayment(
+        { ...SUCCESS_CALLBACK, outcome: 'PENDING' },
+        'IPN',
+      );
+
+      expect(result).toEqual({
+        outcome: 'UNRECOGNIZED',
+        checkoutGroupId: 'g1',
+      });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('confirmPayment — outcome SUCCESS', () => {
+    beforeEach(() => {
+      prisma.payment.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'PENDING',
+        amount: new Prisma.Decimal(100_000),
+        checkoutGroupId: 'g1',
+      });
+    });
+
+    it('bình thường: PENDING → SUCCESS, đơn AWAITING_PAYMENT → PENDING, chốt kho', async () => {
+      tx.$queryRaw
+        .mockResolvedValueOnce([{ status: 'PENDING' }]) // khoá payment
+        .mockResolvedValueOnce([
+          { id: 'o1', status: 'AWAITING_PAYMENT' },
+          { id: 'o2', status: 'AWAITING_PAYMENT' },
+        ]); // khoá đơn
+      tx.order.updateMany.mockResolvedValue({ count: 2 });
+      tx.orderItem.findMany.mockResolvedValue([
+        { productVariantId: 'v1', quantity: 2 },
+        { productVariantId: 'v2', quantity: 1 },
+      ]);
+
+      const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+
+      expect(result).toEqual({ outcome: 'CONFIRMED', checkoutGroupId: 'g1' });
+      expect(tx.order.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['o1', 'o2'] }, status: 'AWAITING_PAYMENT' },
+        data: { status: 'PENDING' },
+      });
+      expect(tx.payment.update).toHaveBeenCalledWith({
+        where: { id: 'p1' },
+        data: {
+          status: 'SUCCESS',
+          transactionId: 'GW1',
+          paidAt: expect.any(Date) as Date,
+        },
+      });
+      expect(inventoryService.commit).toHaveBeenCalledWith(tx, [
+        { productVariantId: 'v1', quantity: 2 },
+        { productVariantId: 'v2', quantity: 1 },
+      ]);
+    });
+
+    it('đã SUCCESS từ trước (dưới khoá) — ALREADY_CONFIRMED, không ghi lại/không chốt kho', async () => {
+      tx.$queryRaw.mockResolvedValueOnce([{ status: 'SUCCESS' }]);
+
+      const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+
+      expect(result).toEqual({
+        outcome: 'ALREADY_CONFIRMED',
+        checkoutGroupId: 'g1',
+      });
+      expect(tx.payment.update).not.toHaveBeenCalled();
+      expect(inventoryService.commit).not.toHaveBeenCalled();
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1); // không đi tiếp tới khoá đơn
+    });
+
+    it('FAILED nhưng đơn vẫn AWAITING_PAYMENT (mâu thuẫn) — vẫn CONFIRMED + chốt kho', async () => {
+      tx.$queryRaw
+        .mockResolvedValueOnce([{ status: 'FAILED' }])
+        .mockResolvedValueOnce([{ id: 'o1', status: 'AWAITING_PAYMENT' }]);
+      tx.order.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+
+      expect(result.outcome).toBe('CONFIRMED');
+      expect(inventoryService.commit).toHaveBeenCalled();
+    });
+
+    it('0 đơn lật được, đơn đang PENDING (đã có lần thử khác thành công) — DUPLICATE_SUCCESS_RECORDED', async () => {
+      tx.$queryRaw
+        .mockResolvedValueOnce([{ status: 'PENDING' }])
+        .mockResolvedValueOnce([{ id: 'o1', status: 'PENDING' }]);
+      tx.order.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+
+      expect(result).toEqual({
+        outcome: 'DUPLICATE_SUCCESS_RECORDED',
+        checkoutGroupId: 'g1',
+      });
+      expect(inventoryService.commit).not.toHaveBeenCalled();
+      // Vẫn ghi nhận SUCCESS cho ĐÚNG lần thử này (tiền thật đã vào).
+      expect(tx.payment.update).toHaveBeenCalledWith({
+        where: { id: 'p1' },
+        data: expect.objectContaining({ status: 'SUCCESS' }) as unknown,
+      });
+    });
+
+    it('0 đơn lật được, đơn đã CANCELLED (nhóm đã bị thu hồi) — LATE_SUCCESS_RECORDED', async () => {
+      tx.$queryRaw
+        .mockResolvedValueOnce([{ status: 'FAILED' }])
+        .mockResolvedValueOnce([{ id: 'o1', status: 'CANCELLED' }]);
+      tx.order.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+
+      expect(result).toEqual({
+        outcome: 'LATE_SUCCESS_RECORDED',
+        checkoutGroupId: 'g1',
+      });
+      expect(inventoryService.commit).not.toHaveBeenCalled();
+      expect(tx.payment.update).toHaveBeenCalled(); // vẫn ghi SUCCESS, không hồi sinh đơn
+    });
+  });
+
+  describe('confirmPayment — outcome FAILED', () => {
+    it('lần thử đang PENDING — FAILED_RECORDED, KHÔNG đụng đơn/kho/voucher', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'PENDING',
+        amount: new Prisma.Decimal(100_000),
+        checkoutGroupId: 'g1',
+      });
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.confirmPayment(FAILED_CALLBACK, 'IPN');
+
+      expect(result).toEqual({
+        outcome: 'FAILED_RECORDED',
+        checkoutGroupId: 'g1',
+      });
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { id: 'p1', status: 'PENDING' },
+        data: { status: 'FAILED' },
+      });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(inventoryService.release).not.toHaveBeenCalled();
+    });
+
+    it('đã FAILED từ trước — ALREADY_CONFIRMED, updateMany khớp 0 dòng', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'FAILED',
+        amount: new Prisma.Decimal(100_000),
+        checkoutGroupId: 'g1',
+      });
+      prisma.payment.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.confirmPayment(FAILED_CALLBACK, 'IPN');
+
+      expect(result.outcome).toBe('ALREADY_CONFIRMED');
+    });
+
+    it('đã SUCCESS — KHÔNG BAO GIỜ hạ xuống FAILED, ALREADY_CONFIRMED, không gọi updateMany', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'SUCCESS',
+        amount: new Prisma.Decimal(100_000),
+        checkoutGroupId: 'g1',
+      });
+
+      const result = await service.confirmPayment(FAILED_CALLBACK, 'IPN');
+
+      expect(result.outcome).toBe('ALREADY_CONFIRMED');
+      expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reclaimCheckoutGroup', () => {
+    it('nhóm đã có Payment SUCCESS — không đụng gì, reclaimed=false', async () => {
+      tx.payment.count.mockResolvedValue(1);
+
+      const result = await service.reclaimCheckoutGroup('g1');
+
+      expect(result).toEqual({ reclaimed: false });
+      expect(tx.payment.updateMany).not.toHaveBeenCalled();
+      expect(tx.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('bình thường: lật Payment PENDING→FAILED, đơn AWAITING_PAYMENT→CANCELLED, nhả kho + voucher', async () => {
+      tx.payment.count.mockResolvedValue(0);
+      tx.$queryRaw.mockResolvedValue([
+        { id: 'o1', status: 'AWAITING_PAYMENT' },
+        { id: 'o2', status: 'CANCELLED' }, // đơn khác của nhóm đã huỷ trước đó (không liên quan)
+      ]);
+      tx.order.updateMany.mockResolvedValue({ count: 1 });
+      tx.orderItem.findMany.mockResolvedValue([
+        { productVariantId: 'v1', quantity: 3 },
+      ]);
+
+      const result = await service.reclaimCheckoutGroup('g1');
+
+      expect(result).toEqual({ reclaimed: true });
+      expect(tx.payment.updateMany).toHaveBeenCalledWith({
+        where: { checkoutGroupId: 'g1', status: 'PENDING' },
+        data: { status: 'FAILED' },
+      });
+      expect(tx.order.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['o1'] }, status: 'AWAITING_PAYMENT' },
+        data: { status: 'CANCELLED' },
+      });
+      expect(inventoryService.release).toHaveBeenCalledWith(tx, [
+        { productVariantId: 'v1', quantity: 3 },
+      ]);
+      expect(voucherUsageService.release).toHaveBeenCalledWith(tx, 'g1');
+    });
+
+    it('không còn đơn AWAITING_PAYMENT nào (đã reclaim trước đó) — idempotent, không nhả gì thêm', async () => {
+      tx.payment.count.mockResolvedValue(0);
+      tx.$queryRaw.mockResolvedValue([{ id: 'o1', status: 'CANCELLED' }]);
+
+      const result = await service.reclaimCheckoutGroup('g1');
+
+      expect(result).toEqual({ reclaimed: false });
+      expect(tx.order.updateMany).not.toHaveBeenCalled();
+      expect(inventoryService.release).not.toHaveBeenCalled();
+      expect(voucherUsageService.release).not.toHaveBeenCalled();
+    });
+
+    it('race: khoá được đơn nhưng updateMany lật 0 dòng — không nhả (lưới an toàn)', async () => {
+      tx.payment.count.mockResolvedValue(0);
+      tx.$queryRaw.mockResolvedValue([
+        { id: 'o1', status: 'AWAITING_PAYMENT' },
+      ]);
+      tx.order.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.reclaimCheckoutGroup('g1');
+
+      expect(result).toEqual({ reclaimed: false });
+      expect(inventoryService.release).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getCheckoutGroup', () => {
+    const baseGroup = (overrides: Record<string, unknown> = {}) => ({
+      id: 'g1',
+      userId: 'user-1',
+      createdAt: new Date('2026-09-27T00:00:00.000Z'),
+      orders: [
+        {
+          id: 'o1',
+          shopId: 'shop-1',
+          status: 'PENDING',
+          totalAmount: new Prisma.Decimal(120_000),
+          discountAmount: new Prisma.Decimal(0),
+          shippingFee: new Prisma.Decimal(20_000),
+          shop: { name: 'Shop A' },
+          items: [
+            {
+              productVariantId: 'v1',
+              productName: 'Áo thun',
+              variantLabel: 'Đỏ / M',
+              sku: 'SKU1',
+              imageUrl: null,
+              quantity: 1,
+              priceAtPurchase: new Prisma.Decimal(100_000),
+            },
+          ],
+        },
+      ],
+      payments: [
+        {
+          id: 'p1',
+          status: 'SUCCESS',
+          method: 'VNPAY',
+          amount: new Prisma.Decimal(120_000),
+          txnRef: 'TXN1',
+          payUrl: 'https://pay.example/1',
+          expiresAt: new Date('2026-09-27T00:15:00.000Z'),
+          createdAt: new Date('2026-09-27T00:00:00.000Z'),
+        },
+      ],
+      ...overrides,
+    });
+
+    it('nhóm của người khác — 404, không lộ dữ liệu', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getCheckoutGroup('user-1', 'g-other'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('trả đúng shape — status/canRetry/subtotal suy từ Order, không lazy-reclaim khi đã PAID', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(baseGroup());
+      const reclaimSpy = jest
+        .spyOn(service, 'reclaimCheckoutGroup')
+        .mockResolvedValue({ reclaimed: true });
+
+      const result = await service.getCheckoutGroup('user-1', 'g1');
+
+      expect(reclaimSpy).not.toHaveBeenCalled();
+      expect(result.status).toBe('PAID');
+      expect(result.canRetry).toBe(false);
+      expect(result.paymentMethod).toBe('VNPAY');
+      expect(result.orders[0]).toMatchObject({
+        shopName: 'Shop A',
+        subtotal: '100000', // 120000 (total) + 0 (discount) - 20000 (ship)
+        shippingFee: '20000',
+        totalAmount: '120000',
+      });
+    });
+
+    it('lần thử mới nhất quá expiresAt + ân hạn, chưa có Payment SUCCESS — tự reclaim rồi đọc lại', async () => {
+      const lapsedGroup = baseGroup({
+        payments: [
+          {
+            id: 'p1',
+            status: 'PENDING',
+            method: 'VNPAY',
+            amount: new Prisma.Decimal(120_000),
+            txnRef: 'TXN1',
+            payUrl: null,
+            // Quá xa trong quá khứ để chắc chắn vượt ân hạn mặc định (5 phút).
+            expiresAt: new Date(Date.now() - 60 * 60_000),
+            createdAt: new Date(Date.now() - 90 * 60_000),
+          },
+        ],
+      });
+      prisma.checkoutGroup.findFirst
+        .mockResolvedValueOnce(lapsedGroup)
+        .mockResolvedValueOnce(
+          baseGroup({
+            orders: [{ ...baseGroup().orders[0], status: 'CANCELLED' }],
+            payments: [{ ...lapsedGroup.payments[0], status: 'FAILED' }],
+          }),
+        );
+      const reclaimSpy = jest
+        .spyOn(service, 'reclaimCheckoutGroup')
+        .mockResolvedValue({ reclaimed: true });
+
+      const result = await service.getCheckoutGroup('user-1', 'g1');
+
+      expect(reclaimSpy).toHaveBeenCalledWith('g1');
+      expect(prisma.checkoutGroup.findFirst).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe('CANCELLED');
+    });
+  });
+
+  describe('retryPayment', () => {
+    function pendingGroup(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'g1',
+        userId: 'user-1',
+        createdAt: new Date(),
+        orders: [{ id: 'o1', status: 'AWAITING_PAYMENT' }],
+        payments: [
+          {
+            id: 'p1',
+            status: 'PENDING',
+            method: 'VNPAY',
+            amount: new Prisma.Decimal(120_000),
+            txnRef: 'TXN1',
+            payUrl: 'https://pay.example/old',
+            expiresAt: new Date(Date.now() + 10 * 60_000),
+            createdAt: new Date(),
+          },
+        ],
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      jest.spyOn(service, 'reclaimCheckoutGroup').mockResolvedValue({
+        reclaimed: false,
+      });
+    });
+
+    it('nhóm của người khác — 404', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.retryPayment('user-1', 'g-other'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('đã PAID — 409 PAYMENT_RETRY_NOT_ALLOWED reason ALREADY_PAID', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(
+        pendingGroup({
+          orders: [{ id: 'o1', status: 'PENDING' }],
+          payments: [
+            {
+              ...pendingGroup().payments[0],
+              status: 'SUCCESS',
+            },
+          ],
+        }),
+      );
+
+      await expectAppException(service.retryPayment('user-1', 'g1'), {
+        status: 409,
+        code: 'PAYMENT_RETRY_NOT_ALLOWED',
+        details: { reason: 'ALREADY_PAID' },
+      });
+    });
+
+    it('đã hết hạn giữ (PAYMENT_EXPIRED) — 409 reason HOLD_EXPIRED', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(
+        pendingGroup({
+          payments: [
+            {
+              ...pendingGroup().payments[0],
+              expiresAt: new Date(Date.now() - 60_000),
+            },
+          ],
+        }),
+      );
+
+      await expectAppException(service.retryPayment('user-1', 'g1'), {
+        status: 409,
+        code: 'PAYMENT_RETRY_NOT_ALLOWED',
+        details: { reason: 'HOLD_EXPIRED' },
+      });
+    });
+
+    it('còn PENDING/chưa hết hạn nhưng đã chạm MAX_HOLD — 409 reason HOLD_EXPIRED', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(
+        pendingGroup({ createdAt: new Date(Date.now() - 40 * 60_000) }), // > MAX_HOLD mặc định 30 phút
+      );
+
+      await expectAppException(service.retryPayment('user-1', 'g1'), {
+        status: 409,
+        code: 'PAYMENT_RETRY_NOT_ALLOWED',
+        details: { reason: 'HOLD_EXPIRED' },
+      });
+    });
+
+    it('PENDING chưa hết hạn, CÓ payUrl — trả lại URL đã lưu, không tạo lần thử mới', async () => {
+      const group = pendingGroup();
+      prisma.checkoutGroup.findFirst.mockResolvedValue(group);
+
+      const result = await service.retryPayment('user-1', 'g1');
+
+      expect(result).toEqual({
+        paymentUrl: 'https://pay.example/old',
+        expiresAt: group.payments[0].expiresAt.toISOString(),
+        created: false,
+      });
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+    });
+
+    it('PENDING chưa hết hạn nhưng KHÔNG có payUrl — đánh dấu FAILED rồi tạo lần thử mới', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(
+        pendingGroup({
+          payments: [{ ...pendingGroup().payments[0], payUrl: null }],
+        }),
+      );
+
+      const result = await service.retryPayment('user-1', 'g1');
+
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { id: 'p1', status: 'PENDING' },
+        data: { status: 'FAILED' },
+      });
+      expect(prisma.payment.create).toHaveBeenCalled();
+      expect(result.paymentUrl).toBe('https://pay.example/new');
+    });
+
+    it('lần thử mới nhất đã FAILED, còn trong hạn giữ — tạo lần thử mới ngay (không cần đánh dấu lại)', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(
+        pendingGroup({
+          payments: [{ ...pendingGroup().payments[0], status: 'FAILED' }],
+        }),
+      );
+
+      const result = await service.retryPayment('user-1', 'g1');
+
+      expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+      expect(prisma.payment.create).toHaveBeenCalled();
+      expect(result.paymentUrl).toBe('https://pay.example/new');
+    });
+
+    it('phương thức không khả dụng (vượt trần/sàn) — 409 PAYMENT_METHOD_UNAVAILABLE, không tạo lần thử', async () => {
+      paymentGateway.availabilityOf.mockReturnValue({
+        available: false,
+        reason: 'AMOUNT_TOO_LARGE',
+      });
+      prisma.checkoutGroup.findFirst.mockResolvedValue(
+        pendingGroup({
+          payments: [{ ...pendingGroup().payments[0], payUrl: null }],
+        }),
+      );
+
+      await expectAppException(service.retryPayment('user-1', 'g1'), {
+        status: 409,
+        code: 'PAYMENT_METHOD_UNAVAILABLE',
+        details: { method: 'VNPAY', reason: 'AMOUNT_TOO_LARGE' },
+      });
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+    });
+  });
+});

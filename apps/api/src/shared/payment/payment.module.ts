@@ -7,6 +7,8 @@ import { VnpayProvider } from './vnpay.provider';
 // (rules/general.md mục 1) — đổi/thêm cổng chỉ sửa ở đây. Mọi provider có constructor rẻ, không throw.
 @Module({
   providers: [VnpayProvider, MockPaymentProvider, PaymentGatewayService],
-  exports: [PaymentGatewayService, MockPaymentProvider],
+  // OrderController (2.9) gọi thẳng VnpayProvider/MockPaymentProvider.verifyCallback ở endpoint
+  // IPN/return/mock — mỏng hơn khi đi qua PaymentGatewayService.get() (đã biết chắc cổng theo route).
+  exports: [PaymentGatewayService, VnpayProvider, MockPaymentProvider],
 })
 export class PaymentModule {}

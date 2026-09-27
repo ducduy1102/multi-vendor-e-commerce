@@ -65,3 +65,28 @@ const DEFAULT_PAYMENT_TTL_MINUTES = 15;
 export function readPaymentTtlMinutes(): number {
   return readPositiveInt('PAYMENT_TTL_MINUTES', DEFAULT_PAYMENT_TTL_MINUTES);
 }
+
+// Ân hạn trước khi THU HỒI giữ chỗ (Week7.md 1.4): không thu hồi ngay tại expiresAt vì IPN của giao
+// dịch trả đúng sát giờ hết hạn có thể tới trễ. Trong [expiresAt, expiresAt + ân hạn) coi là "đã hết
+// hạn" (không cho thanh toán lại) nhưng kho/voucher CHƯA bị nhả — dùng ở `reclaimCheckoutGroup`
+// (2.10) và hết hạn "lười" (`getCheckoutGroup`/`retryPayment`, 2.9).
+const DEFAULT_PAYMENT_RECLAIM_GRACE_MINUTES = 5;
+
+export function readPaymentReclaimGraceMinutes(): number {
+  return readPositiveInt(
+    'PAYMENT_RECLAIM_GRACE_MINUTES',
+    DEFAULT_PAYMENT_RECLAIM_GRACE_MINUTES,
+  );
+}
+
+// Trần thời gian giữ hàng khi bấm "thanh toán lại" nhiều lần (Week7.md 1.4): lần thử mới có
+// `expiresAt = min(now + TTL, checkoutGroup.createdAt + MAX_HOLD)` — không thì retry liên tục giữ
+// hàng vô hạn (giữ chỗ để hết hàng của người khác).
+const DEFAULT_PAYMENT_MAX_HOLD_MINUTES = 30;
+
+export function readPaymentMaxHoldMinutes(): number {
+  return readPositiveInt(
+    'PAYMENT_MAX_HOLD_MINUTES',
+    DEFAULT_PAYMENT_MAX_HOLD_MINUTES,
+  );
+}
