@@ -31,6 +31,7 @@ describe('AddressService', () => {
       delete: jest.Mock;
     };
     $transaction: jest.Mock;
+    $queryRaw: jest.Mock;
   };
 
   beforeEach(() => {
@@ -45,6 +46,7 @@ describe('AddressService', () => {
         delete: jest.fn().mockResolvedValue(row()),
       },
       $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
     service = new AddressService(prisma as unknown as PrismaService);
   });
@@ -127,6 +129,37 @@ describe('AddressService', () => {
           'isDefault',
         ].sort(),
       );
+    });
+  });
+
+  describe('getOwnedAddressOrThrow', () => {
+    it('trả đủ field snapshot của đúng chủ', async () => {
+      prisma.address.findFirst.mockResolvedValue(row());
+
+      const address = await service.getOwnedAddressOrThrow('user-1', 'addr-1');
+
+      expect(prisma.address.findFirst).toHaveBeenCalledWith({
+        where: { id: 'addr-1', userId: 'user-1' },
+        select: {
+          recipientName: true,
+          phone: true,
+          line1: true,
+          ward: true,
+          province: true,
+        },
+      });
+      expect(address).toMatchObject({
+        recipientName: 'Nguyễn Văn A',
+        province: 'Hồ Chí Minh',
+      });
+    });
+
+    it('địa chỉ của người khác hoặc không tồn tại — 404', async () => {
+      prisma.address.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getOwnedAddressOrThrow('user-1', 'addr-x'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
@@ -219,8 +252,15 @@ describe('AddressService', () => {
   });
 
   describe('setDefaultAddress', () => {
-    it('bỏ mặc định cũ TRƯỚC rồi mới đặt mới — cùng 1 transaction, đúng thứ tự', async () => {
+    it('khoá TOÀN BỘ địa chỉ của user TRƯỚC rồi mới bỏ mặc định cũ rồi mới đặt mới — cùng 1 transaction, đúng thứ tự', async () => {
+      // Bug thật (phát hiện qua address.int-spec.ts): thiếu bước khoá này thì 2 lệnh setDefaultAddress
+      // đồng thời cho CÙNG user không serialize với nhau khi addressId truyền vào đã sẵn là mặc định
+      // (updateMany khớp 0 dòng, không khoá gì) — 2 địa chỉ cùng thành "true", vi phạm unique index.
       const callOrder: string[] = [];
+      prisma.$queryRaw.mockImplementation(() => {
+        callOrder.push('lock');
+        return Promise.resolve([]);
+      });
       prisma.address.updateMany.mockImplementation(() => {
         callOrder.push('updateMany');
         return Promise.resolve({ count: 1 });
@@ -232,7 +272,7 @@ describe('AddressService', () => {
 
       await service.setDefaultAddress('user-1', 'addr-1');
 
-      expect(callOrder).toEqual(['updateMany', 'update']);
+      expect(callOrder).toEqual(['lock', 'updateMany', 'update']);
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(prisma.address.updateMany).toHaveBeenCalledWith({
         where: { userId: 'user-1', isDefault: true, id: { not: 'addr-1' } },
