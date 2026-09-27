@@ -57,3 +57,11 @@ export function readVnpayAmountLimits(): AmountLimits {
   );
   return { min, max };
 }
+
+// Hạn thanh toán = lúc tạo lần thử + TTL (Week7.md 1.4). Áp dụng chung cho mọi cổng nên đặt ở đây,
+// không riêng VNPay. Job hết hạn (quét + nhả giữ chỗ) làm ở 2.10 — đây chỉ là nơi ĐỌC cấu hình.
+const DEFAULT_PAYMENT_TTL_MINUTES = 15;
+
+export function readPaymentTtlMinutes(): number {
+  return readPositiveInt('PAYMENT_TTL_MINUTES', DEFAULT_PAYMENT_TTL_MINUTES);
+}

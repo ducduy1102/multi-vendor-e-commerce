@@ -7,5 +7,7 @@ import { CartService } from './cart.service';
   imports: [VoucherModule],
   controllers: [CartController],
   providers: [CartService],
+  // checkout đọc giỏ (getCartItems/buildCartView) khi đặt hàng (Week7.md 1.14).
+  exports: [CartService],
 })
 export class CartModule {}

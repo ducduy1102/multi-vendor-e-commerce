@@ -76,13 +76,60 @@ export async function createCheckoutGroup(
   });
 }
 
+// Sổ địa chỉ giao hàng — dùng trực tiếp prisma (không qua AddressService) vì int-spec chỉ cần dữ
+// liệu hợp lệ, không kiểm lại luật CRUD (đã có address.int-spec.ts riêng).
+export async function createAddress(
+  prisma: PrismaClient,
+  userId: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return prisma.address.create({
+    data: {
+      userId,
+      recipientName: 'Nguyễn Văn A',
+      phone: '0912345678',
+      line1: '12 Nguyễn Huệ',
+      ward: 'Phường Bến Nghé',
+      province: 'Hồ Chí Minh',
+      isDefault: true,
+      ...overrides,
+    },
+    select: { id: true },
+  });
+}
+
+export async function addCartItem(
+  prisma: PrismaClient,
+  userId: string,
+  productVariantId: string,
+  quantity: number,
+) {
+  const cart = await prisma.cart.upsert({
+    where: { userId },
+    create: { userId },
+    update: {},
+    select: { id: true },
+  });
+  return prisma.cartItem.create({
+    data: { cartId: cart.id, productVariantId, quantity },
+    select: { id: true },
+  });
+}
+
 export async function cleanupByTag(prisma: PrismaClient, tag: string) {
   const users = await prisma.user.findMany({
     where: { email: { startsWith: tag } },
     select: { id: true },
   });
   const userIds = users.map((u) => u.id);
+  // Thứ tự xoá theo chiều FK RESTRICT (Payment/Order/VoucherUsage → CheckoutGroup → User;
+  // Order/OrderItem → Shop/ProductVariant): xoá "lá" trước "gốc". Cart/CartItem/Address cascade
+  // tự động theo User (onDelete: Cascade) nên không cần dọn riêng.
+  await prisma.payment.deleteMany({
+    where: { checkoutGroup: { userId: { in: userIds } } },
+  });
   await prisma.voucherUsage.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.order.deleteMany({ where: { userId: { in: userIds } } }); // cascade OrderItem
   await prisma.checkoutGroup.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.voucher.deleteMany({
     where: { code: { startsWith: tag.toUpperCase() } },
