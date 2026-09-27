@@ -1,5 +1,5 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { TxClient } from '../../shared/prisma/tx-client';
+import { expectAppException } from '../../shared/testing/expect-app-exception';
 import { VoucherUsageService } from './voucher-usage.service';
 
 // Unit test với `tx` GIẢ: kiểm thứ tự bước và idempotency. Tranh chấp đồng thời thật (2 checkout
@@ -84,9 +84,11 @@ describe('VoucherUsageService (tx giả)', () => {
     it('hết lượt toàn hệ thống — 400 đúng chữ FE đang nhận diện, không đếm/insert', async () => {
       tx.$executeRaw.mockResolvedValue(0);
 
-      await expect(service.consume(asTx(), params)).rejects.toThrow(
-        new BadRequestException('Voucher usage limit has been reached'),
-      );
+      await expectAppException(service.consume(asTx(), params), {
+        status: 400,
+        code: 'VOUCHER_USAGE_LIMIT_REACHED',
+        message: 'Voucher usage limit has been reached',
+      });
       expect(tx.voucherUsage.count).not.toHaveBeenCalled();
       expect(tx.voucherUsage.create).not.toHaveBeenCalled();
     });
@@ -95,19 +97,20 @@ describe('VoucherUsageService (tx giả)', () => {
       tx.$executeRaw.mockResolvedValue(0);
       tx.voucher.count.mockResolvedValue(0);
 
-      await expect(service.consume(asTx(), params)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expectAppException(service.consume(asTx(), params), {
+        status: 404,
+        code: 'VOUCHER_NOT_FOUND',
+      });
     });
 
     it('đã đủ perUserLimit — 400 đúng chữ FE đang nhận diện, không insert (transaction rollback lượt vừa tăng)', async () => {
       tx.voucherUsage.count.mockResolvedValue(1);
 
-      await expect(service.consume(asTx(), params)).rejects.toThrow(
-        new BadRequestException(
-          'You have reached the usage limit for this voucher',
-        ),
-      );
+      await expectAppException(service.consume(asTx(), params), {
+        status: 400,
+        code: 'VOUCHER_PER_USER_LIMIT_REACHED',
+        message: 'You have reached the usage limit for this voucher',
+      });
       expect(tx.voucherUsage.create).not.toHaveBeenCalled();
     });
 

@@ -1,5 +1,5 @@
-import { UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { AppException } from '../../shared/exceptions/app.exception';
 import { AuthController } from './auth.controller';
 import type { AuthService } from './auth.service';
 import type { GoogleProfile } from './types/google-profile.type';
@@ -91,7 +91,7 @@ describe('AuthController.googleCallback', () => {
 
     it('tài khoản bị khoá — error=account_not_active', async () => {
       authService.loginWithGoogle.mockRejectedValue(
-        new UnauthorizedException('ACCOUNT_NOT_ACTIVE'),
+        new AppException(401, 'ACCOUNT_NOT_ACTIVE', 'ACCOUNT_NOT_ACTIVE'),
       );
 
       await callback({});

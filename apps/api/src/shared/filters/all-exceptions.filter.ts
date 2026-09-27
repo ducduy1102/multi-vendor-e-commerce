@@ -34,7 +34,32 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
-    response.status(status).json({ success: false, data: null, message });
+    response.status(status).json({
+      success: false,
+      data: null,
+      message,
+      ...(isHttpException ? this.extractCodeAndDetails(exception) : {}),
+    });
+  }
+
+  // Chỉ lỗi có mã (AppException) mới có thêm code/details; lỗi khác giữ body cũ y hệt.
+  private extractCodeAndDetails(exception: HttpException): {
+    code?: string;
+    details?: unknown;
+  } {
+    const body = exception.getResponse();
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      !('code' in body) ||
+      typeof body.code !== 'string'
+    ) {
+      return {};
+    }
+    const details = 'details' in body ? body.details : undefined;
+    return details === undefined
+      ? { code: body.code }
+      : { code: body.code, details };
   }
 
   private extractMessage(exception: HttpException): string {

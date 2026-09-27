@@ -265,7 +265,11 @@ describe('AuthService', () => {
             email: baseUser.email,
             password: 'correct-password',
           }),
-        ).rejects.toBeInstanceOf(UnauthorizedException);
+        ).rejects.toMatchObject({
+          status: 401,
+          code: 'ACCOUNT_NOT_ACTIVE',
+          message: 'ACCOUNT_NOT_ACTIVE',
+        });
         expect(prisma.user.update).not.toHaveBeenCalled();
       },
     );
@@ -381,7 +385,11 @@ describe('AuthService', () => {
 
       await expect(
         service.loginWithGoogle(googleProfile),
-      ).rejects.toBeInstanceOf(UnauthorizedException);
+      ).rejects.toMatchObject({
+        status: 401,
+        code: 'ACCOUNT_NOT_ACTIVE',
+        message: 'ACCOUNT_NOT_ACTIVE',
+      });
     });
   });
 

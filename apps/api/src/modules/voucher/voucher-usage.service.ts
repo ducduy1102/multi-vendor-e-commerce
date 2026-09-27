@@ -1,8 +1,5 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { AppException } from '../../shared/exceptions/app.exception';
 import type { TxClient } from '../../shared/prisma/tx-client';
 
 export interface ConsumeVoucherParams {
@@ -39,15 +36,21 @@ export class VoucherUsageService {
     if (affected !== 1) {
       const exists = await tx.voucher.count({ where: { id: voucherId } });
       if (exists === 0) {
-        throw new NotFoundException('Voucher not found');
+        throw new AppException(404, 'VOUCHER_NOT_FOUND', 'Voucher not found');
       }
-      throw new BadRequestException('Voucher usage limit has been reached');
+      throw new AppException(
+        400,
+        'VOUCHER_USAGE_LIMIT_REACHED',
+        'Voucher usage limit has been reached',
+      );
     }
 
     if (perUserLimit !== null) {
       const used = await this.countActiveByUser(tx, voucherId, userId);
       if (used >= perUserLimit) {
-        throw new BadRequestException(
+        throw new AppException(
+          400,
+          'VOUCHER_PER_USER_LIMIT_REACHED',
           'You have reached the usage limit for this voucher',
         );
       }

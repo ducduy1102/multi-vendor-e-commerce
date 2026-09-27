@@ -147,7 +147,7 @@ export class CartController {
   @ApiResponse({
     status: 409,
     description:
-      'Vượt số lượng còn đặt được (stock - đang giữ chỗ), giỏ đã đủ 50 dòng, hoặc sản phẩm/shop không còn bán',
+      'Body kèm code + details: INSUFFICIENT_STOCK {available} (vượt số lượng còn đặt được), CART_FULL {maxLines} (giỏ đã đủ 50 dòng), CART_ITEM_UNAVAILABLE (sản phẩm/shop không còn bán)',
   })
   async addItem(
     @CurrentUser() user: AuthenticatedUser,
@@ -186,7 +186,7 @@ export class CartController {
   @ApiResponse({
     status: 409,
     description:
-      'Vượt số lượng còn đặt được (stock - đang giữ chỗ), giỏ đã đủ 50 dòng, hoặc sản phẩm/shop không còn bán',
+      'Body kèm code + details: INSUFFICIENT_STOCK {available} (vượt số lượng còn đặt được), CART_FULL {maxLines} (giỏ đã đủ 50 dòng), CART_ITEM_UNAVAILABLE (sản phẩm/shop không còn bán)',
   })
   async updateItem(
     @CurrentUser() user: AuthenticatedUser,

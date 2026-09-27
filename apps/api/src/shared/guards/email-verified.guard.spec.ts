@@ -1,4 +1,4 @@
-import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { ExecutionContext } from '@nestjs/common';
 import { EmailVerifiedGuard } from './email-verified.guard';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -42,7 +42,11 @@ describe('EmailVerifiedGuard', () => {
 
     await expect(
       guard.canActivate(createContext({ userId: 'user-1', role: 'USER' })),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'EMAIL_NOT_VERIFIED',
+      message: 'EMAIL_NOT_VERIFIED',
+    });
   });
 
   it('báo lỗi 403 nếu user không còn tồn tại trong DB', async () => {
@@ -52,6 +56,10 @@ describe('EmailVerifiedGuard', () => {
       guard.canActivate(
         createContext({ userId: 'deleted-user', role: 'USER' }),
       ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'EMAIL_NOT_VERIFIED',
+      message: 'EMAIL_NOT_VERIFIED',
+    });
   });
 });

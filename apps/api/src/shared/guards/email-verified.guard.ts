@@ -1,9 +1,5 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  ForbiddenException,
-  Injectable,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { AppException } from '../exceptions/app.exception';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../../modules/auth/types/jwt-payload.type';
 
@@ -29,7 +25,7 @@ export class EmailVerifiedGuard implements CanActivate {
       select: { emailVerifiedAt: true },
     });
     if (!dbUser?.emailVerifiedAt) {
-      throw new ForbiddenException('EMAIL_NOT_VERIFIED');
+      throw new AppException(403, 'EMAIL_NOT_VERIFIED', 'EMAIL_NOT_VERIFIED');
     }
 
     return true;

@@ -60,7 +60,8 @@ export class ShopController {
   })
   @ApiResponse({
     status: 403,
-    description: 'Email chưa xác thực (message: "EMAIL_NOT_VERIFIED")',
+    description:
+      'Email chưa xác thực (message: "EMAIL_NOT_VERIFIED", code: "EMAIL_NOT_VERIFIED")',
   })
   @ApiResponse({
     status: 409,

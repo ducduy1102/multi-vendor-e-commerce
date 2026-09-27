@@ -1,8 +1,5 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   isVariantAvailable,
@@ -128,7 +125,12 @@ export class CartService {
       select: { quantity: true },
     });
     if (!existing && (await this.countCartLines(cartId)) >= MAX_CART_LINES) {
-      throw new ConflictException(`Cart is full (max ${MAX_CART_LINES} items)`);
+      throw new AppException(
+        409,
+        'CART_FULL',
+        `Cart is full (max ${MAX_CART_LINES} items)`,
+        { maxLines: MAX_CART_LINES },
+      );
     }
     const nextQuantity = (existing?.quantity ?? 0) + quantity;
     this.assertWithinStock(nextQuantity, availableStock(variant));
@@ -156,7 +158,11 @@ export class CartService {
       throw new NotFoundException('Cart item not found');
     }
     if (!isVariantAvailable(item.productVariant)) {
-      throw new ConflictException('This product is no longer available');
+      throw new AppException(
+        409,
+        'CART_ITEM_UNAVAILABLE',
+        'This product is no longer available',
+      );
     }
     this.assertWithinStock(quantity, availableStock(item.productVariant));
 
@@ -281,15 +287,22 @@ export class CartService {
       throw new NotFoundException('Product variant not found');
     }
     if (!isVariantAvailable(variant)) {
-      throw new ConflictException('This product is no longer available');
+      throw new AppException(
+        409,
+        'CART_ITEM_UNAVAILABLE',
+        'This product is no longer available',
+      );
     }
     return variant;
   }
 
   private assertWithinStock(quantity: number, stock: number): void {
     if (quantity > stock) {
-      throw new ConflictException(
+      throw new AppException(
+        409,
+        'INSUFFICIENT_STOCK',
         `Quantity exceeds available stock (${stock})`,
+        { available: stock },
       );
     }
   }

@@ -100,7 +100,10 @@ export class VoucherController {
   })
   @ApiResponse({ status: 403, description: 'Không phải chủ shop' })
   @ApiResponse({ status: 404, description: 'Shop không tồn tại' })
-  @ApiResponse({ status: 409, description: 'Mã voucher đã tồn tại' })
+  @ApiResponse({
+    status: 409,
+    description: 'Mã voucher đã tồn tại (code: VOUCHER_CODE_EXISTS)',
+  })
   async create(
     @ShopOwnerContext() { shopId }: { shopId: string },
     @Body(new ZodValidationPipe(createVoucherSchema)) dto: CreateVoucherDto,

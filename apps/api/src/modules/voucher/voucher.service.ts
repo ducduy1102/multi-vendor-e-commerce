@@ -1,11 +1,7 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { CartDiscount, CartView } from '@ecommerce/types';
+import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { CreateVoucherDto } from './dto/create-voucher.dto';
 import { calculateDiscount } from './voucher-discount';
@@ -59,19 +55,23 @@ export class VoucherService {
       },
     });
     if (!voucher) {
-      throw new NotFoundException('Voucher not found');
+      throw new AppException(404, 'VOUCHER_NOT_FOUND', 'Voucher not found');
     }
     if (!voucher.isActive) {
-      throw new BadRequestException('Voucher is not active');
+      throw new AppException(400, 'VOUCHER_INACTIVE', 'Voucher is not active');
     }
     if (voucher.expiresAt && voucher.expiresAt <= new Date()) {
-      throw new BadRequestException('Voucher has expired');
+      throw new AppException(400, 'VOUCHER_EXPIRED', 'Voucher has expired');
     }
     if (
       voucher.usageLimit !== null &&
       voucher.usedCount >= voucher.usageLimit
     ) {
-      throw new BadRequestException('Voucher usage limit has been reached');
+      throw new AppException(
+        400,
+        'VOUCHER_USAGE_LIMIT_REACHED',
+        'Voucher usage limit has been reached',
+      );
     }
 
     // Guest (không có userId) bỏ qua perUserLimit khi preview (1.13) — Tuần 7
@@ -85,7 +85,9 @@ export class VoucherService {
         },
       });
       if (used >= voucher.perUserLimit) {
-        throw new BadRequestException(
+        throw new AppException(
+          400,
+          'VOUCHER_PER_USER_LIMIT_REACHED',
           'You have reached the usage limit for this voucher',
         );
       }
@@ -95,7 +97,9 @@ export class VoucherService {
     // toàn sàn tính trên tổng giỏ (đều chỉ gồm item khả dụng, 1.9/1.11).
     const base = this.resolveBase(voucher.shopId, cart);
     if (base <= 0) {
-      throw new BadRequestException(
+      throw new AppException(
+        400,
+        'VOUCHER_NOT_APPLICABLE',
         'Voucher does not apply to any item in your cart',
       );
     }
@@ -103,8 +107,12 @@ export class VoucherService {
       voucher.minOrderAmount !== null &&
       base < voucher.minOrderAmount.toNumber()
     ) {
-      throw new BadRequestException(
+      throw new AppException(
+        400,
+        'VOUCHER_BELOW_MINIMUM',
         `Order amount is below the voucher minimum (${voucher.minOrderAmount.toString()})`,
+        // Số nguyên VND cho FE hiển thị (thay cho việc bóc số từ message).
+        { minAmount: Math.ceil(voucher.minOrderAmount.toNumber()) },
       );
     }
 
@@ -152,7 +160,11 @@ export class VoucherService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('Voucher code already exists');
+        throw new AppException(
+          409,
+          'VOUCHER_CODE_EXISTS',
+          'Voucher code already exists',
+        );
       }
       throw error;
     }
@@ -174,7 +186,7 @@ export class VoucherService {
       select: { id: true },
     });
     if (!existing) {
-      throw new NotFoundException('Voucher not found');
+      throw new AppException(404, 'VOUCHER_NOT_FOUND', 'Voucher not found');
     }
     return this.prisma.voucher.update({
       where: { id: voucherId },

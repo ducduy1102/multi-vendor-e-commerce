@@ -33,7 +33,11 @@ describe('JwtStrategy', () => {
 
     await expect(
       strategy.validate({ sub: 'user-1', role: Role.USER }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toMatchObject({
+      status: 401,
+      code: 'ACCOUNT_NOT_ACTIVE',
+      message: 'ACCOUNT_NOT_ACTIVE',
+    });
   });
 
   it('báo lỗi 401 nếu user không còn tồn tại (đã bị xoá sau khi token issue)', async () => {

@@ -1,5 +1,6 @@
-import { BadRequestException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { AppException } from '../../shared/exceptions/app.exception';
+import { expectAppException } from '../../shared/testing/expect-app-exception';
 import {
   cleanupByTag,
   createCheckoutGroup,
@@ -85,9 +86,11 @@ describe('VoucherUsageService (DB thật)', () => {
     const u2 = await createUser(prisma, TAG);
     await consumeOnce(voucher, u1.id);
 
-    await expect(consumeOnce(voucher, u2.id)).rejects.toThrow(
-      new BadRequestException(LIMIT_REACHED),
-    );
+    await expectAppException(consumeOnce(voucher, u2.id), {
+      status: 400,
+      code: 'VOUCHER_USAGE_LIMIT_REACHED',
+      message: LIMIT_REACHED,
+    });
     expect(await usedCountOf(voucher.id)).toBe(1);
   });
 
@@ -96,9 +99,11 @@ describe('VoucherUsageService (DB thật)', () => {
     const user = await createUser(prisma, TAG);
     await consumeOnce(voucher, user.id);
 
-    await expect(consumeOnce(voucher, user.id)).rejects.toThrow(
-      new BadRequestException(PER_USER_REACHED),
-    );
+    await expectAppException(consumeOnce(voucher, user.id), {
+      status: 400,
+      code: 'VOUCHER_PER_USER_LIMIT_REACHED',
+      message: PER_USER_REACHED,
+    });
     expect(await usedCountOf(voucher.id)).toBe(1);
     expect(await activeUsageCount(voucher.id)).toBe(1);
   });
@@ -176,8 +181,8 @@ describe('VoucherUsageService (DB thật)', () => {
       expect(
         rejected.every(
           (r) =>
-            r.reason instanceof BadRequestException &&
-            r.reason.message === LIMIT_REACHED,
+            r.reason instanceof AppException &&
+            r.reason.code === 'VOUCHER_USAGE_LIMIT_REACHED',
         ),
       ).toBe(true);
       expect(await usedCountOf(voucher.id)).toBe(3);
@@ -199,8 +204,8 @@ describe('VoucherUsageService (DB thật)', () => {
       expect(
         rejected.every(
           (r) =>
-            r.reason instanceof BadRequestException &&
-            r.reason.message === PER_USER_REACHED,
+            r.reason instanceof AppException &&
+            r.reason.code === 'VOUCHER_PER_USER_LIMIT_REACHED',
         ),
       ).toBe(true);
       expect(await usedCountOf(voucher.id)).toBe(1);

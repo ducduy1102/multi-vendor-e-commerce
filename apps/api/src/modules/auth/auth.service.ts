@@ -11,6 +11,7 @@ import { AccountStatus, OAuthProvider, Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { MailService } from '../../shared/mail/mail.service';
+import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
@@ -181,7 +182,7 @@ export class AuthService {
     // Check sau khi xác minh mật khẩu — không lộ việc tài khoản bị khoá cho
     // request sai mật khẩu (giữ nguyên message chung ở nhánh trên).
     if (user.accountStatus !== AccountStatus.ACTIVE) {
-      throw new UnauthorizedException('ACCOUNT_NOT_ACTIVE');
+      throw new AppException(401, 'ACCOUNT_NOT_ACTIVE', 'ACCOUNT_NOT_ACTIVE');
     }
 
     const tokens = await this.issueTokens(user.id, user.role);
@@ -246,7 +247,7 @@ export class AuthService {
     }
 
     if (user.accountStatus !== AccountStatus.ACTIVE) {
-      throw new UnauthorizedException('ACCOUNT_NOT_ACTIVE');
+      throw new AppException(401, 'ACCOUNT_NOT_ACTIVE', 'ACCOUNT_NOT_ACTIVE');
     }
 
     const tokens = await this.issueTokens(user.id, user.role);

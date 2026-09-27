@@ -1,11 +1,8 @@
-import {
-  BadRequestException,
-  ConflictException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { CartView } from '@ecommerce/types';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { expectAppException } from '../../shared/testing/expect-app-exception';
 import { VoucherService } from './voucher.service';
 
 function cartView(): CartView {
@@ -61,9 +58,11 @@ describe('VoucherService.validate', () => {
   it('mã không tồn tại — 404', async () => {
     prisma.voucher.findUnique.mockResolvedValue(null);
 
-    await expect(service.validate('NOPE', cartView())).rejects.toThrow(
-      NotFoundException,
-    );
+    await expectAppException(service.validate('NOPE', cartView()), {
+      status: 404,
+      code: 'VOUCHER_NOT_FOUND',
+      message: 'Voucher not found',
+    });
   });
 
   it('chuẩn hoá mã: bỏ khoảng trắng, viết hoa trước khi tra', async () => {
@@ -108,9 +107,10 @@ describe('VoucherService.validate', () => {
   it('giỏ không còn item khả dụng nào (subtotal 0) — không áp được', async () => {
     const empty: CartView = { ...cartView(), shops: [], subtotal: '0' };
 
-    await expect(service.validate('SALE10', empty)).rejects.toThrow(
-      BadRequestException,
-    );
+    await expectAppException(service.validate('SALE10', empty), {
+      status: 400,
+      code: 'VOUCHER_NOT_APPLICABLE',
+    });
   });
 
   it('voucher đang tắt — 400 với message riêng', async () => {
@@ -118,9 +118,11 @@ describe('VoucherService.validate', () => {
       voucherRow({ isActive: false }),
     );
 
-    await expect(service.validate('SALE10', cartView())).rejects.toThrow(
-      'Voucher is not active',
-    );
+    await expectAppException(service.validate('SALE10', cartView()), {
+      status: 400,
+      code: 'VOUCHER_INACTIVE',
+      message: 'Voucher is not active',
+    });
   });
 
   it('voucher hết hạn — 400 với message riêng', async () => {
@@ -128,9 +130,11 @@ describe('VoucherService.validate', () => {
       voucherRow({ expiresAt: new Date(Date.now() - 1000) }),
     );
 
-    await expect(service.validate('SALE10', cartView())).rejects.toThrow(
-      'Voucher has expired',
-    );
+    await expectAppException(service.validate('SALE10', cartView()), {
+      status: 400,
+      code: 'VOUCHER_EXPIRED',
+      message: 'Voucher has expired',
+    });
   });
 
   it('chưa hết hạn — áp bình thường', async () => {
@@ -146,9 +150,11 @@ describe('VoucherService.validate', () => {
       voucherRow({ usageLimit: 5, usedCount: 5 }),
     );
 
-    await expect(service.validate('SALE10', cartView())).rejects.toThrow(
-      'Voucher usage limit has been reached',
-    );
+    await expectAppException(service.validate('SALE10', cartView()), {
+      status: 400,
+      code: 'VOUCHER_USAGE_LIMIT_REACHED',
+      message: 'Voucher usage limit has been reached',
+    });
   });
 
   it('còn 1 lượt — vẫn áp được', async () => {
@@ -168,9 +174,13 @@ describe('VoucherService.validate', () => {
     );
 
     // Tổng giỏ 500k ≥ 250k nhưng subtotal shop-b chỉ 200k → phải bị chặn.
-    await expect(service.validate('SALE10', cartView())).rejects.toThrow(
-      'Order amount is below the voucher minimum',
-    );
+    // details.minAmount là số nguyên VND — FE không còn phải bóc số từ message.
+    await expectAppException(service.validate('SALE10', cartView()), {
+      status: 400,
+      code: 'VOUCHER_BELOW_MINIMUM',
+      message: 'Order amount is below the voucher minimum (250000)',
+      details: { minAmount: 250000 },
+    });
   });
 
   it('đúng bằng minOrderAmount — cho phép', async () => {
@@ -264,9 +274,14 @@ describe('VoucherService.validate', () => {
     it('user đã dùng đủ số lần — 400', async () => {
       prisma.order.count.mockResolvedValue(1);
 
-      await expect(
+      await expectAppException(
         service.validate('SALE10', cartView(), 'user-1'),
-      ).rejects.toThrow('You have reached the usage limit for this voucher');
+        {
+          status: 400,
+          code: 'VOUCHER_PER_USER_LIMIT_REACHED',
+          message: 'You have reached the usage limit for this voucher',
+        },
+      );
     });
 
     it('đếm đúng theo voucher + user, không tính đơn đã huỷ', async () => {
@@ -357,9 +372,11 @@ describe('VoucherService (seller)', () => {
     it('trùng mã (P2002) — 409, không phải 500', async () => {
       prisma.voucher.create.mockRejectedValue(p2002());
 
-      await expect(service.createVoucher('shop-1', dto)).rejects.toThrow(
-        ConflictException,
-      );
+      await expectAppException(service.createVoucher('shop-1', dto), {
+        status: 409,
+        code: 'VOUCHER_CODE_EXISTS',
+        message: 'Voucher code already exists',
+      });
     });
 
     it('lỗi khác P2002 vẫn ném ra nguyên vẹn', async () => {
@@ -421,9 +438,10 @@ describe('VoucherService (seller)', () => {
     });
 
     it('voucher của shop khác hoặc không tồn tại — 404, không update', async () => {
-      await expect(
+      await expectAppException(
         service.setVoucherActive('shop-1', 'someone-elses', true),
-      ).rejects.toThrow(NotFoundException);
+        { status: 404, code: 'VOUCHER_NOT_FOUND' },
+      );
       expect(prisma.voucher.update).not.toHaveBeenCalled();
     });
   });

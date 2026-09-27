@@ -1,6 +1,7 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { MAX_CART_LINES } from '@ecommerce/types';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { expectAppException } from '../../shared/testing/expect-app-exception';
 import { VoucherService } from '../voucher/voucher.service';
 import { CartService } from './cart.service';
 
@@ -257,9 +258,12 @@ describe('CartService', () => {
       );
       prisma.cartItem.findUnique.mockResolvedValue({ quantity: 3 });
 
-      await expect(service.addItem('user-1', 'variant-1', 2)).rejects.toThrow(
-        ConflictException,
-      );
+      await expectAppException(service.addItem('user-1', 'variant-1', 2), {
+        status: 409,
+        code: 'INSUFFICIENT_STOCK',
+        message: 'Quantity exceeds available stock (4)',
+        details: { available: 4 },
+      });
       expect(prisma.cartItem.upsert).not.toHaveBeenCalled();
     });
 
@@ -293,9 +297,11 @@ describe('CartService', () => {
         variantRow({ stock: 5, reservedStock: 5 }),
       );
 
-      await expect(service.addItem('user-1', 'variant-1', 1)).rejects.toThrow(
-        ConflictException,
-      );
+      await expectAppException(service.addItem('user-1', 'variant-1', 1), {
+        status: 409,
+        code: 'INSUFFICIENT_STOCK',
+        details: { available: 0 },
+      });
     });
 
     describe('trần MAX_CART_LINES', () => {
@@ -313,9 +319,12 @@ describe('CartService', () => {
           if (isAllowed) {
             await expect(promise).resolves.toMatchObject({ quantity: 1 });
           } else {
-            await expect(promise).rejects.toThrow(
-              `Cart is full (max ${MAX_CART_LINES} items)`,
-            );
+            await expectAppException(promise, {
+              status: 409,
+              code: 'CART_FULL',
+              message: `Cart is full (max ${MAX_CART_LINES} items)`,
+              details: { maxLines: MAX_CART_LINES },
+            });
             expect(prisma.cartItem.upsert).not.toHaveBeenCalled();
           }
         },
@@ -347,9 +356,11 @@ describe('CartService', () => {
     ])('%s — không cho thêm (409)', async (_label, override) => {
       prisma.productVariant.findUnique.mockResolvedValue(variantRow(override));
 
-      await expect(service.addItem('user-1', 'variant-1', 1)).rejects.toThrow(
-        ConflictException,
-      );
+      await expectAppException(service.addItem('user-1', 'variant-1', 1), {
+        status: 409,
+        code: 'CART_ITEM_UNAVAILABLE',
+        message: 'This product is no longer available',
+      });
       expect(prisma.cartItem.upsert).not.toHaveBeenCalled();
     });
   });
@@ -388,9 +399,14 @@ describe('CartService', () => {
         productVariant: variantRow({ stock: 3 }),
       });
 
-      await expect(
+      await expectAppException(
         service.updateItemQuantity('user-1', 'item-1', 4),
-      ).rejects.toThrow(ConflictException);
+        {
+          status: 409,
+          code: 'INSUFFICIENT_STOCK',
+          details: { available: 3 },
+        },
+      );
       expect(prisma.cartItem.update).not.toHaveBeenCalled();
     });
 
@@ -399,9 +415,14 @@ describe('CartService', () => {
         productVariant: variantRow({ isActive: false }),
       });
 
-      await expect(
+      await expectAppException(
         service.updateItemQuantity('user-1', 'item-1', 1),
-      ).rejects.toThrow(ConflictException);
+        {
+          status: 409,
+          code: 'CART_ITEM_UNAVAILABLE',
+          message: 'This product is no longer available',
+        },
+      );
     });
   });
 
@@ -411,9 +432,14 @@ describe('CartService', () => {
         productVariant: variantRow({ stock: 10, reservedStock: 9 }),
       });
 
-      await expect(
+      await expectAppException(
         service.updateItemQuantity('user-1', 'item-1', 2),
-      ).rejects.toThrow(ConflictException);
+        {
+          status: 409,
+          code: 'INSUFFICIENT_STOCK',
+          details: { available: 1 },
+        },
+      );
       expect(prisma.cartItem.update).not.toHaveBeenCalled();
     });
   });

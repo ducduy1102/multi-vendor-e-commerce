@@ -7,7 +7,6 @@ import {
   Post,
   Req,
   Res,
-  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -21,6 +20,7 @@ import {
 import { safeNextPath } from '@ecommerce/types';
 import type { Request, Response } from 'express';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
+import { AppException } from '../../shared/exceptions/app.exception';
 import { GoogleAuthGuard } from '../../shared/guards/google-auth.guard';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { RefreshTokenGuard } from '../../shared/guards/refresh-token.guard';
@@ -217,8 +217,7 @@ export class AuthController {
       res.redirect(googleSuccessRedirectUrl(next));
     } catch (error) {
       const reason =
-        error instanceof UnauthorizedException &&
-        error.message === 'ACCOUNT_NOT_ACTIVE'
+        error instanceof AppException && error.code === 'ACCOUNT_NOT_ACTIVE'
           ? 'account_not_active'
           : 'google_login_failed';
       res.redirect(googleFailureRedirectUrl(reason, next));
