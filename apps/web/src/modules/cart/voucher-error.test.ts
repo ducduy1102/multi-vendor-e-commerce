@@ -4,38 +4,43 @@ import { classifyVoucherError } from './voucher-error';
 
 describe('classifyVoucherError', () => {
   it.each([
-    ['Voucher not found', 'voucherNotFound'],
-    ['Voucher is not active', 'voucherInactive'],
-    ['Voucher has expired', 'voucherExpired'],
-    ['Voucher usage limit has been reached', 'voucherUsageLimit'],
-    ['You have reached the usage limit for this voucher', 'voucherPerUserLimit'],
-    ['Voucher does not apply to any item in your cart', 'voucherNotApplicable'],
-  ])('"%s" -> %s', (message, key) => {
-    expect(classifyVoucherError(message)).toEqual({ key });
+    ['VOUCHER_NOT_FOUND', 'cart.voucherNotFound'],
+    ['VOUCHER_INACTIVE', 'cart.voucherInactive'],
+    ['VOUCHER_EXPIRED', 'cart.voucherExpired'],
+    ['VOUCHER_USAGE_LIMIT_REACHED', 'cart.voucherUsageLimit'],
+    ['VOUCHER_PER_USER_LIMIT_REACHED', 'cart.voucherPerUserLimit'],
+    ['VOUCHER_NOT_APPLICABLE', 'cart.voucherNotApplicable'],
+  ] as const)('%s -> %s', (code, key) => {
+    expect(classifyVoucherError({ code, details: undefined })).toEqual({ key });
   });
 
-  it('dưới mức tối thiểu -> tách số tiền tối thiểu ra để FE tự định dạng', () => {
-    expect(classifyVoucherError('Order amount is below the voucher minimum (300000)')).toEqual({
-      key: 'voucherMinOrder',
-      minAmount: '300000',
+  it('VOUCHER_BELOW_MINIMUM -> tách minAmount (số nguyên VND) từ details để FE tự định dạng', () => {
+    expect(
+      classifyVoucherError({ code: 'VOUCHER_BELOW_MINIMUM', details: { minAmount: 300000 } }),
+    ).toEqual({
+      key: 'cart.voucherMinOrder',
+      minAmount: 300000,
     });
   });
 
-  it('mức tối thiểu có phần thập phân vẫn nhận diện được', () => {
-    expect(classifyVoucherError('Order amount is below the voucher minimum (150000.5)')).toEqual({
-      key: 'voucherMinOrder',
-      minAmount: '150000.5',
+  it('VOUCHER_BELOW_MINIMUM nhưng details sai hình dạng -> vẫn đúng key, minAmount undefined', () => {
+    expect(
+      classifyVoucherError({ code: 'VOUCHER_BELOW_MINIMUM', details: { wrong: 'shape' } }),
+    ).toEqual({
+      key: 'cart.voucherMinOrder',
+      minAmount: undefined,
     });
   });
 
-  it('bỏ khoảng trắng thừa hai đầu', () => {
-    expect(classifyVoucherError('  Voucher has expired  ')).toEqual({ key: 'voucherExpired' });
+  it('không có code (lỗi cũ chưa di chuyển sang mã) -> lỗi chung, không vỡ', () => {
+    expect(classifyVoucherError({ code: undefined, details: undefined })).toEqual({
+      key: 'cart.voucherGenericError',
+    });
   });
 
-  it('message lạ (BE đổi câu chữ) -> rơi về lỗi chung, không lộ tiếng Anh, không vỡ', () => {
-    expect(classifyVoucherError('Something else entirely')).toEqual({
-      key: 'voucherGenericError',
+  it('mã lạ/không thuộc nhóm voucher (vd CART_FULL lọt vào do BE đổi chỗ ném lỗi) -> lỗi chung', () => {
+    expect(classifyVoucherError({ code: 'CART_FULL', details: { maxLines: 50 } })).toEqual({
+      key: 'cart.voucherGenericError',
     });
-    expect(classifyVoucherError('')).toEqual({ key: 'voucherGenericError' });
   });
 });

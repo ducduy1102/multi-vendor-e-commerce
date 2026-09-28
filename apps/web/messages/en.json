@@ -6,7 +6,9 @@
     "loading": "Loading...",
     "or": "or",
     "toggleTheme": "Toggle light/dark theme",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "errorNetwork": "You appear to be offline, please check your connection and try again",
+    "errorInvalidResponse": "Didn't get a valid response from the server, please try again"
   },
   "error": {
     "title": "Something went wrong",
@@ -41,6 +43,7 @@
     "validationTokenInvalid": "Invalid token",
     "validationConfirmPasswordRequired": "Please re-enter your password",
     "validationConfirmPasswordMismatch": "Passwords do not match",
+    "errorEmailNotVerified": "Your email hasn't been verified yet, please verify it before continuing",
     "loginTitle": "Log in",
     "loginEmailLabel": "Email",
     "loginPasswordLabel": "Password",
@@ -278,6 +281,9 @@
     "voucherMinOrder": "Your order must reach {amount} to use this voucher",
     "voucherNotApplicable": "This voucher does not apply to any item in your cart",
     "voucherGenericError": "Couldn't apply this voucher",
+    "cartFull": "Your cart has reached the maximum of {max} different items, can't add a new one",
+    "errorItemUnavailable": "This product is no longer available",
+    "errorInsufficientStock": "Quantity exceeds available stock (only {available} left)",
     "checkout": "Proceed to checkout",
     "checkoutSoon": "Checkout is coming soon"
   },
@@ -331,5 +337,15 @@
     "deactivateAction": "Turn off",
     "activateAction": "Turn on",
     "deactivateConfirm": "Turn off voucher {code}? Customers cannot use it until you turn it back on."
+  },
+  "checkout": {
+    "errorNoPurchasableItems": "There are no purchasable items in your cart",
+    "errorOutOfStock": "Some items are out of stock, please check your cart",
+    "errorPriceChanged": "The price has changed since you last checked, please review your order",
+    "errorCartChanged": "Your cart has changed, please try again",
+    "errorTooManyPendingCheckouts": "You have too many checkouts awaiting payment, please complete or cancel some before placing a new order",
+    "errorPaymentMethodUnavailable": "This payment method is currently unavailable",
+    "errorAddressLimitReached": "You've reached the limit for saved addresses",
+    "errorPaymentRetryNotAllowed": "You can't retry payment for this checkout right now"
   }
 }

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { withIntl } from '@/shared/lib/test-i18n';
 
 import type { CartView } from '../types';
+import type { VoucherErrorState } from '../voucher-error';
 import { CartSummary } from './CartSummary';
 
 function cartView(overrides: Partial<CartView> = {}): CartView {
@@ -29,7 +30,7 @@ function cartView(overrides: Partial<CartView> = {}): CartView {
 interface Props {
   cart?: CartView;
   appliedCode?: string;
-  voucherError?: string | null;
+  voucherError?: VoucherErrorState | null;
   isApplying?: boolean;
 }
 
@@ -115,7 +116,10 @@ describe('CartSummary', () => {
 
   describe('lỗi mã', () => {
     it('BE từ chối -> hiện bản dịch, ô nhập aria-invalid và nối aria-describedby với lỗi', () => {
-      renderSummary({ appliedCode: 'OLD', voucherError: 'Voucher has expired' });
+      renderSummary({
+        appliedCode: 'OLD',
+        voucherError: { code: 'VOUCHER_EXPIRED', details: undefined },
+      });
 
       const alert = screen.getByRole('alert');
       expect(alert).toHaveTextContent('Mã giảm giá đã hết hạn');
@@ -127,7 +131,7 @@ describe('CartSummary', () => {
     it('mức tối thiểu được định dạng tiền qua formatPrice', () => {
       renderSummary({
         appliedCode: 'BIG',
-        voucherError: 'Order amount is below the voucher minimum (1500000)',
+        voucherError: { code: 'VOUCHER_BELOW_MINIMUM', details: { minAmount: 1500000 } },
       });
 
       expect(screen.getByRole('alert')).toHaveTextContent(
@@ -136,7 +140,10 @@ describe('CartSummary', () => {
     });
 
     it('không có mã đang áp -> không hiện lỗi dù voucherError còn giá trị cũ', () => {
-      renderSummary({ appliedCode: '', voucherError: 'Voucher has expired' });
+      renderSummary({
+        appliedCode: '',
+        voucherError: { code: 'VOUCHER_EXPIRED', details: undefined },
+      });
 
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
       expect(screen.getByLabelText('Mã giảm giá')).not.toHaveAttribute('aria-invalid');
@@ -146,7 +153,7 @@ describe('CartSummary', () => {
       renderSummary({
         cart: cartView({ discount: { code: 'OLD', shopId: null, amount: '1000' } }),
         appliedCode: 'OLD',
-        voucherError: 'Voucher has expired',
+        voucherError: { code: 'VOUCHER_EXPIRED', details: undefined },
       });
 
       expect(screen.queryByText('Đã áp dụng mã OLD')).not.toBeInTheDocument();

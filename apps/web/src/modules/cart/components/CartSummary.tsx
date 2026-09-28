@@ -8,16 +8,17 @@ import { formatPrice } from '@/modules/product';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
+import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
 
 import type { CartView } from '../types';
-import { classifyVoucherError } from '../voucher-error';
+import { classifyVoucherError, type VoucherErrorState } from '../voucher-error';
 
 interface CartSummaryProps {
   cart: CartView;
   // Mã đang được áp (đã bấm "Áp dụng"), '' nếu chưa có.
   appliedCode: string;
-  // Message thô BE trả khi mã bị từ chối (null nếu mã hợp lệ / chưa nhập).
-  voucherError: string | null;
+  // Lý do BE từ chối mã, dạng code/details máy đọc được (null nếu mã hợp lệ / chưa nhập).
+  voucherError: VoucherErrorState | null;
   isApplying: boolean;
   onApplyVoucher: (code: string) => void;
   onClearVoucher: () => void;
@@ -37,6 +38,10 @@ export function CartSummary({
   onClearVoucher,
 }: CartSummaryProps) {
   const t = useTranslations('cart');
+  // Key của errorInfo là key ĐẦY ĐỦ (kèm namespace, vd 'cart.voucherNotFound') —
+  // ERROR_CODE_MESSAGE_KEYS trải trên nhiều namespace nên cần translator toàn cục,
+  // giống useApiErrorMessage/useValidationMessage (shared/hooks/useValidationMessage.ts).
+  const tGlobal = useTranslations() as unknown as LooseTranslator;
   const inputId = useId();
   const errorId = useId();
   const [codeInput, setCodeInput] = useState(appliedCode);
@@ -84,8 +89,9 @@ export function CartSummary({
         </div>
         {errorInfo ? (
           <p id={errorId} role="alert" className="text-sm text-destructive">
-            {t(errorInfo.key, {
-              amount: errorInfo.minAmount ? formatPrice(errorInfo.minAmount) : '',
+            {tGlobal(errorInfo.key, {
+              amount:
+                errorInfo.minAmount !== undefined ? formatPrice(String(errorInfo.minAmount)) : '',
             })}
           </p>
         ) : null}

@@ -6,7 +6,9 @@
     "loading": "Đang tải...",
     "or": "hoặc",
     "toggleTheme": "Chuyển đổi giao diện sáng/tối",
-    "cancel": "Huỷ"
+    "cancel": "Huỷ",
+    "errorNetwork": "Mất kết nối mạng, vui lòng kiểm tra và thử lại",
+    "errorInvalidResponse": "Không nhận được phản hồi hợp lệ từ máy chủ, vui lòng thử lại"
   },
   "error": {
     "title": "Đã có lỗi xảy ra",
@@ -41,6 +43,7 @@
     "validationTokenInvalid": "Token không hợp lệ",
     "validationConfirmPasswordRequired": "Vui lòng nhập lại mật khẩu",
     "validationConfirmPasswordMismatch": "Mật khẩu nhập lại không khớp",
+    "errorEmailNotVerified": "Email của bạn chưa được xác thực, vui lòng xác thực email trước khi tiếp tục",
     "loginTitle": "Đăng nhập",
     "loginEmailLabel": "Email",
     "loginPasswordLabel": "Mật khẩu",
@@ -278,6 +281,9 @@
     "voucherMinOrder": "Đơn hàng chưa đạt mức tối thiểu {amount} để dùng mã này",
     "voucherNotApplicable": "Mã này không áp dụng cho sản phẩm nào trong giỏ hàng",
     "voucherGenericError": "Không áp dụng được mã giảm giá này",
+    "cartFull": "Giỏ hàng đã đạt tối đa {max} sản phẩm khác nhau, không thể thêm mới",
+    "errorItemUnavailable": "Sản phẩm này hiện không còn bán",
+    "errorInsufficientStock": "Số lượng vượt quá tồn kho hiện có (còn {available})",
     "checkout": "Tiến hành thanh toán",
     "checkoutSoon": "Tính năng thanh toán sắp ra mắt"
   },
@@ -331,5 +337,15 @@
     "deactivateAction": "Tắt",
     "activateAction": "Bật",
     "deactivateConfirm": "Tắt voucher {code}? Khách sẽ không dùng được mã này cho tới khi bạn bật lại."
+  },
+  "checkout": {
+    "errorNoPurchasableItems": "Không có sản phẩm nào trong giỏ có thể đặt hàng",
+    "errorOutOfStock": "Một số sản phẩm đã hết hàng, vui lòng kiểm tra lại giỏ hàng",
+    "errorPriceChanged": "Giá đã thay đổi kể từ lần xem trước, vui lòng kiểm tra lại đơn hàng",
+    "errorCartChanged": "Giỏ hàng đã thay đổi, vui lòng thử lại",
+    "errorTooManyPendingCheckouts": "Bạn đang có quá nhiều đơn chờ thanh toán, vui lòng hoàn tất hoặc huỷ bớt trước khi đặt đơn mới",
+    "errorPaymentMethodUnavailable": "Phương thức thanh toán này hiện không khả dụng",
+    "errorAddressLimitReached": "Bạn đã đạt giới hạn số địa chỉ giao hàng",
+    "errorPaymentRetryNotAllowed": "Không thể thanh toán lại cho đơn này lúc này"
   }
 }
