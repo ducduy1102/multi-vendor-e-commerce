@@ -5,9 +5,9 @@ import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { withIntl } from '@/shared/lib/test-i18n';
-import type { Category } from '../types';
+import type { Category, Product } from '../types';
 
-import { ProductForm, type ProductFormValues } from './ProductForm';
+import { ProductForm, productToFormValues, type ProductFormValues } from './ProductForm';
 
 const categories: Category[] = [{ id: 'cat-1', name: 'Áo nam', slug: 'ao-nam', parentId: null }];
 
@@ -334,6 +334,139 @@ describe('ProductForm', () => {
       expect(payload.attributes).toHaveLength(2);
       expect(payload.attributes[0]).toMatchObject({ id: 'attr-1', name: 'Màu sắc' });
       expect(payload.attributes[1]).toMatchObject({ id: undefined, name: 'Size' });
+    });
+  });
+
+  // Week7.md 3.3b — mô hình kho vật lý/giữ chỗ (1.3): ô "Tồn kho" Seller thấy/sửa PHẢI là kho
+  // vật lý (stock + reservedStock), không phải `available` mà BE trả cho buyer.
+  describe('productToFormValues — kho vật lý (Week7.md 1.3)', () => {
+    function productFixture(overrides: Partial<Product['variants'][number]> = {}): Product {
+      return {
+        id: 'p1',
+        shopId: 'shop-1',
+        categoryId: 'cat-1',
+        name: 'Áo thun nam',
+        slug: 'ao-thun-nam',
+        description: null,
+        status: 'PUBLISHED',
+        minPrice: '150000',
+        maxPrice: '150000',
+        createdAt: '2026-09-27T00:00:00.000Z',
+        updatedAt: '2026-09-27T00:00:00.000Z',
+        attributes: [],
+        variants: [
+          {
+            id: 'v1',
+            sku: 'AT-1',
+            price: '150000',
+            stock: 7,
+            reservedStock: 3,
+            isActive: true,
+            images: [],
+            weightGram: null,
+            attributeValues: [],
+            ...overrides,
+          },
+        ],
+      };
+    }
+
+    it('cộng available + reservedStock ra đúng kho vật lý, giữ nguyên reservedStock để hiển thị', () => {
+      const values = productToFormValues(productFixture());
+
+      expect(values.variants[0].stock).toBe('10');
+      expect(values.variants[0].reservedStock).toBe(3);
+    });
+
+    it('không có đơn nào đang giữ chỗ -> kho vật lý = available (reservedStock 0)', () => {
+      const values = productToFormValues(productFixture({ reservedStock: 0 }));
+
+      expect(values.variants[0].stock).toBe('7');
+      expect(values.variants[0].reservedStock).toBe(0);
+    });
+  });
+
+  describe('ô Tồn kho — kho vật lý & giữ chỗ (Week7.md 3.3b)', () => {
+    const editDefaultValues: ProductFormValues = {
+      name: 'Áo thun nam',
+      categoryId: 'cat-1',
+      description: '',
+      status: 'PUBLISHED',
+      attributes: [],
+      variants: [
+        {
+          sku: 'AT-1',
+          price: '100000',
+          stock: '10',
+          reservedStock: 3,
+          attributeValues: [],
+          images: [],
+        },
+      ],
+    };
+
+    it('reservedStock > 0 -> hiện dòng phụ "Đang giữ chỗ cho đơn: N"', () => {
+      renderProductForm(
+        <ProductForm
+          mode="edit"
+          categories={categories}
+          onSubmit={vi.fn()}
+          defaultValues={editDefaultValues}
+        />,
+      );
+
+      expect(screen.getByText('Đang giữ chỗ cho đơn: 3')).toBeInTheDocument();
+    });
+
+    it('không có đơn nào đang giữ chỗ -> KHÔNG hiện dòng phụ', () => {
+      renderProductForm(<ProductForm mode="create" categories={categories} onSubmit={vi.fn()} />);
+
+      expect(screen.queryByText(/Đang giữ chỗ cho đơn/)).not.toBeInTheDocument();
+    });
+
+    it('hạ tồn kho xuống dưới số đang giữ chỗ -> báo lỗi tại ô Tồn kho, KHÔNG gọi onSubmit', async () => {
+      const user = userEvent.setup();
+      const onSubmit = vi.fn();
+      renderProductForm(
+        <ProductForm
+          mode="edit"
+          categories={categories}
+          onSubmit={onSubmit}
+          defaultValues={editDefaultValues}
+        />,
+      );
+
+      await user.clear(screen.getByLabelText('Tồn kho'));
+      await user.type(screen.getByLabelText('Tồn kho'), '2');
+      await user.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+
+      expect(
+        await screen.findByText('Tồn kho không được thấp hơn số đang giữ chỗ (3)'),
+      ).toBeInTheDocument();
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it('nhập đúng bằng số đang giữ chỗ -> hợp lệ, gửi đúng kho vật lý (không phải available)', async () => {
+      const user = userEvent.setup();
+      const onSubmit = vi.fn();
+      renderProductForm(
+        <ProductForm
+          mode="edit"
+          categories={categories}
+          onSubmit={onSubmit}
+          defaultValues={editDefaultValues}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+
+      await waitFor(() =>
+        expect(onSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({
+            variants: [expect.objectContaining({ sku: 'AT-1', stock: 10 })],
+          }),
+        ),
+      );
     });
   });
 });
