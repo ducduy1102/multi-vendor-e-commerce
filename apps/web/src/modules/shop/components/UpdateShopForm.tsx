@@ -8,6 +8,7 @@ import { Button } from '@/shared/components/ui/button';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/shared/components/ui/field';
 import { Input } from '@/shared/components/ui/input';
 import { Textarea } from '@/shared/components/ui/textarea';
+import { useValidationMessage } from '@/shared/hooks/useValidationMessage';
 
 import { updateShopSchema } from '../schemas/shop.schema';
 import type { UpdateShopInput } from '../types';
@@ -25,6 +26,7 @@ interface UpdateShopFormProps {
 // hợp dữ liệu tới bất đồng bộ hơn `defaultValues` (chỉ áp dụng lúc mount).
 export function UpdateShopForm({ defaultValues, onSubmit, isSubmitting }: UpdateShopFormProps) {
   const t = useTranslations('shop');
+  const tv = useValidationMessage();
   const {
     register,
     handleSubmit,
@@ -45,7 +47,7 @@ export function UpdateShopForm({ defaultValues, onSubmit, isSubmitting }: Update
             aria-invalid={!!errors.name}
             {...register('name')}
           />
-          {errors.name && <FieldError>{errors.name.message}</FieldError>}
+          {errors.name && <FieldError>{tv(errors.name.message)}</FieldError>}
         </Field>
 
         <Field data-invalid={!!errors.description}>
@@ -57,7 +59,7 @@ export function UpdateShopForm({ defaultValues, onSubmit, isSubmitting }: Update
             aria-invalid={!!errors.description}
             {...register('description')}
           />
-          {errors.description && <FieldError>{errors.description.message}</FieldError>}
+          {errors.description && <FieldError>{tv(errors.description.message)}</FieldError>}
         </Field>
 
         <Field data-invalid={!!errors.logoUrl}>
@@ -69,7 +71,7 @@ export function UpdateShopForm({ defaultValues, onSubmit, isSubmitting }: Update
             aria-invalid={!!errors.logoUrl}
             {...register('logoUrl')}
           />
-          {errors.logoUrl && <FieldError>{errors.logoUrl.message}</FieldError>}
+          {errors.logoUrl && <FieldError>{tv(errors.logoUrl.message)}</FieldError>}
         </Field>
 
         <Field data-invalid={!!errors.bannerUrl}>
@@ -83,7 +85,7 @@ export function UpdateShopForm({ defaultValues, onSubmit, isSubmitting }: Update
             aria-invalid={!!errors.bannerUrl}
             {...register('bannerUrl')}
           />
-          {errors.bannerUrl && <FieldError>{errors.bannerUrl.message}</FieldError>}
+          {errors.bannerUrl && <FieldError>{tv(errors.bannerUrl.message)}</FieldError>}
         </Field>
 
         <Button type="submit" disabled={isSubmitting} className="mt-2">

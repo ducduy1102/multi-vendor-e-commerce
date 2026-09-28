@@ -12,6 +12,7 @@ import { useAuthStore } from '@/modules/auth';
 import { useRouter } from '@/i18n/navigation';
 import { Alert } from '@/shared/components/ui/alert';
 import { ApiError } from '@/shared/lib/api-client';
+import { useApiErrorMessage } from '@/shared/hooks/useValidationMessage';
 
 import { useCreateShop } from '../hooks/useCreateShop';
 import { useMyShop } from '../hooks/useMyShop';
@@ -21,6 +22,7 @@ import { ShopFormFieldsSkeleton } from './ShopFormFieldsSkeleton';
 
 export function BecomeSellerFormContainer() {
   const t = useTranslations('shop');
+  const tApi = useApiErrorMessage();
   const tCommon = useTranslations('common');
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
@@ -43,7 +45,7 @@ export function BecomeSellerFormContainer() {
       await createShop.mutateAsync(values);
       router.push('/seller/shop');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('becomeSellerGenericError'));
+      setError(err instanceof ApiError ? tApi(err.message) : t('becomeSellerGenericError'));
     }
   }
 

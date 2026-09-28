@@ -55,6 +55,7 @@ enum ProductStatus {
 }
 
 enum OrderStatus {
+  AWAITING_PAYMENT
   PENDING
   CONFIRMED
   PACKED
@@ -90,16 +91,16 @@ enum OAuthProvider {
 // =========================================================
 
 model User {
-  id               String   @id @default(uuid())
-  email            String   @unique
+  id               String        @id @default(uuid())
+  email            String        @unique
   // Nullable — user tạo qua OAuth (xem OAuthAccount) không có mật khẩu.
   // AuthService.login() báo lỗi rõ ràng nếu user chỉ có OAuth mà cố login
   // bằng password.
-  passwordHash     String?  @map("password_hash")
+  passwordHash     String?       @map("password_hash")
   name             String
-  role             Role     @default(USER)
+  role             Role          @default(USER)
   accountStatus    AccountStatus @default(ACTIVE) @map("account_status")
-  refreshTokenHash String?  @map("refresh_token_hash")
+  refreshTokenHash String?       @map("refresh_token_hash")
 
   // Email verification (Tuần 2, Bước 2.10) — token dùng 1 lần, hash bằng SHA-256
   // giống refreshTokenHash (không dùng bcrypt, lý do xem AuthService.hashToken).
@@ -111,18 +112,20 @@ model User {
   emailVerificationExpiresAt DateTime? @map("email_verification_expires_at")
   emailVerificationSentAt    DateTime? @map("email_verification_sent_at")
 
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  shops         Shop[]
-  addresses     Address[]
-  cart          Cart?
-  orders        Order[]
-  reviews       Review[]
-  wishlists     Wishlist[]
-  conversations Conversation[] @relation("BuyerConversations")
-  messages      Message[]
-  oauthAccounts OAuthAccount[]
+  shops          Shop[]
+  addresses      Address[]
+  cart           Cart?
+  orders         Order[]
+  checkoutGroups CheckoutGroup[]
+  voucherUsages  VoucherUsage[]
+  reviews        Review[]
+  wishlists      Wishlist[]
+  conversations  Conversation[]  @relation("BuyerConversations")
+  messages       Message[]
+  oauthAccounts  OAuthAccount[]
 
   @@map("users")
 }
@@ -145,8 +148,10 @@ model OAuthAccount {
   @@map("oauth_accounts")
 }
 
-// Sổ địa chỉ dùng chung: đúng 1 trong 2 FK (userId/shopId) có giá trị,
-// enforce ở tầng service (Prisma không hỗ trợ CHECK constraint kiểu này).
+// Sổ địa chỉ dùng chung: đúng 1 trong 2 FK (userId/shopId) có giá trị (CHECK
+// viết tay trong migration add_checkout_order_payment_schema), và mỗi user tối
+// đa 1 địa chỉ mặc định (unique index từng phần, cũng viết tay — Prisma không
+// khai được cả hai). ward = "Xã/Phường/Đặc khu"; không có cấp quận/huyện.
 model Address {
   id            String   @id @default(uuid())
   userId        String?  @map("user_id")
@@ -155,7 +160,6 @@ model Address {
   phone         String
   line1         String
   ward          String
-  district      String
   province      String
   isDefault     Boolean  @default(false) @map("is_default")
   createdAt     DateTime @default(now()) @map("created_at")
@@ -277,7 +281,7 @@ model ProductAttribute {
   name      String
   position  Int    @default(0)
 
-  product Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
   values  ProductAttributeValue[]
 
   @@index([productId])
@@ -289,7 +293,7 @@ model ProductAttributeValue {
   attributeId String @map("attribute_id")
   value       String
 
-  attribute     ProductAttribute         @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  attribute     ProductAttribute        @relation(fields: [attributeId], references: [id], onDelete: Cascade)
   variantValues VariantAttributeValue[]
 
   @@index([attributeId])
@@ -304,19 +308,23 @@ model ProductAttributeValue {
 // product.shopId đã load trong transaction khi tạo/sửa Product — không nhận
 // field này từ payload FE.
 model ProductVariant {
-  id         String   @id @default(uuid())
-  productId  String   @map("product_id")
-  shopId     String   @map("shop_id")
-  sku        String
-  price      Decimal  @db.Decimal(12, 2)
-  stock      Int      @default(0)
-  isActive   Boolean  @default(true) @map("is_active")
-  weightGram Int?     @map("weight_gram")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(uuid())
+  productId     String   @map("product_id")
+  shopId        String   @map("shop_id")
+  sku           String
+  price         Decimal  @db.Decimal(12, 2)
+  // stock = kho vật lý; reservedStock = số đang giữ chỗ cho đơn chưa thanh toán.
+  // available = stock - reservedStock. Bất biến 0 <= reservedStock <= stock được
+  // bảo vệ bằng CHECK ở DB (viết tay trong migration, Prisma không khai được).
+  stock         Int      @default(0)
+  reservedStock Int      @default(0) @map("reserved_stock")
+  isActive      Boolean  @default(true) @map("is_active")
+  weightGram    Int?     @map("weight_gram")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  product         Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  shop            Shop                     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  product         Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+  shop            Shop                    @relation(fields: [shopId], references: [id], onDelete: Cascade)
   attributeValues VariantAttributeValue[]
   images          ProductImage[]
   cartItems       CartItem[]
@@ -351,8 +359,8 @@ model VariantAttributeValue {
   variantId        String @map("variant_id")
   attributeValueId String @map("attribute_value_id")
 
-  variant        ProductVariant         @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  attributeValue ProductAttributeValue  @relation(fields: [attributeValueId], references: [id], onDelete: Cascade)
+  variant        ProductVariant        @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  attributeValue ProductAttributeValue @relation(fields: [attributeValueId], references: [id], onDelete: Cascade)
 
   @@unique([variantId, attributeValueId])
   @@index([attributeValueId])
@@ -412,13 +420,20 @@ model CartItem {
 // nhiều Order (mỗi Order 1 shop) nhưng share chung 1 CheckoutGroup để
 // gộp thanh toán 1 lần (VNPay/Momo) cho toàn bộ đơn.
 model CheckoutGroup {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  createdAt DateTime @default(now()) @map("created_at")
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  // Header Idempotency-Key của POST /checkout: gọi lại cùng key trả đúng nhóm
+  // đã tạo thay vì đặt trùng. Postgres coi nhiều NULL là khác nhau nên không
+  // xung đột khi client không gửi key.
+  idempotencyKey String?  @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at")
 
-  orders   Order[]
-  payments Payment[]
+  user          User           @relation(fields: [userId], references: [id])
+  orders        Order[]
+  payments      Payment[]
+  voucherUsages VoucherUsage[]
 
+  @@unique([userId, idempotencyKey])
   @@index([userId])
   @@map("checkout_groups")
 }
@@ -430,8 +445,12 @@ model Order {
   userId          String      @map("user_id")
   shopId          String      @map("shop_id")
   checkoutGroupId String      @map("checkout_group_id")
-  status          OrderStatus @default(PENDING)
+  // Mặc định là trạng thái an toàn (chưa thanh toán); PENDING = đã thanh toán,
+  // chờ shop xác nhận. Đơn COD tương lai sẽ khai PENDING tường minh.
+  status          OrderStatus @default(AWAITING_PAYMENT)
+  // totalAmount = tổng OrderItem - discountAmount + shippingFee (số buyer trả cho đơn này)
   totalAmount     Decimal     @map("total_amount") @db.Decimal(12, 2)
+  discountAmount  Decimal     @default(0) @map("discount_amount") @db.Decimal(12, 2)
   shippingFee     Decimal     @default(0) @map("shipping_fee") @db.Decimal(12, 2)
   voucherId       String?     @map("voucher_id")
 
@@ -440,7 +459,6 @@ model Order {
   recipientPhone      String @map("recipient_phone")
   shippingAddressLine String @map("shipping_address_line")
   shippingWard        String @map("shipping_ward")
-  shippingDistrict    String @map("shipping_district")
   shippingProvince    String @map("shipping_province")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -467,6 +485,13 @@ model OrderItem {
   quantity         Int
   priceAtPurchase  Decimal @map("price_at_purchase") @db.Decimal(12, 2)
 
+  // Snapshot định danh dòng hàng lúc mua — Seller đổi tên/thuộc tính/ẩn variant
+  // sau đó không làm đổi lịch sử đơn. productVariantId vẫn giữ để nối review/hoàn tiền.
+  productName  String  @map("product_name")
+  variantLabel String? @map("variant_label")
+  sku          String
+  imageUrl     String? @map("image_url")
+
   order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
 
@@ -482,13 +507,21 @@ model Payment {
   checkoutGroupId String        @map("checkout_group_id")
   method          PaymentMethod
   status          PaymentStatus @default(PENDING)
+  // Payment là 1 LẦN THỬ thanh toán: 1 nhóm có thể có nhiều Payment.
+  // txnRef = mã tham chiếu gửi cổng (duy nhất mỗi lần thử); transactionId = mã
+  // do cổng trả về (nullable) — không dùng lẫn.
+  txnRef          String        @unique @map("txn_ref")
   transactionId   String?       @map("transaction_id")
   amount          Decimal       @db.Decimal(12, 2)
+  payUrl          String?       @map("pay_url")
+  paidAt          DateTime?     @map("paid_at")
+  expiresAt       DateTime      @map("expires_at")
   createdAt       DateTime      @default(now()) @map("created_at")
 
   checkoutGroup CheckoutGroup @relation(fields: [checkoutGroupId], references: [id])
 
   @@index([checkoutGroupId])
+  @@index([status, expiresAt])
   @@map("payments")
 }
 
@@ -511,11 +544,36 @@ model Voucher {
   expiresAt         DateTime?   @map("expires_at")
   createdAt         DateTime    @default(now()) @map("created_at")
 
-  shop   Shop?   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop   Shop?          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   orders Order[]
+  usages VoucherUsage[]
 
   @@index([shopId])
   @@map("vouchers")
+}
+
+// 1 dòng = 1 lần checkout dùng voucher (voucher toàn sàn tách N Order vẫn chỉ
+// tính 1 lượt). Vouchers.usedCount = số dòng chưa nhả (releasedAt IS NULL), kể
+// cả lần đang giữ chỗ chờ thanh toán. Nhả lượt bằng releasedAt (xoá mềm), không
+// xoá dòng — giữ lịch sử cho đối soát/hoàn tiền.
+model VoucherUsage {
+  id              String    @id @default(uuid())
+  voucherId       String    @map("voucher_id")
+  userId          String    @map("user_id")
+  checkoutGroupId String    @map("checkout_group_id")
+  // Tổng Order.discountAmount của nhóm
+  discountAmount  Decimal   @map("discount_amount") @db.Decimal(12, 2)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  releasedAt      DateTime? @map("released_at")
+
+  voucher       Voucher       @relation(fields: [voucherId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+  checkoutGroup CheckoutGroup @relation(fields: [checkoutGroupId], references: [id])
+
+  @@unique([voucherId, checkoutGroupId])
+  @@index([voucherId, userId])
+  @@index([checkoutGroupId])
+  @@map("voucher_usages")
 }
 
 // =========================================================

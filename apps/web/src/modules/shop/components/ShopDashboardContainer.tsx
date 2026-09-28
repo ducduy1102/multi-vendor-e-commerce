@@ -7,6 +7,7 @@ import { Link, useRouter } from '@/i18n/navigation';
 import { Alert } from '@/shared/components/ui/alert';
 import { Skeleton } from '@/shared/components/ui/skeleton';
 import { ApiError } from '@/shared/lib/api-client';
+import { useApiErrorMessage } from '@/shared/hooks/useValidationMessage';
 
 import { useMyShop } from '../hooks/useMyShop';
 import { useUpdateShop } from '../hooks/useUpdateShop';
@@ -29,6 +30,7 @@ const SHOP_STATUS_ALERT = {
 // nghiệp vụ trực tiếp (rules/frontend.md mục 1).
 export function ShopDashboardContainer() {
   const t = useTranslations('shop');
+  const tApi = useApiErrorMessage();
   const tProduct = useTranslations('product');
   const tCommon = useTranslations('common');
   const router = useRouter();
@@ -54,7 +56,7 @@ export function ShopDashboardContainer() {
       await updateShop.mutateAsync({ id: myShopQuery.data.id, values });
       setSuccessMessage(t('updateShopSuccess'));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('updateShopGenericError'));
+      setError(err instanceof ApiError ? tApi(err.message) : t('updateShopGenericError'));
     }
   }
 

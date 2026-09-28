@@ -19,6 +19,7 @@ import { Badge } from '@/shared/components/ui/badge';
 import { Button, buttonVariants } from '@/shared/components/ui/button';
 import { ApiError } from '@/shared/lib/api-client';
 import { cn } from '@/shared/lib/utils';
+import { useApiErrorMessage } from '@/shared/hooks/useValidationMessage';
 import { formatPrice } from '../format-price';
 import { useMyProducts } from '../hooks/useMyProducts';
 import { useUpdateProductStatus } from '../hooks/useUpdateProductStatus';
@@ -78,7 +79,9 @@ const STATUS_BADGE_SIZE_CLASS = 'h-7 rounded-[min(var(--radius-md),12px)] px-2.5
 // page.tsx (composition root), không phải của module product.
 export function SellerProductsContainer({ shopId }: SellerProductsContainerProps) {
   const t = useTranslations('product');
+  const tApi = useApiErrorMessage();
   const tShop = useTranslations('shop');
+  const tVoucher = useTranslations('voucher');
   const tCommon = useTranslations('common');
   const myProductsQuery = useMyProducts(shopId);
   const archiveProductMutation = useUpdateProductStatus('ARCHIVED');
@@ -94,7 +97,7 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
     try {
       await archiveProductMutation.mutateAsync(id);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('sellerArchiveGenericError'));
+      setError(err instanceof ApiError ? tApi(err.message) : t('sellerArchiveGenericError'));
     } finally {
       setArchivingId(null);
     }
@@ -116,7 +119,7 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
     try {
       await reactivateProductMutation.mutateAsync(id);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('sellerReactivateGenericError'));
+      setError(err instanceof ApiError ? tApi(err.message) : t('sellerReactivateGenericError'));
     } finally {
       setReactivatingId(null);
     }
@@ -132,6 +135,14 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
             className="shrink-0 text-sm font-medium text-foreground hover:underline"
           >
             {tShop('shopInfoLink')}
+          </Link>
+          {/* Chỉ là 1 link tới route /seller/vouchers, không import gì từ
+              modules/voucher (chỉ mượn chuỗi dịch theo namespace). */}
+          <Link
+            href="/seller/vouchers"
+            className="shrink-0 text-sm font-medium text-foreground hover:underline"
+          >
+            {tVoucher('manageLink')}
           </Link>
           <Link
             href="/seller/products/new"

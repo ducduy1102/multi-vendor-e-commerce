@@ -66,7 +66,9 @@ describe('ProductService', () => {
     productVariant: {
       create: jest.Mock;
       findMany: jest.Mock;
+      findUnique: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
     };
     variantAttributeValue: { createMany: jest.Mock; deleteMany: jest.Mock };
     productImage: {
@@ -118,7 +120,9 @@ describe('ProductService', () => {
           Promise.resolve({ id: `variant-${args.data.sku}` }),
         ),
         findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue({ reservedStock: 0 }),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       variantAttributeValue: {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -198,6 +202,7 @@ describe('ProductService', () => {
           sku: 'AT-DO-M',
           price: new Prisma.Decimal(150000),
           stock: 10,
+          reservedStock: 3,
           isActive: true,
           images: [],
           weightGram: null,
@@ -796,8 +801,9 @@ describe('ProductService', () => {
 
       // sku "KEEP" khớp variant có sẵn -> update, không tạo mới.
       expect(prisma.productVariant.create).toHaveBeenCalledTimes(1);
-      expect(prisma.productVariant.update).toHaveBeenCalledWith({
-        where: { id: 'variant-keep' },
+      // Ghi kho vật lý bằng 1 câu updateMany có điều kiện reservedStock <= stock mới.
+      expect(prisma.productVariant.updateMany).toHaveBeenCalledWith({
+        where: { id: 'variant-keep', reservedStock: { lte: 3 } },
         data: { price: 200000, stock: 3, isActive: true },
       });
 
@@ -877,6 +883,63 @@ describe('ProductService', () => {
       });
     });
 
+    describe('kho giữ chỗ (Week7.md 1.3)', () => {
+      const payload = (stock: number) => ({
+        attributes: [],
+        variants: [
+          { sku: 'KEEP', price: 1, stock, attributeValues: [], images: [] },
+        ],
+      });
+
+      beforeEach(() => {
+        prisma.productVariant.findMany.mockResolvedValue([
+          { id: 'variant-keep', sku: 'KEEP' },
+        ]);
+        mockLoadedProduct();
+      });
+
+      it('Seller hạ kho vật lý xuống dưới số đang giữ chỗ — 409, không ghi gì', async () => {
+        prisma.productVariant.updateMany.mockResolvedValue({ count: 0 });
+        prisma.productVariant.findUnique.mockResolvedValue({
+          reservedStock: 5,
+        });
+
+        await expect(
+          service.updateProduct('shop-1', 'product-1', payload(2)),
+        ).rejects.toMatchObject({
+          status: 409,
+          message: expect.stringContaining('(5)') as string,
+        });
+        expect(prisma.productVariant.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'variant-keep', reservedStock: { lte: 2 } },
+          }),
+        );
+      });
+
+      it('kho vật lý còn >= số đang giữ chỗ — ghi bình thường', async () => {
+        await expect(
+          service.updateProduct('shop-1', 'product-1', payload(5)),
+        ).resolves.toBeDefined();
+        expect(prisma.productVariant.findUnique).not.toHaveBeenCalled();
+      });
+
+      it('variant tạo mới không đi qua điều kiện giữ chỗ (reservedStock mặc định 0)', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([]);
+
+        await service.updateProduct('shop-1', 'product-1', payload(1));
+
+        expect(prisma.productVariant.updateMany).not.toHaveBeenCalled();
+        expect(prisma.productVariant.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.not.objectContaining({
+              reservedStock: expect.anything() as unknown,
+            }) as unknown,
+          }),
+        );
+      });
+    });
+
     it('P2002 do trùng SKU với variant khác trong shop báo đúng 409, không lộ lỗi Prisma thô', async () => {
       prisma.$transaction.mockRejectedValue(p2002('ProductVariant'));
 
@@ -917,9 +980,9 @@ describe('ProductService', () => {
   describe('getMyProducts', () => {
     it('trả mọi status của đúng shop, mới nhất trước, select gọn (không join attributeValues)', async () => {
       const rows = [
-        { id: 'p-draft', status: 'DRAFT' },
-        { id: 'p-published', status: 'PUBLISHED' },
-        { id: 'p-archived', status: 'ARCHIVED' },
+        { id: 'p-draft', status: 'DRAFT', variants: [] },
+        { id: 'p-published', status: 'PUBLISHED', variants: [] },
+        { id: 'p-archived', status: 'ARCHIVED', variants: [] },
       ];
       prisma.product.findMany.mockResolvedValue(rows);
 
@@ -944,6 +1007,7 @@ describe('ProductService', () => {
               sku: true,
               price: true,
               stock: true,
+              reservedStock: true,
               isActive: true,
               images: {
                 orderBy: { position: 'asc' },
@@ -953,7 +1017,27 @@ describe('ProductService', () => {
           },
         },
       });
-      expect(result).toBe(rows);
+      expect(result.map((row) => row.id)).toEqual([
+        'p-draft',
+        'p-published',
+        'p-archived',
+      ]);
+    });
+
+    it('stock của từng variant là available, kèm reservedStock cho chủ shop', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'p1',
+          variants: [{ id: 'v1', stock: 10, reservedStock: 4 }],
+        },
+      ]);
+
+      const result = await service.getMyProducts('shop-1');
+
+      expect(result[0].variants[0]).toMatchObject({
+        stock: 6,
+        reservedStock: 4,
+      });
     });
   });
 
@@ -1054,6 +1138,48 @@ describe('ProductService', () => {
       await expect(service.getProduct('product-1')).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+
+    describe('stock = available, reservedStock chỉ cho chủ shop', () => {
+      const variant = {
+        id: 'v1',
+        sku: 'SKU-1',
+        price: new Prisma.Decimal(1000),
+        stock: 10,
+        reservedStock: 4,
+        isActive: true,
+        images: [],
+        weightGram: null,
+        attributeValues: [],
+      };
+
+      it('guest: stock = 6 và KHÔNG có field reservedStock (không lộ nhu cầu mua)', async () => {
+        mockDetailRow({ status: 'PUBLISHED', variants: [variant] });
+
+        const result = await service.getProduct('product-1');
+
+        expect(result.variants[0].stock).toBe(6);
+        expect(result.variants[0]).not.toHaveProperty('reservedStock');
+      });
+
+      it('user không phải chủ shop: cũng không thấy reservedStock', async () => {
+        mockDetailRow({ status: 'PUBLISHED', variants: [variant] });
+
+        const result = await service.getProduct('product-1', 'someone-else');
+
+        expect(result.variants[0]).not.toHaveProperty('reservedStock');
+      });
+
+      it('chủ shop: stock = 6 kèm reservedStock = 4 (kho vật lý = 10)', async () => {
+        mockDetailRow({ status: 'PUBLISHED', variants: [variant] });
+
+        const result = await service.getProduct('product-1', 'owner-1');
+
+        expect(result.variants[0]).toMatchObject({
+          stock: 6,
+          reservedStock: 4,
+        });
+      });
     });
 
     it('chủ shop xem được product của mình dù đang DRAFT', async () => {

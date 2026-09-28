@@ -17,7 +17,7 @@ describe('ShopService', () => {
     shop: {
       findFirst: jest.Mock;
       findUnique: jest.Mock;
-      create: jest.Mock<unknown, [ShopCreateArgs]>;
+      create: jest.Mock<Promise<unknown>, [ShopCreateArgs]>;
       update: jest.Mock;
     };
   };
@@ -27,7 +27,7 @@ describe('ShopService', () => {
       shop: {
         findFirst: jest.fn(),
         findUnique: jest.fn(),
-        create: jest.fn<unknown, [ShopCreateArgs]>(),
+        create: jest.fn<Promise<unknown>, [ShopCreateArgs]>(),
         update: jest.fn(),
       },
     };

@@ -34,8 +34,8 @@ describe('AuthService', () => {
   let prisma: {
     user: {
       findUnique: jest.Mock;
-      create: jest.Mock<unknown, [CreateUserArgs]>;
-      update: jest.Mock<unknown, [UpdateUserArgs]>;
+      create: jest.Mock<Promise<unknown>, [CreateUserArgs]>;
+      update: jest.Mock<Promise<unknown>, [UpdateUserArgs]>;
     };
     oAuthAccount: {
       findUnique: jest.Mock;
@@ -71,8 +71,8 @@ describe('AuthService', () => {
     prisma = {
       user: {
         findUnique: jest.fn(),
-        create: jest.fn<unknown, [CreateUserArgs]>(),
-        update: jest.fn<unknown, [UpdateUserArgs]>(),
+        create: jest.fn<Promise<unknown>, [CreateUserArgs]>(),
+        update: jest.fn<Promise<unknown>, [UpdateUserArgs]>(),
       },
       oAuthAccount: {
         findUnique: jest.fn(),
@@ -265,7 +265,11 @@ describe('AuthService', () => {
             email: baseUser.email,
             password: 'correct-password',
           }),
-        ).rejects.toBeInstanceOf(UnauthorizedException);
+        ).rejects.toMatchObject({
+          status: 401,
+          code: 'ACCOUNT_NOT_ACTIVE',
+          message: 'ACCOUNT_NOT_ACTIVE',
+        });
         expect(prisma.user.update).not.toHaveBeenCalled();
       },
     );
@@ -381,7 +385,11 @@ describe('AuthService', () => {
 
       await expect(
         service.loginWithGoogle(googleProfile),
-      ).rejects.toBeInstanceOf(UnauthorizedException);
+      ).rejects.toMatchObject({
+        status: 401,
+        code: 'ACCOUNT_NOT_ACTIVE',
+        message: 'ACCOUNT_NOT_ACTIVE',
+      });
     });
   });
 

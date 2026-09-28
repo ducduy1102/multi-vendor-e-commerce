@@ -1,0 +1,193 @@
+import { MockPaymentProvider } from './mock-payment.provider';
+
+const ENV_KEYS = [
+  'NODE_ENV',
+  'PAYMENT_MOCK_ENABLED',
+  'PAYMENT_MOCK_SECRET',
+  'API_PUBLIC_URL',
+];
+
+describe('MockPaymentProvider', () => {
+  const saved: Record<string, string | undefined> = {};
+  let provider: MockPaymentProvider;
+  const setEnv = (key: string, value: string) => {
+    (process.env as Record<string, string | undefined>)[key] = value;
+  };
+
+  beforeEach(() => {
+    for (const key of ENV_KEYS) saved[key] = process.env[key];
+    setEnv('NODE_ENV', 'test');
+    setEnv('PAYMENT_MOCK_ENABLED', 'true');
+    setEnv('PAYMENT_MOCK_SECRET', 'unit-test-secret');
+    delete process.env.API_PUBLIC_URL;
+    provider = new MockPaymentProvider();
+  });
+
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      if (saved[key] === undefined) delete process.env[key];
+      else setEnv(key, saved[key]);
+    }
+  });
+
+  const params = {
+    txnRef: 'MOCKREF00000000000001',
+    amountVnd: 150000,
+    returnUrl: 'http://x.test/return',
+    expiresAt: new Date('2026-09-27T03:45:00Z'),
+    locale: 'vi' as const,
+  };
+
+  describe('bị vô hiệu hoá CỨNG ở production (3 lớp), dù cờ ENV bật', () => {
+    beforeEach(() => setEnv('NODE_ENV', 'production'));
+
+    it('isConfigured = false', () => {
+      expect(provider.isConfigured()).toBe(false);
+    });
+
+    it('createPayment bị từ chối', async () => {
+      await expect(provider.createPayment(params)).rejects.toThrow(
+        'Mock payment is disabled',
+      );
+    });
+
+    it('verifyCallback từ chối cả callback có chữ ký ĐÚNG; verifyPayLink cũng false', async () => {
+      // Dựng callback và link hợp lệ khi chưa phải production, rồi kiểm ở production.
+      setEnv('NODE_ENV', 'test');
+      const raw = provider.buildCallback(params.txnRef, 150000, 'SUCCESS');
+      const { payUrl } = await provider.createPayment(params);
+      const sig = new URL(payUrl).searchParams.get('sig') ?? '';
+      expect(provider.verifyPayLink(params.txnRef, '150000', sig)).toBe(true);
+      setEnv('NODE_ENV', 'production');
+
+      expect(provider.verifyCallback(raw).isSignatureValid).toBe(false);
+      expect(provider.verifyPayLink(params.txnRef, '150000', sig)).toBe(false);
+    });
+  });
+
+  describe('cờ ENV', () => {
+    it.each([undefined, '', 'false', '0', 'yes', '1'])(
+      'PAYMENT_MOCK_ENABLED=%p → tắt (chỉ "true" mới bật)',
+      (value) => {
+        if (value === undefined) delete process.env.PAYMENT_MOCK_ENABLED;
+        else setEnv('PAYMENT_MOCK_ENABLED', value);
+        expect(provider.isConfigured()).toBe(false);
+      },
+    );
+
+    it.each(['true', 'TRUE', ' true '])(
+      'PAYMENT_MOCK_ENABLED=%p → bật',
+      (value) => {
+        setEnv('PAYMENT_MOCK_ENABLED', value);
+        expect(provider.isConfigured()).toBe(true);
+      },
+    );
+
+    it('khởi tạo không throw dù thiếu mọi ENV', () => {
+      for (const key of ENV_KEYS) delete process.env[key];
+      expect(() => new MockPaymentProvider()).not.toThrow();
+    });
+  });
+
+  describe('createPayment', () => {
+    it('payUrl trỏ tới endpoint mock của BE, kèm txnRef, amount và chữ ký', async () => {
+      setEnv('API_PUBLIC_URL', 'https://api.example.com/');
+
+      const { payUrl } = await provider.createPayment(params);
+      const url = new URL(payUrl);
+
+      expect(url.origin + url.pathname).toBe(
+        'https://api.example.com/api/v1/payments/mock/pay',
+      );
+      expect(url.searchParams.get('txnRef')).toBe(params.txnRef);
+      expect(url.searchParams.get('amount')).toBe('150000');
+      expect(url.searchParams.get('sig')).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('API_PUBLIC_URL để trống rơi về localhost (`?.trim() || fallback`)', async () => {
+      setEnv('API_PUBLIC_URL', '');
+      const { payUrl } = await provider.createPayment(params);
+      expect(
+        payUrl.startsWith('http://localhost:4000/api/v1/payments/mock/pay?'),
+      ).toBe(true);
+    });
+
+    it('link do createPayment phát ra thì verifyPayLink chấp nhận; sửa amount/txnRef thì từ chối', async () => {
+      const { payUrl } = await provider.createPayment(params);
+      const q = new URL(payUrl).searchParams;
+      const sig = q.get('sig') ?? '';
+
+      expect(provider.verifyPayLink(params.txnRef, '150000', sig)).toBe(true);
+      expect(provider.verifyPayLink(params.txnRef, '1', sig)).toBe(false);
+      expect(provider.verifyPayLink('OTHER', '150000', sig)).toBe(false);
+      expect(provider.verifyPayLink(params.txnRef, '150000', 'abc')).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('callback đi đúng đường xác nhận thật (verifyCallback)', () => {
+    it.each(['SUCCESS', 'FAILED', 'PENDING'] as const)(
+      '%s hợp lệ',
+      (outcome) => {
+        const raw = provider.buildCallback(params.txnRef, 150000, outcome);
+
+        expect(provider.verifyCallback(raw)).toEqual({
+          isSignatureValid: true,
+          txnRef: params.txnRef,
+          amountVnd: 150000,
+          gatewayTransactionId: `MOCK${params.txnRef.slice(0, 12)}`,
+          outcome,
+        });
+      },
+    );
+
+    const rejected = {
+      isSignatureValid: false,
+      txnRef: null,
+      amountVnd: null,
+      gatewayTransactionId: null,
+      outcome: 'PENDING',
+    };
+
+    it.each([
+      ['sửa amount', { amount: '1' }],
+      ['sửa outcome (FAILED → SUCCESS)', { outcome: 'SUCCESS' }],
+      ['sửa txnRef', { txnRef: 'OTHER' }],
+      ['sửa transactionNo', { transactionNo: 'X' }],
+      ['chữ ký rỗng', { sig: '' }],
+      ['chữ ký ngắn', { sig: 'abc' }],
+      ['chữ ký rất dài', { sig: 'a'.repeat(10_000) }],
+      ['outcome lạ', { outcome: 'REFUNDED' }],
+      ['amount không phải chuỗi', { amount: 150000 }],
+    ])('%s bị từ chối, không ném lỗi', (_l, override) => {
+      const raw = provider.buildCallback(params.txnRef, 150000, 'FAILED');
+
+      expect(provider.verifyCallback({ ...raw, ...override })).toEqual(
+        rejected,
+      );
+    });
+
+    it('thiếu field / body rỗng', () => {
+      const { sig: _omit, ...withoutSig } = provider.buildCallback(
+        params.txnRef,
+        1000,
+        'SUCCESS',
+      );
+      expect(provider.verifyCallback(withoutSig)).toEqual(rejected);
+      expect(provider.verifyCallback({})).toEqual(rejected);
+    });
+
+    it('chữ ký của môi trường khác (khác PAYMENT_MOCK_SECRET) bị từ chối', () => {
+      const raw = provider.buildCallback(params.txnRef, 150000, 'SUCCESS');
+      setEnv('PAYMENT_MOCK_SECRET', 'another-secret');
+
+      expect(provider.verifyCallback(raw)).toEqual(rejected);
+    });
+
+    it('amount không phải số nguyên hợp lệ dù chữ ký đúng → amountVnd null', () => {
+      const raw = provider.buildCallback(params.txnRef, Number.NaN, 'SUCCESS');
+      expect(provider.verifyCallback(raw).amountVnd).toBeNull();
+    });
+  });
+});

@@ -5,6 +5,7 @@ import { useState } from 'react';
 
 import { useRouter } from '@/i18n/navigation';
 import { ApiError } from '@/shared/lib/api-client';
+import { useApiErrorMessage } from '@/shared/hooks/useValidationMessage';
 import { useCategories } from '../hooks/useCategories';
 import { useProduct } from '../hooks/useProduct';
 import { useUpdateProduct } from '../hooks/useUpdateProduct';
@@ -20,6 +21,7 @@ interface EditProductFormContainerProps {
 // không cần biết "shop của tôi" nên không có vấn đề cross-module.
 export function EditProductFormContainer({ productId }: EditProductFormContainerProps) {
   const t = useTranslations('product');
+  const tApi = useApiErrorMessage();
   const tCommon = useTranslations('common');
   const router = useRouter();
   const categoriesQuery = useCategories();
@@ -33,7 +35,7 @@ export function EditProductFormContainer({ productId }: EditProductFormContainer
       await updateProduct.mutateAsync({ id: productId, values });
       router.push('/seller/products');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('productFormUpdateGenericError'));
+      setError(err instanceof ApiError ? tApi(err.message) : t('productFormUpdateGenericError'));
     }
   }
 

@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { AccountStatus } from '@prisma/client';
 import type { Request } from 'express';
 import { Strategy } from 'passport-jwt';
+import { AppException } from '../../../shared/exceptions/app.exception';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
 import { ACCESS_TOKEN_COOKIE } from '../auth.constants';
 import type { AuthenticatedUser, JwtPayload } from '../types/jwt-payload.type';
@@ -37,7 +38,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException();
     }
     if (user.accountStatus !== AccountStatus.ACTIVE) {
-      throw new UnauthorizedException('ACCOUNT_NOT_ACTIVE');
+      throw new AppException(401, 'ACCOUNT_NOT_ACTIVE', 'ACCOUNT_NOT_ACTIVE');
     }
 
     return { userId: payload.sub, role: payload.role };

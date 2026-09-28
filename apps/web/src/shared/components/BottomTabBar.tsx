@@ -1,9 +1,10 @@
 'use client';
 
-import { Home, LayoutGrid } from 'lucide-react';
+import { Home, LayoutGrid, ShoppingCart } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Link, usePathname } from '@/i18n/navigation';
+import { CartCountBadge, useCartCount } from '@/modules/cart';
 import { AccountSheet } from '@/shared/components/AccountSheet';
 import { HIDDEN_CHROME_PATHS } from '@/shared/lib/hidden-chrome-paths';
 import { cn } from '@/shared/lib/utils';
@@ -41,12 +42,15 @@ function tabItemClass(isActive: boolean) {
 }
 
 // Thay cho Sheet hamburger cũ (chỉ mobile, < sm — desktop giữ nguyên nav +
-// dropdown tài khoản trong Header.tsx). Layout 3 cột chia đều (justify-around
-// qua flex-1 từng item) sẵn sàng nhận thêm 1 tab thứ 4 (Giỏ hàng, Tuần 6) chỉ
-// bằng cách thêm 1 item, không phải sửa cấu trúc.
+// dropdown tài khoản trong Header.tsx). Layout 4 cột chia đều (justify-around
+// qua flex-1 từng item): Trang chủ, Sản phẩm, Giỏ hàng (Tuần 6), Tài khoản —
+// thêm tab Giỏ hàng chỉ bằng 1 item cùng tabItemClass, không đổi cấu trúc.
 export function BottomTabBar() {
   const t = useTranslations('header');
+  const tCart = useTranslations('cart');
   const pathname = usePathname();
+  // Hook phải chạy TRƯỚC early return bên dưới (Rules of Hooks).
+  const cartCount = useCartCount();
 
   // Trang đăng nhập/đăng ký tự có layout riêng, không cần điều hướng — cùng
   // lý do Header ẩn ở đây (xem HIDDEN_CHROME_PATHS).
@@ -56,6 +60,7 @@ export function BottomTabBar() {
 
   const isHomeActive = pathname === '/';
   const isProductsActive = pathname === '/products' || pathname.startsWith('/products/');
+  const isCartActive = pathname === '/cart';
 
   return (
     <nav
@@ -79,6 +84,20 @@ export function BottomTabBar() {
         >
           <LayoutGrid className="size-5" aria-hidden="true" />
           {t('productsLink')}
+        </Link>
+        <Link
+          href="/cart"
+          aria-current={isCartActive ? 'page' : undefined}
+          className={tabItemClass(isCartActive)}
+        >
+          <span className="relative flex">
+            <ShoppingCart className="size-5" aria-hidden="true" />
+            <CartCountBadge count={cartCount} />
+          </span>
+          {t('cartLink')}
+          {cartCount ? (
+            <span className="sr-only">{tCart('itemsCount', { count: cartCount })}</span>
+          ) : null}
         </Link>
         <AccountSheet triggerClassName={tabItemClass(false)} />
       </div>

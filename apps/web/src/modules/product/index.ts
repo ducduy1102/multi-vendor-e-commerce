@@ -4,6 +4,10 @@
 // consumer nào ở app/ cần trực tiếp sau khi page.tsx chuyển sang compose
 // HomeCatalog thay vì tự gọi 2 thứ này.
 export { createProductSchema, updateProductSchema } from './schemas/product.schema';
+// Hàm định dạng tiền duy nhất của app (VND, vi-VN cố định cho mọi locale) —
+// module khác (cart...) import qua đây thay vì tự định nghĩa lại
+// (rules/frontend.md "UI polish" mục 6).
+export { formatPrice } from './format-price';
 export {
   HOME_CATALOG_GRID_CLASS,
   PRODUCTS_PAGE_GRID_CLASS,

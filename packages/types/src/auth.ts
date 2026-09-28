@@ -1,18 +1,15 @@
 import { z } from 'zod';
 
 export const registerSchema = z.object({
-  email: z.string().trim().toLowerCase().email('Email không hợp lệ'),
-  password: z
-    .string()
-    .min(8, 'Mật khẩu tối thiểu 8 ký tự')
-    .max(72, 'Mật khẩu tối đa 72 ký tự'), // giới hạn input mà bcrypt thực sự đọc
-  name: z.string().trim().min(1, 'Tên không được để trống'),
+  email: z.string().trim().toLowerCase().email('auth.validationEmailInvalid'),
+  password: z.string().min(8, 'auth.validationPasswordMin').max(72, 'auth.validationPasswordMax'), // giới hạn input mà bcrypt thực sự đọc
+  name: z.string().trim().min(1, 'auth.validationNameRequired'),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
 export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().email('Email không hợp lệ'),
-  password: z.string().min(1, 'Vui lòng nhập mật khẩu'),
+  email: z.string().trim().toLowerCase().email('auth.validationEmailInvalid'),
+  password: z.string().min(1, 'auth.validationPasswordRequired'),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
@@ -34,6 +31,6 @@ export const authUserSchema = z.object({
 export type AuthUser = z.infer<typeof authUserSchema>;
 
 export const verifyEmailSchema = z.object({
-  token: z.string().min(1, 'Token không hợp lệ'),
+  token: z.string().min(1, 'auth.validationTokenInvalid'),
 });
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;

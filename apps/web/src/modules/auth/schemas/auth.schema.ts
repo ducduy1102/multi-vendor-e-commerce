@@ -8,9 +8,9 @@ export { loginSchema };
 // field này không gửi lên BE (đã lược bỏ trước khi gọi API ở services/).
 export const registerFormSchema = registerSchema
   .extend({
-    confirmPassword: z.string().min(1, 'Vui lòng nhập lại mật khẩu'),
+    confirmPassword: z.string().min(1, 'auth.validationConfirmPasswordRequired'),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: 'Mật khẩu nhập lại không khớp',
+    message: 'auth.validationConfirmPasswordMismatch',
     path: ['confirmPassword'],
   });

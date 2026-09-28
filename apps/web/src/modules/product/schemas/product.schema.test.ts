@@ -1,3 +1,4 @@
+import { validationMessage } from '@ecommerce/types';
 import { describe, expect, it } from 'vitest';
 
 import { createProductSchema, updateProductSchema } from './product.schema';
@@ -43,7 +44,7 @@ describe('createProductSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe('Cần ít nhất 1 biến thể');
+      expect(result.error.issues[0].message).toBe('product.validationVariantsMin');
     }
   });
 
@@ -59,7 +60,9 @@ describe('createProductSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe('Tên thuộc tính "Màu sắc" bị lặp lại');
+      expect(result.error.issues[0].message).toBe(
+        validationMessage('product.validationAttributeNameDuplicate', { name: 'Màu sắc' }),
+      );
     }
   });
 
@@ -80,7 +83,7 @@ describe('createProductSchema', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toBe(
-        'Giá trị "m" bị lặp lại trong thuộc tính "Size" (không phân biệt hoa/thường)',
+        validationMessage('product.validationValueDuplicate', { value: 'm', attribute: 'Size' }),
       );
     }
   });
@@ -93,9 +96,7 @@ describe('createProductSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(
-        'Số giá trị thuộc tính của biến thể không khớp số thuộc tính đã khai',
-      );
+      expect(result.error.issues[0].message).toBe('product.validationVariantValueCountMismatch');
     }
   });
 
@@ -107,7 +108,12 @@ describe('createProductSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe('Giá trị "Tím" không thuộc thuộc tính "Màu sắc"');
+      expect(result.error.issues[0].message).toBe(
+        validationMessage('product.validationVariantValueNotInAttribute', {
+          value: 'Tím',
+          attribute: 'Màu sắc',
+        }),
+      );
     }
   });
 
@@ -122,7 +128,7 @@ describe('createProductSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe('Có 2 biến thể trùng tổ hợp thuộc tính');
+      expect(result.error.issues[0].message).toBe('product.validationVariantComboDuplicate');
     }
   });
 
@@ -137,7 +143,9 @@ describe('createProductSchema', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe('SKU "AT-DUP" bị lặp lại trong cùng request');
+      expect(result.error.issues[0].message).toBe(
+        validationMessage('product.validationSkuDuplicate', { sku: 'AT-DUP' }),
+      );
     }
   });
 
@@ -178,7 +186,7 @@ describe('updateProductSchema', () => {
     expect(onlyAttributes.success).toBe(false);
     if (!onlyAttributes.success) {
       expect(onlyAttributes.error.issues[0].message).toBe(
-        'attributes và variants phải cùng được gửi hoặc cùng bỏ trống',
+        'product.validationAttributesVariantsTogether',
       );
     }
     expect(onlyVariants.success).toBe(false);

@@ -1,16 +1,17 @@
-"use client";
+'use client';
 
-import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
-import { Link, useRouter } from "@/i18n/navigation";
-import { FieldSeparator } from "@/shared/components/ui/field";
-import { ApiError } from "@/shared/lib/api-client";
+import { Link, useRouter } from '@/i18n/navigation';
+import { FieldSeparator } from '@/shared/components/ui/field';
+import { ApiError } from '@/shared/lib/api-client';
+import { useApiErrorMessage } from '@/shared/hooks/useValidationMessage';
 
-import { register } from "../services/auth.service";
-import type { RegisterFormInput } from "../types";
-import { GoogleLoginButton } from "./GoogleLoginButton";
-import { RegisterForm } from "./RegisterForm";
+import { register } from '../services/auth.service';
+import type { RegisterFormInput } from '../types';
+import { GoogleLoginButton } from './GoogleLoginButton';
+import { RegisterForm } from './RegisterForm';
 
 // Nối RegisterForm (UI + validate, Bước 3.3) với service gọi API (Bước 3.5)
 // — đặt trong modules/ để app/register/page.tsx chỉ compose, không viết logic
@@ -18,8 +19,9 @@ import { RegisterForm } from "./RegisterForm";
 // (BE cũng không issue token ở /register) — điều hướng sang /login để người
 // dùng tự đăng nhập.
 export function RegisterFormContainer() {
-  const t = useTranslations("auth");
-  const tCommon = useTranslations("common");
+  const t = useTranslations('auth');
+  const tApi = useApiErrorMessage();
+  const tCommon = useTranslations('common');
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,9 +36,9 @@ export function RegisterFormContainer() {
         password: values.password,
         name: values.name,
       });
-      router.push("/login");
+      router.push('/login');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("registerGenericError"));
+      setError(err instanceof ApiError ? tApi(err.message) : t('registerGenericError'));
     } finally {
       setIsSubmitting(false);
     }
@@ -46,15 +48,12 @@ export function RegisterFormContainer() {
     <div className="flex flex-col gap-4">
       {error && <p className="text-sm text-destructive">{error}</p>}
       <RegisterForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
-      <FieldSeparator>{tCommon("or")}</FieldSeparator>
-      <GoogleLoginButton label={t("registerGoogleSignIn")} />
+      <FieldSeparator>{tCommon('or')}</FieldSeparator>
+      <GoogleLoginButton label={t('registerGoogleSignIn')} />
       <p className="text-center text-sm text-muted-foreground">
-        {t("registerHasAccountPrompt")}{" "}
-        <Link
-          href="/login"
-          className="font-medium text-primary underline-offset-4 hover:underline"
-        >
-          {t("registerLoginLink")}
+        {t('registerHasAccountPrompt')}{' '}
+        <Link href="/login" className="font-medium text-primary underline-offset-4 hover:underline">
+          {t('registerLoginLink')}
         </Link>
       </p>
     </div>
