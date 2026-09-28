@@ -19,6 +19,8 @@ env:
   DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/ecommerce_ci?schema=public'
   JWT_ACCESS_SECRET: 'ci-access-secret'
   JWT_REFRESH_SECRET: 'ci-refresh-secret'
+  VNPAY_TMN_CODE: 'CITESTCODE'
+  VNPAY_HASH_SECRET: 'ci-test-hash-secret'
 
 jobs:
   web:
