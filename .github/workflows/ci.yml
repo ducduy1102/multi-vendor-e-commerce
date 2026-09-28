@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+  # Giá trị giả cho CI — không phải secret thật, chỉ để app bootstrap được.
+  # DATABASE_URL: job web/api không thật sự query DB (PrismaClient chỉ validate cú
+  # pháp lúc khởi tạo), job api-integration nối vào Postgres service container bên
+  # dưới. JWT_*_SECRET không có fallback trong code (auth.service.ts,
+  # jwt.strategy.ts) nên bắt buộc phải set, khác JWT_*_EXPIRES_IN/FRONTEND_URL/...
+  # đã có "|| fallback".
+  DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/ecommerce_ci?schema=public'
+  JWT_ACCESS_SECRET: 'ci-access-secret'
+  JWT_REFRESH_SECRET: 'ci-refresh-secret'
+
+jobs:
+  web:
+    name: Web (lint · test · build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec turbo run lint test build --filter=web...
+
+  api:
+    name: API (lint · build · unit test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # apps/api import type từ @prisma/client sinh ra từ schema.prisma lúc build,
+      # không commit sẵn trong repo — phải generate trước lint/build/test.
+      - run: pnpm --filter api exec prisma generate
+
+      - run: pnpm exec turbo run lint test build --filter=api...
+
+  api-integration:
+    name: API (integration · e2e)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ecommerce_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter api exec prisma generate
+
+      - run: pnpm --filter api exec prisma migrate deploy
+
+      # test:int + test:e2e cần Postgres thật (rules/backend.md mục 7), nằm ngoài
+      # turbo.json "test" pipeline — chạy trực tiếp giống lúc chạy tay ở local.
+      - run: pnpm --filter api test:int
+
+      - run: pnpm --filter api test:e2e
