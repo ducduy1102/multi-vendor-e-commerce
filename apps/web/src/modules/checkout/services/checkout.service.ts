@@ -2,14 +2,17 @@ import {
   addressListResponseSchema,
   addressResponseSchema,
   checkoutGroupSchema,
+  checkoutPreviewSchema,
   checkoutResultSchema,
   payAttemptResultSchema,
   type Address,
   type CheckoutGroup,
+  type CheckoutPreview,
   type CheckoutResult,
   type CreateAddressInput,
   type PayAttemptResult,
   type PlaceOrderInput,
+  type PreviewCheckoutInput,
   type UpdateAddressInput,
 } from '@ecommerce/types';
 
@@ -17,8 +20,7 @@ import { apiFetch } from '@/shared/lib/api-client';
 
 // Chỉ gọi API (`/addresses`, `/checkout`), không có logic UI. Mọi response
 // parse bằng Zod từ packages/types — cùng schema BE dùng để validate request,
-// nên FE/BE không lệch shape (rules/general.md mục 4). `POST /checkout/preview`
-// (2.7b) chưa cần ở bước này — 3.4 sẽ thêm khi dựng trang /checkout.
+// nên FE/BE không lệch shape (rules/general.md mục 4).
 
 export async function listAddresses(): Promise<Address[]> {
   const data = await apiFetch<unknown>('/addresses', { method: 'GET' });
@@ -50,6 +52,16 @@ export async function setDefaultAddress(id: string): Promise<Address> {
     method: 'PATCH',
   });
   return addressResponseSchema.parse(data).address;
+}
+
+// POST /checkout/preview (2.7b) — dùng ở /checkout (3.4) để hiện phí ship/giảm giá/tổng thật
+// theo địa chỉ + voucher đã chọn, KHÔNG tự tính ở FE (Week6.md 1.7).
+export async function previewCheckout(input: PreviewCheckoutInput): Promise<CheckoutPreview> {
+  const data = await apiFetch<unknown>('/checkout/preview', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return checkoutPreviewSchema.parse(data);
 }
 
 // Header Idempotency-Key (1.11) — phiên đặt hàng ở /checkout (3.4) tự sinh UUID

@@ -6,6 +6,7 @@ import {
   getCheckoutGroup,
   listAddresses,
   placeOrder,
+  previewCheckout,
   retryPayment,
   setDefaultAddress,
   updateAddress,
@@ -142,6 +143,37 @@ describe('checkout.service', () => {
     const [url, init] = lastCall();
     expect(url).toMatch(/\/addresses\/address-1\/default$/);
     expect(init.method).toBe('PATCH');
+  });
+
+  it('previewCheckout POST /checkout/preview, gửi đúng body', async () => {
+    const previewData = {
+      orders: [],
+      subtotal: '0',
+      shippingTotal: null,
+      discountTotal: '0',
+      grandTotal: null,
+      discount: null,
+      needsAddress: true,
+      paymentMethods: [],
+      excludedItems: [],
+      blockingIssues: [],
+      canPlaceOrder: false,
+    };
+    mockFetchOnce({ success: true, data: previewData });
+
+    const result = await previewCheckout({ voucherCode: 'SALE10' });
+
+    expect(result).toEqual(previewData);
+    const [url, init] = lastCall();
+    expect(url).toMatch(/\/checkout\/preview$/);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ voucherCode: 'SALE10' });
+  });
+
+  it('previewCheckout — response sai shape ném lỗi parse', async () => {
+    mockFetchOnce({ success: true, data: { orders: [] } });
+
+    await expect(previewCheckout({})).rejects.toThrow();
   });
 
   it('placeOrder POST /checkout, không có Idempotency-Key thì không gửi header', async () => {

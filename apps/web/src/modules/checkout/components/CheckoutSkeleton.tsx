@@ -1,0 +1,46 @@
+import { Skeleton } from '@/shared/components/ui/skeleton';
+
+// Khớp bố cục thật của CheckoutContainer (cột địa chỉ + đơn theo shop, cột tóm tắt) — cùng lưới
+// với container thật qua hằng CHECKOUT_LAYOUT_CLASS, giống pattern CART_LAYOUT_CLASS
+// (modules/cart/components/CartSkeleton.tsx). aria-hidden vì thuần trang trí, "đang tải" nằm ở
+// vùng bọc ngoài (aria-busy + sr-only, CheckoutContainer tự thêm). motion-reduce tắt animation.
+export const CHECKOUT_LAYOUT_CLASS = 'grid gap-6 lg:grid-cols-[1fr_22rem] lg:items-start';
+
+export function CheckoutSkeleton() {
+  return (
+    <div aria-hidden="true" className={CHECKOUT_LAYOUT_CLASS}>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
+          <Skeleton className="h-5 w-40 motion-reduce:animate-none" />
+          <Skeleton className="h-16 w-full motion-reduce:animate-none" />
+          <Skeleton className="h-16 w-full motion-reduce:animate-none" />
+        </div>
+        {Array.from({ length: 2 }).map((_, index) => (
+          <div
+            key={index}
+            className="overflow-hidden rounded-lg border border-border bg-background"
+          >
+            <div className="border-b border-border bg-muted/40 px-4 py-2">
+              <Skeleton className="h-4 w-32 motion-reduce:animate-none" />
+            </div>
+            <div className="divide-y divide-border">
+              {Array.from({ length: 2 }).map((__, row) => (
+                <div key={row} className="flex items-center gap-3 px-4 py-3">
+                  <Skeleton className="h-4 w-48 max-w-full motion-reduce:animate-none" />
+                  <Skeleton className="ml-auto h-4 w-16 motion-reduce:animate-none" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-background p-4">
+        <Skeleton className="h-5 w-32 motion-reduce:animate-none" />
+        <Skeleton className="h-4 w-full motion-reduce:animate-none" />
+        <Skeleton className="h-4 w-full motion-reduce:animate-none" />
+        <Skeleton className="h-4 w-full motion-reduce:animate-none" />
+        <Skeleton className="h-9 w-full motion-reduce:animate-none" />
+      </div>
+    </div>
+  );
+}
