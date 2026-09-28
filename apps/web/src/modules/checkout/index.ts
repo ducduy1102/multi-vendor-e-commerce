@@ -9,6 +9,10 @@ export { usePlaceOrder } from './hooks/usePlaceOrder';
 export { checkoutGroupQueryKey, useCheckoutGroup } from './hooks/useCheckoutGroup';
 export { useRetryPayment } from './hooks/useRetryPayment';
 export * as checkoutService from './services/checkout.service';
+export { AddressForm } from './components/AddressForm';
+export { AddressFormContainer } from './components/AddressFormContainer';
+export { AddressRadioList } from './components/AddressRadioList';
+export type { AddressFormInput } from './schemas/address.schema';
 export type {
   Address,
   CheckoutGroup,
