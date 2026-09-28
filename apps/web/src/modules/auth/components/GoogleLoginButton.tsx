@@ -21,10 +21,16 @@ interface GoogleLoginButtonProps {
   // khớp ngữ cảnh "Đăng ký" thay vì mặc định "Đăng nhập" — cùng 1 route OAuth
   // BE (login/register gộp chung), chỉ khác label hiển thị theo trang gọi.
   label?: string;
+  // Đích quay lại sau khi đăng nhập Google thành công (Week7.md 1.2/3.2) — đã
+  // được safeNextPath kiểm ở page.tsx (Server Component), truyền nguyên qua
+  // props tới đây. BE (GoogleAuthGuard) kiểm lại lần nữa trước khi dùng.
+  next?: string;
 }
 
-export function GoogleLoginButton({ label }: GoogleLoginButtonProps) {
+export function GoogleLoginButton({ label, next }: GoogleLoginButtonProps) {
   const t = useTranslations("auth");
+  const googleAuthUrl = `${API_BASE_URL}${API_PREFIX}/auth/google`;
+  const href = next ? `${googleAuthUrl}?next=${encodeURIComponent(next)}` : googleAuthUrl;
 
   return (
     <Button
@@ -32,7 +38,7 @@ export function GoogleLoginButton({ label }: GoogleLoginButtonProps) {
       variant="outline"
       className="w-full"
       nativeButton={false}
-      render={<a href={`${API_BASE_URL}${API_PREFIX}/auth/google`} />}
+      render={<a href={href} />}
     >
       {label ?? t("googleSignIn")}
     </Button>

@@ -19,12 +19,16 @@ interface LoginFormContainerProps {
   // (xem AuthController.googleCallback) — app/login/page.tsx (Server
   // Component) đọc searchParams rồi truyền message đã dịch sẵn xuống đây.
   initialError?: string;
+  // Đích quay lại sau khi đăng nhập (Week7.md 1.2/3.2) — page.tsx đã kiểm
+  // bằng safeNextPath trước khi truyền xuống, giữ nguyên khi chuyển sang
+  // /register và gắn vào nút Google.
+  next?: string;
 }
 
 // Nối LoginForm (UI + validate, Bước 3.3) với service gọi API (Bước 3.5) +
 // store (Bước 3.4) — đặt trong modules/ để app/login/page.tsx chỉ compose,
 // không viết logic nghiệp vụ trực tiếp (rules/frontend.md mục 1).
-export function LoginFormContainer({ initialError }: LoginFormContainerProps) {
+export function LoginFormContainer({ initialError, next }: LoginFormContainerProps) {
   const t = useTranslations('auth');
   const tApi = useApiErrorMessage();
   const tCommon = useTranslations('common');
@@ -39,7 +43,7 @@ export function LoginFormContainer({ initialError }: LoginFormContainerProps) {
     try {
       const user = await login(values);
       setUser(user);
-      router.push('/');
+      router.push(next ?? '/');
     } catch (err) {
       setError(err instanceof ApiError ? tApi(err.message) : t('loginGenericError'));
     } finally {
@@ -52,11 +56,11 @@ export function LoginFormContainer({ initialError }: LoginFormContainerProps) {
       {error && <p className="text-sm text-destructive">{error}</p>}
       <LoginForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
       <FieldSeparator>{tCommon('or')}</FieldSeparator>
-      <GoogleLoginButton />
+      <GoogleLoginButton next={next} />
       <p className="text-center text-sm text-muted-foreground">
         {t('loginNoAccountPrompt')}{' '}
         <Link
-          href="/register"
+          href={next ? { pathname: '/register', query: { next } } : '/register'}
           className="font-medium text-primary underline-offset-4 hover:underline"
         >
           {t('loginRegisterLink')}
