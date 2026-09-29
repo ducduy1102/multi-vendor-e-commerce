@@ -5,7 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as checkoutService from '../services/checkout.service';
 import type { CheckoutGroup } from '../types';
-import { checkoutGroupQueryKey, useCheckoutGroup } from './useCheckoutGroup';
+import {
+  checkoutGroupQueryKey,
+  POLL_MAX_MS,
+  resolvePollInterval,
+  useCheckoutGroup,
+} from './useCheckoutGroup';
 
 vi.mock('../services/checkout.service', () => ({
   getCheckoutGroup: vi.fn(),
@@ -54,5 +59,33 @@ describe('useCheckoutGroup', () => {
     renderHook(() => useCheckoutGroup(''), { wrapper: createWrapper() });
 
     expect(checkoutService.getCheckoutGroup).not.toHaveBeenCalled();
+  });
+
+  // Week7.md 3.6/1.10: polling chỉ chạy khi còn AWAITING_PAYMENT, tối đa POLL_MAX_MS rồi dừng hẳn —
+  // test hàm thuần thay vì giả lập timer thật qua react-query (không mong manh, không cần fake timers).
+  describe('resolvePollInterval', () => {
+    it('AWAITING_PAYMENT, chưa quá POLL_MAX_MS -> tiếp tục polling', () => {
+      expect(resolvePollInterval('AWAITING_PAYMENT', 0)).toBe(2000);
+      expect(resolvePollInterval('AWAITING_PAYMENT', POLL_MAX_MS - 1)).toBe(2000);
+    });
+
+    it('AWAITING_PAYMENT nhưng đã quá POLL_MAX_MS -> dừng polling', () => {
+      expect(resolvePollInterval('AWAITING_PAYMENT', POLL_MAX_MS)).toBe(false);
+      expect(resolvePollInterval('AWAITING_PAYMENT', POLL_MAX_MS + 5000)).toBe(false);
+    });
+
+    it.each([
+      'PAID',
+      'PAYMENT_FAILED',
+      'PAYMENT_EXPIRED',
+      'CANCELLED',
+      'PAID_AFTER_EXPIRY',
+    ] as const)('trạng thái đã ổn định (%s) -> dừng polling ngay dù mới bắt đầu', (status) => {
+      expect(resolvePollInterval(status, 0)).toBe(false);
+    });
+
+    it('chưa có dữ liệu (status undefined) -> không tự polling thêm', () => {
+      expect(resolvePollInterval(undefined, 0)).toBe(false);
+    });
   });
 });

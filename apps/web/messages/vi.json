@@ -405,6 +405,19 @@
     "outOfStockItemsTitle": "Sản phẩm đã hết hàng",
     "outOfStockItemAvailable": "chỉ còn {available} sản phẩm",
     "pendingCheckoutsTitle": "Bạn có đơn đang chờ thanh toán",
-    "pendingCheckoutLink": "Xem đơn #{index}"
+    "pendingCheckoutLink": "Xem đơn #{index}",
+    "resultPageTitle": "Kết quả đặt hàng",
+    "resultLoadError": "Không tải được trạng thái đơn hàng, vui lòng thử lại",
+    "resultInvalidLink": "Đường dẫn không hợp lệ hoặc đã hết hạn.",
+    "resultOrdersTitle": "Đơn hàng của bạn",
+    "resultContinuePaymentButton": "Tiếp tục thanh toán",
+    "resultRetryPaymentButton": "Thanh toán lại",
+    "resultRetryGenericError": "Không thể thanh toán lại lúc này, vui lòng thử lại",
+    "resultStatusPaid": "Đặt hàng và thanh toán thành công! Cảm ơn bạn đã mua sắm.",
+    "resultStatusAwaitingPayment": "Đang xác nhận thanh toán. Nếu bạn vừa thanh toán xong, vui lòng đợi trong giây lát.",
+    "resultStatusPaymentFailed": "Thanh toán không thành công. Bạn có thể thử thanh toán lại trước khi đơn hết hạn giữ chỗ.",
+    "resultStatusPaymentExpired": "Đơn hàng chưa được thanh toán kịp thời nên đã hết hạn và bị huỷ. Vui lòng đặt lại đơn hàng.",
+    "resultStatusCancelled": "Đơn hàng đã bị huỷ.",
+    "resultStatusPaidAfterExpiry": "Đơn hàng đã bị huỷ do hết hạn giữ chỗ trước khi hệ thống ghi nhận được thanh toán của bạn. Số tiền sẽ được hoàn lại."
   }
 }

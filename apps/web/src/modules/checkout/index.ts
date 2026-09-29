@@ -14,6 +14,7 @@ export { AddressForm } from './components/AddressForm';
 export { AddressFormContainer } from './components/AddressFormContainer';
 export { AddressRadioList } from './components/AddressRadioList';
 export { CheckoutContainer } from './components/CheckoutContainer';
+export { CheckoutResultContainer } from './components/CheckoutResultContainer';
 export type { AddressFormInput } from './schemas/address.schema';
 export type {
   Address,

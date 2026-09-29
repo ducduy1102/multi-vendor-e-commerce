@@ -405,6 +405,19 @@
     "outOfStockItemsTitle": "Out-of-stock items",
     "outOfStockItemAvailable": "{available, plural, one {only # item left} other {only # items left}}",
     "pendingCheckoutsTitle": "You have checkouts awaiting payment",
-    "pendingCheckoutLink": "View order #{index}"
+    "pendingCheckoutLink": "View order #{index}",
+    "resultPageTitle": "Order result",
+    "resultLoadError": "Couldn't load your order status, please try again",
+    "resultInvalidLink": "This link is invalid or has expired.",
+    "resultOrdersTitle": "Your orders",
+    "resultContinuePaymentButton": "Continue payment",
+    "resultRetryPaymentButton": "Retry payment",
+    "resultRetryGenericError": "Couldn't retry payment right now, please try again",
+    "resultStatusPaid": "Order placed and paid successfully! Thank you for shopping with us.",
+    "resultStatusAwaitingPayment": "Confirming your payment. If you just completed payment, please wait a moment.",
+    "resultStatusPaymentFailed": "Payment failed. You can retry before the order hold expires.",
+    "resultStatusPaymentExpired": "The order wasn't paid in time and has been cancelled. Please place a new order.",
+    "resultStatusCancelled": "This order has been cancelled.",
+    "resultStatusPaidAfterExpiry": "Your order was cancelled after the hold expired before we could confirm your payment. You will be refunded."
   }
 }
