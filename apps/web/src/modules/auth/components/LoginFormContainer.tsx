@@ -43,7 +43,14 @@ export function LoginFormContainer({ initialError, next }: LoginFormContainerPro
     try {
       const user = await login(values);
       setUser(user);
+      // `router.refresh()` NGAY SAU push là bắt buộc khi `next` trỏ tới route cần đăng nhập
+      // (Week7.md 3.11 phát hiện bằng Playwright thật) — nếu route đó đã được Next.js tự prefetch
+      // lúc còn là guest (vd hover/thấy Link "Tiến hành thanh toán" ở /cart trỏ /checkout), router
+      // cache giữ lại bản RSC ứng với trạng thái CHƯA đăng nhập; push tới URL đó sau khi login xong
+      // sẽ lặng lẽ dùng lại cache cũ và KHÔNG điều hướng đi đâu cả (không throw, không log lỗi) —
+      // `refresh()` buộc lấy lại dữ liệu mới, không tự dưng thừa cho luồng không có `next`.
       router.push(next ?? '/');
+      router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? tApi(err.message) : t('loginGenericError'));
     } finally {
