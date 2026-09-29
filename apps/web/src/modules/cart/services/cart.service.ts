@@ -1,10 +1,12 @@
 import {
   cartItemResponseSchema,
   cartResponseSchema,
+  mergeCartResponseSchema,
   type AddCartItemInput,
   type CartItemInput,
   type CartItemRow,
   type CartView,
+  type MergeCartResponse,
 } from '@ecommerce/types';
 
 import { apiFetch } from '@/shared/lib/api-client';
@@ -32,13 +34,14 @@ export async function quoteCart(items: CartItemInput[], voucherCode?: string): P
   return cartResponseSchema.parse(data).cart;
 }
 
-// Gộp giỏ guest vào giỏ DB sau khi đăng nhập (Week6.md 1.8), trả giỏ mới.
-export async function mergeCart(items: CartItemInput[]): Promise<CartView> {
+// Gộp giỏ guest vào giỏ DB sau khi đăng nhập (Week6.md 1.8), trả giỏ mới kèm số dòng bị bỏ vì đã
+// đủ MAX_CART_LINES (Week7.md 3.5/1.12) — CartHydrator dùng để báo 1 thông báo gộp.
+export async function mergeCart(items: CartItemInput[]): Promise<MergeCartResponse> {
   const data = await apiFetch<unknown>('/cart/merge', {
     method: 'POST',
     body: JSON.stringify({ items }),
   });
-  return cartResponseSchema.parse(data).cart;
+  return mergeCartResponseSchema.parse(data);
 }
 
 export async function addCartItem(input: AddCartItemInput): Promise<CartItemRow> {

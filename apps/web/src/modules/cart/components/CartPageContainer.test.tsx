@@ -472,13 +472,26 @@ describe('CartPageContainer', () => {
     });
   });
 
-  it('nút thanh toán disabled kèm ghi chú, không bấm được (checkout thuộc Tuần 7)', () => {
-    mockCart({ cart: cartView() });
+  describe('nút thanh toán', () => {
+    it('còn item khả dụng -> là link tới /checkout (guest bị proxy.ts đẩy sang login)', () => {
+      mockCart({ cart: cartView() });
 
-    renderContainer();
+      renderContainer();
 
-    const button = screen.getByRole('button', { name: 'Tiến hành thanh toán' });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription('Tính năng thanh toán sắp ra mắt');
+      expect(screen.getByRole('button', { name: 'Tiến hành thanh toán' })).toHaveAttribute(
+        'href',
+        '/checkout',
+      );
+    });
+
+    it('không còn item nào khả dụng -> disabled', () => {
+      mockCart({
+        cart: cartView({ shops: [group({ items: [line({ isAvailable: false })] })] }),
+      });
+
+      renderContainer();
+
+      expect(screen.getByRole('button', { name: 'Tiến hành thanh toán' })).toBeDisabled();
+    });
   });
 });

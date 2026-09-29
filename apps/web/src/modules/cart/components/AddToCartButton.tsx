@@ -1,5 +1,6 @@
 'use client';
 
+import { MAX_CART_LINES } from '@ecommerce/types';
 import { ShoppingCartIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useId, useState } from 'react';
@@ -8,6 +9,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/modules/auth';
 import { Button } from '@/shared/components/ui/button';
 import { ApiError } from '@/shared/lib/api-client';
+import { getErrorCode, getErrorDetails } from '@/shared/lib/error-codes';
 
 import { useAddToCart } from '../hooks/useAddToCart';
 import { useCartStore } from '../store/cart.store';
@@ -40,12 +42,24 @@ export function AddToCartButton({ productVariantId, stock }: AddToCartButtonProp
       ? 0
       : (state.items.find((item) => item.productVariantId === productVariantId)?.quantity ?? 0),
   );
+  // Số DÒNG (variant khác nhau) đang có trong giỏ guest — dùng để tự áp trần MAX_CART_LINES phía
+  // client (Week7.md 3.5/1.12), vì guest không có API để BE tự chặn như user đã đăng nhập.
+  const guestLineCount = useCartStore((state) => (isLoggedIn ? 0 : state.items.length));
 
   const hasSelection = productVariantId !== null;
   const isOutOfStock = hasSelection && stock < 1;
   const remaining = stock - guestQuantityInCart;
   const isMaxInCart = hasSelection && !isOutOfStock && remaining < 1;
-  const canAdd = hasSelection && !isOutOfStock && !isMaxInCart;
+  // Chỉ chặn khi đây là DÒNG MỚI (variant chưa có trong giỏ) — cộng dồn vào dòng có sẵn không bị
+  // giới hạn bởi trần này (đúng quy ước MAX_CART_LINES ở packages/types/src/cart.ts).
+  const isNewGuestLine = !isLoggedIn && guestQuantityInCart === 0;
+  const guestCartFull =
+    hasSelection &&
+    !isOutOfStock &&
+    !isMaxInCart &&
+    isNewGuestLine &&
+    guestLineCount >= MAX_CART_LINES;
+  const canAdd = hasSelection && !isOutOfStock && !isMaxInCart && !guestCartFull;
   // Đổi sang combo tồn kho ít hơn thì kẹp số lượng xuống, không giữ số cũ vượt kho.
   const quantity = Math.min(requestedQuantity, Math.max(remaining, 1));
   const hint = !hasSelection
@@ -54,10 +68,17 @@ export function AddToCartButton({ productVariantId, stock }: AddToCartButtonProp
       ? t('outOfStock')
       : isMaxInCart
         ? t('maxInCartHint', { count: guestQuantityInCart })
-        : null;
+        : guestCartFull
+          ? t('cartFull', { max: MAX_CART_LINES })
+          : null;
 
   function errorMessage(error: unknown): string {
     if (error instanceof ApiError) {
+      const code = getErrorCode(error);
+      if (code === 'CART_FULL') {
+        const maxLines = getErrorDetails(error.details, 'CART_FULL')?.maxLines ?? MAX_CART_LINES;
+        return t('cartFull', { max: maxLines });
+      }
       if (error.status === 409) return t('addToCartConflict');
       if (error.status === 401) return t('addToCartUnauthorized');
     }

@@ -284,10 +284,10 @@
     "voucherNotApplicable": "Mã này không áp dụng cho sản phẩm nào trong giỏ hàng",
     "voucherGenericError": "Không áp dụng được mã giảm giá này",
     "cartFull": "Giỏ hàng đã đạt tối đa {max} sản phẩm khác nhau, không thể thêm mới",
+    "mergeLinesDropped": "{count} sản phẩm từ giỏ trước không được gộp vào vì giỏ đã đạt tối đa {max} sản phẩm khác nhau",
     "errorItemUnavailable": "Sản phẩm này hiện không còn bán",
     "errorInsufficientStock": "Số lượng vượt quá tồn kho hiện có (còn {available})",
-    "checkout": "Tiến hành thanh toán",
-    "checkoutSoon": "Tính năng thanh toán sắp ra mắt"
+    "checkout": "Tiến hành thanh toán"
   },
   "voucher": {
     "validationCodeFormat": "Mã chỉ gồm chữ, số, gạch ngang/gạch dưới, dài 3-32 ký tự",

@@ -115,16 +115,24 @@ describe('cart.service', () => {
   });
 
   describe('mergeCart', () => {
-    it('POST /cart/merge, trả giỏ mới', async () => {
-      mockFetchOnce({ success: true, data: { cart: CART_VIEW } });
+    it('POST /cart/merge, trả giỏ mới kèm droppedLineCount', async () => {
+      mockFetchOnce({ success: true, data: { cart: CART_VIEW, droppedLineCount: 0 } });
       const items = [{ productVariantId: 'v1', quantity: 1 }];
 
       const result = await mergeCart(items);
 
-      expect(result).toEqual(CART_VIEW);
+      expect(result).toEqual({ cart: CART_VIEW, droppedLineCount: 0 });
       const [url, init] = lastCall();
       expect(url).toMatch(/\/cart\/merge$/);
       expect(JSON.parse(init.body as string)).toEqual({ items });
+    });
+
+    it('giỏ guest vượt trần MAX_CART_LINES -> giữ nguyên droppedLineCount BE trả về', async () => {
+      mockFetchOnce({ success: true, data: { cart: CART_VIEW, droppedLineCount: 3 } });
+
+      const result = await mergeCart([{ productVariantId: 'v1', quantity: 1 }]);
+
+      expect(result.droppedLineCount).toBe(3);
     });
   });
 

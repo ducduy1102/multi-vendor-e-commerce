@@ -4,6 +4,7 @@ import { XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useId, useState } from 'react';
 
+import { Link } from '@/i18n/navigation';
 import { formatPrice } from '@/modules/product';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -25,10 +26,11 @@ interface CartSummaryProps {
 }
 
 // Cột tóm tắt bên phải: ô mã giảm giá (đúng 1 mã, Week6.md 1.12), tạm tính,
-// giảm giá, tổng cộng. Nút thanh toán CỐ Ý disabled (1.6 hướng a — checkout
-// thuộc Tuần 7). Số giảm dùng text-success (semantic, teal) — dự án chưa có
-// token màu cam "accent" (--accent của shadcn là xám trung tính), không tự
-// thêm token mới ở bước này.
+// giảm giá, tổng cộng. Nút thanh toán là Link tới /checkout (Week7.md 3.5,
+// chuyển giao #8) — disabled khi giỏ không còn item nào khả dụng; guest bấm
+// vào bị proxy.ts tự đẩy sang /login?next=/checkout (Week7.md 3.2). Số giảm
+// dùng text-success (semantic, teal) — dự án chưa có token màu cam "accent"
+// (--accent của shadcn là xám trung tính), không tự thêm token mới ở bước này.
 export function CartSummary({
   cart,
   appliedCode,
@@ -47,6 +49,10 @@ export function CartSummary({
   const [codeInput, setCodeInput] = useState(appliedCode);
 
   const discount = cart.discount;
+  // Item không khả dụng (Week6.md 1.9) vẫn có thể còn nguyên trong giỏ — chặn thanh toán khi
+  // KHÔNG còn item nào khả dụng, thay vì chỉ dựa vào shops.length (CartPageContainer đã lo
+  // trường hợp giỏ rỗng hẳn ở nhánh empty state riêng).
+  const hasAvailableItem = cart.shops.some((shop) => shop.items.some((item) => item.isAvailable));
   const errorInfo = voucherError && appliedCode ? classifyVoucherError(voucherError) : null;
   const shopName = discount?.shopId
     ? cart.shops.find((shop) => shop.shopId === discount.shopId)?.shopName
@@ -128,12 +134,15 @@ export function CartSummary({
       </dl>
 
       <div className="flex flex-col gap-2">
-        <Button type="button" disabled aria-describedby={`${inputId}-checkout-note`}>
-          {t('checkout')}
-        </Button>
-        <p id={`${inputId}-checkout-note`} className="text-center text-xs text-muted-foreground">
-          {t('checkoutSoon')}
-        </p>
+        {hasAvailableItem ? (
+          <Button nativeButton={false} render={<Link href="/checkout" />}>
+            {t('checkout')}
+          </Button>
+        ) : (
+          <Button type="button" disabled>
+            {t('checkout')}
+          </Button>
+        )}
       </div>
     </aside>
   );

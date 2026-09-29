@@ -1,3 +1,4 @@
+import { MAX_CART_LINES } from '@ecommerce/types';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -268,5 +269,69 @@ describe('AddToCartButton', () => {
 
       expect(screen.getByRole('button', { name: ADD_LABEL })).toBeEnabled();
     });
+  });
+
+  // Week7.md 3.5/1.12: MAX_CART_LINES áp cho cả guest lẫn user — guest tự chặn phía client (không
+  // có API kiểm trước), user dựa vào BE trả 409 CART_FULL (nhóm test riêng bên dưới).
+  describe('giỏ guest đã đủ trần MAX_CART_LINES dòng', () => {
+    beforeEach(() => {
+      act(() => {
+        useAuthStore.setState({ user: null, isHydrating: false });
+        const items = Array.from({ length: MAX_CART_LINES }, (_, index) => ({
+          productVariantId: `existing-${index}`,
+          quantity: 1,
+        }));
+        useCartStore.setState({ items, hasHydrated: true });
+      });
+    });
+
+    afterEach(() => {
+      act(() => {
+        useAuthStore.setState({ user: null, isHydrating: true });
+        useCartStore.setState({ items: [], hasHydrated: false });
+      });
+    });
+
+    it('variant CHƯA có trong giỏ (dòng mới) -> disabled kèm gợi ý đã đạt trần, không gọi API', async () => {
+      const mutate = mockMutation();
+      const user = userEvent.setup();
+      render(withIntl(<AddToCartButton productVariantId="new-variant" stock={5} />));
+
+      const button = screen.getByRole('button', { name: ADD_LABEL });
+      expect(button).toBeDisabled();
+      expect(
+        screen.getByText(
+          `Giỏ hàng đã đạt tối đa ${MAX_CART_LINES} sản phẩm khác nhau, không thể thêm mới`,
+        ),
+      ).toBeInTheDocument();
+
+      await user.click(button);
+      expect(mutate).not.toHaveBeenCalled();
+    });
+
+    it('variant ĐÃ có trong giỏ -> vẫn cộng dồn được bình thường (không tính là dòng mới)', async () => {
+      const mutate = mockMutation();
+      const user = userEvent.setup();
+      render(withIntl(<AddToCartButton productVariantId="existing-0" stock={5} />));
+
+      expect(screen.getByRole('button', { name: ADD_LABEL })).toBeEnabled();
+
+      await user.click(screen.getByRole('button', { name: ADD_LABEL }));
+      expect(mutate).toHaveBeenCalled();
+    });
+  });
+
+  it('đăng nhập, BE trả 409 CART_FULL -> toast đúng số dòng tối đa lấy từ details', async () => {
+    mockMutation((options) =>
+      options.onError?.(new ApiError('Cart is full', 409, 'CART_FULL', { maxLines: 50 })),
+    );
+    const user = userEvent.setup();
+    render(withIntl(<AddToCartButton productVariantId="v1" stock={5} />));
+
+    await user.click(screen.getByRole('button', { name: ADD_LABEL }));
+
+    expect(toastError).toHaveBeenCalledWith(
+      'Giỏ hàng đã đạt tối đa 50 sản phẩm khác nhau, không thể thêm mới',
+    );
   });
 });

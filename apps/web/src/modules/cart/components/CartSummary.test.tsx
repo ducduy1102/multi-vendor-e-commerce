@@ -15,7 +15,24 @@ function cartView(overrides: Partial<CartView> = {}): CartView {
         shopId: 'shop-a',
         shopName: 'Shop A',
         shopSlug: 'shop-a',
-        items: [],
+        // Có sẵn 1 item khả dụng để nút thanh toán mặc định là link bật (Week7.md 3.5) — test
+        // riêng của nhóm "nút thanh toán" ở dưới tự override khi cần ca không còn item khả dụng.
+        items: [
+          {
+            id: 'item-1',
+            productVariantId: 'v1',
+            quantity: 1,
+            productId: 'p1',
+            productName: 'Áo thun nam',
+            productSlug: 'ao-thun-nam',
+            imageUrl: null,
+            attributes: [],
+            unitPrice: '500000',
+            lineTotal: '500000',
+            stock: 10,
+            isAvailable: true,
+          },
+        ],
         subtotal: '500000',
       },
     ],
@@ -231,11 +248,28 @@ describe('CartSummary', () => {
     });
   });
 
-  it('nút thanh toán luôn disabled kèm ghi chú (checkout thuộc Tuần 7)', () => {
-    renderSummary();
+  describe('nút thanh toán', () => {
+    it('còn item khả dụng -> là link tới /checkout', () => {
+      renderSummary();
 
-    const button = screen.getByRole('button', { name: 'Tiến hành thanh toán' });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription('Tính năng thanh toán sắp ra mắt');
+      expect(screen.getByRole('button', { name: 'Tiến hành thanh toán' })).toHaveAttribute(
+        'href',
+        '/checkout',
+      );
+    });
+
+    it('không còn item nào khả dụng -> disabled, không phải link', () => {
+      renderSummary({
+        cart: cartView({
+          shops: [
+            { shopId: 'shop-a', shopName: 'Shop A', shopSlug: 'shop-a', items: [], subtotal: '0' },
+          ],
+        }),
+      });
+
+      const button = screen.getByRole('button', { name: 'Tiến hành thanh toán' });
+      expect(button).toBeDisabled();
+      expect(button).not.toHaveAttribute('href');
+    });
   });
 });

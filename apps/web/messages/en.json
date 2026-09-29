@@ -284,10 +284,10 @@
     "voucherNotApplicable": "This voucher does not apply to any item in your cart",
     "voucherGenericError": "Couldn't apply this voucher",
     "cartFull": "Your cart has reached the maximum of {max} different items, can't add a new one",
+    "mergeLinesDropped": "{count, plural, one {# item} other {# items}} from your previous cart could not be merged because it reached the maximum of {max} different items",
     "errorItemUnavailable": "This product is no longer available",
     "errorInsufficientStock": "Quantity exceeds available stock (only {available} left)",
-    "checkout": "Proceed to checkout",
-    "checkoutSoon": "Checkout is coming soon"
+    "checkout": "Proceed to checkout"
   },
   "voucher": {
     "validationCodeFormat": "Code may only contain letters, numbers, hyphens/underscores, 3-32 characters",
