@@ -104,7 +104,26 @@ export class AuthController {
   @ApiResponse({
     status: 401,
     description:
-      'Email hoặc mật khẩu không đúng, hoặc tài khoản không ở trạng thái ACTIVE (message + code: "ACCOUNT_NOT_ACTIVE")',
+      'Email hoặc mật khẩu không đúng (không có code), hoặc tài khoản không ở trạng thái ACTIVE (code: ACCOUNT_NOT_ACTIVE)',
+    examples: {
+      invalidCredentials: {
+        summary: 'Sai email/mật khẩu',
+        value: {
+          success: false,
+          data: null,
+          message: 'Email hoặc mật khẩu không đúng',
+        },
+      },
+      accountNotActive: {
+        summary: 'ACCOUNT_NOT_ACTIVE',
+        value: {
+          success: false,
+          data: null,
+          message: 'ACCOUNT_NOT_ACTIVE',
+          code: 'ACCOUNT_NOT_ACTIVE',
+        },
+      },
+    },
   })
   async login(
     @Body(new ZodValidationPipe(loginSchema)) dto: LoginDto,
@@ -237,7 +256,22 @@ export class AuthController {
   @ApiResponse({
     status: 401,
     description:
-      'Chưa đăng nhập, session hết hạn, hoặc tài khoản không còn ACTIVE (message + code: "ACCOUNT_NOT_ACTIVE")',
+      'Chưa đăng nhập/session hết hạn (không có code), hoặc tài khoản không còn ACTIVE (code: ACCOUNT_NOT_ACTIVE)',
+    examples: {
+      unauthorized: {
+        summary: 'Chưa đăng nhập / session hết hạn',
+        value: { success: false, data: null, message: 'Unauthorized' },
+      },
+      accountNotActive: {
+        summary: 'ACCOUNT_NOT_ACTIVE',
+        value: {
+          success: false,
+          data: null,
+          message: 'ACCOUNT_NOT_ACTIVE',
+          code: 'ACCOUNT_NOT_ACTIVE',
+        },
+      },
+    },
   })
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.me(user.userId);
