@@ -76,14 +76,20 @@ describe('placeOrderSchema', () => {
     expect(messagesOf(placeOrderSchema, payload)).toContain(key);
   });
 
-  it.each(['COD', 'PAYPAL', 'vnpay', '', undefined])(
-    'paymentMethod %p bị từ chối (COD không thuộc phạm vi Tuần 7)',
+  it.each(['PAYPAL', 'vnpay', '', undefined])(
+    'paymentMethod %p bị từ chối',
     (paymentMethod) => {
       expect(
         placeOrderSchema.safeParse({ ...valid, paymentMethod }).success,
       ).toBe(false);
     },
   );
+
+  it('chấp nhận COD ở mức validate (khả dụng thật do PaymentGatewayService quyết định, Week8.md 2.7)', () => {
+    expect(
+      placeOrderSchema.safeParse({ ...valid, paymentMethod: 'COD' }).success,
+    ).toBe(true);
+  });
 
   it('chấp nhận MOMO', () => {
     expect(

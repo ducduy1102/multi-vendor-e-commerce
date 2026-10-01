@@ -37,6 +37,11 @@ export const SERVER_ERROR_CODES = [
   'PAYMENT_METHOD_UNAVAILABLE',
   'ADDRESS_LIMIT_REACHED',
   'PAYMENT_RETRY_NOT_ALLOWED',
+  // Đơn hàng
+  'ORDER_NOT_FOUND',
+  'ORDER_INVALID_TRANSITION',
+  'ORDER_CANCEL_NOT_ALLOWED',
+  'ORDER_ALREADY_CHANGED',
 ] as const;
 export type ServerErrorCode = (typeof SERVER_ERROR_CODES)[number];
 
@@ -79,6 +84,11 @@ export const errorDetailsSchemas = {
   }),
   PAYMENT_RETRY_NOT_ALLOWED: z.object({
     reason: z.enum(['ATTEMPT_PENDING', 'HOLD_EXPIRED', 'ALREADY_PAID']),
+  }),
+  // PAID_ONLINE: đơn đã thanh toán online (hủy + hoàn tiền: Tuần 9); PROCESSING_STARTED: shop đã xác
+  // nhận hoặc đã xử lý tiếp (hủy sau xác nhận: Tuần 9).
+  ORDER_CANCEL_NOT_ALLOWED: z.object({
+    reason: z.enum(['PAID_ONLINE', 'PROCESSING_STARTED']),
   }),
 } as const;
 

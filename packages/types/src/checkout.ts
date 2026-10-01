@@ -98,6 +98,8 @@ export type CheckoutPreview = z.infer<typeof checkoutPreviewSchema>;
 //  PAYMENT_EXPIRED: lần thử mới nhất quá hạn nhưng chưa thu hồi (chưa cho thử lại)
 //  CANCELLED: mọi đơn đã huỷ, không có Payment SUCCESS
 //  PAID_AFTER_EXPIRY: có Payment SUCCESS nhưng mọi đơn đã huỷ (thanh toán muộn, chờ hoàn tiền Tuần 9)
+//  COD_PLACED: đơn COD đã đặt thành công, còn đơn đang hoạt động — CHƯA thu tiền (Week8.md 1.6);
+//    FE KHÔNG được hiển thị là "đã thanh toán"
 export const checkoutGroupStatusSchema = z.enum([
   'PAID',
   'AWAITING_PAYMENT',
@@ -105,6 +107,7 @@ export const checkoutGroupStatusSchema = z.enum([
   'PAYMENT_EXPIRED',
   'CANCELLED',
   'PAID_AFTER_EXPIRY',
+  'COD_PLACED',
 ]);
 export type CheckoutGroupStatus = z.infer<typeof checkoutGroupStatusSchema>;
 

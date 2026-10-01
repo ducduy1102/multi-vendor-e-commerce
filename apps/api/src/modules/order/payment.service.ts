@@ -547,8 +547,7 @@ export class PaymentService {
       expiresAt: latest?.expiresAt ? latest.expiresAt.toISOString() : null,
       createdAt: group.createdAt.toISOString(),
       totalAmount: String(totalAmount),
-      // paymentMethodSchema (packages/types) chưa có COD — thêm ở Week8.md 2.3/2.7.
-      paymentMethod: latest && latest.method !== 'COD' ? latest.method : null,
+      paymentMethod: latest?.method ?? null,
       latestPaymentStatus: latest?.status ?? null,
       orders: group.orders.map((o) => ({
         id: o.id,

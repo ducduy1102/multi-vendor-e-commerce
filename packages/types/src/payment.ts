@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
-// Khớp enum PaymentMethod/PaymentStatus của Prisma. COD không có (Week7.md 1.9).
-export const paymentMethodSchema = z.enum(['VNPAY', 'MOMO']);
+// Khớp enum PaymentMethod/PaymentStatus của Prisma. COD (thanh toán khi nhận hàng) không có cổng và
+// không hết hạn — thêm ở Week8.md 1.6.
+export const paymentMethodSchema = z.enum(['VNPAY', 'MOMO', 'COD']);
 export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
 
 export const paymentStatusSchema = z.enum(['PENDING', 'SUCCESS', 'FAILED', 'REFUNDED']);

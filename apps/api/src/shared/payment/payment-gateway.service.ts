@@ -45,6 +45,11 @@ export class PaymentGatewayService {
     method: PaymentMethod,
     amountVnd: number,
   ): PaymentMethodAvailability {
+    // COD không có cổng thanh toán và placeOrder chưa hỗ trợ COD (Week8.md 2.7) — luôn chặn ở đây,
+    // kể cả khi mock bật (get() trả mock cho MỌI phương thức nên nếu không chặn, COD sẽ lọt qua).
+    if (method === 'COD') {
+      return { method, available: false, reason: 'NOT_CONFIGURED' };
+    }
     const gateway = this.getConfigured(method);
     if (!gateway) {
       return { method, available: false, reason: 'NOT_CONFIGURED' };

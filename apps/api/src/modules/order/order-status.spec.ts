@@ -52,7 +52,7 @@ describe('ORDER_STATUSES_VISIBLE_TO_SELLER', () => {
 });
 
 describe('checkoutGroupStatusSchema', () => {
-  it('đúng 6 trạng thái suy ra của nhóm thanh toán', () => {
+  it('đúng 7 trạng thái suy ra của nhóm thanh toán', () => {
     expect([...checkoutGroupStatusSchema.options].sort()).toEqual(
       [
         'AWAITING_PAYMENT',
@@ -61,6 +61,7 @@ describe('checkoutGroupStatusSchema', () => {
         'PAID_AFTER_EXPIRY',
         'PAYMENT_EXPIRED',
         'PAYMENT_FAILED',
+        'COD_PLACED',
       ].sort(),
     );
   });

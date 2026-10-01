@@ -393,6 +393,7 @@
     "paymentMethodSectionTitle": "Phương thức thanh toán",
     "paymentMethodVnpayLabel": "VNPay",
     "paymentMethodMomoLabel": "Momo",
+    "paymentMethodCodLabel": "Thanh toán khi nhận hàng (COD)",
     "paymentMethodReasonNotConfigured": "Hiện chưa hỗ trợ phương thức này",
     "paymentMethodReasonAmountTooSmall": "Số tiền đơn hàng quá nhỏ để dùng phương thức này",
     "paymentMethodReasonAmountTooLarge": "Số tiền đơn hàng quá lớn để dùng phương thức này",
@@ -421,6 +422,17 @@
     "resultStatusPaymentFailed": "Thanh toán không thành công. Bạn có thể thử thanh toán lại trước khi đơn hết hạn giữ chỗ.",
     "resultStatusPaymentExpired": "Đơn hàng chưa được thanh toán kịp thời nên đã hết hạn và bị huỷ. Vui lòng đặt lại đơn hàng.",
     "resultStatusCancelled": "Đơn hàng đã bị huỷ.",
-    "resultStatusPaidAfterExpiry": "Đơn hàng đã bị huỷ do hết hạn giữ chỗ trước khi hệ thống ghi nhận được thanh toán của bạn. Số tiền sẽ được hoàn lại."
+    "resultStatusPaidAfterExpiry": "Đơn hàng đã bị huỷ do hết hạn giữ chỗ trước khi hệ thống ghi nhận được thanh toán của bạn. Số tiền sẽ được hoàn lại.",
+    "resultStatusCodPlaced": "Đặt hàng thành công! Bạn sẽ thanh toán khi nhận hàng."
+  },
+  "order": {
+    "validationReasonRequired": "Vui lòng nhập lý do",
+    "validationReasonTooLong": "Lý do tối đa 500 ký tự",
+    "validationCarrierTooLong": "Đơn vị vận chuyển tối đa 100 ký tự",
+    "validationTrackingCodeTooLong": "Mã vận đơn tối đa 100 ký tự",
+    "errorNotFound": "Không tìm thấy đơn hàng",
+    "errorInvalidTransition": "Không thể thực hiện thao tác này ở trạng thái hiện tại của đơn hàng",
+    "errorCancelNotAllowed": "Đơn hàng này hiện không thể hủy",
+    "errorAlreadyChanged": "Đơn hàng vừa được cập nhật, vui lòng tải lại trang"
   }
 }

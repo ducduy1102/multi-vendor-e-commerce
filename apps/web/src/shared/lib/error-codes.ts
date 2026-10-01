@@ -43,6 +43,11 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   PAYMENT_METHOD_UNAVAILABLE: 'checkout.errorPaymentMethodUnavailable',
   ADDRESS_LIMIT_REACHED: 'checkout.errorAddressLimitReached',
   PAYMENT_RETRY_NOT_ALLOWED: 'checkout.errorPaymentRetryNotAllowed',
+  // Đơn hàng
+  ORDER_NOT_FOUND: 'order.errorNotFound',
+  ORDER_INVALID_TRANSITION: 'order.errorInvalidTransition',
+  ORDER_CANCEL_NOT_ALLOWED: 'order.errorCancelNotAllowed',
+  ORDER_ALREADY_CHANGED: 'order.errorAlreadyChanged',
   // Lỗi CLIENT tự sinh (mất mạng / phản hồi hỏng) — Week7.md 1.11/1.16: nghĩa là
   // "chưa rõ kết quả", khác các mã nghiệp vụ ở trên (luôn là kết quả chắc chắn).
   NETWORK_ERROR: 'common.errorNetwork',

@@ -777,7 +777,7 @@ export class CheckoutService {
     }
 
     // COD (không cổng, không hết hạn) chưa đi qua placeOrder — phát lại kết quả COD làm ở Week8.md 2.7.
-    if (payment.method === 'COD' || payment.expiresAt === null) {
+    if (payment.expiresAt === null) {
       throw new Error(`CheckoutGroup ${group.id} has a COD payment`);
     }
 

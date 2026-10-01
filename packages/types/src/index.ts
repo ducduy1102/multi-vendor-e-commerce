@@ -11,6 +11,7 @@ export * from './province';
 export * from './address';
 export * from './payment';
 export * from './order-status';
+export * from './order';
 export * from './checkout';
 export * from './safe-next-path';
 export * from './error-code';

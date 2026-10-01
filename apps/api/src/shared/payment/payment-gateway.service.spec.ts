@@ -87,6 +87,7 @@ describe('PaymentGatewayService', () => {
       expect(service.getAvailability(100_000)).toEqual([
         { method: 'VNPAY', available: false, reason: 'NOT_CONFIGURED' },
         { method: 'MOMO', available: false, reason: 'NOT_CONFIGURED' },
+        { method: 'COD', available: false, reason: 'NOT_CONFIGURED' },
       ]);
     });
 
@@ -96,6 +97,7 @@ describe('PaymentGatewayService', () => {
       expect(service.getAvailability(100_000)).toEqual([
         { method: 'VNPAY', available: true },
         { method: 'MOMO', available: false, reason: 'NOT_CONFIGURED' },
+        { method: 'COD', available: false, reason: 'NOT_CONFIGURED' },
       ]);
     });
 
@@ -127,12 +129,25 @@ describe('PaymentGatewayService', () => {
       expect(service.availabilityOf('VNPAY', 50_000_000).available).toBe(true);
     });
 
-    it('mock bật: mọi phương thức khả dụng không cần khoá (để chạy Playwright)', () => {
+    it('COD luôn không khả dụng cho tới khi placeOrder hỗ trợ (Week8.md 2.7), kể cả khi mock bật', () => {
       setEnv('PAYMENT_MOCK_ENABLED', 'true');
 
-      expect(service.getAvailability(100_000).every((m) => m.available)).toBe(
-        true,
-      );
+      expect(service.availabilityOf('COD', 100_000)).toEqual({
+        method: 'COD',
+        available: false,
+        reason: 'NOT_CONFIGURED',
+      });
+    });
+
+    it('mock bật: mọi phương thức có cổng khả dụng không cần khoá (để chạy Playwright)', () => {
+      setEnv('PAYMENT_MOCK_ENABLED', 'true');
+
+      expect(
+        service
+          .getAvailability(100_000)
+          .filter((m) => m.method !== 'COD')
+          .every((m) => m.available),
+      ).toBe(true);
     });
 
     it('production + mock bật nhầm + chưa có khoá VNPay: không phương thức nào khả dụng', () => {

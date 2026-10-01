@@ -11,6 +11,7 @@ import type { PaymentMethod, PaymentMethodAvailability } from '../types';
 const METHOD_LABEL_KEYS: Record<PaymentMethod, string> = {
   VNPAY: 'paymentMethodVnpayLabel',
   MOMO: 'paymentMethodMomoLabel',
+  COD: 'paymentMethodCodLabel',
 };
 
 const REASON_KEYS: Record<string, string> = {

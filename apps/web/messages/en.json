@@ -393,6 +393,7 @@
     "paymentMethodSectionTitle": "Payment method",
     "paymentMethodVnpayLabel": "VNPay",
     "paymentMethodMomoLabel": "Momo",
+    "paymentMethodCodLabel": "Cash on delivery (COD)",
     "paymentMethodReasonNotConfigured": "This method isn't supported yet",
     "paymentMethodReasonAmountTooSmall": "Order amount is too small for this method",
     "paymentMethodReasonAmountTooLarge": "Order amount is too large for this method",
@@ -421,6 +422,17 @@
     "resultStatusPaymentFailed": "Payment failed. You can retry before the order hold expires.",
     "resultStatusPaymentExpired": "The order wasn't paid in time and has been cancelled. Please place a new order.",
     "resultStatusCancelled": "This order has been cancelled.",
-    "resultStatusPaidAfterExpiry": "Your order was cancelled after the hold expired before we could confirm your payment. You will be refunded."
+    "resultStatusPaidAfterExpiry": "Your order was cancelled after the hold expired before we could confirm your payment. You will be refunded.",
+    "resultStatusCodPlaced": "Order placed! You will pay when it is delivered."
+  },
+  "order": {
+    "validationReasonRequired": "Please enter a reason",
+    "validationReasonTooLong": "The reason must be at most 500 characters",
+    "validationCarrierTooLong": "The carrier must be at most 100 characters",
+    "validationTrackingCodeTooLong": "The tracking code must be at most 100 characters",
+    "errorNotFound": "Order not found",
+    "errorInvalidTransition": "This action is not available for the order's current status",
+    "errorCancelNotAllowed": "This order cannot be cancelled right now",
+    "errorAlreadyChanged": "The order was just updated, please reload the page"
   }
 }
