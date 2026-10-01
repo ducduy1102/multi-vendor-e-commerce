@@ -2,10 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 
 import { useAuthStore } from '@/modules/auth';
 import { ApiError } from '@/shared/lib/api-client';
+import { getErrorCode } from '@/shared/lib/error-codes';
 
 import * as cartService from '../services/cart.service';
 import { useCartStore } from '../store/cart.store';
 import type { CartItemInput, CartView } from '../types';
+import type { VoucherErrorState } from '../voucher-error';
 
 // Key theo "ai đang xem": mỗi user 1 scope riêng (user:<id>) và guest 1 scope
 // riêng, để dữ liệu giỏ của user A không bao giờ lộ sang user B hoặc guest
@@ -28,9 +30,10 @@ export const EMPTY_CART_VIEW: CartView = {
 
 interface CartQueryData {
   cart: CartView;
-  // Lý do BE từ chối mã (hết hạn, hết lượt, dưới mức tối thiểu...) — giữ
-  // nguyên message của BE để hiện cạnh ô nhập mã.
-  voucherError: string | null;
+  // Lý do BE từ chối mã (hết hạn, hết lượt, dưới mức tối thiểu...) dạng
+  // code/details máy đọc được (Week7.md 1.16) — CartSummary dịch qua
+  // classifyVoucherError, không còn so message theo chuỗi.
+  voucherError: VoucherErrorState | null;
 }
 
 // Mã sai không được làm hỏng cả trang giỏ: BE trả 400/404 cho mã không áp dụng
@@ -47,7 +50,10 @@ async function fetchWithVoucherFallback(
     return { cart: await fetchCart(voucherCode), voucherError: null };
   } catch (error) {
     if (error instanceof ApiError && (error.status === 400 || error.status === 404)) {
-      return { cart: await fetchCart(), voucherError: error.message };
+      return {
+        cart: await fetchCart(),
+        voucherError: { code: getErrorCode(error), details: error.details },
+      };
     }
     throw error;
   }

@@ -9,6 +9,7 @@ import { useCart } from '../hooks/useCart';
 import { useRemoveCartItem } from '../hooks/useRemoveCartItem';
 import { useUpdateCartItem } from '../hooks/useUpdateCartItem';
 import type { CartLine, CartShopGroup, CartView } from '../types';
+import type { VoucherErrorState } from '../voucher-error';
 import { CartPageContainer } from './CartPageContainer';
 
 const toastError = vi.fn();
@@ -66,7 +67,7 @@ function cartView(overrides: Partial<CartView> = {}): CartView {
 
 interface CartState {
   cart?: CartView;
-  voucherError?: string | null;
+  voucherError?: VoucherErrorState | null;
   isPending?: boolean;
   isFetching?: boolean;
   isError?: boolean;
@@ -427,37 +428,43 @@ describe('CartPageContainer', () => {
     });
 
     it.each([
-      ['Voucher has expired', 'Mã giảm giá đã hết hạn'],
-      ['Voucher not found', 'Mã giảm giá không tồn tại'],
-      ['Voucher is not active', 'Mã giảm giá hiện không được sử dụng'],
-      ['Voucher usage limit has been reached', 'Mã giảm giá đã hết lượt sử dụng'],
+      [{ code: 'VOUCHER_EXPIRED', details: undefined }, 'Mã giảm giá đã hết hạn'],
+      [{ code: 'VOUCHER_NOT_FOUND', details: undefined }, 'Mã giảm giá không tồn tại'],
+      [{ code: 'VOUCHER_INACTIVE', details: undefined }, 'Mã giảm giá hiện không được sử dụng'],
       [
-        'Order amount is below the voucher minimum (300000)',
+        { code: 'VOUCHER_USAGE_LIMIT_REACHED', details: undefined },
+        'Mã giảm giá đã hết lượt sử dụng',
+      ],
+      [
+        { code: 'VOUCHER_BELOW_MINIMUM', details: { minAmount: 300000 } },
         'Đơn hàng chưa đạt mức tối thiểu 300.000 ₫ để dùng mã này',
       ],
       [
-        'Voucher does not apply to any item in your cart',
+        { code: 'VOUCHER_NOT_APPLICABLE', details: undefined },
         'Mã này không áp dụng cho sản phẩm nào trong giỏ hàng',
       ],
-      ['Lý do lạ chưa biết', 'Không áp dụng được mã giảm giá này'],
-    ])('BE từ chối "%s" -> hiện bản dịch, không lộ tiếng Anh', async (beMessage, expected) => {
-      const user = userEvent.setup();
-      mockCart({ cart: cartView() });
-      const { rerender } = renderContainer();
-      await user.type(screen.getByLabelText('Mã giảm giá'), 'BAD');
-      await user.click(screen.getByRole('button', { name: 'Áp dụng' }));
+      // Mã thiếu/lạ (lỗi khác chưa di chuyển sang code, hoặc BE thêm lý do mới) -> lỗi chung.
+      [{ code: undefined, details: undefined }, 'Không áp dụng được mã giảm giá này'],
+    ] as const)(
+      'BE từ chối mã (case %#) -> hiện đúng bản dịch theo code',
+      async (voucherError, expected) => {
+        const user = userEvent.setup();
+        mockCart({ cart: cartView() });
+        const { rerender } = renderContainer();
+        await user.type(screen.getByLabelText('Mã giảm giá'), 'BAD');
+        await user.click(screen.getByRole('button', { name: 'Áp dụng' }));
 
-      mockCart({ cart: cartView(), voucherError: beMessage });
-      rerender(withIntl(<CartPageContainer />));
+        mockCart({ cart: cartView(), voucherError });
+        rerender(withIntl(<CartPageContainer />));
 
-      expect(screen.getByRole('alert')).toHaveTextContent(expected);
-      expect(screen.queryByText(beMessage)).not.toBeInTheDocument();
-      // giỏ vẫn hiện bình thường, không bị lỗi mã làm hỏng trang
-      expect(screen.getByRole('region', { name: 'Shop A' })).toBeInTheDocument();
-    });
+        expect(screen.getByRole('alert')).toHaveTextContent(expected);
+        // giỏ vẫn hiện bình thường, không bị lỗi mã làm hỏng trang
+        expect(screen.getByRole('region', { name: 'Shop A' })).toBeInTheDocument();
+      },
+    );
 
     it('chưa áp mã nào thì không hiện lỗi dù voucherError có giá trị cũ', () => {
-      mockCart({ cart: cartView(), voucherError: 'Voucher has expired' });
+      mockCart({ cart: cartView(), voucherError: { code: 'VOUCHER_EXPIRED', details: undefined } });
 
       renderContainer();
 
@@ -465,13 +472,26 @@ describe('CartPageContainer', () => {
     });
   });
 
-  it('nút thanh toán disabled kèm ghi chú, không bấm được (checkout thuộc Tuần 7)', () => {
-    mockCart({ cart: cartView() });
+  describe('nút thanh toán', () => {
+    it('còn item khả dụng -> là link tới /checkout (guest bị proxy.ts đẩy sang login)', () => {
+      mockCart({ cart: cartView() });
 
-    renderContainer();
+      renderContainer();
 
-    const button = screen.getByRole('button', { name: 'Tiến hành thanh toán' });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription('Tính năng thanh toán sắp ra mắt');
+      expect(screen.getByRole('button', { name: 'Tiến hành thanh toán' })).toHaveAttribute(
+        'href',
+        '/checkout',
+      );
+    });
+
+    it('không còn item nào khả dụng -> disabled', () => {
+      mockCart({
+        cart: cartView({ shops: [group({ items: [line({ isAvailable: false })] })] }),
+      });
+
+      renderContainer();
+
+      expect(screen.getByRole('button', { name: 'Tiến hành thanh toán' })).toBeDisabled();
+    });
   });
 });

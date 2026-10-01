@@ -123,12 +123,35 @@ export class CheckoutController {
   @ApiResponse({
     status: 400,
     description: 'Giỏ rỗng/không còn item khả dụng',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'Cart has no purchasable items',
+        code: 'NO_PURCHASABLE_ITEMS',
+      },
+    },
   })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 404,
     description:
-      'Địa chỉ không tồn tại/không phải của bạn, hoặc mã voucher không tồn tại',
+      'Địa chỉ không tồn tại/không phải của bạn (không có code), hoặc mã voucher không tồn tại (code: VOUCHER_NOT_FOUND)',
+    examples: {
+      addressNotFound: {
+        summary: 'Address not found',
+        value: { success: false, data: null, message: 'Address not found' },
+      },
+      voucherNotFound: {
+        summary: 'VOUCHER_NOT_FOUND',
+        value: {
+          success: false,
+          data: null,
+          message: 'Voucher not found',
+          code: 'VOUCHER_NOT_FOUND',
+        },
+      },
+    },
   })
   async preview(
     @CurrentUser() user: AuthenticatedUser,
@@ -159,21 +182,115 @@ export class CheckoutController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Giỏ rỗng/không còn item khả dụng, thiếu expectedTotal',
+    description:
+      'Giỏ rỗng/không còn item khả dụng, hoặc thiếu/sai expectedTotal',
+    examples: {
+      noPurchasableItems: {
+        summary: 'NO_PURCHASABLE_ITEMS',
+        value: {
+          success: false,
+          data: null,
+          message: 'Cart has no purchasable items',
+          code: 'NO_PURCHASABLE_ITEMS',
+        },
+      },
+      validationError: {
+        summary: 'Thiếu/sai expectedTotal (lỗi validate Zod, không có code)',
+        value: {
+          success: false,
+          data: null,
+          message: 'expectedTotal: checkout.validationExpectedTotalInvalid',
+        },
+      },
+    },
   })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 403,
-    description: 'Email chưa xác thực (code: EMAIL_NOT_VERIFIED)',
+    description: 'Email chưa xác thực',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'EMAIL_NOT_VERIFIED',
+        code: 'EMAIL_NOT_VERIFIED',
+      },
+    },
   })
   @ApiResponse({
     status: 404,
-    description: 'Địa chỉ không tồn tại hoặc không phải của bạn',
+    description:
+      'Địa chỉ không tồn tại hoặc không phải của bạn (không có code)',
+    schema: {
+      example: { success: false, data: null, message: 'Address not found' },
+    },
   })
   @ApiResponse({
     status: 409,
     description:
       'OUT_OF_STOCK / PRICE_CHANGED / CART_CHANGED / TOO_MANY_PENDING_CHECKOUTS / PAYMENT_METHOD_UNAVAILABLE (xem code)',
+    examples: {
+      OUT_OF_STOCK: {
+        summary: 'OUT_OF_STOCK',
+        value: {
+          success: false,
+          data: null,
+          message: 'Insufficient stock for one or more items',
+          code: 'OUT_OF_STOCK',
+          details: {
+            items: [
+              {
+                productVariantId: 'c4d5e6f7-1234-4a5b-8c9d-abcdef654321',
+                productName: 'Áo thun nam',
+                variantLabel: 'Đỏ / M',
+                available: 1,
+              },
+            ],
+          },
+        },
+      },
+      PRICE_CHANGED: {
+        summary: 'PRICE_CHANGED',
+        value: {
+          success: false,
+          data: null,
+          message: 'Price changed since preview',
+          code: 'PRICE_CHANGED',
+          details: { expectedTotal: 300000, currentTotal: 320000 },
+        },
+      },
+      CART_CHANGED: {
+        summary: 'CART_CHANGED',
+        value: {
+          success: false,
+          data: null,
+          message: 'Cart changed since it was read',
+          code: 'CART_CHANGED',
+        },
+      },
+      TOO_MANY_PENDING_CHECKOUTS: {
+        summary: 'TOO_MANY_PENDING_CHECKOUTS',
+        value: {
+          success: false,
+          data: null,
+          message: 'Too many pending checkouts',
+          code: 'TOO_MANY_PENDING_CHECKOUTS',
+          details: {
+            pendingGroupIds: ['a1b2c3d4-1234-4a5b-8c9d-abcdef000001'],
+          },
+        },
+      },
+      PAYMENT_METHOD_UNAVAILABLE: {
+        summary: 'PAYMENT_METHOD_UNAVAILABLE',
+        value: {
+          success: false,
+          data: null,
+          message: 'Payment method MOMO is not available',
+          code: 'PAYMENT_METHOD_UNAVAILABLE',
+          details: { method: 'MOMO', reason: 'NOT_CONFIGURED' },
+        },
+      },
+    },
   })
   async placeOrder(
     @CurrentUser() user: AuthenticatedUser,
@@ -254,6 +371,38 @@ export class CheckoutController {
     status: 409,
     description:
       'PAYMENT_RETRY_NOT_ALLOWED (đã trả tiền/đã hết hạn giữ) / PAYMENT_METHOD_UNAVAILABLE',
+    examples: {
+      ALREADY_PAID: {
+        summary: 'PAYMENT_RETRY_NOT_ALLOWED — ALREADY_PAID',
+        value: {
+          success: false,
+          data: null,
+          message: 'This checkout group has already been paid',
+          code: 'PAYMENT_RETRY_NOT_ALLOWED',
+          details: { reason: 'ALREADY_PAID' },
+        },
+      },
+      HOLD_EXPIRED: {
+        summary: 'PAYMENT_RETRY_NOT_ALLOWED — HOLD_EXPIRED',
+        value: {
+          success: false,
+          data: null,
+          message: 'The payment hold for this checkout group has expired',
+          code: 'PAYMENT_RETRY_NOT_ALLOWED',
+          details: { reason: 'HOLD_EXPIRED' },
+        },
+      },
+      PAYMENT_METHOD_UNAVAILABLE: {
+        summary: 'PAYMENT_METHOD_UNAVAILABLE',
+        value: {
+          success: false,
+          data: null,
+          message: 'Payment method MOMO is not configured',
+          code: 'PAYMENT_METHOD_UNAVAILABLE',
+          details: { method: 'MOMO', reason: 'NOT_CONFIGURED' },
+        },
+      },
+    },
   })
   async retryPayment(
     @CurrentUser() user: AuthenticatedUser,

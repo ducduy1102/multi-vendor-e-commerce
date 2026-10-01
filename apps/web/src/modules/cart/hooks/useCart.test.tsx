@@ -245,11 +245,11 @@ describe('useCart', () => {
       expect(result.current.voucherError).toBeNull();
     });
 
-    it('mã bị từ chối (400) — vẫn trả giỏ KHÔNG mã + lý do của BE, không làm hỏng cả trang', async () => {
+    it('mã bị từ chối (400) — vẫn trả giỏ KHÔNG mã + code/details của BE, không làm hỏng cả trang', async () => {
       setAuth(USER);
       vi.mocked(cartService.getCart).mockImplementation((code) =>
         code
-          ? Promise.reject(new ApiError('Voucher has expired', 400))
+          ? Promise.reject(new ApiError('Voucher has expired', 400, 'VOUCHER_EXPIRED'))
           : Promise.resolve(cartView()),
       );
 
@@ -258,18 +258,25 @@ describe('useCart', () => {
       await waitFor(() => expect(result.current.isPending).toBe(false));
       expect(result.current.isError).toBe(false);
       expect(result.current.cart).toEqual(cartView());
-      expect(result.current.voucherError).toBe('Voucher has expired');
+      expect(result.current.voucherError).toEqual({ code: 'VOUCHER_EXPIRED', details: undefined });
     });
 
     it('mã không tồn tại (404) — cũng chỉ là lỗi voucher', async () => {
       setAuth(USER);
       vi.mocked(cartService.getCart).mockImplementation((code) =>
-        code ? Promise.reject(new ApiError('Voucher not found', 404)) : Promise.resolve(cartView()),
+        code
+          ? Promise.reject(new ApiError('Voucher not found', 404, 'VOUCHER_NOT_FOUND'))
+          : Promise.resolve(cartView()),
       );
 
       const { result } = renderHook(() => useCart('NOPE'), { wrapper: wrapper() });
 
-      await waitFor(() => expect(result.current.voucherError).toBe('Voucher not found'));
+      await waitFor(() =>
+        expect(result.current.voucherError).toEqual({
+          code: 'VOUCHER_NOT_FOUND',
+          details: undefined,
+        }),
+      );
       expect(result.current.cart).toBeDefined();
     });
 
@@ -279,14 +286,34 @@ describe('useCart', () => {
       setGuestCart(items);
       vi.mocked(cartService.quoteCart).mockImplementation((_items, code) =>
         code
-          ? Promise.reject(new ApiError('Voucher is not active', 400))
+          ? Promise.reject(new ApiError('Voucher is not active', 400, 'VOUCHER_INACTIVE'))
           : Promise.resolve(cartView()),
       );
 
       const { result } = renderHook(() => useCart('OFF'), { wrapper: wrapper() });
 
-      await waitFor(() => expect(result.current.voucherError).toBe('Voucher is not active'));
+      await waitFor(() =>
+        expect(result.current.voucherError).toEqual({
+          code: 'VOUCHER_INACTIVE',
+          details: undefined,
+        }),
+      );
       expect(result.current.cart).toEqual(cartView());
+    });
+
+    it('mã bị từ chối nhưng lỗi CHƯA có code (hình dạng cũ) — voucherError.code undefined, không vỡ', async () => {
+      setAuth(USER);
+      vi.mocked(cartService.getCart).mockImplementation((code) =>
+        code
+          ? Promise.reject(new ApiError('Something else entirely', 400))
+          : Promise.resolve(cartView()),
+      );
+
+      const { result } = renderHook(() => useCart('WEIRD'), { wrapper: wrapper() });
+
+      await waitFor(() =>
+        expect(result.current.voucherError).toEqual({ code: undefined, details: undefined }),
+      );
     });
 
     it('lỗi khác 400/404 khi có mã (vd 500) — vẫn là lỗi cả query, không nuốt', async () => {

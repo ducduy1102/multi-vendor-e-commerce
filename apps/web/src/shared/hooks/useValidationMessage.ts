@@ -4,8 +4,10 @@ import { parseValidationMessage, type ValidationMessageParams } from '@ecommerce
 import { useTranslations } from 'next-intl';
 
 // Key lấy từ message lúc chạy (không biết trước lúc compile) nên không thể qua
-// kiểu key chặt của next-intl — ép về translator nhận key chuỗi tuỳ ý.
-interface LooseTranslator {
+// kiểu key chặt của next-intl — ép về translator nhận key chuỗi tuỳ ý. Export
+// để nơi khác cần dịch key động (vd cart/voucher-error.ts qua
+// ERROR_CODE_MESSAGE_KEYS, Week7.md 1.16/3.1b) tái dùng, không tự khai lại.
+export interface LooseTranslator {
   (key: string, params?: ValidationMessageParams): string;
   has(key: string): boolean;
 }

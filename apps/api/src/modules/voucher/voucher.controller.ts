@@ -102,7 +102,15 @@ export class VoucherController {
   @ApiResponse({ status: 404, description: 'Shop không tồn tại' })
   @ApiResponse({
     status: 409,
-    description: 'Mã voucher đã tồn tại (code: VOUCHER_CODE_EXISTS)',
+    description: 'Mã voucher đã tồn tại',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'Voucher code already exists',
+        code: 'VOUCHER_CODE_EXISTS',
+      },
+    },
   })
   async create(
     @ShopOwnerContext() { shopId }: { shopId: string },
@@ -156,7 +164,22 @@ export class VoucherController {
   @ApiResponse({
     status: 404,
     description:
-      'Shop hoặc voucher không tồn tại (kể cả voucher của shop khác)',
+      'Shop không tồn tại (không có code), hoặc voucher không tồn tại/thuộc shop khác (code: VOUCHER_NOT_FOUND)',
+    examples: {
+      shopNotFound: {
+        summary: 'Shop not found',
+        value: { success: false, data: null, message: 'Shop not found' },
+      },
+      voucherNotFound: {
+        summary: 'VOUCHER_NOT_FOUND',
+        value: {
+          success: false,
+          data: null,
+          message: 'Voucher not found',
+          code: 'VOUCHER_NOT_FOUND',
+        },
+      },
+    },
   })
   async setActive(
     @ShopOwnerContext() { shopId }: { shopId: string },

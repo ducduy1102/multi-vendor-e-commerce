@@ -1,0 +1,22 @@
+// Type request/response cho module checkout, dùng chung qua @ecommerce/types.
+export type {
+  Address,
+  CreateAddressInput,
+  UpdateAddressInput,
+  CheckoutGroup,
+  CheckoutGroupStatus,
+  CheckoutOrder,
+  CheckoutOrderItem,
+  CheckoutPreview,
+  CheckoutPreviewOrder,
+  CheckoutResult,
+  BlockingIssue,
+  ExcludedItem,
+  PayAttemptResult,
+  PaymentMethod,
+  PaymentMethodAvailability,
+  PaymentMethodUnavailableReason,
+  PaymentStatus,
+  PlaceOrderInput,
+  PreviewCheckoutInput,
+} from '@ecommerce/types';

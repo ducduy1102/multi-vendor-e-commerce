@@ -78,7 +78,15 @@ export class AddressController {
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 409,
-    description: `Đã đủ ${MAX_ADDRESSES_PER_USER} địa chỉ (code: ADDRESS_LIMIT_REACHED)`,
+    description: `Đã đủ ${MAX_ADDRESSES_PER_USER} địa chỉ`,
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: `Address limit reached (max ${MAX_ADDRESSES_PER_USER})`,
+        code: 'ADDRESS_LIMIT_REACHED',
+      },
+    },
   })
   async create(
     @CurrentUser() user: AuthenticatedUser,

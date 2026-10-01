@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { withIntl } from '@/shared/lib/test-i18n';
 
 import type { CartView } from '../types';
+import type { VoucherErrorState } from '../voucher-error';
 import { CartSummary } from './CartSummary';
 
 function cartView(overrides: Partial<CartView> = {}): CartView {
@@ -14,7 +15,24 @@ function cartView(overrides: Partial<CartView> = {}): CartView {
         shopId: 'shop-a',
         shopName: 'Shop A',
         shopSlug: 'shop-a',
-        items: [],
+        // Có sẵn 1 item khả dụng để nút thanh toán mặc định là link bật (Week7.md 3.5) — test
+        // riêng của nhóm "nút thanh toán" ở dưới tự override khi cần ca không còn item khả dụng.
+        items: [
+          {
+            id: 'item-1',
+            productVariantId: 'v1',
+            quantity: 1,
+            productId: 'p1',
+            productName: 'Áo thun nam',
+            productSlug: 'ao-thun-nam',
+            imageUrl: null,
+            attributes: [],
+            unitPrice: '500000',
+            lineTotal: '500000',
+            stock: 10,
+            isAvailable: true,
+          },
+        ],
         subtotal: '500000',
       },
     ],
@@ -29,7 +47,7 @@ function cartView(overrides: Partial<CartView> = {}): CartView {
 interface Props {
   cart?: CartView;
   appliedCode?: string;
-  voucherError?: string | null;
+  voucherError?: VoucherErrorState | null;
   isApplying?: boolean;
 }
 
@@ -115,7 +133,10 @@ describe('CartSummary', () => {
 
   describe('lỗi mã', () => {
     it('BE từ chối -> hiện bản dịch, ô nhập aria-invalid và nối aria-describedby với lỗi', () => {
-      renderSummary({ appliedCode: 'OLD', voucherError: 'Voucher has expired' });
+      renderSummary({
+        appliedCode: 'OLD',
+        voucherError: { code: 'VOUCHER_EXPIRED', details: undefined },
+      });
 
       const alert = screen.getByRole('alert');
       expect(alert).toHaveTextContent('Mã giảm giá đã hết hạn');
@@ -127,7 +148,7 @@ describe('CartSummary', () => {
     it('mức tối thiểu được định dạng tiền qua formatPrice', () => {
       renderSummary({
         appliedCode: 'BIG',
-        voucherError: 'Order amount is below the voucher minimum (1500000)',
+        voucherError: { code: 'VOUCHER_BELOW_MINIMUM', details: { minAmount: 1500000 } },
       });
 
       expect(screen.getByRole('alert')).toHaveTextContent(
@@ -136,7 +157,10 @@ describe('CartSummary', () => {
     });
 
     it('không có mã đang áp -> không hiện lỗi dù voucherError còn giá trị cũ', () => {
-      renderSummary({ appliedCode: '', voucherError: 'Voucher has expired' });
+      renderSummary({
+        appliedCode: '',
+        voucherError: { code: 'VOUCHER_EXPIRED', details: undefined },
+      });
 
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
       expect(screen.getByLabelText('Mã giảm giá')).not.toHaveAttribute('aria-invalid');
@@ -146,7 +170,7 @@ describe('CartSummary', () => {
       renderSummary({
         cart: cartView({ discount: { code: 'OLD', shopId: null, amount: '1000' } }),
         appliedCode: 'OLD',
-        voucherError: 'Voucher has expired',
+        voucherError: { code: 'VOUCHER_EXPIRED', details: undefined },
       });
 
       expect(screen.queryByText('Đã áp dụng mã OLD')).not.toBeInTheDocument();
@@ -224,11 +248,28 @@ describe('CartSummary', () => {
     });
   });
 
-  it('nút thanh toán luôn disabled kèm ghi chú (checkout thuộc Tuần 7)', () => {
-    renderSummary();
+  describe('nút thanh toán', () => {
+    it('còn item khả dụng -> là link tới /checkout', () => {
+      renderSummary();
 
-    const button = screen.getByRole('button', { name: 'Tiến hành thanh toán' });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription('Tính năng thanh toán sắp ra mắt');
+      expect(screen.getByRole('button', { name: 'Tiến hành thanh toán' })).toHaveAttribute(
+        'href',
+        '/checkout',
+      );
+    });
+
+    it('không còn item nào khả dụng -> disabled, không phải link', () => {
+      renderSummary({
+        cart: cartView({
+          shops: [
+            { shopId: 'shop-a', shopName: 'Shop A', shopSlug: 'shop-a', items: [], subtotal: '0' },
+          ],
+        }),
+      });
+
+      const button = screen.getByRole('button', { name: 'Tiến hành thanh toán' });
+      expect(button).toBeDisabled();
+      expect(button).not.toHaveAttribute('href');
+    });
   });
 });

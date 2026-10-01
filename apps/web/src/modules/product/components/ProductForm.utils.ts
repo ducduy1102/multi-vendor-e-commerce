@@ -4,7 +4,13 @@
 export interface VariantMatrixRow {
   sku: string;
   price: string;
+  // Kho VẬT LÝ (Week7.md 1.3) — số Seller thấy/sửa ở ô "Tồn kho". Khác `available` (BE trả
+  // cho buyer): productToFormValues() cộng lại reservedStock trước khi đưa vào đây.
   stock: string;
+  // Số đang giữ chỗ cho đơn chưa thanh toán (Week7.md 1.3) — CHỈ hiển thị (dòng phụ "Đang giữ
+  // chỗ cho đơn: N") và validate (không cho hạ `stock` xuống dưới số này), KHÔNG gửi lên BE
+  // (updateProduct chỉ ghi kho vật lý). `undefined`/0 ở dòng variant mới (chưa từng có ai đặt).
+  reservedStock?: number;
   attributeValues: string[];
   // Ảnh upload qua Cloudinary (Week5.md Bước 1.3/2.12/3.13 — nhiều ảnh/
   // variant, thay `imageUrl` đơn cũ) — chỉ dòng đã tồn tại (tái sử dụng qua

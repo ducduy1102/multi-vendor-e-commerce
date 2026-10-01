@@ -19,12 +19,16 @@ interface LoginFormContainerProps {
   // (xem AuthController.googleCallback) — app/login/page.tsx (Server
   // Component) đọc searchParams rồi truyền message đã dịch sẵn xuống đây.
   initialError?: string;
+  // Đích quay lại sau khi đăng nhập (Week7.md 1.2/3.2) — page.tsx đã kiểm
+  // bằng safeNextPath trước khi truyền xuống, giữ nguyên khi chuyển sang
+  // /register và gắn vào nút Google.
+  next?: string;
 }
 
 // Nối LoginForm (UI + validate, Bước 3.3) với service gọi API (Bước 3.5) +
 // store (Bước 3.4) — đặt trong modules/ để app/login/page.tsx chỉ compose,
 // không viết logic nghiệp vụ trực tiếp (rules/frontend.md mục 1).
-export function LoginFormContainer({ initialError }: LoginFormContainerProps) {
+export function LoginFormContainer({ initialError, next }: LoginFormContainerProps) {
   const t = useTranslations('auth');
   const tApi = useApiErrorMessage();
   const tCommon = useTranslations('common');
@@ -39,7 +43,14 @@ export function LoginFormContainer({ initialError }: LoginFormContainerProps) {
     try {
       const user = await login(values);
       setUser(user);
-      router.push('/');
+      // `router.refresh()` NGAY SAU push là bắt buộc khi `next` trỏ tới route cần đăng nhập
+      // (Week7.md 3.11 phát hiện bằng Playwright thật) — nếu route đó đã được Next.js tự prefetch
+      // lúc còn là guest (vd hover/thấy Link "Tiến hành thanh toán" ở /cart trỏ /checkout), router
+      // cache giữ lại bản RSC ứng với trạng thái CHƯA đăng nhập; push tới URL đó sau khi login xong
+      // sẽ lặng lẽ dùng lại cache cũ và KHÔNG điều hướng đi đâu cả (không throw, không log lỗi) —
+      // `refresh()` buộc lấy lại dữ liệu mới, không tự dưng thừa cho luồng không có `next`.
+      router.push(next ?? '/');
+      router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? tApi(err.message) : t('loginGenericError'));
     } finally {
@@ -52,11 +63,11 @@ export function LoginFormContainer({ initialError }: LoginFormContainerProps) {
       {error && <p className="text-sm text-destructive">{error}</p>}
       <LoginForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
       <FieldSeparator>{tCommon('or')}</FieldSeparator>
-      <GoogleLoginButton />
+      <GoogleLoginButton next={next} />
       <p className="text-center text-sm text-muted-foreground">
         {t('loginNoAccountPrompt')}{' '}
         <Link
-          href="/register"
+          href={next ? { pathname: '/register', query: { next } } : '/register'}
           className="font-medium text-primary underline-offset-4 hover:underline"
         >
           {t('loginRegisterLink')}

@@ -171,6 +171,24 @@ describe('buildVariantMatrix', () => {
     expect(result[0]).not.toBe(result[1]);
   });
 
+  it('giữ nguyên reservedStock của dòng cũ khi tổ hợp vẫn còn, dòng mới không có reservedStock (Week7.md 1.3)', () => {
+    const existing: VariantMatrixRow[] = [
+      {
+        sku: 'AO-DO',
+        price: '100000',
+        stock: '13',
+        reservedStock: 3,
+        attributeValues: ['Đỏ'],
+        images: [],
+      },
+    ];
+
+    const result = buildVariantMatrix([attr('Màu sắc', ['Đỏ', 'Xanh'])], existing);
+
+    expect(result[0].reservedStock).toBe(3);
+    expect(result[1].reservedStock).toBeUndefined();
+  });
+
   it('giữ nguyên images đã upload của dòng cũ khi tổ hợp vẫn còn, dòng mới mảng rỗng', () => {
     const existing: VariantMatrixRow[] = [
       {

@@ -86,30 +86,53 @@ const productFormAttributeSchema = z
     });
   });
 
-const productFormVariantSchema = z.object({
-  sku: z.string().trim().min(1, 'product.validationSkuRequired'),
-  price: z
-    .string()
-    .trim()
-    .refine((v) => Number(v) > 0, 'product.validationPricePositive'),
-  stock: z
-    .string()
-    .trim()
-    .refine((v) => Number.isInteger(Number(v)) && Number(v) >= 0, 'product.validationStockInvalid'),
-  attributeValues: z.array(z.string()),
-  // Gán qua VariantImagesUpload (Controller, Week4.md Bước 3.8, mở rộng
-  // nhiều ảnh ở Week5.md Bước 3.13) — không có <input type="text"> nào
-  // register trực tiếp field này. Thứ tự mảng CHÍNH LÀ position gửi lên BE.
-  images: z.array(z.string()),
-  // Key nội bộ CHỈ để ProductForm.utils.ts's buildVariantMatrix() match lại
-  // đúng dòng khi 1 giá trị thuộc tính bị ĐỔI TÊN lúc đang sửa form (trước
-  // khi submit) — tránh mất sku/giá/tồn kho/ảnh đã gõ dở của dòng đó. KHÔNG
-  // có input/Controller nào gán trực tiếp field này (chỉ regenerateVariants()
-  // ghi lại qua variantsFieldArray.replace()) và KHÔNG gửi lên BE —
-  // toSubmitPayload() build lại variant object field-by-field, tự loại field
-  // này (không thuộc CreateProductInput/UpdateProductInput).
-  attributeValueIds: z.array(z.string().optional()).optional(),
-});
+const productFormVariantSchema = z
+  .object({
+    sku: z.string().trim().min(1, 'product.validationSkuRequired'),
+    price: z
+      .string()
+      .trim()
+      .refine((v) => Number(v) > 0, 'product.validationPricePositive'),
+    stock: z
+      .string()
+      .trim()
+      .refine(
+        (v) => Number.isInteger(Number(v)) && Number(v) >= 0,
+        'product.validationStockInvalid',
+      ),
+    // Số đang giữ chỗ cho đơn chưa thanh toán (Week7.md 1.3) — CHỈ đọc, không có input nào
+    // register trực tiếp field này (gán qua productToFormValues/buildVariantMatrix, xem
+    // ProductForm.utils.ts). Dùng để hiện dòng phụ "Đang giữ chỗ..." và validate ở dưới,
+    // KHÔNG gửi lên BE — toSubmitPayload() build payload field-by-field, tự loại field này.
+    reservedStock: z.number().int().nonnegative().optional(),
+    attributeValues: z.array(z.string()),
+    // Gán qua VariantImagesUpload (Controller, Week4.md Bước 3.8, mở rộng
+    // nhiều ảnh ở Week5.md Bước 3.13) — không có <input type="text"> nào
+    // register trực tiếp field này. Thứ tự mảng CHÍNH LÀ position gửi lên BE.
+    images: z.array(z.string()),
+    // Key nội bộ CHỈ để ProductForm.utils.ts's buildVariantMatrix() match lại
+    // đúng dòng khi 1 giá trị thuộc tính bị ĐỔI TÊN lúc đang sửa form (trước
+    // khi submit) — tránh mất sku/giá/tồn kho/ảnh đã gõ dở của dòng đó. KHÔNG
+    // có input/Controller nào gán trực tiếp field này (chỉ regenerateVariants()
+    // ghi lại qua variantsFieldArray.replace()) và KHÔNG gửi lên BE —
+    // toSubmitPayload() build lại variant object field-by-field, tự loại field
+    // này (không thuộc CreateProductInput/UpdateProductInput).
+    attributeValueIds: z.array(z.string().optional()).optional(),
+  })
+  // Không cho hạ kho vật lý xuống dưới số đang giữ chỗ (Week7.md 1.3 — BE cũng từ chối, chặn
+  // sớm ở FE để seller thấy lỗi ngay tại ô thay vì đợi round-trip lên BE). Chỉ so khi `stock`
+  // đã là số hợp lệ (refine ở trên) — `Number(v)` của chuỗi rỗng/không hợp lệ ra NaN, so sánh
+  // với NaN luôn false nên không đè thêm lỗi lên lỗi validationStockInvalid đã có.
+  .superRefine((variant, ctx) => {
+    const reserved = variant.reservedStock ?? 0;
+    if (reserved > 0 && Number(variant.stock) < reserved) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: validationMessage('product.validationStockBelowReserved', { reserved }),
+        path: ['stock'],
+      });
+    }
+  });
 
 const productFormSchema = z
   .object({
@@ -177,6 +200,9 @@ function toSubmitPayload(values: ProductFormValues): ProductFormSubmitValues {
     variants: values.variants.map((variant) => ({
       sku: variant.sku,
       price: Number(variant.price),
+      // Kho VẬT LÝ Seller vừa nhập (Week7.md 1.3) — updateProduct (BE) chỉ ghi kho vật lý,
+      // reservedStock KHÔNG gửi lên (không thuộc CreateProductInput/UpdateProductInput, BE tự
+      // quản qua InventoryService khi có đơn, không phải qua form sửa sản phẩm).
       stock: Number(variant.stock),
       attributeValues: variant.attributeValues,
       images: variant.images,
@@ -215,7 +241,12 @@ export function productToFormValues(product: Product): ProductFormValues {
       .map((variant) => ({
         sku: variant.sku,
         price: variant.price,
-        stock: String(variant.stock),
+        // Ô "Tồn kho" hiển thị/sửa là kho VẬT LÝ (Week7.md 1.3) — response `variant.stock`
+        // mang nghĩa `available` (đã trừ phần đang giữ chỗ, xem productVariantSchema ở
+        // @ecommerce/types), cộng lại reservedStock mới ra đúng kho vật lý Seller đang có.
+        // reservedStock luôn có mặt ở đây vì route GET dùng để sửa chỉ trả cho chủ shop.
+        stock: String(variant.stock + (variant.reservedStock ?? 0)),
+        reservedStock: variant.reservedStock,
         attributeValues: product.attributes.map(
           (attribute) =>
             variant.attributeValues.find((av) => av.attributeName === attribute.name)?.value ?? '',
@@ -482,6 +513,11 @@ export function ProductForm({
                     aria-invalid={!!errors.variants?.[variantIndex]?.stock}
                     {...register(`variants.${variantIndex}.stock`)}
                   />
+                  {variantField.reservedStock ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t('productFormReservedStockInfo', { count: variantField.reservedStock })}
+                    </p>
+                  ) : null}
                   {errors.variants?.[variantIndex]?.stock && (
                     <p className="text-sm text-destructive">
                       {tv(errors.variants[variantIndex]?.stock?.message)}

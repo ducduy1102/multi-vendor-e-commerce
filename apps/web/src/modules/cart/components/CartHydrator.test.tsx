@@ -4,10 +4,17 @@ import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuthStore } from '@/modules/auth';
+import { withIntl } from '@/shared/lib/test-i18n';
 
 import * as cartService from '../services/cart.service';
 import { CART_STORAGE_KEY, useCartStore } from '../store/cart.store';
 import { CartHydrator } from './CartHydrator';
+
+const toastInfo = vi.fn();
+
+vi.mock('sonner', () => ({
+  toast: { info: (...args: unknown[]) => toastInfo(...args) },
+}));
 
 vi.mock('../services/cart.service', () => ({
   mergeCart: vi.fn(),
@@ -41,10 +48,10 @@ function saveGuestCart(items: typeof GUEST_ITEMS) {
 function renderHydrator(strict = false) {
   const queryClient = new QueryClient();
   const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
-  const tree = (
+  const tree = withIntl(
     <QueryClientProvider client={queryClient}>
       <CartHydrator />
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
   render(strict ? <StrictMode>{tree}</StrictMode> : tree);
   return { invalidate };
@@ -58,7 +65,10 @@ function setAuth(user: typeof USER | null, isHydrating = false) {
 
 describe('CartHydrator', () => {
   beforeEach(() => {
-    vi.mocked(cartService.mergeCart).mockReset().mockResolvedValue(EMPTY_VIEW);
+    toastInfo.mockReset();
+    vi.mocked(cartService.mergeCart)
+      .mockReset()
+      .mockResolvedValue({ cart: EMPTY_VIEW, droppedLineCount: 0 });
   });
 
   afterEach(() => {
@@ -115,6 +125,23 @@ describe('CartHydrator', () => {
     expect(JSON.parse(localStorage.getItem(CART_STORAGE_KEY) ?? '{}')).toMatchObject({
       state: { items: [] },
     });
+    // droppedLineCount = 0 (mặc định mock) -> không có gì để báo.
+    expect(toastInfo).not.toHaveBeenCalled();
+  });
+
+  // Week7.md 3.5/1.12: giỏ DB đã đủ MAX_CART_LINES nên BE bỏ bớt vài dòng của giỏ guest khi gộp
+  // (Week6.md 3.4 để ngỏ, làm ở đây) — CartHydrator phải báo đúng số dòng bị bỏ.
+  it('gộp giỏ bị bỏ bớt dòng do vượt trần MAX_CART_LINES -> hiện toast báo đúng số dòng', async () => {
+    saveGuestCart(GUEST_ITEMS);
+    vi.mocked(cartService.mergeCart).mockResolvedValue({ cart: EMPTY_VIEW, droppedLineCount: 3 });
+    setAuth(USER);
+
+    renderHydrator();
+
+    await waitFor(() => expect(useCartStore.getState().items).toEqual([]));
+    expect(toastInfo).toHaveBeenCalledWith(
+      '3 sản phẩm từ giỏ trước không được gộp vào vì giỏ đã đạt tối đa 50 sản phẩm khác nhau',
+    );
   });
 
   it('đã đăng nhập sẵn (F5) mà còn sót giỏ guest — vẫn merge', async () => {
