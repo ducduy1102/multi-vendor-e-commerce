@@ -43,7 +43,7 @@ export async function findReclaimCandidates(
   });
 
   const cutoff = new Date(now.getTime() - graceMs);
-  const latestExpiresAtByGroup = new Map<string, Date>();
+  const latestExpiresAtByGroup = new Map<string, Date | null>();
   const hasSuccessByGroup = new Set<string>();
   for (const payment of payments) {
     if (payment.status === 'SUCCESS') {
@@ -57,6 +57,11 @@ export async function findReclaimCandidates(
   return groupIds.filter((id) => {
     if (hasSuccessByGroup.has(id)) return false;
     const latestExpiresAt = latestExpiresAtByGroup.get(id);
-    return latestExpiresAt !== undefined && latestExpiresAt < cutoff;
+    // null = Payment COD, không bao giờ hết hạn (Week8.md 1.6).
+    return (
+      latestExpiresAt !== undefined &&
+      latestExpiresAt !== null &&
+      latestExpiresAt < cutoff
+    );
   });
 }

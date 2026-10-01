@@ -776,6 +776,11 @@ export class CheckoutService {
       throw new Error(`CheckoutGroup ${group.id} has no Payment`);
     }
 
+    // COD (không cổng, không hết hạn) chưa đi qua placeOrder — phát lại kết quả COD làm ở Week8.md 2.7.
+    if (payment.method === 'COD' || payment.expiresAt === null) {
+      throw new Error(`CheckoutGroup ${group.id} has a COD payment`);
+    }
+
     return {
       checkoutGroupId: group.id,
       orders: group.orders.map((o) => ({

@@ -31,7 +31,8 @@ export interface CheckoutGroupStatusOrder {
 
 export interface CheckoutGroupStatusPayment {
   status: PaymentStatus;
-  expiresAt: Date;
+  // null = không hết hạn (Payment COD, Week8.md 1.6).
+  expiresAt: Date | null;
   createdAt: Date;
 }
 
@@ -59,7 +60,7 @@ export function deriveCheckoutGroupStatus(
   // Không nên xảy ra thật (placeOrder luôn tạo kèm đúng 1 Payment) — coi như vừa đặt, an toàn.
   if (!latest) return 'AWAITING_PAYMENT';
 
-  const stillWithinHold = latest.expiresAt > now;
+  const stillWithinHold = latest.expiresAt === null || latest.expiresAt > now;
   if (latest.status === 'PENDING') {
     return stillWithinHold ? 'AWAITING_PAYMENT' : 'PAYMENT_EXPIRED';
   }

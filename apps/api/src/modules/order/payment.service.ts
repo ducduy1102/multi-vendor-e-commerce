@@ -409,6 +409,10 @@ export class PaymentService {
     }
 
     const latest = fresh.payments[0];
+    // COD không có cổng để thử lại và không hết hạn — đường COD làm ở Week8.md 2.7.
+    if (latest.method === 'COD' || latest.expiresAt === null) {
+      throw new Error('Retrying a COD payment is not supported');
+    }
     if (status === 'AWAITING_PAYMENT' && latest.payUrl) {
       return {
         paymentUrl: latest.payUrl,
@@ -508,7 +512,7 @@ export class PaymentService {
   ): Promise<LoadedGroup> {
     const latest = group.payments[0];
     const hasSuccess = group.payments.some((p) => p.status === 'SUCCESS');
-    if (!latest || hasSuccess) return group;
+    if (!latest || hasSuccess || latest.expiresAt === null) return group;
 
     const graceMs = readPaymentReclaimGraceMinutes() * 60_000;
     const lapsed = Date.now() >= latest.expiresAt.getTime() + graceMs;
@@ -530,10 +534,11 @@ export class PaymentService {
       id: group.id,
       status,
       canRetry: canRetryFromStatus(status),
-      expiresAt: latest ? latest.expiresAt.toISOString() : null,
+      expiresAt: latest?.expiresAt ? latest.expiresAt.toISOString() : null,
       createdAt: group.createdAt.toISOString(),
       totalAmount: String(totalAmount),
-      paymentMethod: latest?.method ?? null,
+      // paymentMethodSchema (packages/types) chưa có COD — thêm ở Week8.md 2.3/2.7.
+      paymentMethod: latest && latest.method !== 'COD' ? latest.method : null,
       latestPaymentStatus: latest?.status ?? null,
       orders: group.orders.map((o) => ({
         id: o.id,
