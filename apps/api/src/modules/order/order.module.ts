@@ -3,6 +3,7 @@ import { PaymentModule } from '../../shared/payment/payment.module';
 import { ProductModule } from '../product/product.module';
 import { VoucherModule } from '../voucher/voucher.module';
 import { OrderController } from './order.controller';
+import { OrderStatusService } from './order-status.service';
 import { OrderService } from './order.service';
 import { PaymentExpiryJob } from './payment-expiry.job';
 import { PaymentService } from './payment.service';
@@ -15,7 +16,12 @@ import { PaymentService } from './payment.service';
 @Module({
   imports: [PaymentModule, ProductModule, VoucherModule],
   controllers: [OrderController],
-  providers: [OrderService, PaymentService, PaymentExpiryJob],
-  exports: [OrderService, PaymentService],
+  providers: [
+    OrderService,
+    OrderStatusService,
+    PaymentService,
+    PaymentExpiryJob,
+  ],
+  exports: [OrderService, OrderStatusService, PaymentService],
 })
 export class OrderModule {}

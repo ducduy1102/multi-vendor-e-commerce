@@ -13,6 +13,7 @@ import type { VerifiedCallback } from '../../shared/payment/payment-gateway.inte
 import { VnpayProvider } from '../../shared/payment/vnpay.provider';
 import { InventoryService } from '../product/inventory.service';
 import { VoucherUsageService } from '../voucher/voucher-usage.service';
+import { OrderStatusService } from './order-status.service';
 import { PaymentService } from './payment.service';
 
 // Integration test trên DB dev THẬT (cần Postgres đang chạy): chứng minh confirmPayment/
@@ -38,6 +39,7 @@ describe('PaymentService (DB thật)', () => {
     inventoryService,
     voucherUsageService,
     paymentGateway,
+    new OrderStatusService(),
   );
 
   beforeAll(() => cleanupByTag(prisma, TAG));

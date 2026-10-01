@@ -13,6 +13,7 @@ import { PaymentGatewayService } from '../../shared/payment/payment-gateway.serv
 import { VnpayProvider } from '../../shared/payment/vnpay.provider';
 import { CartService } from '../cart/cart.service';
 import { InventoryService } from '../product/inventory.service';
+import { OrderStatusService } from '../order/order-status.service';
 import { OrderService } from '../order/order.service';
 import { PaymentService } from '../order/payment.service';
 import { VoucherService } from '../voucher/voucher.service';
@@ -44,7 +45,8 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
     voucherService,
   );
   const inventoryService = new InventoryService();
-  const orderService = new OrderService();
+  const orderStatusService = new OrderStatusService();
+  const orderService = new OrderService(orderStatusService);
   const addressService = new AddressService(prisma as unknown as PrismaService);
   const paymentGateway = new PaymentGatewayService(
     new VnpayProvider(),
@@ -55,6 +57,7 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
     inventoryService,
     voucherUsageService,
     paymentGateway,
+    orderStatusService,
   );
   const checkoutService = new CheckoutService(
     prisma as unknown as PrismaService,

@@ -10,6 +10,7 @@ import type { VoucherService } from '../voucher/voucher.service';
 import type { VoucherUsageService } from '../voucher/voucher-usage.service';
 import type { AddressService } from './address.service';
 import type { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
+import type { OrderService } from '../order/order.service';
 import type { PaymentService } from '../order/payment.service';
 import { CheckoutService, type PlaceOrderInput } from './checkout.service';
 import { calculateShippingFee } from './shipping-rates';
@@ -234,7 +235,7 @@ describe('CheckoutService.placeOrder', () => {
       voucherService as unknown as VoucherService,
       voucherUsageService as unknown as VoucherUsageService,
       inventoryService as unknown as InventoryService,
-      orderService,
+      orderService as unknown as OrderService,
       addressService as unknown as AddressService,
       paymentGateway as unknown as PaymentGatewayService,
       paymentService as unknown as PaymentService,

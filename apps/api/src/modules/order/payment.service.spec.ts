@@ -6,6 +6,7 @@ import { expectAppException } from '../../shared/testing/expect-app-exception';
 import type { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
 import type { InventoryService } from '../product/inventory.service';
 import type { VoucherUsageService } from '../voucher/voucher-usage.service';
+import { OrderStatusService } from './order-status.service';
 import { PaymentService } from './payment.service';
 
 const SUCCESS_CALLBACK: VerifiedCallback = {
@@ -35,18 +36,17 @@ describe('PaymentService', () => {
   };
   let tx: {
     $queryRaw: jest.Mock;
-    order: { updateMany: jest.Mock };
     payment: { update: jest.Mock; count: jest.Mock; updateMany: jest.Mock };
     orderItem: { findMany: jest.Mock };
   };
   let inventoryService: { commit: jest.Mock; release: jest.Mock };
+  let orderStatusService: { transition: jest.Mock };
   let voucherUsageService: { release: jest.Mock };
   let paymentGateway: { availabilityOf: jest.Mock; getConfigured: jest.Mock };
 
   beforeEach(() => {
     tx = {
       $queryRaw: jest.fn(),
-      order: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       payment: {
         update: jest.fn().mockResolvedValue({}),
         count: jest.fn().mockResolvedValue(0),
@@ -69,6 +69,7 @@ describe('PaymentService', () => {
       release: jest.fn().mockResolvedValue(undefined),
     };
     voucherUsageService = { release: jest.fn().mockResolvedValue(0) };
+    orderStatusService = { transition: jest.fn().mockResolvedValue([]) };
     paymentGateway = {
       availabilityOf: jest.fn().mockReturnValue({ available: true }),
       getConfigured: jest.fn().mockReturnValue({
@@ -83,6 +84,7 @@ describe('PaymentService', () => {
       inventoryService as unknown as InventoryService,
       voucherUsageService as unknown as VoucherUsageService,
       paymentGateway as unknown as PaymentGatewayService,
+      orderStatusService as unknown as OrderStatusService,
     );
   });
 
@@ -186,7 +188,7 @@ describe('PaymentService', () => {
           { id: 'o1', status: 'AWAITING_PAYMENT' },
           { id: 'o2', status: 'AWAITING_PAYMENT' },
         ]); // khoá đơn
-      tx.order.updateMany.mockResolvedValue({ count: 2 });
+      orderStatusService.transition.mockResolvedValue(['o1', 'o2']);
       tx.orderItem.findMany.mockResolvedValue([
         { productVariantId: 'v1', quantity: 2 },
         { productVariantId: 'v2', quantity: 1 },
@@ -195,9 +197,18 @@ describe('PaymentService', () => {
       const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
 
       expect(result).toEqual({ outcome: 'CONFIRMED', checkoutGroupId: 'g1' });
-      expect(tx.order.updateMany).toHaveBeenCalledWith({
-        where: { id: { in: ['o1', 'o2'] }, status: 'AWAITING_PAYMENT' },
-        data: { status: 'PENDING' },
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1', 'o2'],
+        'AWAITING_PAYMENT',
+        'PENDING',
+        { type: 'SYSTEM' },
+        expect.any(String) as string,
+      );
+      // Chỉ chốt kho cho ĐÚNG các đơn thật sự lật được.
+      expect(tx.orderItem.findMany).toHaveBeenCalledWith({
+        where: { orderId: { in: ['o1', 'o2'] } },
+        select: { productVariantId: true, quantity: true },
       });
       expect(tx.payment.update).toHaveBeenCalledWith({
         where: { id: 'p1' },
@@ -231,7 +242,7 @@ describe('PaymentService', () => {
       tx.$queryRaw
         .mockResolvedValueOnce([{ status: 'FAILED' }])
         .mockResolvedValueOnce([{ id: 'o1', status: 'AWAITING_PAYMENT' }]);
-      tx.order.updateMany.mockResolvedValue({ count: 1 });
+      orderStatusService.transition.mockResolvedValue(['o1']);
 
       const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
 
@@ -243,7 +254,7 @@ describe('PaymentService', () => {
       tx.$queryRaw
         .mockResolvedValueOnce([{ status: 'PENDING' }])
         .mockResolvedValueOnce([{ id: 'o1', status: 'PENDING' }]);
-      tx.order.updateMany.mockResolvedValue({ count: 0 });
+      orderStatusService.transition.mockResolvedValue([]);
 
       const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
 
@@ -263,7 +274,7 @@ describe('PaymentService', () => {
       tx.$queryRaw
         .mockResolvedValueOnce([{ status: 'FAILED' }])
         .mockResolvedValueOnce([{ id: 'o1', status: 'CANCELLED' }]);
-      tx.order.updateMany.mockResolvedValue({ count: 0 });
+      orderStatusService.transition.mockResolvedValue([]);
 
       const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
 
@@ -346,7 +357,7 @@ describe('PaymentService', () => {
         { id: 'o1', status: 'AWAITING_PAYMENT' },
         { id: 'o2', status: 'CANCELLED' }, // đơn khác của nhóm đã huỷ trước đó (không liên quan)
       ]);
-      tx.order.updateMany.mockResolvedValue({ count: 1 });
+      orderStatusService.transition.mockResolvedValue(['o1']);
       tx.orderItem.findMany.mockResolvedValue([
         { productVariantId: 'v1', quantity: 3 },
       ]);
@@ -358,10 +369,14 @@ describe('PaymentService', () => {
         where: { checkoutGroupId: 'g1', status: 'PENDING' },
         data: { status: 'FAILED' },
       });
-      expect(tx.order.updateMany).toHaveBeenCalledWith({
-        where: { id: { in: ['o1'] }, status: 'AWAITING_PAYMENT' },
-        data: { status: 'CANCELLED' },
-      });
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1'],
+        'AWAITING_PAYMENT',
+        'CANCELLED',
+        { type: 'SYSTEM' },
+        expect.any(String) as string,
+      );
       expect(inventoryService.release).toHaveBeenCalledWith(tx, [
         { productVariantId: 'v1', quantity: 3 },
       ]);
@@ -375,17 +390,17 @@ describe('PaymentService', () => {
       const result = await service.reclaimCheckoutGroup('g1');
 
       expect(result).toEqual({ reclaimed: false });
-      expect(tx.order.updateMany).not.toHaveBeenCalled();
+      expect(orderStatusService.transition).not.toHaveBeenCalled();
       expect(inventoryService.release).not.toHaveBeenCalled();
       expect(voucherUsageService.release).not.toHaveBeenCalled();
     });
 
-    it('race: khoá được đơn nhưng updateMany lật 0 dòng — không nhả (lưới an toàn)', async () => {
+    it('race: khoá được đơn nhưng chuyển trạng thái lật 0 đơn — không nhả (lưới an toàn)', async () => {
       tx.payment.count.mockResolvedValue(0);
       tx.$queryRaw.mockResolvedValue([
         { id: 'o1', status: 'AWAITING_PAYMENT' },
       ]);
-      tx.order.updateMany.mockResolvedValue({ count: 0 });
+      orderStatusService.transition.mockResolvedValue([]);
 
       const result = await service.reclaimCheckoutGroup('g1');
 

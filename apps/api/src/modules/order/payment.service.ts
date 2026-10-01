@@ -17,6 +17,7 @@ import {
   canRetryFromStatus,
   deriveCheckoutGroupStatus,
 } from './checkout-group-status';
+import { OrderStatusService } from './order-status.service';
 
 // Kết quả nội bộ của confirmPayment — controller của từng cổng (2.9) tự ánh xạ sang mã phản hồi
 // riêng (VNPay RspCode, Momo 204...), PaymentService không biết gì về hình dạng phản hồi của cổng.
@@ -136,6 +137,7 @@ export class PaymentService {
     private readonly inventoryService: InventoryService,
     private readonly voucherUsageService: VoucherUsageService,
     private readonly paymentGateway: PaymentGatewayService,
+    private readonly orderStatusService: OrderStatusService,
   ) {}
 
   // Được gọi bởi cả IPN lẫn return (2 nguồn, cùng 1 hàm, idempotent — Week7.md 1.10). Thứ tự bắt
@@ -212,10 +214,14 @@ export class PaymentService {
         SELECT id, status FROM orders WHERE checkout_group_id = ${payment.checkoutGroupId} ORDER BY id FOR UPDATE`;
       const orderIds = orders.map((o) => o.id);
 
-      const { count: flippedCount } = await tx.order.updateMany({
-        where: { id: { in: orderIds }, status: 'AWAITING_PAYMENT' },
-        data: { status: 'PENDING' },
-      });
+      const flippedIds = await this.orderStatusService.transition(
+        tx,
+        orderIds,
+        'AWAITING_PAYMENT',
+        'PENDING',
+        { type: 'SYSTEM' },
+        'Payment confirmed',
+      );
 
       await tx.payment.update({
         where: { id: payment.id },
@@ -226,14 +232,14 @@ export class PaymentService {
         },
       });
 
-      if (flippedCount > 0) {
+      if (flippedIds.length > 0) {
         if (currentStatus === 'FAILED') {
           this.logger.warn(
             `[${source}] payment ${payment.id} was FAILED but orders were still AWAITING_PAYMENT — flipped to SUCCESS anyway (gateway is the source of truth for money)`,
           );
         }
         const items = await tx.orderItem.findMany({
-          where: { orderId: { in: orderIds } },
+          where: { orderId: { in: flippedIds } },
           select: { productVariantId: true, quantity: true },
         });
         await this.inventoryService.commit(
@@ -323,16 +329,20 @@ export class PaymentService {
         .map((o) => o.id);
       if (awaitingIds.length === 0) return { reclaimed: false };
 
-      const { count } = await tx.order.updateMany({
-        where: { id: { in: awaitingIds }, status: 'AWAITING_PAYMENT' },
-        data: { status: 'CANCELLED' },
-      });
-      if (count === 0) return { reclaimed: false };
+      const cancelledIds = await this.orderStatusService.transition(
+        tx,
+        awaitingIds,
+        'AWAITING_PAYMENT',
+        'CANCELLED',
+        { type: 'SYSTEM' },
+        'Payment hold reclaimed',
+      );
+      if (cancelledIds.length === 0) return { reclaimed: false };
 
       // (3) Nhả giữ chỗ tồn kho của ĐÚNG các đơn vừa lật (theo id variant tăng dần — InventoryService
       // tự sắp trong normalizeLines).
       const items = await tx.orderItem.findMany({
-        where: { orderId: { in: awaitingIds } },
+        where: { orderId: { in: cancelledIds } },
         select: { productVariantId: true, quantity: true },
       });
       await this.inventoryService.release(
@@ -347,7 +357,7 @@ export class PaymentService {
       await this.voucherUsageService.release(tx, checkoutGroupId);
 
       this.logger.log(
-        `Reclaimed checkoutGroup=${checkoutGroupId}: cancelled ${count} order(s)`,
+        `Reclaimed checkoutGroup=${checkoutGroupId}: cancelled ${cancelledIds.length} order(s)`,
       );
       return { reclaimed: true };
     });

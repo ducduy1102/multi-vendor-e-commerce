@@ -19,7 +19,7 @@ function order(
 
 function payment(
   status: CheckoutGroupStatusPayment['status'],
-  expiresAt: Date,
+  expiresAt: Date | null,
   createdAt = PAST,
 ): CheckoutGroupStatusPayment {
   return { status, expiresAt, createdAt };
@@ -36,22 +36,61 @@ describe('ORDER_STATUS_TRANSITIONS / isValidOrderTransition', () => {
     expect(isValidOrderTransition('CANCELLED', 'PENDING')).toBe(false);
   });
 
-  it('mọi trạng thái Tuần 7 chưa dùng đều chưa có cạnh nào (Tuần 8 mở rộng sau)', () => {
-    for (const status of [
+  it('bảng chuyển đúng như đã chốt (Week8.md 1.3)', () => {
+    expect(ORDER_STATUS_TRANSITIONS).toEqual({
+      AWAITING_PAYMENT: ['PENDING', 'CANCELLED'],
+      PENDING: ['CONFIRMED', 'CANCELLED'],
+      CONFIRMED: ['PACKED'],
+      PACKED: ['SHIPPING'],
+      SHIPPING: ['COMPLETED'],
+      COMPLETED: [],
+      CANCELLED: [],
+      REFUNDED: [],
+    });
+  });
+
+  it('luồng chính đi được từng bước tới COMPLETED', () => {
+    const path = [
+      'AWAITING_PAYMENT',
       'PENDING',
       'CONFIRMED',
       'PACKED',
       'SHIPPING',
       'COMPLETED',
-      'CANCELLED',
-      'REFUNDED',
-    ] as const) {
-      expect(ORDER_STATUS_TRANSITIONS[status]).toEqual([]);
+    ] as const;
+    for (let i = 0; i < path.length - 1; i++) {
+      expect(isValidOrderTransition(path[i], path[i + 1])).toBe(true);
+    }
+  });
+
+  it('không nhảy cóc, không đi lùi, trạng thái cuối không đi đâu nữa', () => {
+    expect(isValidOrderTransition('PENDING', 'SHIPPING')).toBe(false);
+    expect(isValidOrderTransition('CONFIRMED', 'PENDING')).toBe(false);
+    expect(isValidOrderTransition('SHIPPING', 'CONFIRMED')).toBe(false);
+    expect(isValidOrderTransition('PACKED', 'CANCELLED')).toBe(false); // hủy sau xác nhận: Tuần 9
+    expect(isValidOrderTransition('SHIPPING', 'CANCELLED')).toBe(false);
+    for (const terminal of ['COMPLETED', 'CANCELLED', 'REFUNDED'] as const) {
+      expect(ORDER_STATUS_TRANSITIONS[terminal]).toEqual([]);
+    }
+  });
+
+  it('không có cạnh nào trỏ vào chính nó', () => {
+    for (const [from, targets] of Object.entries(ORDER_STATUS_TRANSITIONS)) {
+      expect(targets).not.toContain(from);
     }
   });
 });
 
 describe('deriveCheckoutGroupStatus', () => {
+  it('Payment không hết hạn (expiresAt = null, COD) không bao giờ thành PAYMENT_EXPIRED', () => {
+    const status = deriveCheckoutGroupStatus(
+      [order('PENDING')],
+      [payment('PENDING', null)],
+      NOW,
+    );
+    expect(status).toBe('AWAITING_PAYMENT');
+  });
+
   it('AWAITING_PAYMENT: đơn chưa huỷ, lần thử mới nhất PENDING chưa hết hạn', () => {
     const status = deriveCheckoutGroupStatus(
       [order('AWAITING_PAYMENT')],

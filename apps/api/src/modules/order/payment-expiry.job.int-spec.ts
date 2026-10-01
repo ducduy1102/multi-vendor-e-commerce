@@ -13,6 +13,7 @@ import { VnpayProvider } from '../../shared/payment/vnpay.provider';
 import { InventoryService } from '../product/inventory.service';
 import { VoucherUsageService } from '../voucher/voucher-usage.service';
 import { PaymentExpiryJob } from './payment-expiry.job';
+import { OrderStatusService } from './order-status.service';
 import { PaymentService } from './payment.service';
 
 // Integration test trên DB dev THẬT (cần Postgres đang chạy) — chứng minh PaymentExpiryJob (Week7.md
@@ -36,6 +37,7 @@ describe('PaymentExpiryJob (DB thật)', () => {
     inventoryService,
     voucherUsageService,
     paymentGateway,
+    new OrderStatusService(),
   );
   const job = new PaymentExpiryJob(
     prisma as unknown as PrismaService,

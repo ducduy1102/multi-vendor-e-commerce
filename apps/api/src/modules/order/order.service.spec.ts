@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { TxClient } from '../../shared/prisma/tx-client';
 import type { CreateOrdersInput } from './order.service';
+import { OrderStatusService } from './order-status.service';
 import { OrderService } from './order.service';
 
 function baseInput(
@@ -48,6 +49,7 @@ function baseInput(
 
 describe('OrderService.createOrders', () => {
   let service: OrderService;
+  let orderStatusService: { recordCreated: jest.Mock };
   let tx: {
     order: { create: jest.Mock };
     payment: { create: jest.Mock };
@@ -72,11 +74,26 @@ describe('OrderService.createOrders', () => {
         create: jest.fn(() => ({ id: 'payment-1' })),
       },
     };
-    service = new OrderService();
+    orderStatusService = {
+      recordCreated: jest.fn().mockResolvedValue(undefined),
+    };
+    service = new OrderService(
+      orderStatusService as unknown as OrderStatusService,
+    );
   });
 
   const call = (overrides: Partial<CreateOrdersInput> = {}) =>
     service.createOrders(tx as unknown as TxClient, baseInput(overrides));
+
+  it('ghi mốc tạo đơn (fromStatus = null) cho mọi đơn vừa tạo, actor là buyer', async () => {
+    await call();
+
+    expect(orderStatusService.recordCreated).toHaveBeenCalledWith(
+      tx,
+      [{ id: 'order-1', status: 'AWAITING_PAYMENT' }],
+      { type: 'BUYER', id: 'user-1' },
+    );
+  });
 
   it('tạo đúng 1 Order kèm snapshot địa chỉ và OrderItem, 1 Payment', async () => {
     const result = await call();
