@@ -16,7 +16,7 @@ async function fillValid(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Họ tên người nhận'), 'Nguyễn Văn A');
   await user.type(screen.getByLabelText('Số điện thoại'), '0912345678');
   await user.type(screen.getByLabelText('Số nhà, tên đường'), '12 Nguyễn Huệ');
-  await user.type(screen.getByLabelText('Xã/Phường/Đặc khu'), 'Phường Bến Nghé');
+  await user.type(screen.getByLabelText('Xã/Phường'), 'Phường Bến Nghé');
   await user.selectOptions(screen.getByLabelText('Tỉnh/Thành phố'), 'Hồ Chí Minh');
 }
 
@@ -36,7 +36,7 @@ describe('AddressForm', () => {
     expect(await screen.findByText('Vui lòng nhập tên người nhận')).toBeInTheDocument();
     expect(screen.getByText('Số điện thoại không hợp lệ')).toBeInTheDocument();
     expect(screen.getByText('Vui lòng nhập số nhà, đường')).toBeInTheDocument();
-    expect(screen.getByText('Vui lòng nhập Xã/Phường/Đặc khu')).toBeInTheDocument();
+    expect(screen.getByText('Vui lòng nhập Xã/Phường')).toBeInTheDocument();
     expect(screen.getByText('Vui lòng chọn Tỉnh/Thành phố hợp lệ')).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Họ tên người nhận')).toHaveAttribute('aria-invalid', 'true');
