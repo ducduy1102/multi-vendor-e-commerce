@@ -23,6 +23,11 @@ import { Roles } from '../../shared/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { RolesGuard } from '../../shared/guards/roles.guard';
 import { ZodValidationPipe } from '../../shared/pipes/zod-validation.pipe';
+import {
+  errorExample,
+  FORBIDDEN_ROLE_EXAMPLE,
+  UNAUTHORIZED_EXAMPLE,
+} from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { AdminService } from './admin.service';
 import {
@@ -58,6 +63,16 @@ const ADMIN_SHOP_EXAMPLE = {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
 @ApiCookieAuth('access_token')
+@ApiResponse({
+  status: 401,
+  description: 'Chưa đăng nhập',
+  schema: { example: UNAUTHORIZED_EXAMPLE },
+})
+@ApiResponse({
+  status: 403,
+  description: 'Không phải ADMIN',
+  schema: { example: FORBIDDEN_ROLE_EXAMPLE },
+})
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
@@ -91,9 +106,12 @@ export class AdminController {
   @ApiResponse({
     status: 400,
     description: 'Query không hợp lệ (status lạ, limit > 50...)',
+    schema: {
+      example: errorExample(
+        "status: Invalid enum value. Expected 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED', received 'bad'",
+      ),
+    },
   })
-  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
-  @ApiResponse({ status: 403, description: 'Không phải ADMIN' })
   listShops(
     @Query(new ZodValidationPipe(adminShopListQuerySchema))
     query: ListShopsQueryDto,
@@ -136,10 +154,15 @@ export class AdminController {
     status: 400,
     description:
       'Body không hợp lệ (status không phải APPROVED/REJECTED/SUSPENDED, thiếu lý do khi từ chối/khoá, lý do > 500 ký tự)',
+    schema: {
+      example: errorExample('reason: admin.validationReasonRequired'),
+    },
   })
-  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
-  @ApiResponse({ status: 403, description: 'Không phải ADMIN' })
-  @ApiResponse({ status: 404, description: 'Shop không tồn tại' })
+  @ApiResponse({
+    status: 404,
+    description: 'Shop không tồn tại',
+    schema: { example: errorExample('Shop not found') },
+  })
   @ApiResponse({
     status: 409,
     description:
