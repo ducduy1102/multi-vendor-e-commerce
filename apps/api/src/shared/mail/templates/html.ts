@@ -1,7 +1,8 @@
 // Mọi giá trị người dùng/seller nhập (tên, tên sản phẩm, địa chỉ, LÝ DO TỪ CHỐI...) chèn vào email PHẢI
 // qua escapeHtml — nếu không, seller gõ HTML vào lý do từ chối sẽ chèn được link/nội dung tuỳ ý vào email
-// gửi tới buyer từ chính địa chỉ của sàn (phishing). Template xác thực email cũ (verify-email.template.ts)
-// chưa escape tên người dùng — không đụng tới ở đây, ngoài phạm vi email đơn hàng.
+// gửi tới buyer từ chính địa chỉ của sàn (phishing). Áp dụng cả cho template xác thực email
+// (verify-email.template.ts): tên do người đăng ký tự nhập và mail gửi tới địa chỉ họ khai (có thể là
+// của người khác).
 export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
