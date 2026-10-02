@@ -21,8 +21,9 @@ function payment(
   status: CheckoutGroupStatusPayment['status'],
   expiresAt: Date | null,
   createdAt = PAST,
+  method: CheckoutGroupStatusPayment['method'] = 'VNPAY',
 ): CheckoutGroupStatusPayment {
-  return { status, expiresAt, createdAt };
+  return { method, status, expiresAt, createdAt };
 }
 
 describe('ORDER_STATUS_TRANSITIONS / isValidOrderTransition', () => {
@@ -82,13 +83,70 @@ describe('ORDER_STATUS_TRANSITIONS / isValidOrderTransition', () => {
 });
 
 describe('deriveCheckoutGroupStatus', () => {
-  it('Payment không hết hạn (expiresAt = null, COD) không bao giờ thành PAYMENT_EXPIRED', () => {
-    const status = deriveCheckoutGroupStatus(
-      [order('PENDING')],
-      [payment('PENDING', null)],
-      NOW,
-    );
-    expect(status).toBe('AWAITING_PAYMENT');
+  describe('COD (Week8.md 1.6) — chưa thu tiền, không hết hạn', () => {
+    const cod = (
+      status: CheckoutGroupStatusPayment['status'] = 'PENDING',
+      createdAt = PAST,
+    ) => payment(status, null, createdAt, 'COD');
+
+    it('COD_PLACED: đơn đã đặt (PENDING), Payment COD PENDING không hạn', () => {
+      expect(deriveCheckoutGroupStatus([order('PENDING')], [cod()], NOW)).toBe(
+        'COD_PLACED',
+      );
+    });
+
+    it('vẫn COD_PLACED khi các đơn đã sang CONFIRMED/PACKED/SHIPPING (còn đơn hoạt động, chưa thu tiền)', () => {
+      for (const status of ['CONFIRMED', 'PACKED', 'SHIPPING'] as const) {
+        expect(deriveCheckoutGroupStatus([order(status)], [cod()], NOW)).toBe(
+          'COD_PLACED',
+        );
+      }
+    });
+
+    it('nhóm nhiều đơn: 1 đơn hủy, 1 đơn còn hoạt động ⇒ COD_PLACED', () => {
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('CANCELLED'), order('PENDING')],
+          [cod()],
+          NOW,
+        ),
+      ).toBe('COD_PLACED');
+    });
+
+    it('mọi đơn đã hủy ⇒ CANCELLED (không còn gì để giao)', () => {
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('CANCELLED'), order('CANCELLED')],
+          [cod()],
+          NOW,
+        ),
+      ).toBe('CANCELLED');
+    });
+
+    it('đã thu tiền (Payment COD SUCCESS, các đơn COMPLETED) ⇒ PAID', () => {
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('COMPLETED'), order('CANCELLED')],
+          [cod('SUCCESS')],
+          NOW,
+        ),
+      ).toBe('PAID');
+    });
+
+    it('KHÔNG BAO GIỜ PAYMENT_EXPIRED/PAYMENT_FAILED dù đã đặt rất lâu (không có hạn)', () => {
+      const veryOld = new Date('2020-01-01T00:00:00.000Z');
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('PENDING')],
+          [cod('PENDING', veryOld)],
+          NOW,
+        ),
+      ).toBe('COD_PLACED');
+    });
+
+    it('COD_PLACED không "thử lại thanh toán" được', () => {
+      expect(canRetryFromStatus('COD_PLACED')).toBe(false);
+    });
   });
 
   it('AWAITING_PAYMENT: đơn chưa huỷ, lần thử mới nhất PENDING chưa hết hạn', () => {

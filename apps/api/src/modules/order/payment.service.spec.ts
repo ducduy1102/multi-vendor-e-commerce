@@ -366,7 +366,12 @@ describe('PaymentService', () => {
 
       expect(result).toEqual({ reclaimed: true });
       expect(tx.payment.updateMany).toHaveBeenCalledWith({
-        where: { checkoutGroupId: 'g1', status: 'PENDING' },
+        // KHÔNG đụng Payment COD (Week8.md 2.7).
+        where: {
+          checkoutGroupId: 'g1',
+          status: 'PENDING',
+          method: { not: 'COD' },
+        },
         data: { status: 'FAILED' },
       });
       expect(orderStatusService.transition).toHaveBeenCalledWith(
@@ -679,6 +684,30 @@ describe('PaymentService', () => {
         code: 'PAYMENT_RETRY_NOT_ALLOWED',
         details: { reason: 'ALREADY_PAID' },
       });
+    });
+
+    it('nhóm COD (COD_PLACED) — 409 reason NOT_ONLINE_PAYMENT, không gọi cổng', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(
+        pendingGroup({
+          orders: [{ id: 'o1', status: 'PENDING' }],
+          payments: [
+            {
+              ...pendingGroup().payments[0],
+              method: 'COD',
+              payUrl: null,
+              expiresAt: null,
+            },
+          ],
+        }),
+      );
+
+      await expectAppException(service.retryPayment('user-1', 'g1'), {
+        status: 409,
+        code: 'PAYMENT_RETRY_NOT_ALLOWED',
+        details: { reason: 'NOT_ONLINE_PAYMENT' },
+      });
+      expect(paymentGateway.getConfigured).not.toHaveBeenCalled();
+      expect(prisma.payment.create).not.toHaveBeenCalled();
     });
 
     it('đã hết hạn giữ (PAYMENT_EXPIRED) — 409 reason HOLD_EXPIRED', async () => {

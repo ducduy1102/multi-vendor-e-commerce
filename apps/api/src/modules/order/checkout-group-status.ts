@@ -1,4 +1,4 @@
-import type { OrderStatus, PaymentStatus } from '@prisma/client';
+import type { OrderStatus, PaymentMethod, PaymentStatus } from '@prisma/client';
 import type { CheckoutGroupStatus } from '@ecommerce/types';
 
 // Bảng chuyển trạng thái Order hợp lệ (Week7.md 1.13, mở rộng ở Week8.md 1.3). Chỉ nói cạnh nào hợp lệ
@@ -30,6 +30,7 @@ export interface CheckoutGroupStatusOrder {
 }
 
 export interface CheckoutGroupStatusPayment {
+  method: PaymentMethod;
   status: PaymentStatus;
   // null = không hết hạn (Payment COD, Week8.md 1.6).
   expiresAt: Date | null;
@@ -59,6 +60,9 @@ export function deriveCheckoutGroupStatus(
   )[0];
   // Không nên xảy ra thật (placeOrder luôn tạo kèm đúng 1 Payment) — coi như vừa đặt, an toàn.
   if (!latest) return 'AWAITING_PAYMENT';
+  // COD: đã đặt thành công, còn đơn hoạt động, CHƯA thu tiền (thu khi nhận hàng) — không có hạn
+  // thanh toán nên không bao giờ PAYMENT_EXPIRED/PAYMENT_FAILED, và không có gì để "thử lại".
+  if (latest.method === 'COD') return 'COD_PLACED';
 
   const stillWithinHold = latest.expiresAt === null || latest.expiresAt > now;
   if (latest.status === 'PENDING') {

@@ -41,7 +41,8 @@ export interface CreateOrdersPaymentInput {
   // = Σ Order.totalAmount, số nguyên VND.
   amount: number;
   txnRef: string;
-  expiresAt: Date;
+  // null = không hết hạn (COD, Week8.md 1.6).
+  expiresAt: Date | null;
 }
 
 export interface CreateOrdersInput {
@@ -53,6 +54,9 @@ export interface CreateOrdersInput {
   shipping: CreateOrdersShippingSnapshot;
   orders: CreateOrdersOrderInput[];
   payment: CreateOrdersPaymentInput;
+  // Trạng thái đầu của đơn: mặc định AWAITING_PAYMENT (chờ cổng thanh toán); COD vào thẳng PENDING
+  // (chưa thu tiền, chờ shop xác nhận) — Week8.md 1.6.
+  initialStatus?: Extract<OrderStatus, 'AWAITING_PAYMENT' | 'PENDING'>;
 }
 
 export interface CreatedOrderSummary {
@@ -85,6 +89,7 @@ export class OrderService {
           userId: input.userId,
           shopId: orderInput.shopId,
           checkoutGroupId: input.checkoutGroupId,
+          status: input.initialStatus ?? 'AWAITING_PAYMENT',
           voucherId: input.voucherId,
           totalAmount: orderInput.totalAmount,
           discountAmount: orderInput.discountAmount,

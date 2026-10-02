@@ -168,7 +168,7 @@ export class CheckoutController {
   @ApiCookieAuth('access_token')
   @ApiOperation({
     summary:
-      'Đặt hàng từ giỏ hiện tại — tách N Order theo shop, 1 Payment chung',
+      'Đặt hàng từ giỏ hiện tại — tách N Order theo shop, 1 Payment chung. paymentMethod VNPAY/MOMO: đơn AWAITING_PAYMENT giữ chỗ kho, trả paymentUrl để chuyển sang cổng. paymentMethod COD: đơn vào thẳng PENDING, kho TRỪ NGAY, không có paymentUrl và expiresAt = null (thu tiền khi nhận hàng)',
   })
   @ApiHeader({
     name: 'Idempotency-Key',
@@ -178,7 +178,27 @@ export class CheckoutController {
   })
   @ApiResponse({
     status: 201,
-    schema: { example: { success: true, data: CHECKOUT_RESULT_EXAMPLE } },
+    examples: {
+      online: {
+        summary: 'VNPAY/MOMO — chờ thanh toán',
+        value: { success: true, data: CHECKOUT_RESULT_EXAMPLE },
+      },
+      cod: {
+        summary: 'COD — không cổng, không hạn thanh toán',
+        value: {
+          success: true,
+          data: {
+            ...CHECKOUT_RESULT_EXAMPLE,
+            orders: [
+              { ...CHECKOUT_RESULT_EXAMPLE.orders[0], status: 'PENDING' },
+            ],
+            paymentMethod: 'COD',
+            expiresAt: null,
+            paymentUrl: null,
+          },
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 400,
@@ -370,7 +390,7 @@ export class CheckoutController {
   @ApiResponse({
     status: 409,
     description:
-      'PAYMENT_RETRY_NOT_ALLOWED (đã trả tiền/đã hết hạn giữ) / PAYMENT_METHOD_UNAVAILABLE',
+      'PAYMENT_RETRY_NOT_ALLOWED (đã trả tiền / đã hết hạn giữ / nhóm COD không có cổng để thử lại) / PAYMENT_METHOD_UNAVAILABLE',
     examples: {
       ALREADY_PAID: {
         summary: 'PAYMENT_RETRY_NOT_ALLOWED — ALREADY_PAID',
@@ -390,6 +410,16 @@ export class CheckoutController {
           message: 'The payment hold for this checkout group has expired',
           code: 'PAYMENT_RETRY_NOT_ALLOWED',
           details: { reason: 'HOLD_EXPIRED' },
+        },
+      },
+      NOT_ONLINE_PAYMENT: {
+        summary: 'PAYMENT_RETRY_NOT_ALLOWED — NOT_ONLINE_PAYMENT (nhóm COD)',
+        value: {
+          success: false,
+          data: null,
+          message: 'Cash on delivery orders have no online payment to retry',
+          code: 'PAYMENT_RETRY_NOT_ALLOWED',
+          details: { reason: 'NOT_ONLINE_PAYMENT' },
         },
       },
       PAYMENT_METHOD_UNAVAILABLE: {

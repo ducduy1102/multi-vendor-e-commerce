@@ -61,7 +61,8 @@ export interface PlaceOrderResult {
   orders: PlaceOrderResultOrder[];
   totalAmount: string;
   paymentMethod: PaymentMethod;
-  expiresAt: string;
+  // null với đơn COD (không có hạn thanh toán).
+  expiresAt: string | null;
   paymentUrl: string | null;
 }
 
@@ -185,8 +186,12 @@ export class CheckoutService {
       orders: PlaceOrderResultOrder[];
       txnRef: string;
       amount: number;
-      expiresAt: Date;
+      // null với COD (không hết hạn).
+      expiresAt: Date | null;
     };
+    // COD (Week8.md 1.6): không cổng thanh toán, không hết hạn; đơn vào thẳng PENDING và kho được chốt
+    // NGAY trong cùng transaction (không có bước "thanh toán thành công" để chốt kho sau).
+    const isCod = input.paymentMethod === 'COD';
     try {
       created = await this.prisma.$transaction(async (tx) => {
         // [2] Xoá đúng các dòng đã đọc (khớp id + quantity) — ổ khoá theo user; lệch ⇒ giỏ đã đổi.
@@ -339,10 +344,23 @@ export class CheckoutService {
         const expiresAt = new Date(
           Date.now() + readPaymentTtlMinutes() * 60_000,
         );
+        // COD: chốt kho ngay (reserve ở trên + commit ở đây trong CÙNG transaction). Đặt SAU kiểm
+        // expectedTotal nên lệch giá vẫn rollback sạch.
+        if (isCod) {
+          await this.inventoryService.commit(
+            tx,
+            purchasableLines.map((l) => ({
+              productVariantId: l.productVariantId,
+              quantity: l.quantity,
+            })),
+          );
+        }
+
         const { orders } = await this.orderService.createOrders(tx, {
           checkoutGroupId: group.id,
           userId,
           voucherId,
+          initialStatus: isCod ? 'PENDING' : undefined,
           shipping: {
             recipientName: address.recipientName,
             recipientPhone: address.phone,
@@ -369,7 +387,7 @@ export class CheckoutService {
             method: input.paymentMethod,
             amount: plan.grandTotal,
             txnRef,
-            expiresAt,
+            expiresAt: isCod ? null : expiresAt,
           },
         });
 
@@ -378,7 +396,7 @@ export class CheckoutService {
           orders,
           txnRef,
           amount: plan.grandTotal,
-          expiresAt,
+          expiresAt: isCod ? null : expiresAt,
         };
       });
     } catch (error) {
@@ -396,17 +414,21 @@ export class CheckoutService {
 
     // [7] Ngoài transaction: gọi cổng lấy payUrl. Lỗi ở bước này KHÔNG rollback phần đã ghi — đơn
     // vẫn AWAITING_PAYMENT, "tiếp tục thanh toán" ở 2.9 xử lý (rules/backend.md mục 4).
-    const paymentUrl = await this.createPayUrlSafely(
-      input.paymentMethod,
-      created,
-    );
+    // COD không có cổng nên không có payUrl (paymentUrl null là KẾT QUẢ ĐÚNG, không phải lỗi cổng).
+    const paymentUrl =
+      created.expiresAt === null
+        ? null
+        : await this.createPayUrlSafely(input.paymentMethod, {
+            ...created,
+            expiresAt: created.expiresAt,
+          });
 
     return {
       checkoutGroupId: created.groupId,
       orders: created.orders,
       totalAmount: String(created.amount),
       paymentMethod: input.paymentMethod,
-      expiresAt: created.expiresAt.toISOString(),
+      expiresAt: created.expiresAt?.toISOString() ?? null,
       paymentUrl,
     };
   }
@@ -784,11 +806,6 @@ export class CheckoutService {
       throw new Error(`CheckoutGroup ${group.id} has no Payment`);
     }
 
-    // COD (không cổng, không hết hạn) chưa đi qua placeOrder — phát lại kết quả COD làm ở Week8.md 2.7.
-    if (payment.expiresAt === null) {
-      throw new Error(`CheckoutGroup ${group.id} has a COD payment`);
-    }
-
     return {
       checkoutGroupId: group.id,
       orders: group.orders.map((o) => ({
@@ -799,7 +816,7 @@ export class CheckoutService {
       })),
       totalAmount: payment.amount.toString(),
       paymentMethod: payment.method,
-      expiresAt: payment.expiresAt.toISOString(),
+      expiresAt: payment.expiresAt?.toISOString() ?? null,
       paymentUrl: payment.payUrl,
     };
   }

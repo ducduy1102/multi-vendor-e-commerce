@@ -65,7 +65,7 @@ describe('OrderService.createOrders', () => {
           }) => ({
             id: `order-${++orderSeq}`,
             shopId: args.data.shopId,
-            status: 'AWAITING_PAYMENT',
+            status: args.data.status ?? 'AWAITING_PAYMENT',
             totalAmount: new Prisma.Decimal(args.data.totalAmount),
           }),
         ),
@@ -104,6 +104,7 @@ describe('OrderService.createOrders', () => {
         userId: 'user-1',
         shopId: 'shop-1',
         checkoutGroupId: 'group-1',
+        status: 'AWAITING_PAYMENT',
         voucherId: null,
         totalAmount: 120_000,
         discountAmount: 0,
@@ -151,6 +152,46 @@ describe('OrderService.createOrders', () => {
         },
       ],
       paymentId: 'payment-1',
+    });
+  });
+
+  describe('COD (Week8.md 1.6)', () => {
+    const codInput = (): Partial<CreateOrdersInput> => ({
+      initialStatus: 'PENDING',
+      payment: {
+        method: 'COD',
+        amount: 120_000,
+        txnRef: 'TXNREF123',
+        expiresAt: null,
+      },
+    });
+
+    it('initialStatus PENDING — đơn vào thẳng PENDING, mốc timeline đầu cũng là PENDING', async () => {
+      const result = await call(codInput());
+
+      expect(tx.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'PENDING' }) as unknown,
+        }),
+      );
+      expect(result.orders[0].status).toBe('PENDING');
+      expect(orderStatusService.recordCreated).toHaveBeenCalledWith(
+        tx,
+        [{ id: 'order-1', status: 'PENDING' }],
+        { type: 'BUYER', id: 'user-1' },
+      );
+    });
+
+    it('Payment COD không có hạn: expiresAt = null', async () => {
+      await call(codInput());
+
+      expect(tx.payment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          method: 'COD',
+          expiresAt: null,
+        }) as unknown,
+        select: { id: true },
+      });
     });
   });
 

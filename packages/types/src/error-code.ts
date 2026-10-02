@@ -82,8 +82,9 @@ export const errorDetailsSchemas = {
     method: paymentMethodSchema,
     reason: paymentMethodUnavailableReasonSchema,
   }),
+  // NOT_ONLINE_PAYMENT: nhóm COD — không có cổng thanh toán để thử lại.
   PAYMENT_RETRY_NOT_ALLOWED: z.object({
-    reason: z.enum(['ATTEMPT_PENDING', 'HOLD_EXPIRED', 'ALREADY_PAID']),
+    reason: z.enum(['ATTEMPT_PENDING', 'HOLD_EXPIRED', 'ALREADY_PAID', 'NOT_ONLINE_PAYMENT']),
   }),
   // PAID_ONLINE: đơn đã thanh toán online (hủy + hoàn tiền: Tuần 9); PROCESSING_STARTED: shop đã xác
   // nhận hoặc đã xử lý tiếp (hủy sau xác nhận: Tuần 9).

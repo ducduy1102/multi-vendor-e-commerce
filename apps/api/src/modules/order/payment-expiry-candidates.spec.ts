@@ -54,6 +54,26 @@ describe('findReclaimCandidates', () => {
     expect(result).toEqual(['g1']);
   });
 
+  it('Payment không hết hạn (expiresAt = null, COD) — KHÔNG BAO GIỜ là ứng viên thu hồi', async () => {
+    prisma.order.findMany.mockResolvedValue([{ checkoutGroupId: 'g1' }]);
+    prisma.payment.findMany.mockResolvedValue([
+      {
+        checkoutGroupId: 'g1',
+        status: 'PENDING',
+        expiresAt: null,
+        createdAt: new Date('2020-01-01T00:00:00.000Z'),
+      },
+    ]);
+
+    const result = await findReclaimCandidates(asPrisma(), {
+      take: 50,
+      now: NOW,
+      graceMs: GRACE_MS,
+    });
+
+    expect(result).toEqual([]);
+  });
+
   it('nhóm còn trong ân hạn (đã quá expiresAt nhưng chưa quá ân hạn) — KHÔNG phải ứng viên', async () => {
     prisma.order.findMany.mockResolvedValue([{ checkoutGroupId: 'g1' }]);
     prisma.payment.findMany.mockResolvedValue([

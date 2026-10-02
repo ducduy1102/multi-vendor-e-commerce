@@ -193,6 +193,25 @@ describe('checkout.service', () => {
     expect((init.headers as Record<string, string>)['Idempotency-Key']).toBeUndefined();
   });
 
+  it('placeOrder COD — kết quả không có hạn thanh toán và không có payUrl (expiresAt/paymentUrl null) vẫn parse được', async () => {
+    const codResult = {
+      ...CHECKOUT_RESULT,
+      orders: [{ ...CHECKOUT_RESULT.orders[0], status: 'PENDING' }],
+      paymentMethod: 'COD',
+      expiresAt: null,
+      paymentUrl: null,
+    };
+    mockFetchOnce({ success: true, data: codResult }, 201);
+
+    const result = await placeOrder({
+      addressId: 'address-1',
+      paymentMethod: 'COD',
+      expectedTotal: 320000,
+    });
+
+    expect(result).toEqual(codResult);
+  });
+
   it('placeOrder gửi header Idempotency-Key khi có truyền', async () => {
     mockFetchOnce({ success: true, data: CHECKOUT_RESULT }, 201);
     const input = {

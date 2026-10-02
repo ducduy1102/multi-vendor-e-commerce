@@ -58,6 +58,17 @@ export function readVnpayAmountLimits(): AmountLimits {
   return { min, max };
 }
 
+// COD (Week8.md 1.6) không có cổng nên không cần khoá ENV — chỉ có trần giá trị đơn (rủi ro không
+// thu được tiền tăng theo giá trị đơn). Sàn 1 đồng: đơn 0 đồng không có ý nghĩa thanh toán.
+const DEFAULT_COD_MAX_AMOUNT = 10_000_000;
+
+export function readCodAmountLimits(): AmountLimits {
+  return {
+    min: 1,
+    max: readPositiveInt('COD_MAX_AMOUNT', DEFAULT_COD_MAX_AMOUNT),
+  };
+}
+
 // Hạn thanh toán = lúc tạo lần thử + TTL (Week7.md 1.4). Áp dụng chung cho mọi cổng nên đặt ở đây,
 // không riêng VNPay. Job hết hạn (quét + nhả giữ chỗ) làm ở 2.10 — đây chỉ là nơi ĐỌC cấu hình.
 const DEFAULT_PAYMENT_TTL_MINUTES = 15;

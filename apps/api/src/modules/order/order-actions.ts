@@ -86,7 +86,7 @@ export function getSellerOrderActions(
 export interface RetryPaymentInput {
   orderStatus: OrderStatus;
   // Mọi lần thử của nhóm (thứ tự bất kỳ — hàm tự sắp theo createdAt).
-  payments: (CheckoutGroupStatusPayment & { method: PaymentMethod })[];
+  payments: CheckoutGroupStatusPayment[];
   groupCreatedAt: Date;
   now: Date;
   maxHoldMinutes: number;

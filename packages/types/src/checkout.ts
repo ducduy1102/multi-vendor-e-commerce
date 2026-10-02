@@ -166,7 +166,9 @@ export const checkoutResultSchema = z.object({
   ),
   totalAmount: moneySchema,
   paymentMethod: paymentMethodSchema,
-  expiresAt: z.string(),
+  // null với đơn COD (không có hạn thanh toán, Week8.md 1.6).
+  expiresAt: z.string().nullable(),
+  // null khi gọi cổng lỗi sau khi đã ghi đơn, hoặc với đơn COD (không có cổng).
   paymentUrl: z.string().nullable(),
 });
 export type CheckoutResult = z.infer<typeof checkoutResultSchema>;

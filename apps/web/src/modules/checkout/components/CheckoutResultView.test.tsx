@@ -137,6 +137,25 @@ describe('CheckoutResultView', () => {
     expect(alert).not.toHaveTextContent('Đặt hàng và thanh toán thành công');
   });
 
+  it('COD_PLACED -> báo thanh toán khi nhận hàng, KHÔNG nói đã thanh toán, không có nút thanh toán/thử lại, hiện nhãn COD', () => {
+    renderView({
+      group: group({
+        status: 'COD_PLACED',
+        canRetry: false,
+        paymentMethod: 'COD',
+        expiresAt: null,
+        latestPaymentStatus: 'PENDING',
+      }),
+    });
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('thanh toán khi nhận hàng');
+    expect(alert).not.toHaveTextContent('thanh toán thành công');
+    expect(screen.getByText('Thanh toán khi nhận hàng (COD)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Thanh toán lại' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tiếp tục thanh toán' })).not.toBeInTheDocument();
+  });
+
   it('lỗi thanh toán lại (retryPaymentError) -> hiện thành alert riêng', () => {
     renderView({ retryPaymentError: 'Không thể thanh toán lại cho đơn này lúc này' });
 

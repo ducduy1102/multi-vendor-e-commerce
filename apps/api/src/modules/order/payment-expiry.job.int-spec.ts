@@ -162,6 +162,63 @@ describe('PaymentExpiryJob (DB thật)', () => {
     expect(voucher.usedCount).toBe(0);
   });
 
+  it('nhóm COD (đơn PENDING, Payment COD không hạn, tạo từ rất lâu) — job.run() KHÔNG BAO GIỜ thu hồi, kho/đơn/Payment nguyên vẹn', async () => {
+    const user = await createUser(prisma, TAG);
+    const base = await createShopWithProduct(prisma, TAG);
+    const variant = await createVariant(prisma, base, { stock: 8 }); // đã chốt kho lúc đặt
+    const group = await createCheckoutGroup(prisma, user.id);
+    const old = new Date('2020-01-01T00:00:00.000Z');
+    const order = await prisma.order.create({
+      data: {
+        userId: user.id,
+        shopId: base.shopId,
+        checkoutGroupId: group.id,
+        status: 'PENDING',
+        createdAt: old,
+        totalAmount: 100_000,
+        recipientName: 'A',
+        recipientPhone: '0900000000',
+        shippingAddressLine: 'x',
+        shippingWard: 'x',
+        shippingProvince: 'Hồ Chí Minh',
+        items: {
+          create: [
+            {
+              productVariantId: variant.id,
+              quantity: 2,
+              priceAtPurchase: 50_000,
+              productName: `${TAG}product`,
+              sku: `SKU-${variant.id}`,
+              variantLabel: null,
+              imageUrl: null,
+            },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    const payment = await prisma.payment.create({
+      data: {
+        checkoutGroupId: group.id,
+        method: 'COD',
+        status: 'PENDING',
+        amount: 100_000,
+        txnRef: `${TAG.toUpperCase()}COD${Date.now().toString(36).toUpperCase()}`,
+        expiresAt: null,
+        createdAt: old,
+      },
+    });
+
+    await job.run();
+
+    expect(await orderStatusOf(order.id)).toBe('PENDING');
+    expect(await stockOf(variant.id)).toEqual({ stock: 8, reservedStock: 0 });
+    const after = await prisma.payment.findUniqueOrThrow({
+      where: { id: payment.id },
+    });
+    expect(after.status).toBe('PENDING');
+  });
+
   it('nhóm CHƯA hết hạn — job.run() không đụng tới', async () => {
     const { orderId, variantId } = await setupGroup(FUTURE, 1, 5);
 

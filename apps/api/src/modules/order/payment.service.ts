@@ -318,8 +318,10 @@ export class PaymentService {
 
       // (1) Mọi lần thử PENDING của nhóm → FAILED. 1 câu UPDATE duy nhất (không khoá từng dòng riêng
       // theo thứ tự tuỳ ý) để không deadlock với confirmPayment đang khoá đúng 1 dòng Payment khác.
+      // KHÔNG đụng Payment COD: COD không có lần thử trên cổng để "thất bại" — nhóm COD không bao giờ hết
+      // hạn, và buyer hủy nhóm (cancelCheckoutGroup) gọi tới đây cũng không được làm hỏng khoản COD.
       await tx.payment.updateMany({
-        where: { checkoutGroupId, status: 'PENDING' },
+        where: { checkoutGroupId, status: 'PENDING', method: { not: 'COD' } },
         data: { status: 'FAILED' },
       });
 
@@ -429,6 +431,14 @@ export class PaymentService {
         'PAYMENT_RETRY_NOT_ALLOWED',
         'This checkout group has already been paid',
         { reason: 'ALREADY_PAID' },
+      );
+    }
+    if (status === 'COD_PLACED') {
+      throw new AppException(
+        409,
+        'PAYMENT_RETRY_NOT_ALLOWED',
+        'Cash on delivery orders have no online payment to retry',
+        { reason: 'NOT_ONLINE_PAYMENT' },
       );
     }
     if (!canRetryFromStatus(status)) {

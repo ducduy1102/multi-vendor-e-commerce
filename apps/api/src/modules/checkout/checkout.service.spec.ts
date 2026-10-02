@@ -125,7 +125,7 @@ describe('CheckoutService.placeOrder', () => {
   let cartService: { getCartItems: jest.Mock; buildCartView: jest.Mock };
   let voucherService: { validate: jest.Mock };
   let voucherUsageService: { consume: jest.Mock };
-  let inventoryService: { reserve: jest.Mock };
+  let inventoryService: { reserve: jest.Mock; commit: jest.Mock };
   let orderService: { createOrders: jest.Mock };
   let addressService: { getOwnedAddressOrThrow: jest.Mock };
   let paymentGateway: {
@@ -194,6 +194,7 @@ describe('CheckoutService.placeOrder', () => {
         .mockResolvedValue(
           new Map([['variant-1', new Prisma.Decimal(100_000)]]),
         ),
+      commit: jest.fn().mockResolvedValue(undefined),
     };
     orderService = {
       createOrders: jest.fn().mockResolvedValue({
@@ -342,6 +343,192 @@ describe('CheckoutService.placeOrder', () => {
         where: { txnRef: expect.any(String) as string },
         data: { payUrl: 'https://pay.example/url' },
       });
+    });
+  });
+
+  describe('COD (Week8.md 1.6/2.7) — không cổng, không hết hạn, chốt kho ngay', () => {
+    const COD_INPUT: PlaceOrderInput = { ...INPUT, paymentMethod: 'COD' };
+
+    beforeEach(() => {
+      paymentGateway.availabilityOf.mockReturnValue({
+        method: 'COD',
+        available: true,
+      });
+      orderService.createOrders.mockResolvedValue({
+        orders: [
+          {
+            id: 'order-1',
+            shopId: 'shop-1',
+            status: 'PENDING',
+            totalAmount: '220000',
+          },
+        ],
+        paymentId: 'payment-1',
+      });
+    });
+
+    it('kiểm khả dụng của COD theo expectedTotal TRƯỚC khi mở transaction', async () => {
+      await service.placeOrder('user-1', COD_INPUT);
+
+      expect(paymentGateway.availabilityOf).toHaveBeenCalledWith(
+        'COD',
+        COD_INPUT.expectedTotal,
+      );
+    });
+
+    it('đơn vào thẳng PENDING, Payment COD không có hạn, kết quả không có hạn/payUrl', async () => {
+      const result = await service.placeOrder('user-1', COD_INPUT);
+
+      expect(orderService.createOrders).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({
+          initialStatus: 'PENDING',
+          payment: expect.objectContaining({
+            method: 'COD',
+            expiresAt: null,
+          }) as unknown,
+        }),
+      );
+      expect(result).toMatchObject({
+        paymentMethod: 'COD',
+        expiresAt: null,
+        paymentUrl: null,
+      });
+      expect(result.orders[0].status).toBe('PENDING');
+    });
+
+    it('chốt kho NGAY trong transaction: reserve → commit → createOrders, cùng danh sách dòng', async () => {
+      const order: string[] = [];
+      inventoryService.reserve.mockImplementation(() => {
+        order.push('reserve');
+        return Promise.resolve(
+          new Map([['variant-1', new Prisma.Decimal(100_000)]]),
+        );
+      });
+      inventoryService.commit.mockImplementation(() => {
+        order.push('commit');
+        return Promise.resolve();
+      });
+      orderService.createOrders.mockImplementation(() => {
+        order.push('createOrders');
+        return Promise.resolve({
+          orders: [
+            {
+              id: 'order-1',
+              shopId: 'shop-1',
+              status: 'PENDING',
+              totalAmount: '220000',
+            },
+          ],
+          paymentId: 'payment-1',
+        });
+      });
+
+      await service.placeOrder('user-1', COD_INPUT);
+
+      expect(order).toEqual(['reserve', 'commit', 'createOrders']);
+      expect(inventoryService.commit).toHaveBeenCalledWith(tx, [
+        { productVariantId: 'variant-1', quantity: 2 },
+      ]);
+    });
+
+    it('KHÔNG gọi cổng thanh toán và không ghi payUrl (paymentUrl null là kết quả đúng, không phải lỗi cổng)', async () => {
+      await service.placeOrder('user-1', COD_INPUT);
+
+      expect(paymentGateway.getConfigured).not.toHaveBeenCalled();
+      expect(prisma.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('lệch giá (PRICE_CHANGED) — rollback sạch: KHÔNG chốt kho, KHÔNG tạo đơn', async () => {
+      await expectAppException(
+        service.placeOrder('user-1', {
+          ...COD_INPUT,
+          expectedTotal: COD_INPUT.expectedTotal + 1,
+        }),
+        { status: 409, code: 'PRICE_CHANGED' },
+      );
+
+      expect(inventoryService.commit).not.toHaveBeenCalled();
+      expect(orderService.createOrders).not.toHaveBeenCalled();
+    });
+
+    it('hết hàng — reserve ném, không chốt kho', async () => {
+      inventoryService.reserve.mockRejectedValue(
+        new InsufficientStockError([
+          { productVariantId: 'variant-1', requested: 2, available: 0 },
+        ]),
+      );
+
+      await expectAppException(service.placeOrder('user-1', COD_INPUT), {
+        status: 409,
+        code: 'OUT_OF_STOCK',
+      });
+      expect(inventoryService.commit).not.toHaveBeenCalled();
+    });
+
+    it('COD vượt trần giá trị — 409 PAYMENT_METHOD_UNAVAILABLE / AMOUNT_TOO_LARGE, không mở transaction', async () => {
+      paymentGateway.availabilityOf.mockReturnValue({
+        method: 'COD',
+        available: false,
+        reason: 'AMOUNT_TOO_LARGE',
+      });
+
+      await expectAppException(service.placeOrder('user-1', COD_INPUT), {
+        status: 409,
+        code: 'PAYMENT_METHOD_UNAVAILABLE',
+        details: { method: 'COD', reason: 'AMOUNT_TOO_LARGE' },
+      });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(inventoryService.commit).not.toHaveBeenCalled();
+    });
+
+    it('phát lại cùng Idempotency-Key cho nhóm COD — trả kết quả cũ (không hạn, không payUrl), không lỗi', async () => {
+      prisma.checkoutGroup.findUnique.mockResolvedValue({
+        id: 'group-cod',
+        orders: [
+          {
+            id: 'order-cod',
+            shopId: 'shop-1',
+            status: 'PENDING',
+            totalAmount: '220000',
+          },
+        ],
+        payments: [
+          {
+            method: 'COD',
+            amount: new Prisma.Decimal(220_000),
+            expiresAt: null,
+            payUrl: null,
+          },
+        ],
+      });
+
+      const result = await service.placeOrder('user-1', COD_INPUT, 'key-1');
+
+      expect(result).toMatchObject({
+        checkoutGroupId: 'group-cod',
+        paymentMethod: 'COD',
+        expiresAt: null,
+        paymentUrl: null,
+      });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('đường online KHÔNG bị ảnh hưởng: không chốt kho sớm, initialStatus mặc định', async () => {
+      paymentGateway.availabilityOf.mockReturnValue({
+        method: 'VNPAY',
+        available: true,
+      });
+
+      await service.placeOrder('user-1', INPUT);
+
+      expect(inventoryService.commit).not.toHaveBeenCalled();
+      const [, args] = orderService.createOrders.mock.calls[0] as [
+        unknown,
+        { initialStatus?: string; payment: { expiresAt: Date | null } },
+      ];
+      expect(args.initialStatus).toBeUndefined();
+      expect(args.payment.expiresAt).toBeInstanceOf(Date);
     });
   });
 

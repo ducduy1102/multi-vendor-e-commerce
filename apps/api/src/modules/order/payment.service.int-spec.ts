@@ -13,6 +13,7 @@ import type { VerifiedCallback } from '../../shared/payment/payment-gateway.inte
 import { VnpayProvider } from '../../shared/payment/vnpay.provider';
 import { InventoryService } from '../product/inventory.service';
 import { VoucherUsageService } from '../voucher/voucher-usage.service';
+import { expectAppException } from '../../shared/testing/expect-app-exception';
 import { OrderStatusService } from './order-status.service';
 import { PaymentService } from './payment.service';
 
@@ -206,6 +207,110 @@ describe('PaymentService (DB thật)', () => {
       expect(await stockOf(orders[0].variantId)).toEqual({
         stock: 4,
         reservedStock: 0,
+      });
+    });
+  });
+
+  describe('nhóm COD (Week8.md 2.7) — không bao giờ bị thu hồi', () => {
+    // Nhóm COD đúng như placeOrder để lại: đơn PENDING, kho đã chốt, Payment COD PENDING không hạn.
+    async function setupCodGroup() {
+      const user = await createUser(prisma, TAG);
+      const group = await createCheckoutGroup(prisma, user.id);
+      const base = await createShopWithProduct(prisma, TAG);
+      const variant = await createVariant(prisma, base, { stock: 8 });
+      const order = await prisma.order.create({
+        data: {
+          userId: user.id,
+          shopId: base.shopId,
+          checkoutGroupId: group.id,
+          status: 'PENDING',
+          totalAmount: 100_000,
+          recipientName: 'A',
+          recipientPhone: '0900000000',
+          shippingAddressLine: 'x',
+          shippingWard: 'x',
+          shippingProvince: 'Hồ Chí Minh',
+          items: {
+            create: [
+              {
+                productVariantId: variant.id,
+                quantity: 2,
+                priceAtPurchase: 50_000,
+                productName: `${TAG}product`,
+                sku: `SKU-${variant.id}`,
+                variantLabel: null,
+                imageUrl: null,
+              },
+            ],
+          },
+        },
+        select: { id: true },
+      });
+      const payment = await prisma.payment.create({
+        data: {
+          checkoutGroupId: group.id,
+          method: 'COD',
+          status: 'PENDING',
+          amount: 100_000,
+          txnRef: `${TAG.toUpperCase()}COD${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+          expiresAt: null,
+        },
+      });
+      return {
+        userId: user.id,
+        groupId: group.id,
+        orderId: order.id,
+        paymentId: payment.id,
+        variantId: variant.id,
+      };
+    }
+
+    const paymentStatusOf = async (id: string) =>
+      (await prisma.payment.findUniqueOrThrow({ where: { id } })).status;
+
+    it('reclaimCheckoutGroup gọi thẳng: không đổi gì — Payment COD vẫn PENDING (không bị đánh FAILED), đơn/kho nguyên vẹn', async () => {
+      const { groupId, orderId, paymentId, variantId } = await setupCodGroup();
+
+      const result = await service.reclaimCheckoutGroup(groupId);
+
+      expect(result).toEqual({ reclaimed: false });
+      expect(await paymentStatusOf(paymentId)).toBe('PENDING');
+      expect(await orderStatusOf(orderId)).toBe('PENDING');
+      expect(await stockOf(variantId)).toEqual({ stock: 8, reservedStock: 0 });
+    });
+
+    it('buyer "hủy nhóm" với nhóm COD — 409 ORDER_INVALID_TRANSITION, Payment COD KHÔNG bị hỏng', async () => {
+      const { userId, groupId, orderId, paymentId } = await setupCodGroup();
+
+      await expectAppException(service.cancelCheckoutGroup(userId, groupId), {
+        status: 409,
+        code: 'ORDER_INVALID_TRANSITION',
+      });
+
+      expect(await paymentStatusOf(paymentId)).toBe('PENDING');
+      expect(await orderStatusOf(orderId)).toBe('PENDING');
+    });
+
+    it('"thanh toán lại" với nhóm COD — 409 PAYMENT_RETRY_NOT_ALLOWED / NOT_ONLINE_PAYMENT', async () => {
+      const { userId, groupId } = await setupCodGroup();
+
+      await expectAppException(service.retryPayment(userId, groupId), {
+        status: 409,
+        code: 'PAYMENT_RETRY_NOT_ALLOWED',
+        details: { reason: 'NOT_ONLINE_PAYMENT' },
+      });
+    });
+
+    it('GET nhóm COD: status COD_PLACED, không hạn, không cho thử lại', async () => {
+      const { userId, groupId } = await setupCodGroup();
+
+      const view = await service.getCheckoutGroup(userId, groupId);
+
+      expect(view).toMatchObject({
+        status: 'COD_PLACED',
+        canRetry: false,
+        expiresAt: null,
+        paymentMethod: 'COD',
       });
     });
   });
