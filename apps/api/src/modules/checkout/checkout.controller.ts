@@ -23,6 +23,10 @@ import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { EmailVerifiedGuard } from '../../shared/guards/email-verified.guard';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { ZodValidationPipe } from '../../shared/pipes/zod-validation.pipe';
+import {
+  errorExample,
+  UNAUTHORIZED_EXAMPLE,
+} from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { CheckoutService } from './checkout.service';
 import {
@@ -170,8 +174,10 @@ export class CheckoutController {
     summary:
       'Đặt hàng từ giỏ hiện tại — tách N Order theo shop, 1 Payment chung. paymentMethod VNPAY/MOMO: đơn AWAITING_PAYMENT giữ chỗ kho, trả paymentUrl để chuyển sang cổng. paymentMethod COD: đơn vào thẳng PENDING, kho TRỪ NGAY, không có paymentUrl và expiresAt = null (thu tiền khi nhận hàng)',
   })
+  // Tên viết thường khớp tham số @Headers('idempotency-key') mà Swagger tự suy ra — khác chữ hoa
+  // thường thì hiện thành 2 ô header riêng cho cùng 1 header.
   @ApiHeader({
-    name: 'Idempotency-Key',
+    name: 'idempotency-key',
     required: false,
     description:
       'UUID do FE sinh mỗi phiên đặt hàng; gọi lại cùng key trả đúng nhóm đã tạo thay vì đặt trùng',
@@ -480,10 +486,15 @@ export class CheckoutController {
       },
     },
   })
-  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
+  @ApiResponse({
+    status: 401,
+    description: 'Chưa đăng nhập',
+    schema: { example: UNAUTHORIZED_EXAMPLE },
+  })
   @ApiResponse({
     status: 404,
     description: 'Nhóm không tồn tại hoặc không phải của bạn',
+    schema: { example: errorExample('Checkout group not found') },
   })
   @ApiResponse({
     status: 409,
