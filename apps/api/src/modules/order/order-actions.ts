@@ -36,6 +36,34 @@ export function getBuyerOrderActions(
   };
 }
 
+export interface SellerOrderActionsInput {
+  status: OrderStatus;
+  // Phương thức của lần thử thanh toán mới nhất của nhóm; null nếu nhóm chưa có Payment nào.
+  paymentMethod: PaymentMethod | null;
+}
+
+export interface SellerOrderActions {
+  canConfirm: boolean;
+  canPack: boolean;
+  canShip: boolean;
+  canReject: boolean;
+}
+
+// Luật "seller được làm gì với đơn" (Week8.md 1.3/1.5). Mỗi cờ ứng với đúng 1 cạnh của
+// ORDER_STATUS_TRANSITIONS: PENDING → CONFIRMED, CONFIRMED → PACKED, PACKED → SHIPPING, và PENDING →
+// CANCELLED (từ chối). Seller KHÔNG tự đặt COMPLETED (buyer xác nhận đã nhận hoặc job tự hoàn tất).
+export function getSellerOrderActions(
+  input: SellerOrderActionsInput,
+): SellerOrderActions {
+  return {
+    canConfirm: input.status === 'PENDING',
+    canPack: input.status === 'CONFIRMED',
+    canShip: input.status === 'PACKED',
+    // Chỉ từ chối được đơn COD chưa thu tiền; đơn đã trả online từ chối kèm hoàn tiền — Tuần 9.
+    canReject: input.status === 'PENDING' && input.paymentMethod === 'COD',
+  };
+}
+
 export interface RetryPaymentInput {
   orderStatus: OrderStatus;
   // Mọi lần thử của nhóm (thứ tự bất kỳ — hàm tự sắp theo createdAt).

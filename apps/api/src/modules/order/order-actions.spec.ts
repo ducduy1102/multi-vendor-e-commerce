@@ -2,8 +2,10 @@ import type { OrderStatus, PaymentMethod } from '@prisma/client';
 import {
   canRetryOrderPayment,
   getBuyerOrderActions,
+  getSellerOrderActions,
   type RetryPaymentInput,
 } from './order-actions';
+import { ORDER_STATUS_TRANSITIONS } from './checkout-group-status';
 
 describe('getBuyerOrderActions', () => {
   const actions = (
@@ -181,4 +183,71 @@ describe('canRetryOrderPayment', () => {
   it('không có lần thử nào — không thử lại', () => {
     expect(canRetryOrderPayment(base({ payments: [] }))).toBe(false);
   });
+});
+
+describe('getSellerOrderActions', () => {
+  const actions = (status: OrderStatus, paymentMethod: PaymentMethod | null) =>
+    getSellerOrderActions({ status, paymentMethod });
+
+  it.each([
+    ['PENDING', { canConfirm: true, canPack: false, canShip: false }],
+    ['CONFIRMED', { canConfirm: false, canPack: true, canShip: false }],
+    ['PACKED', { canConfirm: false, canPack: false, canShip: true }],
+  ] as const)('%s chỉ bật đúng 1 bước tiếp theo', (status, expected) => {
+    expect(actions(status, 'VNPAY')).toMatchObject(expected);
+  });
+
+  it.each([
+    'AWAITING_PAYMENT',
+    'SHIPPING',
+    'COMPLETED',
+    'CANCELLED',
+    'REFUNDED',
+  ] as const)(
+    'đơn %s: không có hành động nào (seller không tự hoàn tất đơn)',
+    (status) => {
+      expect(actions(status, 'COD')).toEqual({
+        canConfirm: false,
+        canPack: false,
+        canShip: false,
+        canReject: false,
+      });
+    },
+  );
+
+  describe('canReject — chỉ đơn COD chưa thu tiền (hoàn tiền online: Tuần 9)', () => {
+    it('PENDING + COD: từ chối được', () => {
+      expect(actions('PENDING', 'COD').canReject).toBe(true);
+    });
+
+    it.each(['VNPAY', 'MOMO'] as const)(
+      'PENDING + %s (đã trả online): CHƯA từ chối được',
+      (method) => {
+        expect(actions('PENDING', method).canReject).toBe(false);
+      },
+    );
+
+    it('PENDING không rõ phương thức thanh toán: không từ chối', () => {
+      expect(actions('PENDING', null).canReject).toBe(false);
+    });
+
+    it.each(['CONFIRMED', 'PACKED', 'SHIPPING'] as const)(
+      '%s (kể cả COD): không từ chối được sau khi đã xác nhận',
+      (status) => {
+        expect(actions(status, 'COD').canReject).toBe(false);
+      },
+    );
+  });
+
+  it.each([
+    ['canConfirm', 'PENDING', 'CONFIRMED'],
+    ['canPack', 'CONFIRMED', 'PACKED'],
+    ['canShip', 'PACKED', 'SHIPPING'],
+    ['canReject', 'PENDING', 'CANCELLED'],
+  ] as const)(
+    '%s ứng với cạnh hợp lệ %s → %s của ORDER_STATUS_TRANSITIONS',
+    (_flag, from, to) => {
+      expect(ORDER_STATUS_TRANSITIONS[from]).toContain(to);
+    },
+  );
 });

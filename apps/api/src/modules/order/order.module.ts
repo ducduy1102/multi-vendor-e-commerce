@@ -9,6 +9,7 @@ import { OrderStatusService } from './order-status.service';
 import { OrderService } from './order.service';
 import { PaymentExpiryJob } from './payment-expiry.job';
 import { PaymentService } from './payment.service';
+import { SellerOrderController } from './seller-order.controller';
 
 // Chiều phụ thuộc (Week7.md 1.14): order → { voucher, product, shared/payment }.
 // order KHÔNG được import checkout/cart — checkout gọi OrderService.createOrders(tx, ...) và
@@ -17,7 +18,7 @@ import { PaymentService } from './payment.service';
 // AppModule, còn @Cron() tự hoạt động miễn provider có trong graph của app.
 @Module({
   imports: [PaymentModule, ProductModule, VoucherModule],
-  controllers: [OrderController, BuyerOrderController],
+  controllers: [OrderController, BuyerOrderController, SellerOrderController],
   providers: [
     OrderService,
     OrderQueryService,
