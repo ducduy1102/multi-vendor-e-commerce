@@ -48,6 +48,8 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   ORDER_INVALID_TRANSITION: 'order.errorInvalidTransition',
   ORDER_CANCEL_NOT_ALLOWED: 'order.errorCancelNotAllowed',
   ORDER_ALREADY_CHANGED: 'order.errorAlreadyChanged',
+  // Admin duyệt/khoá shop
+  SHOP_INVALID_TRANSITION: 'admin.errorShopInvalidTransition',
   // Lỗi CLIENT tự sinh (mất mạng / phản hồi hỏng) — Week7.md 1.11/1.16: nghĩa là
   // "chưa rõ kết quả", khác các mã nghiệp vụ ở trên (luôn là kết quả chắc chắn).
   NETWORK_ERROR: 'common.errorNetwork',

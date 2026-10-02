@@ -42,6 +42,10 @@ export const SERVER_ERROR_CODES = [
   'ORDER_INVALID_TRANSITION',
   'ORDER_CANCEL_NOT_ALLOWED',
   'ORDER_ALREADY_CHANGED',
+  // Admin duyệt/khoá shop: shop không còn ở trạng thái cho phép chuyển (đã có Admin khác xử lý, hoặc
+  // cạnh không có trong SHOP_STATUS_TRANSITIONS) — gộp "sai trạng thái lúc đọc" và "thua race" làm 1
+  // vì với Admin cả hai đều nghĩa là danh sách đã cũ, tải lại.
+  'SHOP_INVALID_TRANSITION',
 ] as const;
 export type ServerErrorCode = (typeof SERVER_ERROR_CODES)[number];
 

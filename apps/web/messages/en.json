@@ -434,5 +434,10 @@
     "errorInvalidTransition": "This action is not available for the order's current status",
     "errorCancelNotAllowed": "This order cannot be cancelled right now",
     "errorAlreadyChanged": "The order was just updated, please reload the page"
+  },
+  "admin": {
+    "validationReasonRequired": "Please enter a reason",
+    "validationReasonTooLong": "The reason must be at most 500 characters",
+    "errorShopInvalidTransition": "The shop's status was just changed, please reload the list"
   }
 }

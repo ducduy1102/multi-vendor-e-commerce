@@ -9,7 +9,7 @@ type Messages = Record<string, Record<string, string>>;
 // Namespace của Tuần 6 (Week6.md 3.9): mọi key phải có ở cả 2 ngôn ngữ, cùng
 // placeholder, không rỗng — thiếu 1 phía next-intl không throw mà hiện chuỗi key
 // thô hoặc rơi về ngôn ngữ khác, rất dễ lọt qua review.
-const NAMESPACES = ['cart', 'voucher', 'checkout', 'order'] as const;
+const NAMESPACES = ['cart', 'voucher', 'checkout', 'order', 'admin'] as const;
 
 const viMessages = vi as unknown as Messages;
 const enMessages = en as unknown as Messages;
