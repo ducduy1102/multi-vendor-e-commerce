@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
+import { MailModule } from '../../shared/mail/mail.module';
 import { PaymentModule } from '../../shared/payment/payment.module';
 import { ProductModule } from '../product/product.module';
 import { VoucherModule } from '../voucher/voucher.module';
 import { BuyerOrderController } from './buyer-order.controller';
 import { OrderActionService } from './order-action.service';
+import { OrderEmailService } from './order-email.service';
 import { OrderController } from './order.controller';
 import { OrderQueryService } from './order-query.service';
 import { OrderStatusService } from './order-status.service';
@@ -18,16 +20,22 @@ import { SellerOrderController } from './seller-order.controller';
 // PaymentExpiryJob (2.10) chỉ dùng nội bộ (không export) — ScheduleModule.forRoot() đăng ký 1 lần ở
 // AppModule, còn @Cron() tự hoạt động miễn provider có trong graph của app.
 @Module({
-  imports: [PaymentModule, ProductModule, VoucherModule],
+  imports: [MailModule, PaymentModule, ProductModule, VoucherModule],
   controllers: [OrderController, BuyerOrderController, SellerOrderController],
   providers: [
     OrderService,
     OrderActionService,
+    OrderEmailService,
     OrderQueryService,
     OrderStatusService,
     PaymentService,
     PaymentExpiryJob,
   ],
-  exports: [OrderService, OrderStatusService, PaymentService],
+  exports: [
+    OrderService,
+    OrderStatusService,
+    OrderEmailService,
+    PaymentService,
+  ],
 })
 export class OrderModule {}

@@ -6,6 +6,7 @@ import { expectAppException } from '../../shared/testing/expect-app-exception';
 import type { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
 import type { InventoryService } from '../product/inventory.service';
 import type { VoucherUsageService } from '../voucher/voucher-usage.service';
+import { OrderEmailService } from './order-email.service';
 import { OrderStatusService } from './order-status.service';
 import { PaymentService } from './payment.service';
 
@@ -41,6 +42,10 @@ describe('PaymentService', () => {
   };
   let inventoryService: { commit: jest.Mock; release: jest.Mock };
   let orderStatusService: { transition: jest.Mock };
+  let orderEmailService: {
+    notifyPlaced: jest.Mock;
+    notifyCancelled: jest.Mock;
+  };
   let voucherUsageService: { release: jest.Mock };
   let paymentGateway: { availabilityOf: jest.Mock; getConfigured: jest.Mock };
 
@@ -70,6 +75,10 @@ describe('PaymentService', () => {
     };
     voucherUsageService = { release: jest.fn().mockResolvedValue(0) };
     orderStatusService = { transition: jest.fn().mockResolvedValue([]) };
+    orderEmailService = {
+      notifyPlaced: jest.fn().mockResolvedValue(undefined),
+      notifyCancelled: jest.fn().mockResolvedValue(undefined),
+    };
     paymentGateway = {
       availabilityOf: jest.fn().mockReturnValue({ available: true }),
       getConfigured: jest.fn().mockReturnValue({
@@ -85,6 +94,7 @@ describe('PaymentService', () => {
       voucherUsageService as unknown as VoucherUsageService,
       paymentGateway as unknown as PaymentGatewayService,
       orderStatusService as unknown as OrderStatusService,
+      orderEmailService as unknown as OrderEmailService,
     );
   });
 
@@ -222,6 +232,66 @@ describe('PaymentService', () => {
         { productVariantId: 'v1', quantity: 2 },
         { productVariantId: 'v2', quantity: 1 },
       ]);
+    });
+
+    describe('email "thanh toán thành công" (Week8.md 2.8)', () => {
+      it('lần xác nhận thật sự đầu tiên (CONFIRMED) — gửi ĐÚNG 1 email cho nhóm, SAU transaction', async () => {
+        tx.$queryRaw
+          .mockResolvedValueOnce([{ status: 'PENDING' }])
+          .mockResolvedValueOnce([{ id: 'o1', status: 'AWAITING_PAYMENT' }]);
+        orderStatusService.transition.mockResolvedValue(['o1']);
+        tx.orderItem.findMany.mockResolvedValue([
+          { productVariantId: 'v1', quantity: 1 },
+        ]);
+        const order: string[] = [];
+        prisma.$transaction.mockImplementation(
+          async (fn: (t: unknown) => unknown) => {
+            const result = await fn(tx);
+            order.push('commit');
+            return result;
+          },
+        );
+        orderEmailService.notifyPlaced.mockImplementation(() => {
+          order.push('email');
+          return Promise.resolve();
+        });
+
+        await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+
+        expect(orderEmailService.notifyPlaced).toHaveBeenCalledTimes(1);
+        expect(orderEmailService.notifyPlaced).toHaveBeenCalledWith('g1');
+        expect(order).toEqual(['commit', 'email']); // email SAU commit, không nằm trong transaction
+      });
+
+      it.each([
+        ['đã SUCCESS từ trước (IPN + return gọi lặp)', 'ALREADY_CONFIRMED'],
+      ])('%s — KHÔNG gửi lại', async () => {
+        tx.$queryRaw.mockResolvedValueOnce([{ status: 'SUCCESS' }]);
+
+        const result = await service.confirmPayment(SUCCESS_CALLBACK, 'RETURN');
+
+        expect(result.outcome).toBe('ALREADY_CONFIRMED');
+        expect(orderEmailService.notifyPlaced).not.toHaveBeenCalled();
+      });
+
+      it('thanh toán trùng / đến muộn sau khi nhóm đã hủy — KHÔNG gửi email "thành công"', async () => {
+        for (const orderStatus of ['PENDING', 'CANCELLED']) {
+          tx.$queryRaw
+            .mockResolvedValueOnce([{ status: 'PENDING' }])
+            .mockResolvedValueOnce([{ id: 'o1', status: orderStatus }]);
+          orderStatusService.transition.mockResolvedValue([]);
+
+          await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+        }
+
+        expect(orderEmailService.notifyPlaced).not.toHaveBeenCalled();
+      });
+
+      it('thanh toán thất bại — không gửi email', async () => {
+        await service.confirmPayment(FAILED_CALLBACK, 'IPN');
+
+        expect(orderEmailService.notifyPlaced).not.toHaveBeenCalled();
+      });
     });
 
     it('đã SUCCESS từ trước (dưới khoá) — ALREADY_CONFIRMED, không ghi lại/không chốt kho', async () => {
@@ -411,6 +481,53 @@ describe('PaymentService', () => {
 
       expect(result).toEqual({ reclaimed: false });
       expect(inventoryService.release).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reclaimCheckoutGroup — email báo hủy (Week8.md 2.8)', () => {
+    beforeEach(() => {
+      tx.payment.count.mockResolvedValue(0);
+      tx.$queryRaw.mockResolvedValue([
+        { id: 'o1', status: 'AWAITING_PAYMENT' },
+      ]);
+    });
+
+    it('hết hạn thanh toán (actor mặc định SYSTEM) — báo "hết hạn", không có lý do', async () => {
+      orderStatusService.transition.mockResolvedValue(['o1']);
+
+      await service.reclaimCheckoutGroup('g1');
+
+      expect(orderEmailService.notifyCancelled).toHaveBeenCalledWith(
+        { checkoutGroupId: 'g1' },
+        'SYSTEM',
+        null,
+      );
+    });
+
+    it('buyer chủ động hủy — báo "bạn đã hủy" kèm lý do buyer nhập', async () => {
+      orderStatusService.transition.mockResolvedValue(['o1']);
+
+      await service.reclaimCheckoutGroup('g1', {
+        actor: { type: 'BUYER', id: 'user-1' },
+        note: 'Đổi ý',
+      });
+
+      expect(orderEmailService.notifyCancelled).toHaveBeenCalledWith(
+        { checkoutGroupId: 'g1' },
+        'BUYER',
+        'Đổi ý',
+      );
+    });
+
+    it('không thu hồi được gì (nhóm đã có SUCCESS / đã hủy từ trước) — KHÔNG gửi lại (idempotent)', async () => {
+      tx.payment.count.mockResolvedValue(1);
+      await service.reclaimCheckoutGroup('g1');
+
+      tx.payment.count.mockResolvedValue(0);
+      orderStatusService.transition.mockResolvedValue([]);
+      await service.reclaimCheckoutGroup('g1');
+
+      expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
     });
   });
 

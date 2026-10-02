@@ -9,6 +9,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { TxClient } from '../../shared/prisma/tx-client';
 import { InventoryService } from '../product/inventory.service';
 import { getCancelBlockReason } from './order-actions';
+import { OrderEmailService } from './order-email.service';
 import { OrderStatusService, type OrderActor } from './order-status.service';
 import { PaymentService } from './payment.service';
 
@@ -72,24 +73,25 @@ export class OrderActionService {
     private readonly orderStatusService: OrderStatusService,
     private readonly inventoryService: InventoryService,
     private readonly paymentService: PaymentService,
+    private readonly orderEmailService: OrderEmailService,
   ) {}
 
   // --- Seller ---------------------------------------------------------------------------------
 
-  confirm(
+  // Mọi hành động có email báo buyer gọi notify* SAU KHI transaction đã commit (changeStatus trả về).
+  // notify* không bao giờ ném — mail lỗi không làm fail hành động đã thành công (Week8.md 2.8).
+  async confirm(
     shopId: string,
     sellerUserId: string,
     orderId: string,
   ): Promise<void> {
-    return this.changeStatus(
+    await this.changeStatus(
       sellerScope(shopId, orderId),
       'PENDING',
       'CONFIRMED',
-      {
-        type: 'SELLER',
-        id: sellerUserId,
-      },
+      { type: 'SELLER', id: sellerUserId },
     );
+    await this.orderEmailService.notifyConfirmed(orderId);
   }
 
   pack(shopId: string, sellerUserId: string, orderId: string): Promise<void> {
@@ -105,13 +107,13 @@ export class OrderActionService {
   }
 
   // Mã vận đơn nhập tay, tuỳ chọn (Week8.md 1.10) — ghi cùng transaction với việc chuyển trạng thái.
-  ship(
+  async ship(
     shopId: string,
     sellerUserId: string,
     orderId: string,
     input: ShipOrderInput,
   ): Promise<void> {
-    return this.changeStatus(
+    await this.changeStatus(
       sellerScope(shopId, orderId),
       'PACKED',
       'SHIPPING',
@@ -128,16 +130,17 @@ export class OrderActionService {
         },
       },
     );
+    await this.orderEmailService.notifyShipped(orderId);
   }
 
   // Từ chối đơn: chỉ COD chờ xác nhận (chưa thu tiền). Đơn đã trả online từ chối kèm hoàn tiền: Tuần 9.
-  reject(
+  async reject(
     shopId: string,
     sellerUserId: string,
     orderId: string,
     reason: string,
   ): Promise<void> {
-    return this.changeStatus(
+    await this.changeStatus(
       sellerScope(shopId, orderId),
       'PENDING',
       'CANCELLED',
@@ -147,6 +150,11 @@ export class OrderActionService {
         precheck: (order) => this.assertCancellable(order),
         after: (tx, order) => this.restockOrder(tx, order),
       },
+    );
+    await this.orderEmailService.notifyCancelled(
+      { orderIds: [orderId] },
+      'SELLER',
+      reason,
     );
   }
 
@@ -185,6 +193,12 @@ export class OrderActionService {
         precheck: (order) => this.assertCancellable(order),
         after: (tx, order) => this.restockOrder(tx, order),
       },
+    );
+    // Nhóm chưa thanh toán đã được báo ở reclaimCheckoutGroup (nhánh trên); đây là đơn COD hủy lẻ.
+    await this.orderEmailService.notifyCancelled(
+      { orderIds: [orderId] },
+      'BUYER',
+      reason ?? null,
     );
   }
 

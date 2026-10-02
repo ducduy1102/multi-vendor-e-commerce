@@ -12,6 +12,9 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { orderDetailSchema, sellerOrderDetailSchema } from '@ecommerce/types';
 import { AppModule } from '../../app.module';
+import { MAIL_PROVIDER } from '../../shared/mail/mail-provider.interface';
+import { createFakeMail } from '../../shared/testing/fake-mail';
+
 import { AllExceptionsFilter } from '../../shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from '../../shared/interceptors/transform-response.interceptor';
 import {
@@ -34,6 +37,8 @@ interface SeedLine {
   shopId: string;
   status: OrderStatus;
 }
+
+const fakeMail = createFakeMail();
 
 describe('Hành động đơn hàng (HTTP thật)', () => {
   let app: INestApplication<App>;
@@ -206,9 +211,14 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
 
   beforeAll(async () => {
     await cleanupByTag(prisma, TAG);
+    // MailProvider GIẢ: không bao giờ gọi Resend thật (đăng ký tài khoản và các hành động đơn hàng đều
+    // gửi email), và cho phép assert email đã gửi (Week8.md 2.8).
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(MAIL_PROVIDER)
+      .useValue(fakeMail.provider)
+      .compile();
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
     app.use(cookieParser());
@@ -237,6 +247,100 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
     await cleanupByTag(prisma, TAG);
     await app.close();
     await prisma.$disconnect();
+  });
+
+  describe('email báo buyer (Week8.md 2.8)', () => {
+    beforeEach(() => fakeMail.reset());
+
+    const subjects = () => fakeMail.sent.map((m) => m.subject);
+
+    it('xác nhận → đóng gói → giao → nhận hàng: email "đã xác nhận" và "đang giao" (kèm mã vận đơn), đóng gói/nhận hàng không gửi', async () => {
+      const { orderId } = await seedOne('PENDING');
+
+      await sellerA.post(sellerUrl(shopA, orderId, 'confirm')).expect(200);
+      expect(subjects()).toEqual([`${TAG}shop-a đã xác nhận đơn hàng của bạn`]);
+
+      await sellerA.post(sellerUrl(shopA, orderId, 'pack')).expect(200);
+      expect(fakeMail.sent).toHaveLength(1); // đóng gói là bước nội bộ
+
+      await sellerA
+        .post(sellerUrl(shopA, orderId, 'ship'))
+        .send({ carrier: 'GHN', trackingCode: 'GHN-MAIL-1' })
+        .expect(200);
+      expect(subjects()[1]).toBe('Đơn hàng của bạn đang được giao');
+      expect(fakeMail.sent[1].html).toContain('GHN-MAIL-1');
+
+      await buyer.post(buyerUrl(orderId, 'confirm-received')).expect(200);
+      expect(fakeMail.sent).toHaveLength(2); // nhận hàng: buyer tự bấm, không cần báo
+      // Gửi tới đúng buyer.
+      const buyerRow = await prisma.user.findUniqueOrThrow({
+        where: { id: buyerId },
+        select: { email: true },
+      });
+      expect(fakeMail.sent.every((m) => m.to === buyerRow.email)).toBe(true);
+    });
+
+    it('seller từ chối đơn COD: email "bị shop từ chối" kèm lý do (đã escape)', async () => {
+      const { orderId } = await seedOne('PENDING', cod);
+
+      await sellerA
+        .post(sellerUrl(shopA, orderId, 'reject'))
+        .send({ reason: 'Hết hàng <b>x</b>' })
+        .expect(200);
+
+      expect(subjects()).toEqual(['Đơn hàng của bạn đã bị shop từ chối']);
+      expect(fakeMail.sent[0].html).toContain('Hết hàng &lt;b&gt;x&lt;/b&gt;');
+    });
+
+    it('buyer hủy đơn COD: email "Bạn đã hủy đơn hàng"; hủy cả nhóm chưa thanh toán: đúng 1 email cho cả nhóm', async () => {
+      const codOrder = await seedOne('PENDING', cod);
+      await buyer.post(buyerUrl(codOrder.orderId, 'cancel')).expect(200);
+      expect(subjects()).toEqual(['Bạn đã hủy đơn hàng']);
+
+      fakeMail.reset();
+      const g = await seedGroup(
+        [
+          { shopId: shopA, status: 'AWAITING_PAYMENT' },
+          { shopId: shopA2, status: 'AWAITING_PAYMENT' },
+        ],
+        { method: 'VNPAY', status: 'PENDING' },
+      );
+      await buyer.post(buyerUrl(g.orderIds[0], 'cancel')).expect(200);
+
+      expect(subjects()).toEqual(['Bạn đã hủy đơn hàng']);
+      expect((fakeMail.sent[0].html.match(/Mã đơn #/g) ?? []).length).toBe(2);
+    });
+
+    it('hành động THẤT BẠI (409/404) không gửi email nào', async () => {
+      const { orderId } = await seedOne('PENDING');
+
+      await sellerA.post(sellerUrl(shopA, orderId, 'pack')).expect(409);
+      await sellerC.post(sellerUrl(shopA, orderId, 'confirm')).expect(403);
+      await buyer.post(buyerUrl(orderId, 'cancel')).expect(409);
+
+      expect(fakeMail.sent).toHaveLength(0);
+    });
+
+    it('MAIL LỖI (Resend down) — hành động VẪN thành công 200 và đổi trạng thái, không 500, không rollback', async () => {
+      const online = await seedOne('PENDING');
+      const codOrder = await seedOne('PENDING', cod);
+      fakeMail.failWith(new Error('Resend down'));
+
+      const confirm = await sellerA.post(
+        sellerUrl(shopA, online.orderId, 'confirm'),
+      );
+      const reject = await sellerA
+        .post(sellerUrl(shopA, codOrder.orderId, 'reject'))
+        .send({ reason: 'Hết hàng' });
+
+      expect(confirm.status).toBe(200);
+      expect(reject.status).toBe(200);
+      expect(await statusOf(online.orderId)).toBe('CONFIRMED');
+      expect(await statusOf(codOrder.orderId)).toBe('CANCELLED');
+      // Việc hoàn kho (cùng transaction với hủy) vẫn xảy ra.
+      expect((await stockOf(codOrder.variantId)).stock).toBe(STOCK + QTY);
+      expect(fakeMail.sent).toHaveLength(0);
+    });
   });
 
   describe('luồng đầy đủ đơn trả online: xác nhận → đóng gói → giao → nhận hàng', () => {

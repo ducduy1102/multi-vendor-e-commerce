@@ -14,6 +14,8 @@ import { VnpayProvider } from '../../shared/payment/vnpay.provider';
 import { InventoryService } from '../product/inventory.service';
 import { VoucherUsageService } from '../voucher/voucher-usage.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
+import { createFakeMail } from '../../shared/testing/fake-mail';
+import { OrderEmailService } from './order-email.service';
 import { OrderStatusService } from './order-status.service';
 import { PaymentService } from './payment.service';
 
@@ -41,6 +43,10 @@ describe('PaymentService (DB thật)', () => {
     voucherUsageService,
     paymentGateway,
     new OrderStatusService(),
+    new OrderEmailService(
+      prisma as unknown as PrismaService,
+      createFakeMail().mailService,
+    ),
   );
 
   beforeAll(() => cleanupByTag(prisma, TAG));

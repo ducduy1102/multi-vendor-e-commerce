@@ -5,6 +5,8 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
+import { MAIL_PROVIDER } from '../src/shared/mail/mail-provider.interface';
+import { createFakeMail } from '../src/shared/testing/fake-mail';
 import { AllExceptionsFilter } from '../src/shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from '../src/shared/interceptors/transform-response.interceptor';
 import {
@@ -23,6 +25,7 @@ import {
 // Dữ liệu mang tiền tố TAG, dọn ở beforeAll/afterAll giống các `*.int-spec.ts` khác. Bật
 // `PAYMENT_MOCK_ENABLED=true` chỉ trong file này rồi trả lại giá trị cũ (không rò sang test khác).
 const TAG = 'e2e-checkout-';
+const fakeMail = createFakeMail();
 
 describe('Luồng checkout (e2e thật qua HTTP)', () => {
   let app: INestApplication<App>;
@@ -33,9 +36,13 @@ describe('Luồng checkout (e2e thật qua HTTP)', () => {
     process.env.PAYMENT_MOCK_ENABLED = 'true';
     await cleanupByTag(prisma, TAG);
 
+    // MailProvider GIẢ: không gọi Resend thật và cho phép assert email đã gửi (Week8.md 2.8).
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(MAIL_PROVIDER)
+      .useValue(fakeMail.provider)
+      .compile();
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
     // JwtStrategy đọc access_token từ cookie httpOnly (không phải header) — thiếu middleware này thì
@@ -391,6 +398,45 @@ describe('Luồng checkout (e2e thật qua HTTP)', () => {
       .expect(200);
     expect(data(cancelled).status).toBe('CANCELLED');
     expect(await stockOf()).toEqual({ stock: 8, reservedStock: 0 });
+
+    // ---- Email giao dịch (Week8.md 2.8): đúng thứ tự vòng đời, gửi tới buyer ----
+    const buyerMails = fakeMail.sent.filter(
+      (m) => m.to === buyerEmail && m.subject !== 'Xác thực email của bạn',
+    );
+    expect(buyerMails.map((m) => m.subject)).toEqual([
+      'Đặt hàng thành công — thanh toán khi nhận hàng', // đơn 1 đặt
+      `${TAG}shop-cod đã xác nhận đơn hàng của bạn`, // seller xác nhận
+      'Đơn hàng của bạn đang được giao', // seller giao
+      'Đặt hàng thành công — thanh toán khi nhận hàng', // đơn 2 đặt
+      'Bạn đã hủy đơn hàng', // buyer hủy đơn 2
+    ]);
+    expect(buyerMails[2].html).toContain('GHN-COD-1');
+
+    // ---- Mail lỗi KHÔNG làm hỏng việc đặt hàng ----
+    fakeMail.failWith(new Error('Resend down'));
+    await buyer
+      .post('/api/v1/cart/items')
+      .send({ productVariantId: variant.id, quantity: 1 })
+      .expect(201);
+    const preview3 = await buyer
+      .post('/api/v1/checkout/preview')
+      .send({ addressId })
+      .expect(200);
+    const checkout3 = await buyer
+      .post('/api/v1/checkout')
+      .send({
+        addressId,
+        paymentMethod: 'COD',
+        expectedTotal: Number(data(preview3).grandTotal),
+      })
+      .expect(201);
+    const orderId3 = (data(checkout3) as { orders: Array<{ id: string }> })
+      .orders[0].id;
+    expect(
+      (await prisma.order.findUniqueOrThrow({ where: { id: orderId3 } }))
+        .status,
+    ).toBe('PENDING');
+    expect(await stockOf()).toEqual({ stock: 7, reservedStock: 0 });
   });
 
   it('email chưa xác thực — POST /checkout bị chặn 403 EMAIL_NOT_VERIFIED, không tạo gì trong DB', async () => {

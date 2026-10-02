@@ -4,6 +4,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
 import type { InventoryService } from '../product/inventory.service';
 import { OrderActionService } from './order-action.service';
+import type { OrderEmailService } from './order-email.service';
 import type { OrderStatusService } from './order-status.service';
 import type { PaymentService } from './payment.service';
 
@@ -39,6 +40,11 @@ describe('OrderActionService', () => {
   let orderStatusService: { transition: jest.Mock };
   let inventoryService: { restock: jest.Mock };
   let paymentService: { cancelCheckoutGroup: jest.Mock };
+  let orderEmailService: {
+    notifyConfirmed: jest.Mock;
+    notifyShipped: jest.Mock;
+    notifyCancelled: jest.Mock;
+  };
   // Ghi lại thứ tự gọi để kiểm thứ tự khoá (khoá nhóm TRƯỚC khi chuyển trạng thái).
   let calls: string[];
 
@@ -68,16 +74,111 @@ describe('OrderActionService', () => {
     };
     inventoryService = { restock: jest.fn().mockResolvedValue(undefined) };
     paymentService = { cancelCheckoutGroup: jest.fn().mockResolvedValue({}) };
+    orderEmailService = {
+      notifyConfirmed: jest.fn().mockResolvedValue(undefined),
+      notifyShipped: jest.fn().mockResolvedValue(undefined),
+      notifyCancelled: jest.fn().mockResolvedValue(undefined),
+    };
     service = new OrderActionService(
       prisma as unknown as PrismaService,
       orderStatusService as unknown as OrderStatusService,
       inventoryService as unknown as InventoryService,
       paymentService as unknown as PaymentService,
+      orderEmailService as unknown as OrderEmailService,
     );
   });
 
   const SELLER = { type: 'SELLER', id: 'seller-1' };
   const BUYER = { type: 'BUYER', id: 'buyer-1' };
+
+  describe('email báo buyer (Week8.md 2.8) — sau commit, chỉ khi hành động thành công', () => {
+    it('confirm thành công — gửi email "shop đã xác nhận" cho đúng đơn', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('PENDING'));
+
+      await service.confirm('shop-1', 'seller-1', 'o1');
+
+      expect(orderEmailService.notifyConfirmed).toHaveBeenCalledWith('o1');
+    });
+
+    it('ship thành công — gửi email "đang giao"', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('PACKED'));
+
+      await service.ship('shop-1', 'seller-1', 'o1', { carrier: 'GHN' });
+
+      expect(orderEmailService.notifyShipped).toHaveBeenCalledWith('o1');
+    });
+
+    it('pack — KHÔNG gửi email (bước nội bộ của shop)', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('CONFIRMED'));
+
+      await service.pack('shop-1', 'seller-1', 'o1');
+
+      expect(orderEmailService.notifyConfirmed).not.toHaveBeenCalled();
+      expect(orderEmailService.notifyShipped).not.toHaveBeenCalled();
+      expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
+    });
+
+    it('seller từ chối — gửi email hủy với người hủy SELLER và lý do', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
+
+      await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
+
+      expect(orderEmailService.notifyCancelled).toHaveBeenCalledWith(
+        { orderIds: ['o1'] },
+        'SELLER',
+        'Hết hàng',
+      );
+    });
+
+    it('buyer hủy đơn COD — gửi email hủy với người hủy BUYER (lý do null nếu không nhập)', async () => {
+      prisma.order.findFirst.mockResolvedValue({
+        status: 'PENDING',
+        checkoutGroupId: 'g1',
+      });
+      tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
+
+      await service.cancelByBuyer('buyer-1', 'o1');
+
+      expect(orderEmailService.notifyCancelled).toHaveBeenCalledWith(
+        { orderIds: ['o1'] },
+        'BUYER',
+        null,
+      );
+    });
+
+    it('buyer hủy đơn CHƯA thanh toán — email do reclaimCheckoutGroup gửi (1 email/nhóm), nhánh này KHÔNG gửi thêm', async () => {
+      prisma.order.findFirst.mockResolvedValue({
+        status: 'AWAITING_PAYMENT',
+        checkoutGroupId: 'g1',
+      });
+
+      await service.cancelByBuyer('buyer-1', 'o1');
+
+      expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
+    });
+
+    it('hành động THẤT BẠI (sai trạng thái / thua race / không được hủy) — KHÔNG gửi email nào', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('CANCELLED'));
+      await expect(
+        service.confirm('shop-1', 'seller-1', 'o1'),
+      ).rejects.toBeDefined();
+
+      tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'VNPAY'));
+      await expect(
+        service.reject('shop-1', 'seller-1', 'o1', 'x'),
+      ).rejects.toBeDefined();
+
+      tx.order.findFirst.mockResolvedValue(loaded('PACKED'));
+      orderStatusService.transition.mockResolvedValue([]);
+      await expect(
+        service.ship('shop-1', 'seller-1', 'o1', {}),
+      ).rejects.toBeDefined();
+
+      expect(orderEmailService.notifyConfirmed).not.toHaveBeenCalled();
+      expect(orderEmailService.notifyShipped).not.toHaveBeenCalled();
+      expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
+    });
+  });
 
   describe('confirm / pack', () => {
     it('confirm: đọc đơn theo ĐÚNG phạm vi shop + chỉ trạng thái Seller được thấy (không AWAITING_PAYMENT), chuyển PENDING → CONFIRMED bởi seller', async () => {

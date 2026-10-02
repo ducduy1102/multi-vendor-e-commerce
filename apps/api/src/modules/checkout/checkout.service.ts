@@ -20,6 +20,7 @@ import {
   InsufficientStockError,
   InventoryService,
 } from '../product/inventory.service';
+import { OrderEmailService } from '../order/order-email.service';
 import { OrderService } from '../order/order.service';
 import {
   PaymentService,
@@ -101,6 +102,7 @@ export class CheckoutService {
     private readonly addressService: AddressService,
     private readonly paymentGateway: PaymentGatewayService,
     private readonly paymentService: PaymentService,
+    private readonly orderEmailService: OrderEmailService,
   ) {}
 
   // Route đặt ở checkout (nhóm thanh toán là thực thể của checkout theo domain-erd.md) nhưng đơn
@@ -414,6 +416,12 @@ export class CheckoutService {
 
     // [7] Ngoài transaction: gọi cổng lấy payUrl. Lỗi ở bước này KHÔNG rollback phần đã ghi — đơn
     // vẫn AWAITING_PAYMENT, "tiếp tục thanh toán" ở 2.9 xử lý (rules/backend.md mục 4).
+    // COD: báo "đặt hàng thành công" ngay (đơn online được báo khi thanh toán xác nhận, ở PaymentService).
+    // SAU commit, không bao giờ ném. Phát lại theo Idempotency-Key trả sớm ở trên nên không gửi trùng.
+    if (isCod) {
+      await this.orderEmailService.notifyPlaced(created.groupId);
+    }
+
     // COD không có cổng nên không có payUrl (paymentUrl null là KẾT QUẢ ĐÚNG, không phải lỗi cổng).
     const paymentUrl =
       created.expiresAt === null

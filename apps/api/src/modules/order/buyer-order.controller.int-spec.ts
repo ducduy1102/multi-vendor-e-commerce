@@ -16,6 +16,9 @@ import {
   type OrderListResponse,
 } from '@ecommerce/types';
 import { AppModule } from '../../app.module';
+import { MAIL_PROVIDER } from '../../shared/mail/mail-provider.interface';
+import { createFakeMail } from '../../shared/testing/fake-mail';
+
 import { AllExceptionsFilter } from '../../shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from '../../shared/interceptors/transform-response.interceptor';
 import {
@@ -42,6 +45,8 @@ interface SeedOrder {
   // null = COD (không hết hạn); mặc định 15 phút nữa.
   expiresAt?: Date | null;
 }
+
+const fakeMail = createFakeMail();
 
 describe('BuyerOrderController (HTTP thật)', () => {
   let app: INestApplication<App>;
@@ -151,9 +156,14 @@ describe('BuyerOrderController (HTTP thật)', () => {
 
   beforeAll(async () => {
     await cleanupByTag(prisma, TAG);
+    // MailProvider GIẢ: không bao giờ gọi Resend thật (đăng ký tài khoản và các hành động đơn hàng đều
+    // gửi email), và cho phép assert email đã gửi (Week8.md 2.8).
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(MAIL_PROVIDER)
+      .useValue(fakeMail.provider)
+      .compile();
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
     app.use(cookieParser());

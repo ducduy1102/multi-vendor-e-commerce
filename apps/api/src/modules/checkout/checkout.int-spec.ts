@@ -13,6 +13,8 @@ import { PaymentGatewayService } from '../../shared/payment/payment-gateway.serv
 import { VnpayProvider } from '../../shared/payment/vnpay.provider';
 import { CartService } from '../cart/cart.service';
 import { InventoryService } from '../product/inventory.service';
+import { createFakeMail } from '../../shared/testing/fake-mail';
+import { OrderEmailService } from '../order/order-email.service';
 import { OrderStatusService } from '../order/order-status.service';
 import { OrderService } from '../order/order.service';
 import { PaymentService } from '../order/payment.service';
@@ -46,6 +48,10 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
   );
   const inventoryService = new InventoryService();
   const orderStatusService = new OrderStatusService();
+  const orderEmailService = new OrderEmailService(
+    prisma as unknown as PrismaService,
+    createFakeMail().mailService,
+  );
   const orderService = new OrderService(orderStatusService);
   const addressService = new AddressService(prisma as unknown as PrismaService);
   const paymentGateway = new PaymentGatewayService(
@@ -58,6 +64,7 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
     voucherUsageService,
     paymentGateway,
     orderStatusService,
+    orderEmailService,
   );
   const checkoutService = new CheckoutService(
     prisma as unknown as PrismaService,
@@ -69,6 +76,7 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
     addressService,
     paymentGateway,
     paymentService,
+    orderEmailService,
   );
 
   const stockOf = (id: string) =>

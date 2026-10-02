@@ -10,6 +10,7 @@ import type { VoucherService } from '../voucher/voucher.service';
 import type { VoucherUsageService } from '../voucher/voucher-usage.service';
 import type { AddressService } from './address.service';
 import type { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
+import type { OrderEmailService } from '../order/order-email.service';
 import type { OrderService } from '../order/order.service';
 import type { PaymentService } from '../order/payment.service';
 import { CheckoutService, type PlaceOrderInput } from './checkout.service';
@@ -136,6 +137,7 @@ describe('CheckoutService.placeOrder', () => {
   // getCheckoutGroup/retryPayment (2.9) đều delegate nguyên vẹn sang PaymentService — không có test
   // riêng ở đây (xem payment.service.spec.ts), chỉ cần mock đủ để dựng CheckoutService.
   let paymentService: { getCheckoutGroup: jest.Mock; retryPayment: jest.Mock };
+  let orderEmailService: { notifyPlaced: jest.Mock };
 
   const variantMetaRow = (
     id: string,
@@ -229,6 +231,9 @@ describe('CheckoutService.placeOrder', () => {
       getCheckoutGroup: jest.fn(),
       retryPayment: jest.fn(),
     };
+    orderEmailService = {
+      notifyPlaced: jest.fn().mockResolvedValue(undefined),
+    };
 
     service = new CheckoutService(
       prisma as unknown as PrismaService,
@@ -240,6 +245,7 @@ describe('CheckoutService.placeOrder', () => {
       addressService as unknown as AddressService,
       paymentGateway as unknown as PaymentGatewayService,
       paymentService as unknown as PaymentService,
+      orderEmailService as unknown as OrderEmailService,
     );
   });
 
@@ -430,6 +436,57 @@ describe('CheckoutService.placeOrder', () => {
       expect(inventoryService.commit).toHaveBeenCalledWith(tx, [
         { productVariantId: 'variant-1', quantity: 2 },
       ]);
+    });
+
+    it('gửi email "đặt hàng thành công" cho nhóm SAU commit; đặt online thì KHÔNG gửi (chờ thanh toán xác nhận)', async () => {
+      await service.placeOrder('user-1', COD_INPUT);
+      expect(orderEmailService.notifyPlaced).toHaveBeenCalledTimes(1);
+      expect(orderEmailService.notifyPlaced).toHaveBeenCalledWith('group-1');
+
+      orderEmailService.notifyPlaced.mockClear();
+      paymentGateway.availabilityOf.mockReturnValue({
+        method: 'VNPAY',
+        available: true,
+      });
+      await service.placeOrder('user-1', INPUT);
+      expect(orderEmailService.notifyPlaced).not.toHaveBeenCalled();
+    });
+
+    it('đặt COD thất bại (lệch giá/hết hàng) — KHÔNG gửi email', async () => {
+      await expect(
+        service.placeOrder('user-1', {
+          ...COD_INPUT,
+          expectedTotal: COD_INPUT.expectedTotal + 1,
+        }),
+      ).rejects.toBeDefined();
+
+      expect(orderEmailService.notifyPlaced).not.toHaveBeenCalled();
+    });
+
+    it('phát lại cùng Idempotency-Key — KHÔNG gửi email lần 2', async () => {
+      prisma.checkoutGroup.findUnique.mockResolvedValue({
+        id: 'group-cod',
+        orders: [
+          {
+            id: 'order-cod',
+            shopId: 'shop-1',
+            status: 'PENDING',
+            totalAmount: '220000',
+          },
+        ],
+        payments: [
+          {
+            method: 'COD',
+            amount: new Prisma.Decimal(220_000),
+            expiresAt: null,
+            payUrl: null,
+          },
+        ],
+      });
+
+      await service.placeOrder('user-1', COD_INPUT, 'key-1');
+
+      expect(orderEmailService.notifyPlaced).not.toHaveBeenCalled();
     });
 
     it('KHÔNG gọi cổng thanh toán và không ghi payUrl (paymentUrl null là kết quả đúng, không phải lỗi cổng)', async () => {

@@ -17,6 +17,7 @@ import {
   canRetryFromStatus,
   deriveCheckoutGroupStatus,
 } from './checkout-group-status';
+import { OrderEmailService } from './order-email.service';
 import { OrderStatusService, type OrderActor } from './order-status.service';
 
 // Kết quả nội bộ của confirmPayment — controller của từng cổng (2.9) tự ánh xạ sang mã phản hồi
@@ -138,6 +139,7 @@ export class PaymentService {
     private readonly voucherUsageService: VoucherUsageService,
     private readonly paymentGateway: PaymentGatewayService,
     private readonly orderStatusService: OrderStatusService,
+    private readonly orderEmailService: OrderEmailService,
   ) {}
 
   // Được gọi bởi cả IPN lẫn return (2 nguồn, cùng 1 hàm, idempotent — Week7.md 1.10). Thứ tự bắt
@@ -175,7 +177,14 @@ export class PaymentService {
     }
 
     if (callback.outcome === 'SUCCESS') {
-      return this.confirmSuccess(payment, callback, source);
+      const result = await this.confirmSuccess(payment, callback, source);
+      // Email "đặt hàng/thanh toán thành công" CHỈ ở lần xác nhận thật sự đầu tiên (CONFIRMED): IPN và
+      // return cùng gọi hàm này, lần 2 là ALREADY_CONFIRMED nên không gửi trùng. Sau commit, không bao
+      // giờ ném (Week8.md 2.8).
+      if (result.outcome === 'CONFIRMED') {
+        await this.orderEmailService.notifyPlaced(payment.checkoutGroupId);
+      }
+      return result;
     }
     if (callback.outcome === 'FAILED') {
       return this.confirmFailure(payment, source);
@@ -310,7 +319,7 @@ export class PaymentService {
     // Mặc định là hệ thống (hết hạn thanh toán); buyer chủ động hủy truyền actor BUYER (Week8.md 2.6).
     options: { actor?: OrderActor; note?: string } = {},
   ): Promise<{ reclaimed: boolean }> {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const hasSuccess = await tx.payment.count({
         where: { checkoutGroupId, status: 'SUCCESS' },
       });
@@ -365,6 +374,17 @@ export class PaymentService {
       );
       return { reclaimed: true };
     });
+
+    // Báo buyer SAU commit, chỉ khi lần gọi này thật sự thu hồi (idempotent: gọi lặp không gửi lại).
+    // Buyer chủ động hủy ⇒ "bạn đã hủy"; còn lại (job/hết hạn lười) ⇒ "hết hạn thanh toán".
+    if (result.reclaimed) {
+      await this.orderEmailService.notifyCancelled(
+        { checkoutGroupId },
+        options.actor?.type === 'BUYER' ? 'BUYER' : 'SYSTEM',
+        options.actor?.type === 'BUYER' ? (options.note ?? null) : null,
+      );
+    }
+    return result;
   }
 
   // Buyer chủ động hủy cả nhóm CHƯA thanh toán (Week8.md 2.6) — dùng lại đúng reclaimCheckoutGroup

@@ -12,6 +12,8 @@ import { PaymentGatewayService } from '../../shared/payment/payment-gateway.serv
 import { VnpayProvider } from '../../shared/payment/vnpay.provider';
 import { InventoryService } from '../product/inventory.service';
 import { VoucherUsageService } from '../voucher/voucher-usage.service';
+import { createFakeMail } from '../../shared/testing/fake-mail';
+import { OrderEmailService } from './order-email.service';
 import { PaymentExpiryJob } from './payment-expiry.job';
 import { OrderStatusService } from './order-status.service';
 import { PaymentService } from './payment.service';
@@ -38,6 +40,10 @@ describe('PaymentExpiryJob (DB thật)', () => {
     voucherUsageService,
     paymentGateway,
     new OrderStatusService(),
+    new OrderEmailService(
+      prisma as unknown as PrismaService,
+      createFakeMail().mailService,
+    ),
   );
   const job = new PaymentExpiryJob(
     prisma as unknown as PrismaService,
