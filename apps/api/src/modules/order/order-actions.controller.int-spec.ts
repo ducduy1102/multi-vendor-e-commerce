@@ -570,6 +570,20 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       expect((await stockOf(variantId)).stock).toBe(STOCK);
     });
 
+    it('từ chối KHÔNG gửi body — 400 báo lỗi theo field reason (không phải "value: Required"), không đổi gì', async () => {
+      const { orderId, variantId } = await seedOne('PENDING', cod);
+
+      // Express 5: không gửi body ⇒ req.body là undefined (khác `{}`).
+      const res = await sellerA.post(sellerUrl(shopA, orderId, 'reject'));
+
+      expect(res.status).toBe(400);
+      expect((res.body as { message: string }).message).toBe(
+        'reason: order.validationReasonRequired',
+      );
+      expect(await statusOf(orderId)).toBe('PENDING');
+      expect((await stockOf(variantId)).stock).toBe(STOCK);
+    });
+
     it('seller KHÔNG từ chối được đơn đã trả online — 409 PAID_ONLINE, không hoàn kho', async () => {
       const { orderId, variantId } = await seedOne('PENDING', onlinePaid);
 

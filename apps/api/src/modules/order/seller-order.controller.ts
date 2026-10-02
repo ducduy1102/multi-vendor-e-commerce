@@ -382,7 +382,10 @@ export class SellerOrderController {
     @CurrentUser() user: AuthenticatedUser,
     @ShopOwnerContext() { shopId }: { shopId: string },
     @Param('orderId') orderId: string,
-    @Body(new ZodValidationPipe(rejectOrderSchema)) body: RejectOrderInput,
+    // Express 5: không gửi body ⇒ req.body là undefined — default lý do rỗng để lỗi báo theo field
+    // `reason` (giống gửi `{}`) thay vì "value: Required". Lý do vẫn BẮT BUỘC (rỗng bị từ chối).
+    @Body(new ZodValidationPipe(rejectOrderSchema.default({ reason: '' })))
+    body: RejectOrderInput,
   ) {
     await this.orderActionService.reject(
       shopId,
