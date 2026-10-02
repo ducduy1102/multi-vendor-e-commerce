@@ -489,6 +489,86 @@ describe('OrderActionService', () => {
     });
   });
 
+  describe('autoCompleteShipped — hệ thống tự hoàn tất đơn buyer không xác nhận (Week8.md 1.7)', () => {
+    it('đơn trả online: SHIPPING → COMPLETED bởi SYSTEM, ghi chú nêu số ngày, đọc đơn KHÔNG ràng buộc userId, trả true', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'VNPAY'));
+
+      const result = await service.autoCompleteShipped('o1', 7);
+
+      expect(result).toBe(true);
+      expect(tx.order.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'o1' } }),
+      );
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1'],
+        'SHIPPING',
+        'COMPLETED',
+        { type: 'SYSTEM' },
+        'Auto-completed: not confirmed by buyer within 7 day(s) of shipping',
+      );
+      expect(tx.payment.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('đơn COD: dùng CHUNG đường hoàn tất — khoá nhóm trước khi chuyển rồi thu tiền khi cả nhóm đã xong', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'COD'));
+      tx.order.findMany.mockResolvedValue([{ status: 'COMPLETED' }]);
+
+      await service.autoCompleteShipped('o1', 7);
+
+      expect(calls).toEqual(['lockGroup', 'transition']);
+      expect(tx.payment.updateMany).toHaveBeenCalledWith({
+        where: { checkoutGroupId: 'g1', method: 'COD', status: 'PENDING' },
+        data: { status: 'SUCCESS', paidAt: expect.any(Date) as Date },
+      });
+    });
+
+    it.each([
+      ['đơn không còn SHIPPING (buyer vừa bấm tay)', 'COMPLETED'],
+      ['đơn bị đổi sang trạng thái khác', 'CANCELLED'],
+    ] as const)(
+      '%s — trả false (bình thường, không lỗi), không chuyển',
+      async (_label, status) => {
+        tx.order.findFirst.mockResolvedValue(loaded(status, 'VNPAY'));
+
+        await expect(service.autoCompleteShipped('o1', 7)).resolves.toBe(false);
+        expect(orderStatusService.transition).not.toHaveBeenCalled();
+      },
+    );
+
+    it('thua race với buyer bấm tay (đọc còn SHIPPING nhưng lúc cập nhật đã đổi) — trả false', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'VNPAY'));
+      orderStatusService.transition.mockResolvedValue([]);
+
+      await expect(service.autoCompleteShipped('o1', 7)).resolves.toBe(false);
+      expect(tx.payment.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('đơn không còn tồn tại — trả false', async () => {
+      tx.order.findFirst.mockResolvedValue(null);
+
+      await expect(service.autoCompleteShipped('o-ma', 7)).resolves.toBe(false);
+    });
+
+    it('lỗi THẬT (không phải 3 mã bình thường) — ném lên để job log', async () => {
+      tx.order.findFirst.mockRejectedValue(new Error('db timeout'));
+
+      await expect(service.autoCompleteShipped('o1', 7)).rejects.toThrow(
+        'db timeout',
+      );
+    });
+
+    it('KHÔNG gửi email nào (buyer không cần được báo việc hệ thống tự hoàn tất)', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'VNPAY'));
+
+      await service.autoCompleteShipped('o1', 7);
+
+      expect(orderEmailService.notifyConfirmed).not.toHaveBeenCalled();
+      expect(orderEmailService.notifyShipped).not.toHaveBeenCalled();
+      expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
+    });
+  });
+
   describe('confirmReceived', () => {
     it('đơn trả online: SHIPPING → COMPLETED bởi buyer, KHÔNG khoá nhóm, KHÔNG đụng Payment', async () => {
       tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'VNPAY'));

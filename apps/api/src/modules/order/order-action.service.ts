@@ -205,14 +205,55 @@ export class OrderActionService {
   // Buyer xác nhận đã nhận hàng: SHIPPING → COMPLETED. Với COD, đây là lúc thu tiền: khi mọi đơn
   // không bị hủy của nhóm đã COMPLETED ⇒ Payment COD → SUCCESS (Week8.md 1.6).
   async confirmReceived(userId: string, orderId: string): Promise<void> {
+    await this.completeShipped(
+      { id: orderId, userId },
+      { type: 'BUYER', id: userId },
+      'Received by buyer',
+    );
+  }
+
+  // --- Hệ thống -------------------------------------------------------------------------------
+
+  // Tự hoàn tất đơn đã giao mà buyer không bấm "Đã nhận hàng" sau N ngày (Week8.md 1.7) — gọi bởi
+  // OrderAutoCompleteJob. Dùng CHUNG đường hoàn tất với buyer bấm tay nên COD cũng được thu tiền đúng
+  // cách. Trả true nếu đã hoàn tất; false nếu đơn đã được xử lý ở nơi khác trước khi job tới (buyer vừa
+  // bấm tay, đơn không còn SHIPPING...) — là chuyện bình thường, không phải lỗi. Lỗi thật (DB...) ném lên
+  // để job log và đi tiếp đơn khác.
+  async autoCompleteShipped(orderId: string, days: number): Promise<boolean> {
+    try {
+      await this.completeShipped(
+        { id: orderId },
+        { type: 'SYSTEM' },
+        `Auto-completed: not confirmed by buyer within ${days} day(s) of shipping`,
+      );
+      return true;
+    } catch (error) {
+      if (
+        error instanceof AppException &&
+        (error.code === 'ORDER_INVALID_TRANSITION' ||
+          error.code === 'ORDER_ALREADY_CHANGED' ||
+          error.code === 'ORDER_NOT_FOUND')
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  // SHIPPING → COMPLETED cho cả buyer lẫn hệ thống (khác nhau ở phạm vi đọc đơn, actor và ghi chú). Với
+  // COD khoá TOÀN BỘ đơn của nhóm theo id tăng dần TRƯỚC khi chuyển: 2 đơn cùng nhóm hoàn tất đồng thời
+  // sẽ xếp hàng ở đây, nên đơn thứ hai thấy đơn thứ nhất đã COMPLETED và chốt thu tiền — không bên nào
+  // bỏ sót vì "chưa thấy" thay đổi chưa commit của bên kia.
+  private async completeShipped(
+    scope: OrderScope,
+    actor: OrderActor,
+    note: string,
+  ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      const order = await this.load(tx, { id: orderId, userId });
+      const order = await this.load(tx, scope);
       if (order.status !== 'SHIPPING') throw this.invalidTransition(order);
 
       const isCod = order.paymentMethod === 'COD';
-      // Khoá TOÀN BỘ đơn của nhóm theo id tăng dần TRƯỚC khi chuyển: 2 đơn cùng nhóm được xác nhận
-      // đồng thời sẽ xếp hàng ở đây, nên đơn thứ hai thấy đơn thứ nhất đã COMPLETED và chốt thu tiền —
-      // không bên nào bỏ sót vì "chưa thấy" thay đổi chưa commit của bên kia.
       if (isCod) await this.lockGroupOrders(tx, order.checkoutGroupId);
 
       const flipped = await this.orderStatusService.transition(
@@ -220,8 +261,8 @@ export class OrderActionService {
         [order.id],
         'SHIPPING',
         'COMPLETED',
-        { type: 'BUYER', id: userId },
-        'Received by buyer',
+        actor,
+        note,
       );
       if (flipped.length === 0) throw this.alreadyChanged();
 

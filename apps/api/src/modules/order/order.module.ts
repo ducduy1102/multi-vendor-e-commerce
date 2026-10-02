@@ -5,6 +5,7 @@ import { ProductModule } from '../product/product.module';
 import { VoucherModule } from '../voucher/voucher.module';
 import { BuyerOrderController } from './buyer-order.controller';
 import { OrderActionService } from './order-action.service';
+import { OrderAutoCompleteJob } from './order-auto-complete.job';
 import { OrderEmailService } from './order-email.service';
 import { OrderController } from './order.controller';
 import { OrderQueryService } from './order-query.service';
@@ -30,6 +31,7 @@ import { SellerOrderController } from './seller-order.controller';
     OrderStatusService,
     PaymentService,
     PaymentExpiryJob,
+    OrderAutoCompleteJob,
   ],
   exports: [
     OrderService,
