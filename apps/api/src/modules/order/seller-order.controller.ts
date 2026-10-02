@@ -33,8 +33,13 @@ import { ShopOwnerContext } from '../../shared/decorators/shop-owner-context.dec
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { ShopOwnerGuard } from '../../shared/guards/shop-owner.guard';
 import { ZodValidationPipe } from '../../shared/pipes/zod-validation.pipe';
+import {
+  errorExample,
+  UNAUTHORIZED_EXAMPLE,
+} from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { OrderActionService } from './order-action.service';
+import { ORDER_NOT_FOUND_EXAMPLE } from './order-swagger-examples';
 import { OrderQueryService } from './order-query.service';
 
 const SELLER_ORDER_LIST_ITEM_EXAMPLE = {
@@ -94,12 +99,11 @@ const SELLER_ORDER_DETAIL_EXAMPLE = {
 // Phản hồi lỗi chung của 4 hành động (xác nhận/đóng gói/giao/từ chối).
 const ApiActionErrors = () =>
   applyDecorators(
-    ApiResponse({ status: 401, description: 'Chưa đăng nhập' }),
-    ApiResponse({ status: 403, description: 'Không phải chủ shop' }),
     ApiResponse({
       status: 404,
       description:
         'Shop không tồn tại; hoặc đơn không tồn tại / thuộc shop khác / chưa thanh toán (không phân biệt)',
+      schema: { example: ORDER_NOT_FOUND_EXAMPLE },
     }),
     ApiResponse({
       status: 409,
@@ -129,6 +133,16 @@ const SHOP_ID_PARAM = {
 // Không có prefix chung ở @Controller() vì path nằm dưới shops/:shopId (cùng VoucherController).
 @ApiTags('seller-orders')
 @Controller()
+@ApiResponse({
+  status: 401,
+  description: 'Chưa đăng nhập',
+  schema: { example: UNAUTHORIZED_EXAMPLE },
+})
+@ApiResponse({
+  status: 403,
+  description: 'Không phải chủ shop',
+  schema: { example: errorExample('Not the shop owner') },
+})
 export class SellerOrderController {
   constructor(
     private readonly orderQueryService: OrderQueryService,
@@ -175,10 +189,17 @@ export class SellerOrderController {
     status: 400,
     description:
       'Query không hợp lệ (tab lạ hoặc awaiting-payment, limit > 50...)',
+    schema: {
+      example: errorExample(
+        "tab: Invalid enum value. Expected 'pending' | 'processing' | 'shipping' | 'completed' | 'cancelled', received 'awaiting-payment'",
+      ),
+    },
   })
-  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
-  @ApiResponse({ status: 403, description: 'Không phải chủ shop' })
-  @ApiResponse({ status: 404, description: 'Shop không tồn tại' })
+  @ApiResponse({
+    status: 404,
+    description: 'Shop không tồn tại',
+    schema: { example: errorExample('Shop not found') },
+  })
   list(
     @ShopOwnerContext() { shopId }: { shopId: string },
     @Query(new ZodValidationPipe(sellerOrderListQuerySchema))
@@ -200,20 +221,11 @@ export class SellerOrderController {
     status: 200,
     schema: { example: { success: true, data: SELLER_ORDER_DETAIL_EXAMPLE } },
   })
-  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
-  @ApiResponse({ status: 403, description: 'Không phải chủ shop' })
   @ApiResponse({
     status: 404,
     description:
       'Shop không tồn tại; hoặc đơn không tồn tại / thuộc shop khác / chưa thanh toán (không phân biệt)',
-    schema: {
-      example: {
-        success: false,
-        data: null,
-        message: 'Order not found',
-        code: 'ORDER_NOT_FOUND',
-      },
-    },
+    schema: { example: ORDER_NOT_FOUND_EXAMPLE },
   })
   getOne(
     @ShopOwnerContext() { shopId }: { shopId: string },
@@ -314,7 +326,13 @@ export class SellerOrderController {
       },
     },
   })
-  @ApiResponse({ status: 400, description: 'carrier/trackingCode quá dài' })
+  @ApiResponse({
+    status: 400,
+    description: 'carrier/trackingCode quá dài (tối đa 100 ký tự)',
+    schema: {
+      example: errorExample('carrier: order.validationCarrierTooLong'),
+    },
+  })
   @ApiActionErrors()
   async ship(
     @CurrentUser() user: AuthenticatedUser,
@@ -354,7 +372,11 @@ export class SellerOrderController {
       },
     },
   })
-  @ApiResponse({ status: 400, description: 'Thiếu lý do hoặc lý do quá dài' })
+  @ApiResponse({
+    status: 400,
+    description: 'Thiếu lý do hoặc lý do quá dài (tối đa 500 ký tự)',
+    schema: { example: errorExample('reason: order.validationReasonRequired') },
+  })
   @ApiActionErrors()
   async reject(
     @CurrentUser() user: AuthenticatedUser,

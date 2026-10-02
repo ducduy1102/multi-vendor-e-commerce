@@ -28,8 +28,13 @@ import {
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { ZodValidationPipe } from '../../shared/pipes/zod-validation.pipe';
+import {
+  errorExample,
+  UNAUTHORIZED_EXAMPLE,
+} from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { OrderActionService } from './order-action.service';
+import { ORDER_NOT_FOUND_EXAMPLE } from './order-swagger-examples';
 import { OrderQueryService } from './order-query.service';
 
 const ORDER_ITEM_EXAMPLE = {
@@ -92,6 +97,11 @@ const ORDER_DETAIL_EXAMPLE = {
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
 @ApiCookieAuth('access_token')
+@ApiResponse({
+  status: 401,
+  description: 'Chưa đăng nhập',
+  schema: { example: UNAUTHORIZED_EXAMPLE },
+})
 export class BuyerOrderController {
   constructor(
     private readonly orderQueryService: OrderQueryService,
@@ -133,8 +143,12 @@ export class BuyerOrderController {
   @ApiResponse({
     status: 400,
     description: 'Query không hợp lệ (tab lạ, limit > 50...)',
+    schema: {
+      example: errorExample(
+        "tab: Invalid enum value. Expected 'awaiting-payment' | 'pending' | 'processing' | 'shipping' | 'completed' | 'cancelled', received 'bad'",
+      ),
+    },
   })
-  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   list(
     @CurrentUser() user: AuthenticatedUser,
     @Query(new ZodValidationPipe(orderListQuerySchema)) query: OrderListQuery,
@@ -152,19 +166,11 @@ export class BuyerOrderController {
     status: 200,
     schema: { example: { success: true, data: ORDER_DETAIL_EXAMPLE } },
   })
-  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 404,
     description:
       'Đơn không tồn tại hoặc không phải của bạn (không phân biệt, không lộ id nào có thật)',
-    schema: {
-      example: {
-        success: false,
-        data: null,
-        message: 'Order not found',
-        code: 'ORDER_NOT_FOUND',
-      },
-    },
+    schema: { example: ORDER_NOT_FOUND_EXAMPLE },
   })
   getOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.orderQueryService.getForBuyer(user.userId, id);
@@ -195,10 +201,15 @@ export class BuyerOrderController {
       },
     },
   })
-  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
+  @ApiResponse({
+    status: 400,
+    description: 'Lý do quá dài (tối đa 500 ký tự)',
+    schema: { example: errorExample('reason: order.validationReasonTooLong') },
+  })
   @ApiResponse({
     status: 404,
     description: 'Đơn không tồn tại hoặc không phải của bạn',
+    schema: { example: ORDER_NOT_FOUND_EXAMPLE },
   })
   @ApiResponse({
     status: 409,
@@ -246,10 +257,10 @@ export class BuyerOrderController {
       },
     },
   })
-  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 404,
     description: 'Đơn không tồn tại hoặc không phải của bạn',
+    schema: { example: ORDER_NOT_FOUND_EXAMPLE },
   })
   @ApiResponse({
     status: 409,
