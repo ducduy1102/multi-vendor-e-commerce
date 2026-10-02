@@ -19,6 +19,7 @@ const shopSelect = {
   bannerUrl: true,
   description: true,
   status: true,
+  statusReason: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.ShopSelect;

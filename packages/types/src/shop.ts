@@ -3,6 +3,20 @@ import { z } from 'zod';
 export const shopStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED']);
 export type ShopStatus = z.infer<typeof shopStatusSchema>;
 
+// Bảng chuyển Shop.status hợp lệ do Admin thực hiện (Week8.md 1.8). Chỉ nói cạnh nào hợp lệ về mặt
+// trạng thái; thực thi thật nằm ở AdminService (UPDATE có điều kiện WHERE status = <cũ>). REJECTED là
+// trạng thái cuối ở Tuần 8 (shop bị từ chối nộp lại là việc sau). Không cạnh nào dẫn về PENDING.
+export const SHOP_STATUS_TRANSITIONS: Readonly<Record<ShopStatus, readonly ShopStatus[]>> = {
+  PENDING: ['APPROVED', 'REJECTED'],
+  APPROVED: ['SUSPENDED'],
+  SUSPENDED: ['APPROVED'],
+  REJECTED: [],
+};
+
+export function isValidShopStatusTransition(from: ShopStatus, to: ShopStatus): boolean {
+  return SHOP_STATUS_TRANSITIONS[from].includes(to);
+}
+
 const slugSchema = z
   .string()
   .trim()
@@ -62,6 +76,8 @@ export const shopSchema = z.object({
   bannerUrl: z.string().nullable(),
   description: z.string().nullable(),
   status: shopStatusSchema,
+  // Lý do của trạng thái hiện tại do Admin nhập (từ chối hoặc khoá); null khi PENDING/APPROVED.
+  statusReason: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
