@@ -425,4 +425,54 @@ export class CheckoutController {
     }
     return result.data;
   }
+  // Buyer hủy cả nhóm CHƯA thanh toán (Week8.md 2.6) — logic hủy do module order làm (reclaimCheckoutGroup
+  // với actor BUYER), route đặt ở checkout như các route nhóm khác. Idempotent: nhóm đã hủy trả lại
+  // trạng thái hiện tại. Trả cùng hình dạng GET /checkout/groups/:groupId.
+  @Post('groups/:groupId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({
+    summary:
+      'Hủy cả nhóm đơn CHƯA thanh toán — nhả giữ chỗ tồn kho và lượt voucher (idempotent)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Trạng thái nhóm sau khi hủy (status CANCELLED)',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          ...CHECKOUT_GROUP_EXAMPLE,
+          status: 'CANCELLED',
+          canRetry: false,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
+  @ApiResponse({
+    status: 404,
+    description: 'Nhóm không tồn tại hoặc không phải của bạn',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'ORDER_CANCEL_NOT_ALLOWED (details.reason: PAID_ONLINE = nhóm đã thanh toán); ORDER_INVALID_TRANSITION = nhóm không còn đơn chờ thanh toán',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'This checkout group has already been paid',
+        code: 'ORDER_CANCEL_NOT_ALLOWED',
+        details: { reason: 'PAID_ONLINE' },
+      },
+    },
+  })
+  cancelGroup(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('groupId') groupId: string,
+  ) {
+    return this.checkoutService.cancelCheckoutGroup(user.userId, groupId);
+  }
 }

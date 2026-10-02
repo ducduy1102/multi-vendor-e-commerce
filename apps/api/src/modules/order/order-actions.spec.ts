@@ -2,6 +2,7 @@ import type { OrderStatus, PaymentMethod } from '@prisma/client';
 import {
   canRetryOrderPayment,
   getBuyerOrderActions,
+  getCancelBlockReason,
   getSellerOrderActions,
   type RetryPaymentInput,
 } from './order-actions';
@@ -248,6 +249,34 @@ describe('getSellerOrderActions', () => {
     '%s ứng với cạnh hợp lệ %s → %s của ORDER_STATUS_TRANSITIONS',
     (_flag, from, to) => {
       expect(ORDER_STATUS_TRANSITIONS[from]).toContain(to);
+    },
+  );
+});
+
+describe('getCancelBlockReason', () => {
+  it('PENDING + COD: hủy được (không có lý do chặn)', () => {
+    expect(getCancelBlockReason('PENDING', 'COD')).toBeNull();
+  });
+
+  it.each(['VNPAY', 'MOMO', null] as const)(
+    'PENDING + %s: PAID_ONLINE (hoàn tiền: Tuần 9; không rõ phương thức thì chặn cho an toàn)',
+    (method) => {
+      expect(getCancelBlockReason('PENDING', method)).toBe('PAID_ONLINE');
+    },
+  );
+
+  it.each(['CONFIRMED', 'PACKED', 'SHIPPING'] as const)(
+    '%s: PROCESSING_STARTED (kể cả COD)',
+    (status) => {
+      expect(getCancelBlockReason(status, 'COD')).toBe('PROCESSING_STARTED');
+      expect(getCancelBlockReason(status, 'VNPAY')).toBe('PROCESSING_STARTED');
+    },
+  );
+
+  it.each(['AWAITING_PAYMENT', 'COMPLETED', 'CANCELLED', 'REFUNDED'] as const)(
+    '%s: không có lý do đặc biệt (nơi gọi báo ORDER_INVALID_TRANSITION / hủy theo nhóm)',
+    (status) => {
+      expect(getCancelBlockReason(status, 'COD')).toBeNull();
     },
   );
 });

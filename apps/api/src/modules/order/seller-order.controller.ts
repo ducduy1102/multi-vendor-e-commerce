@@ -1,5 +1,17 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+  applyDecorators,
+} from '@nestjs/common';
+import {
+  ApiBody,
   ApiCookieAuth,
   ApiOperation,
   ApiParam,
@@ -8,14 +20,21 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  rejectOrderSchema,
   sellerOrderListQuerySchema,
   sellerOrderTabSchema,
+  shipOrderSchema,
+  type RejectOrderInput,
   type SellerOrderListQuery,
+  type ShipOrderInput,
 } from '@ecommerce/types';
+import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { ShopOwnerContext } from '../../shared/decorators/shop-owner-context.decorator';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { ShopOwnerGuard } from '../../shared/guards/shop-owner.guard';
 import { ZodValidationPipe } from '../../shared/pipes/zod-validation.pipe';
+import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
+import { OrderActionService } from './order-action.service';
 import { OrderQueryService } from './order-query.service';
 
 const SELLER_ORDER_LIST_ITEM_EXAMPLE = {
@@ -72,6 +91,31 @@ const SELLER_ORDER_DETAIL_EXAMPLE = {
   ],
 };
 
+// Phản hồi lỗi chung của 4 hành động (xác nhận/đóng gói/giao/từ chối).
+const ApiActionErrors = () =>
+  applyDecorators(
+    ApiResponse({ status: 401, description: 'Chưa đăng nhập' }),
+    ApiResponse({ status: 403, description: 'Không phải chủ shop' }),
+    ApiResponse({
+      status: 404,
+      description:
+        'Shop không tồn tại; hoặc đơn không tồn tại / thuộc shop khác / chưa thanh toán (không phân biệt)',
+    }),
+    ApiResponse({
+      status: 409,
+      description:
+        'ORDER_INVALID_TRANSITION = đơn không ở trạng thái cho phép làm hành động này; ORDER_CANCEL_NOT_ALLOWED (chỉ reject; details.reason PAID_ONLINE | PROCESSING_STARTED); ORDER_ALREADY_CHANGED = vừa bị đổi bởi yêu cầu khác (vd buyer vừa hủy)',
+      schema: {
+        example: {
+          success: false,
+          data: null,
+          message: 'Action is not allowed while the order is CONFIRMED',
+          code: 'ORDER_INVALID_TRANSITION',
+        },
+      },
+    }),
+  );
+
 // shopId lấy qua @ShopOwnerContext() (do ShopOwnerGuard resolve sẵn) chứ không qua @Param('shopId') nên
 // Swagger không tự suy ra tham số đường dẫn này — phải khai tay (cùng lý do VoucherController).
 const SHOP_ID_PARAM = {
@@ -80,14 +124,16 @@ const SHOP_ID_PARAM = {
   example: 'a1b2c3d4-1234-4a5b-8c9d-abcdef000001',
 };
 
-// Đơn hàng của shop mình (Week8.md 2.5). Chỉ có đọc; hành động (xác nhận/đóng gói/giao/từ chối) thêm
-// ở 2.6. ShopOwnerGuard xác nhận shop thuộc người gọi (403 nếu không, 404 nếu shop không tồn tại) —
+// Đơn hàng của shop mình (Week8.md 2.5 đọc, 2.6 hành động xác nhận/đóng gói/giao/từ chối). ShopOwnerGuard xác nhận shop thuộc người gọi (403 nếu không, 404 nếu shop không tồn tại) —
 // KHÔNG kiểm trạng thái shop: shop bị khoá (SUSPENDED) vẫn xử lý được đơn đã có (Week8.md 1.8).
 // Không có prefix chung ở @Controller() vì path nằm dưới shops/:shopId (cùng VoucherController).
 @ApiTags('seller-orders')
 @Controller()
 export class SellerOrderController {
-  constructor(private readonly orderQueryService: OrderQueryService) {}
+  constructor(
+    private readonly orderQueryService: OrderQueryService,
+    private readonly orderActionService: OrderActionService,
+  ) {}
 
   @Get('shops/:shopId/orders')
   @ApiParam(SHOP_ID_PARAM)
@@ -173,6 +219,155 @@ export class SellerOrderController {
     @ShopOwnerContext() { shopId }: { shopId: string },
     @Param('orderId') orderId: string,
   ) {
+    return this.orderQueryService.getForSeller(shopId, orderId);
+  }
+  // Hành động trả lại CHI TIẾT đơn mới nhất (đọc lại sau khi commit). Không kiểm trạng thái shop: shop bị
+  // khoá tạm vẫn xử lý được đơn đã có (Week8.md 1.8).
+  @Post('shops/:shopId/orders/:orderId/confirm')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam(SHOP_ID_PARAM)
+  @ApiParam({ name: 'orderId', description: 'ID đơn hàng' })
+  @UseGuards(JwtAuthGuard, ShopOwnerGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: 'Xác nhận đơn (PENDING → CONFIRMED)' })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        success: true,
+        data: {
+          ...SELLER_ORDER_DETAIL_EXAMPLE,
+          status: 'CONFIRMED',
+          canConfirm: false,
+          canPack: true,
+        },
+      },
+    },
+  })
+  @ApiActionErrors()
+  async confirm(
+    @CurrentUser() user: AuthenticatedUser,
+    @ShopOwnerContext() { shopId }: { shopId: string },
+    @Param('orderId') orderId: string,
+  ) {
+    await this.orderActionService.confirm(shopId, user.userId, orderId);
+    return this.orderQueryService.getForSeller(shopId, orderId);
+  }
+
+  @Post('shops/:shopId/orders/:orderId/pack')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam(SHOP_ID_PARAM)
+  @ApiParam({ name: 'orderId', description: 'ID đơn hàng' })
+  @UseGuards(JwtAuthGuard, ShopOwnerGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: 'Đóng gói đơn (CONFIRMED → PACKED)' })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        success: true,
+        data: {
+          ...SELLER_ORDER_DETAIL_EXAMPLE,
+          status: 'PACKED',
+          canConfirm: false,
+          canShip: true,
+        },
+      },
+    },
+  })
+  @ApiActionErrors()
+  async pack(
+    @CurrentUser() user: AuthenticatedUser,
+    @ShopOwnerContext() { shopId }: { shopId: string },
+    @Param('orderId') orderId: string,
+  ) {
+    await this.orderActionService.pack(shopId, user.userId, orderId);
+    return this.orderQueryService.getForSeller(shopId, orderId);
+  }
+
+  @Post('shops/:shopId/orders/:orderId/ship')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam(SHOP_ID_PARAM)
+  @ApiParam({ name: 'orderId', description: 'ID đơn hàng' })
+  @UseGuards(JwtAuthGuard, ShopOwnerGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({
+    summary:
+      'Giao hàng (PACKED → SHIPPING), kèm đơn vị vận chuyển / mã vận đơn nhập tay (cả 2 tuỳ chọn)',
+  })
+  @ApiBody({
+    required: false,
+    schema: { example: { carrier: 'GHN', trackingCode: 'GHN123456789' } },
+  })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        success: true,
+        data: {
+          ...SELLER_ORDER_DETAIL_EXAMPLE,
+          status: 'SHIPPING',
+          carrier: 'GHN',
+          trackingCode: 'GHN123456789',
+          canShip: false,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'carrier/trackingCode quá dài' })
+  @ApiActionErrors()
+  async ship(
+    @CurrentUser() user: AuthenticatedUser,
+    @ShopOwnerContext() { shopId }: { shopId: string },
+    @Param('orderId') orderId: string,
+    // Express 5: không gửi body ⇒ req.body là undefined — default {} vì cả 2 field đều tuỳ chọn.
+    @Body(new ZodValidationPipe(shipOrderSchema.default({})))
+    body: ShipOrderInput,
+  ) {
+    await this.orderActionService.ship(shopId, user.userId, orderId, body);
+    return this.orderQueryService.getForSeller(shopId, orderId);
+  }
+
+  @Post('shops/:shopId/orders/:orderId/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam(SHOP_ID_PARAM)
+  @ApiParam({ name: 'orderId', description: 'ID đơn hàng' })
+  @UseGuards(JwtAuthGuard, ShopOwnerGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({
+    summary:
+      'Từ chối đơn COD chờ xác nhận (PENDING → CANCELLED, hoàn kho) — lý do bắt buộc. Đơn đã thanh toán online chưa từ chối được (hoàn tiền: Tuần 9)',
+  })
+  @ApiBody({ schema: { example: { reason: 'Hết hàng' } } })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        success: true,
+        data: {
+          ...SELLER_ORDER_DETAIL_EXAMPLE,
+          status: 'CANCELLED',
+          paymentMethod: 'COD',
+          canConfirm: false,
+          canReject: false,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Thiếu lý do hoặc lý do quá dài' })
+  @ApiActionErrors()
+  async reject(
+    @CurrentUser() user: AuthenticatedUser,
+    @ShopOwnerContext() { shopId }: { shopId: string },
+    @Param('orderId') orderId: string,
+    @Body(new ZodValidationPipe(rejectOrderSchema)) body: RejectOrderInput,
+  ) {
+    await this.orderActionService.reject(
+      shopId,
+      user.userId,
+      orderId,
+      body.reason,
+    );
     return this.orderQueryService.getForSeller(shopId, orderId);
   }
 }

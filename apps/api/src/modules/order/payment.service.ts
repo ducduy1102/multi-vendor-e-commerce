@@ -17,7 +17,7 @@ import {
   canRetryFromStatus,
   deriveCheckoutGroupStatus,
 } from './checkout-group-status';
-import { OrderStatusService } from './order-status.service';
+import { OrderStatusService, type OrderActor } from './order-status.service';
 
 // Kết quả nội bộ của confirmPayment — controller của từng cổng (2.9) tự ánh xạ sang mã phản hồi
 // riêng (VNPay RspCode, Momo 204...), PaymentService không biết gì về hình dạng phản hồi của cổng.
@@ -307,6 +307,8 @@ export class PaymentService {
   // không nhả/chốt gì thêm. KHÔNG bao giờ đụng tới nhóm đã có Payment SUCCESS.
   async reclaimCheckoutGroup(
     checkoutGroupId: string,
+    // Mặc định là hệ thống (hết hạn thanh toán); buyer chủ động hủy truyền actor BUYER (Week8.md 2.6).
+    options: { actor?: OrderActor; note?: string } = {},
   ): Promise<{ reclaimed: boolean }> {
     return this.prisma.$transaction(async (tx) => {
       const hasSuccess = await tx.payment.count({
@@ -334,8 +336,8 @@ export class PaymentService {
         awaitingIds,
         'AWAITING_PAYMENT',
         'CANCELLED',
-        { type: 'SYSTEM' },
-        'Payment hold reclaimed',
+        options.actor ?? { type: 'SYSTEM' },
+        options.note ?? 'Payment hold reclaimed',
       );
       if (cancelledIds.length === 0) return { reclaimed: false };
 
@@ -361,6 +363,39 @@ export class PaymentService {
       );
       return { reclaimed: true };
     });
+  }
+
+  // Buyer chủ động hủy cả nhóm CHƯA thanh toán (Week8.md 2.6) — dùng lại đúng reclaimCheckoutGroup
+  // (idempotent, nhả kho + voucher, ghi history với actor BUYER). Hủy theo NHÓM chứ không lẻ từng đơn
+  // vì 1 Payment cho cả nhóm. Chỉ chủ nhóm (người khác ⇒ 404). Gọi lại khi nhóm đã hủy ⇒ trả trạng thái
+  // hiện tại (idempotent); nhóm đã trả tiền hoặc không còn đơn chờ thanh toán ⇒ 409.
+  async cancelCheckoutGroup(
+    userId: string,
+    groupId: string,
+    reason?: string,
+  ): Promise<CheckoutGroupView> {
+    await this.loadGroupForOwner(userId, groupId);
+
+    const { reclaimed } = await this.reclaimCheckoutGroup(groupId, {
+      actor: { type: 'BUYER', id: userId },
+      note: reason ?? 'Cancelled by buyer',
+    });
+    const view = await this.getCheckoutGroup(userId, groupId);
+    if (reclaimed || view.status === 'CANCELLED') return view;
+
+    if (view.status === 'PAID' || view.status === 'PAID_AFTER_EXPIRY') {
+      throw new AppException(
+        409,
+        'ORDER_CANCEL_NOT_ALLOWED',
+        'This checkout group has already been paid',
+        { reason: 'PAID_ONLINE' },
+      );
+    }
+    throw new AppException(
+      409,
+      'ORDER_INVALID_TRANSITION',
+      'This checkout group has no unpaid order to cancel',
+    );
   }
 
   // Chỉ chủ nhóm xem được — người khác coi như không tồn tại (404, cùng luật AddressService).

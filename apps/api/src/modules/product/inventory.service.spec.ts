@@ -14,6 +14,7 @@ import {
 const RESERVE_ID_INDEX = 1;
 const COMMIT_ID_INDEX = 2;
 const RELEASE_ID_INDEX = 1;
+const RESTOCK_ID_INDEX = 1;
 
 describe('normalizeLines', () => {
   it('gộp dòng trùng variant bằng cách cộng số lượng', () => {
@@ -171,6 +172,34 @@ describe('InventoryService (tx giả)', () => {
       await expect(
         service.release(asTx(), [{ productVariantId: 'a', quantity: 1 }]),
       ).rejects.toBeInstanceOf(InventoryInvariantError);
+    });
+  });
+
+  describe('restock', () => {
+    it('duyệt theo id tăng dần và gộp dòng trùng variant', async () => {
+      await service.restock(asTx(), [
+        { productVariantId: 'z', quantity: 1 },
+        { productVariantId: 'y', quantity: 2 },
+        { productVariantId: 'z', quantity: 3 },
+      ]);
+
+      expect(idsOf(tx.$executeRaw, RESTOCK_ID_INDEX)).toEqual(['y', 'z']);
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
+    });
+
+    it('variant không tồn tại — ném InventoryInvariantError (rollback cả giao dịch)', async () => {
+      tx.$executeRaw.mockResolvedValue(0);
+
+      await expect(
+        service.restock(asTx(), [{ productVariantId: 'a', quantity: 1 }]),
+      ).rejects.toBeInstanceOf(InventoryInvariantError);
+    });
+
+    it('số lượng không hợp lệ — RangeError, không chạm DB', async () => {
+      await expect(
+        service.restock(asTx(), [{ productVariantId: 'a', quantity: 0 }]),
+      ).rejects.toThrow(RangeError);
+      expect(tx.$executeRaw).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,5 +1,16 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBody,
   ApiCookieAuth,
   ApiOperation,
   ApiParam,
@@ -8,14 +19,17 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  cancelOrderSchema,
   orderListQuerySchema,
   orderTabSchema,
+  type CancelOrderInput,
   type OrderListQuery,
 } from '@ecommerce/types';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { ZodValidationPipe } from '../../shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
+import { OrderActionService } from './order-action.service';
 import { OrderQueryService } from './order-query.service';
 
 const ORDER_ITEM_EXAMPLE = {
@@ -72,14 +86,17 @@ const ORDER_DETAIL_EXAMPLE = {
 };
 
 // Đơn của buyer đang đăng nhập (Week8.md 2.4). Mọi truy vấn lọc theo userId lấy từ token. Hành động
-// (hủy, xác nhận đã nhận) thêm ở 2.6 — controller này hiện chỉ có đọc. Route thanh toán của cổng
-// nằm ở `OrderController` (`/payments/...`), không liên quan.
+// (hủy, xác nhận đã nhận) ở 2.6. Route thanh toán của cổng nằm ở `OrderController`
+// (`/payments/...`), không liên quan.
 @ApiTags('orders')
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
 @ApiCookieAuth('access_token')
 export class BuyerOrderController {
-  constructor(private readonly orderQueryService: OrderQueryService) {}
+  constructor(
+    private readonly orderQueryService: OrderQueryService,
+    private readonly orderActionService: OrderActionService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -150,6 +167,108 @@ export class BuyerOrderController {
     },
   })
   getOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.orderQueryService.getForBuyer(user.userId, id);
+  }
+  // Hành động trả lại CHI TIẾT đơn mới nhất (đọc lại sau khi commit) để FE cập nhật ngay không cần gọi thêm.
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Hủy đơn của tôi — đơn chưa thanh toán (hủy CẢ NHÓM thanh toán chứa đơn này) hoặc đơn COD chờ shop xác nhận',
+  })
+  @ApiParam({ name: 'id', description: 'ID đơn hàng' })
+  @ApiBody({
+    required: false,
+    schema: { example: { reason: 'Đặt nhầm sản phẩm' } },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Chi tiết đơn sau khi hủy (status CANCELLED)',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          ...ORDER_DETAIL_EXAMPLE,
+          status: 'CANCELLED',
+          canCancel: false,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
+  @ApiResponse({
+    status: 404,
+    description: 'Đơn không tồn tại hoặc không phải của bạn',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'ORDER_CANCEL_NOT_ALLOWED (details.reason: PAID_ONLINE = đã thanh toán online, PROCESSING_STARTED = shop đã xác nhận trở đi); ORDER_INVALID_TRANSITION = đơn đã kết thúc; ORDER_ALREADY_CHANGED = vừa bị đổi bởi yêu cầu khác (vd shop vừa xác nhận)',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'Order cannot be cancelled: PAID_ONLINE',
+        code: 'ORDER_CANCEL_NOT_ALLOWED',
+        details: { reason: 'PAID_ONLINE' },
+      },
+    },
+  })
+  async cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    // Express 5: không gửi body ⇒ req.body là undefined — default {} để lý do thật sự tuỳ chọn.
+    @Body(new ZodValidationPipe(cancelOrderSchema.default({})))
+    body: CancelOrderInput,
+  ) {
+    await this.orderActionService.cancelByBuyer(user.userId, id, body.reason);
+    return this.orderQueryService.getForBuyer(user.userId, id);
+  }
+
+  @Post(':id/confirm-received')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Xác nhận đã nhận hàng (SHIPPING → COMPLETED). Đơn COD: khi mọi đơn không bị hủy của nhóm đã hoàn tất, ghi nhận đã thu tiền',
+  })
+  @ApiParam({ name: 'id', description: 'ID đơn hàng' })
+  @ApiResponse({
+    status: 200,
+    description: 'Chi tiết đơn sau khi hoàn tất (status COMPLETED)',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          ...ORDER_DETAIL_EXAMPLE,
+          status: 'COMPLETED',
+          canCancel: false,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
+  @ApiResponse({
+    status: 404,
+    description: 'Đơn không tồn tại hoặc không phải của bạn',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'ORDER_INVALID_TRANSITION = đơn chưa ở trạng thái đang giao; ORDER_ALREADY_CHANGED = vừa bị đổi bởi yêu cầu khác',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'Action is not allowed while the order is PACKED',
+        code: 'ORDER_INVALID_TRANSITION',
+      },
+    },
+  })
+  async confirmReceived(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    await this.orderActionService.confirmReceived(user.userId, id);
     return this.orderQueryService.getForBuyer(user.userId, id);
   }
 }

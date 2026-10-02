@@ -409,6 +409,115 @@ describe('PaymentService', () => {
     });
   });
 
+  describe('reclaimCheckoutGroup — actor tuỳ chọn (buyer chủ động hủy)', () => {
+    it('truyền actor BUYER + note — ghi đúng người thực hiện thay vì SYSTEM mặc định', async () => {
+      tx.payment.count.mockResolvedValue(0);
+      tx.$queryRaw.mockResolvedValue([
+        { id: 'o1', status: 'AWAITING_PAYMENT' },
+      ]);
+      orderStatusService.transition.mockResolvedValue(['o1']);
+
+      await service.reclaimCheckoutGroup('g1', {
+        actor: { type: 'BUYER', id: 'user-1' },
+        note: 'Đổi ý',
+      });
+
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1'],
+        'AWAITING_PAYMENT',
+        'CANCELLED',
+        { type: 'BUYER', id: 'user-1' },
+        'Đổi ý',
+      );
+    });
+  });
+
+  describe('cancelCheckoutGroup (buyer hủy cả nhóm chưa thanh toán)', () => {
+    const view = (status: string) =>
+      ({ id: 'g1', status }) as unknown as Awaited<
+        ReturnType<PaymentService['getCheckoutGroup']>
+      >;
+    let reclaim: jest.SpyInstance;
+    let getGroup: jest.SpyInstance;
+
+    beforeEach(() => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue({
+        id: 'g1',
+        userId: 'user-1',
+      });
+      reclaim = jest.spyOn(service, 'reclaimCheckoutGroup');
+      getGroup = jest.spyOn(service, 'getCheckoutGroup');
+    });
+
+    it('nhóm của người khác / không tồn tại — 404, không thu hồi gì', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.cancelCheckoutGroup('user-1', 'g-khac'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(reclaim).not.toHaveBeenCalled();
+    });
+
+    it('thu hồi thành công — gọi reclaim với actor BUYER, trả trạng thái mới', async () => {
+      reclaim.mockResolvedValue({ reclaimed: true });
+      getGroup.mockResolvedValue(view('CANCELLED'));
+
+      const result = await service.cancelCheckoutGroup('user-1', 'g1', 'Đổi ý');
+
+      expect(reclaim).toHaveBeenCalledWith('g1', {
+        actor: { type: 'BUYER', id: 'user-1' },
+        note: 'Đổi ý',
+      });
+      expect(result.status).toBe('CANCELLED');
+    });
+
+    it('không có lý do — note mặc định', async () => {
+      reclaim.mockResolvedValue({ reclaimed: true });
+      getGroup.mockResolvedValue(view('CANCELLED'));
+
+      await service.cancelCheckoutGroup('user-1', 'g1');
+
+      expect(reclaim).toHaveBeenCalledWith('g1', {
+        actor: { type: 'BUYER', id: 'user-1' },
+        note: 'Cancelled by buyer',
+      });
+    });
+
+    it('idempotent: nhóm đã hủy từ trước (reclaim 0 đơn) — trả trạng thái hiện tại, không lỗi', async () => {
+      reclaim.mockResolvedValue({ reclaimed: false });
+      getGroup.mockResolvedValue(view('CANCELLED'));
+
+      await expect(
+        service.cancelCheckoutGroup('user-1', 'g1'),
+      ).resolves.toMatchObject({ status: 'CANCELLED' });
+    });
+
+    it.each(['PAID', 'PAID_AFTER_EXPIRY'])(
+      'nhóm đã thanh toán (%s) — 409 ORDER_CANCEL_NOT_ALLOWED / PAID_ONLINE',
+      async (status) => {
+        reclaim.mockResolvedValue({ reclaimed: false });
+        getGroup.mockResolvedValue(view(status));
+
+        await expectAppException(service.cancelCheckoutGroup('user-1', 'g1'), {
+          status: 409,
+          code: 'ORDER_CANCEL_NOT_ALLOWED',
+          details: { reason: 'PAID_ONLINE' },
+        });
+      },
+    );
+
+    it('nhóm không còn đơn chờ thanh toán (vd COD đã đặt) — 409 ORDER_INVALID_TRANSITION', async () => {
+      reclaim.mockResolvedValue({ reclaimed: false });
+      getGroup.mockResolvedValue(view('COD_PLACED'));
+
+      await expectAppException(service.cancelCheckoutGroup('user-1', 'g1'), {
+        status: 409,
+        code: 'ORDER_INVALID_TRANSITION',
+      });
+    });
+  });
+
   describe('getCheckoutGroup', () => {
     const baseGroup = (overrides: Record<string, unknown> = {}) => ({
       id: 'g1',

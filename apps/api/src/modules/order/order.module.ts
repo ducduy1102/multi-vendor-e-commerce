@@ -3,6 +3,7 @@ import { PaymentModule } from '../../shared/payment/payment.module';
 import { ProductModule } from '../product/product.module';
 import { VoucherModule } from '../voucher/voucher.module';
 import { BuyerOrderController } from './buyer-order.controller';
+import { OrderActionService } from './order-action.service';
 import { OrderController } from './order.controller';
 import { OrderQueryService } from './order-query.service';
 import { OrderStatusService } from './order-status.service';
@@ -21,6 +22,7 @@ import { SellerOrderController } from './seller-order.controller';
   controllers: [OrderController, BuyerOrderController, SellerOrderController],
   providers: [
     OrderService,
+    OrderActionService,
     OrderQueryService,
     OrderStatusService,
     PaymentService,

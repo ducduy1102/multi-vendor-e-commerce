@@ -115,6 +115,14 @@ export class CheckoutService {
     return this.paymentService.retryPayment(userId, groupId);
   }
 
+  // Buyer hủy cả nhóm chưa thanh toán (Week8.md 2.6) — order sở hữu logic hủy, checkout chỉ chuyển tiếp.
+  cancelCheckoutGroup(
+    userId: string,
+    groupId: string,
+  ): Promise<CheckoutGroupView> {
+    return this.paymentService.cancelCheckoutGroup(userId, groupId);
+  }
+
   async placeOrder(
     userId: string,
     input: PlaceOrderInput,

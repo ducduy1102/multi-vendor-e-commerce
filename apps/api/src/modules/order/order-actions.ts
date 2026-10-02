@@ -36,6 +36,25 @@ export function getBuyerOrderActions(
   };
 }
 
+export type CancelBlockReason = 'PAID_ONLINE' | 'PROCESSING_STARTED';
+
+// Vì sao 1 đơn ĐANG SỐNG không hủy/từ chối được ở Tuần 8 (Week8.md 1.5) — dùng để trả đúng
+// `ORDER_CANCEL_NOT_ALLOWED.details.reason`. null = không có lý do đặc biệt: hoặc hủy được (PENDING +
+// COD), hoặc đơn ở trạng thái mà nơi gọi báo lỗi khác (AWAITING_PAYMENT hủy theo nhóm, đơn đã kết thúc
+// ⇒ ORDER_INVALID_TRANSITION). Đổi chính sách hủy ở Tuần 9 chỉ sửa đây.
+export function getCancelBlockReason(
+  status: OrderStatus,
+  paymentMethod: PaymentMethod | null,
+): CancelBlockReason | null {
+  if (status === 'PENDING') {
+    return paymentMethod === 'COD' ? null : 'PAID_ONLINE';
+  }
+  if (status === 'CONFIRMED' || status === 'PACKED' || status === 'SHIPPING') {
+    return 'PROCESSING_STARTED';
+  }
+  return null;
+}
+
 export interface SellerOrderActionsInput {
   status: OrderStatus;
   // Phương thức của lần thử thanh toán mới nhất của nhóm; null nếu nhóm chưa có Payment nào.
