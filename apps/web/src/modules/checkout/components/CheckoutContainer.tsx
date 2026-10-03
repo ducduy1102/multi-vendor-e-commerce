@@ -60,7 +60,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [outOfStockItems, setOutOfStockItems] = useState<OutOfStockItem[]>([]);
-  const [pendingGroupIds, setPendingGroupIds] = useState<string[]>([]);
+  const [hasPendingCheckouts, setHasPendingCheckouts] = useState(false);
 
   // UUID sinh 1 LẦN cho cả phiên đặt hàng (Week7.md 1.11), giữ trong bộ nhớ trang (không
   // localStorage) — gửi kèm mọi lần gọi POST /checkout của phiên này, kể cả gọi lại sau lỗi mạng,
@@ -133,9 +133,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
       setOutOfStockItems(getErrorDetails(error.details, 'OUT_OF_STOCK')?.items ?? []);
     }
     if (code === 'TOO_MANY_PENDING_CHECKOUTS') {
-      setPendingGroupIds(
-        getErrorDetails(error.details, 'TOO_MANY_PENDING_CHECKOUTS')?.pendingGroupIds ?? [],
-      );
+      setHasPendingCheckouts(true);
     }
     // Mọi mã nghiệp vụ còn lại là KẾT QUẢ CHẮC CHẮN (đơn không được tạo) — tải lại xem trước để
     // người dùng thấy số/danh sách mới nhất trước khi tự quyết định đặt lại (1.11/1.16).
@@ -160,7 +158,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
 
     setSubmitError(null);
     setOutOfStockItems([]);
-    setPendingGroupIds([]);
+    setHasPendingCheckouts(false);
 
     try {
       const result = await placeOrder.mutateAsync({
@@ -319,7 +317,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
         canSubmit={canSubmit}
         submitError={submitError}
         outOfStockItems={outOfStockItems}
-        pendingGroupIds={pendingGroupIds}
+        hasPendingCheckouts={hasPendingCheckouts}
       />
     </div>
   );

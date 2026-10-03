@@ -411,7 +411,7 @@
     "outOfStockItemsTitle": "Out-of-stock items",
     "outOfStockItemAvailable": "{available, plural, one {only # item left} other {only # items left}}",
     "pendingCheckoutsTitle": "You have checkouts awaiting payment",
-    "pendingCheckoutLink": "View order #{index}",
+    "pendingCheckoutsViewLink": "View orders awaiting payment",
     "resultPageTitle": "Order result",
     "resultLoadError": "Couldn't load your order status, please try again",
     "resultInvalidLink": "This link is invalid or has expired.",
@@ -425,7 +425,8 @@
     "resultStatusPaymentExpired": "The order wasn't paid in time and has been cancelled. Please place a new order.",
     "resultStatusCancelled": "This order has been cancelled.",
     "resultStatusPaidAfterExpiry": "Your order was cancelled after the hold expired before we could confirm your payment. You will be refunded.",
-    "resultStatusCodPlaced": "Order placed! You will pay when it is delivered."
+    "resultStatusCodPlaced": "Order placed! You will pay when it is delivered.",
+    "resultViewOrdersButton": "View my orders"
   },
   "order": {
     "validationReasonRequired": "Please enter a reason",

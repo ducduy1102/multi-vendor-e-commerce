@@ -38,7 +38,7 @@ function renderSummary(overrides: Partial<React.ComponentProps<typeof CheckoutSu
         canSubmit={true}
         submitError={null}
         outOfStockItems={[]}
-        pendingGroupIds={[]}
+        hasPendingCheckouts={false}
         {...overrides}
       />,
     ),
@@ -110,13 +110,19 @@ describe('CheckoutSummary', () => {
     expect(screen.getByText(/Áo thun \(M \/ Đen\)/)).toBeInTheDocument();
   });
 
-  it('pendingGroupIds -> hiện link tới từng nhóm đang chờ thanh toán', () => {
-    renderSummary({ pendingGroupIds: ['group-1', 'group-2'] });
+  it('hasPendingCheckouts -> dẫn tới tab "Chờ thanh toán" của Đơn hàng của tôi (nơi thanh toán lại HOẶC huỷ được)', () => {
+    renderSummary({ hasPendingCheckouts: true });
 
     expect(screen.getByText('Bạn có đơn đang chờ thanh toán')).toBeInTheDocument();
-    const links = screen.getAllByRole('link');
-    expect(links).toHaveLength(2);
-    expect(links[0]).toHaveTextContent('Xem đơn #1');
+    const link = screen.getByRole('link', { name: 'Xem các đơn chờ thanh toán' });
+    expect(link).toHaveAttribute('href', '/orders?tab=awaiting-payment');
+  });
+
+  it('không có đơn chờ thanh toán chặn -> không hiện khối này và không có link nào tới /orders', () => {
+    renderSummary({ hasPendingCheckouts: false });
+
+    expect(screen.queryByText('Bạn có đơn đang chờ thanh toán')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Xem các đơn chờ thanh toán' })).toBeNull();
   });
 
   it('submitError -> hiện thông báo lỗi', () => {
