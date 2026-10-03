@@ -1,17 +1,16 @@
 'use client';
 
-import { useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
 import { Link } from '@/i18n/navigation';
-import { cartQueryKeys } from '@/modules/cart';
 import { Button } from '@/shared/components/ui/button';
 import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
 import { ApiError } from '@/shared/lib/api-client';
 import { ERROR_CODE_MESSAGE_KEYS, getErrorCode } from '@/shared/lib/error-codes';
 
 import { useCheckoutGroup } from '../hooks/useCheckoutGroup';
+import { useRefreshCartOnce } from '../hooks/useRefreshCartOnce';
 import { useRetryPayment } from '../hooks/useRetryPayment';
 import { CheckoutResultSkeleton } from './CheckoutResultSkeleton';
 import { CheckoutResultView } from './CheckoutResultView';
@@ -32,23 +31,16 @@ export function CheckoutResultContainer({ groupId }: CheckoutResultContainerProp
   const tCommon = useTranslations('common');
   const tHome = useTranslations('home');
   const tGlobal = useTranslations() as unknown as LooseTranslator;
-  const queryClient = useQueryClient();
   const [retryPaymentError, setRetryPaymentError] = useState<string | null>(null);
 
   const query = useCheckoutGroup(groupId ?? '');
   const retryPayment = useRetryPayment(groupId ?? '');
 
-  // Badge giỏ hàng cần cập nhật ngay khi đơn đã thanh toán xong (giỏ đã bị xoá phần đã mua ở
-  // placeOrder) — chỉ nên gọi 1 lần khi status CHUYỂN sang PAID, không lặp lại mỗi lần re-render
-  // hay mỗi lần polling refetch trong khi vẫn PAID (rules/frontend.md mục 8, cùng tinh thần
-  // CartHydrator/useClampCartToStock dù invalidateQueries tự nó vô hại khi gọi lặp).
-  const hasInvalidatedCartRef = useRef(false);
-  useEffect(() => {
-    if (query.data?.status === 'PAID' && !hasInvalidatedCartRef.current) {
-      hasInvalidatedCartRef.current = true;
-      void queryClient.invalidateQueries({ queryKey: cartQueryKeys.all });
-    }
-  }, [query.data?.status, queryClient]);
+  // Giỏ đã bị xoá phần đã mua ngay lúc placeOrder (mọi phương thức, mọi trạng thái nhóm) nên làm mới
+  // cache giỏ 1 lần khi nhóm tải xong — kể cả đơn COD (COD_PLACED) đi tới đây bằng điều hướng trong
+  // ứng dụng nên biểu tượng giỏ trên Header/BottomTabBar không tự đúng lại. Trước đây chỉ làm mới khi
+  // status là PAID nên giỏ COD bị bỏ sót. Chặn lặp bằng useRef ở hook (không làm mới lại theo polling).
+  useRefreshCartOnce(Boolean(query.data));
 
   async function handleRetryPayment() {
     setRetryPaymentError(null);
