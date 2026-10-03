@@ -39,7 +39,7 @@ describe('useRetryOrderPayment', () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 
-  it('lỗi (vd 409 hết hạn giữ chỗ) -> ném lại và làm mới các danh sách đơn (cờ canRetryPayment đã cũ)', async () => {
+  it('lỗi (vd 409 hết hạn giữ chỗ) -> ném lại và làm mới cả danh sách lẫn chi tiết đơn (cờ canRetryPayment đã cũ)', async () => {
     const error = new ApiError('Not retryable', 409, 'PAYMENT_RETRY_NOT_ALLOWED');
     vi.mocked(orderService.retryPayment).mockRejectedValue(error);
     const { wrapper, invalidate } = setup();
@@ -57,6 +57,6 @@ describe('useRetryOrderPayment', () => {
     });
 
     expect(rejection).toBe(error);
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['orders', 'buyer', 'list'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['orders', 'buyer'] });
   });
 });

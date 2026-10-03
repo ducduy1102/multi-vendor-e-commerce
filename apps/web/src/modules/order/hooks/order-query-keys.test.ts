@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   orderListQueryKey,
+  buyerOrdersQueryKey,
   orderListsQueryKey,
   orderQueryKey,
   sellerOrderListQueryKey,
@@ -17,6 +18,12 @@ describe('order query keys', () => {
     expect(sellerOrderListQueryKey('shop-1', { page: 1 }).slice(0, 4)).toEqual(
       sellerOrderListsQueryKey('shop-1'),
     );
+  });
+
+  it('tiền tố buyer bao trùm cả danh sách lẫn chi tiết (để làm mới cả hai cùng lúc)', () => {
+    expect(orderListsQueryKey().slice(0, 2)).toEqual(buyerOrdersQueryKey());
+    expect(orderQueryKey('o1').slice(0, 2)).toEqual(buyerOrdersQueryKey());
+    expect(sellerOrderQueryKey('shop-1', 'o1').slice(0, 2)).not.toEqual(buyerOrdersQueryKey());
   });
 
   it('mỗi tab/trang là 1 key riêng, mỗi đơn là 1 key riêng', () => {

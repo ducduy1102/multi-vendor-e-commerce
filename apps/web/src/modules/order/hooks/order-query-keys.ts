@@ -6,6 +6,11 @@ import type { OrderListQuery, SellerOrderListQuery } from '../types';
 
 // --- Buyer ---------------------------------------------------------------------------------------
 
+// Tiền tố của MỌI query buyer (danh sách lẫn chi tiết) — dùng khi cả hai cùng cũ.
+export function buyerOrdersQueryKey() {
+  return ['orders', 'buyer'] as const;
+}
+
 // Tiền tố của MỌI danh sách buyer (mọi tab/trang) — dùng để invalidate.
 export function orderListsQueryKey() {
   return ['orders', 'buyer', 'list'] as const;
