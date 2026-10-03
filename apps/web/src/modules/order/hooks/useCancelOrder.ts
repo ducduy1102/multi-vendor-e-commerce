@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import * as orderService from '../services/order.service';
 import { syncBuyerOrder } from './order-cache';
+import { buyerOrdersQueryKey } from './order-query-keys';
 
 interface CancelOrderVariables {
   orderId: string;
@@ -18,5 +19,11 @@ export function useCancelOrder() {
     mutationFn: ({ orderId, reason }: CancelOrderVariables) =>
       orderService.cancelOrder(orderId, { reason }),
     onSuccess: (order) => syncBuyerOrder(queryClient, order),
+    // Lỗi thường là đơn vừa đổi ở nơi khác (shop xác nhận đúng lúc người mua bấm hủy ⇒ 409) nên
+    // cờ canCancel đang hiển thị đã cũ — làm mới cả danh sách lẫn chi tiết để nút biến mất đúng,
+    // thay vì để người mua bấm lại và nhận lại đúng lỗi đó cho tới khi tự tải trang.
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: buyerOrdersQueryKey() });
+    },
   });
 }
