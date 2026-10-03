@@ -11,6 +11,7 @@ export const SAFE_NEXT_PATH_ALLOWED_PREFIXES: readonly string[] = [
   '/cart',
   '/seller',
   '/wishlist',
+  '/orders',
   '/products',
 ];
 

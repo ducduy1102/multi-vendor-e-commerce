@@ -13,6 +13,9 @@ describe('safeNextPath', () => {
       '/seller/products',
       '/seller/products/abc/edit',
       '/wishlist',
+      '/orders',
+      '/orders?tab=pending&page=2',
+      '/orders/3f6c1e4a-9b1d-4c1e-8a55-0d2c4f5a6b7c',
       '/products?page=2&categoryId=abc',
       '/products/ao-thun-nam',
       '/products/ao-thun%20nam',
@@ -84,6 +87,8 @@ describe('safeNextPath', () => {
       '/checkoutevil',
       '/cartography',
       '/sellers',
+      '/ordersevil',
+      '/orders-evil.com',
       '/products-evil.com',
       '/admin',
     ])('%s', (value) => {

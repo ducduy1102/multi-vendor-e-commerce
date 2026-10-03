@@ -30,6 +30,27 @@ describe('decideAuthRedirect', () => {
       });
       expect(result).toBe(`/login?next=${encodeURIComponent('/seller/products')}`);
     });
+
+    it('/orders?tab=pending&page=2 và /orders/<id> -> next giữ nguyên query và path con (đăng nhập xong quay lại đúng tab/đơn)', () => {
+      const list = decideAuthRedirect({
+        pathname: '/orders',
+        search: '?tab=pending&page=2',
+        isAuthenticated: false,
+      });
+      const detail = decideAuthRedirect({
+        pathname: '/orders/order-1',
+        search: '',
+        isAuthenticated: false,
+      });
+      expect(list).toBe(`/login?next=${encodeURIComponent('/orders?tab=pending&page=2')}`);
+      expect(detail).toBe(`/login?next=${encodeURIComponent('/orders/order-1')}`);
+    });
+
+    it('/ordersevil -> không phải route /orders (không khớp tiền tố), không bị chặn', () => {
+      expect(
+        decideAuthRedirect({ pathname: '/ordersevil', search: '', isAuthenticated: false }),
+      ).toBeNull();
+    });
   });
 
   describe('guest vào route không cần đăng nhập', () => {
