@@ -1,9 +1,11 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { useId } from 'react';
 
 import { Button } from '@/shared/components/ui/button';
 
+import type { CancelBlockedReasonKey } from '../order-cancel-hint';
 import type { OrderListItem } from '../types';
 
 interface OrderActionsProps {
@@ -12,6 +14,10 @@ interface OrderActionsProps {
   order: Pick<OrderListItem, 'canCancel' | 'canConfirmReceived' | 'canRetryPayment'>;
   // Khoá mọi nút khi 1 hành động đang chạy (tránh gửi trùng/2 hành động chồng nhau).
   isDisabled: boolean;
+  // Chỉ trang chi tiết truyền: BE không cho hủy (canCancel = false) nhưng đơn ở trạng thái người
+  // mua có thể muốn hủy ⇒ hiện nút Hủy BỊ KHOÁ kèm câu giải thích (không ẩn im lặng). Danh sách
+  // đơn không truyền — card gọn chỉ hiện hành động làm được.
+  cancelBlockedKey?: CancelBlockedReasonKey | null;
   onCancel: () => void;
   onConfirmReceived: () => void;
   onRetryPayment: () => void;
@@ -23,13 +29,17 @@ interface OrderActionsProps {
 export function OrderActions({
   order,
   isDisabled,
+  cancelBlockedKey = null,
   onCancel,
   onConfirmReceived,
   onRetryPayment,
 }: OrderActionsProps) {
   const t = useTranslations('order');
+  const hintId = useId();
+  // Cờ BE luôn thắng: cho hủy được thì không bao giờ hiện bản bị khoá.
+  const blockedKey = order.canCancel ? null : cancelBlockedKey;
 
-  if (!order.canRetryPayment && !order.canConfirmReceived && !order.canCancel) {
+  if (!order.canRetryPayment && !order.canConfirmReceived && !order.canCancel && !blockedKey) {
     return null;
   }
 
@@ -49,6 +59,24 @@ export function OrderActions({
         <Button type="button" variant="outline" disabled={isDisabled} onClick={onCancel}>
           {t('actionCancel')}
         </Button>
+      ) : null}
+      {blockedKey ? (
+        <>
+          {/* focusableWhenDisabled: vẫn nhận focus bàn phím nên người dùng trình đọc màn hình
+              nghe được lý do (aria-describedby) thay vì nút "biến mất" khỏi thứ tự Tab. */}
+          <Button
+            type="button"
+            variant="outline"
+            disabled
+            focusableWhenDisabled
+            aria-describedby={hintId}
+          >
+            {t('actionCancel')}
+          </Button>
+          <p id={hintId} className="basis-full text-xs text-muted-foreground">
+            {t(blockedKey)}
+          </p>
+        </>
       ) : null}
     </div>
   );

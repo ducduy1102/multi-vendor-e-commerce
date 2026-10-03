@@ -1,4 +1,9 @@
-import { orderStatusSchema, orderTabSchema, paymentMethodSchema } from '@ecommerce/types';
+import {
+  orderStatusSchema,
+  orderTabSchema,
+  paymentMethodSchema,
+  paymentStatusSchema,
+} from '@ecommerce/types';
 import { describe, expect, it } from 'vitest';
 
 import en from '../../../messages/en.json';
@@ -7,6 +12,7 @@ import {
   ORDER_STATUS_DISPLAY,
   ORDER_TAB_LABEL_KEYS,
   PAYMENT_METHOD_LABEL_KEYS,
+  PAYMENT_STATUS_LABEL_KEYS,
 } from './order-status-display';
 
 // Key tra theo enum lúc chạy nên TypeScript không kiểm được key có tồn tại trong bản dịch hay
@@ -24,6 +30,10 @@ describe.each(Object.entries(locales))('bản dịch %s', (_locale, messages) =>
 
   it.each(paymentMethodSchema.options)('phương thức thanh toán %s có nhãn', (method) => {
     expect(messages[PAYMENT_METHOD_LABEL_KEYS[method]]).toBeTruthy();
+  });
+
+  it.each(paymentStatusSchema.options)('trạng thái thanh toán %s có nhãn', (status) => {
+    expect(messages[PAYMENT_STATUS_LABEL_KEYS[status]]).toBeTruthy();
   });
 });
 

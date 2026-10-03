@@ -1,7 +1,8 @@
 // Barrel export cho module order — export những gì app/ cần (trang /orders,
 // /orders/[id], /seller/orders). Không export sâu file nội bộ, và module này
 // không được import modules/checkout hay modules/cart (shared/lib/
-// module-boundaries.test.ts kiểm điều này) — mở rộng dần ở 3.3+ (chi tiết, seller).
+// module-boundaries.test.ts kiểm điều này) — mở rộng dần ở 3.4+ (seller).
+export { OrderDetailContainer } from './components/OrderDetailContainer';
 export { OrdersContainer } from './components/OrdersContainer';
 export { parseOrdersPageQuery } from './orders-page-query';
 export {

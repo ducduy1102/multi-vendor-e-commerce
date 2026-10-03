@@ -1,4 +1,4 @@
-import type { OrderStatus, OrderTab } from './types';
+import type { OrderDetail, OrderStatus, OrderTab } from './types';
 
 // Cách hiển thị 1 trạng thái đơn: key i18n (namespace `order`) + biến thể Badge. Chỉ dùng token
 // ngữ nghĩa (rules/frontend.md "UI polish" mục 2): `warning` cho việc cần người mua hành động
@@ -36,3 +36,15 @@ export const PAYMENT_METHOD_LABEL_KEYS = {
   MOMO: 'paymentMethodMomo',
   COD: 'paymentMethodCod',
 } as const;
+
+// Trạng thái thanh toán của NHÓM (1 Payment cho N đơn) — lần thử mới nhất. COD luôn PENDING tới khi
+// đơn hoàn tất nên nhãn "Chưa thanh toán" đi kèm phương thức "Thanh toán khi nhận hàng".
+export const PAYMENT_STATUS_LABEL_KEYS: Record<
+  NonNullable<OrderDetail['paymentStatus']>,
+  string
+> = {
+  PENDING: 'paymentStatusPending',
+  SUCCESS: 'paymentStatusSuccess',
+  FAILED: 'paymentStatusFailed',
+  REFUNDED: 'paymentStatusRefunded',
+};

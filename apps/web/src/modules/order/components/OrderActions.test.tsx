@@ -10,7 +10,11 @@ type Flags = Parameters<typeof OrderActions>[0]['order'];
 
 const NO_FLAGS: Flags = { canCancel: false, canConfirmReceived: false, canRetryPayment: false };
 
-function setup(flags: Partial<Flags> = {}, isDisabled = false) {
+function setup(
+  flags: Partial<Flags> = {},
+  isDisabled = false,
+  cancelBlockedKey?: 'cancelBlockedPaidOnline' | 'cancelBlockedProcessing' | null,
+) {
   const handlers = {
     onCancel: vi.fn(),
     onConfirmReceived: vi.fn(),
@@ -18,7 +22,12 @@ function setup(flags: Partial<Flags> = {}, isDisabled = false) {
   };
   const utils = render(
     withIntl(
-      <OrderActions order={{ ...NO_FLAGS, ...flags }} isDisabled={isDisabled} {...handlers} />,
+      <OrderActions
+        order={{ ...NO_FLAGS, ...flags }}
+        isDisabled={isDisabled}
+        cancelBlockedKey={cancelBlockedKey}
+        {...handlers}
+      />,
     ),
   );
   return { ...utils, ...handlers };
@@ -85,5 +94,58 @@ describe('OrderActions', () => {
     expect(onCancel).not.toHaveBeenCalled();
     expect(onConfirmReceived).not.toHaveBeenCalled();
     expect(onRetryPayment).not.toHaveBeenCalled();
+  });
+
+  describe('nút Hủy bị khoá kèm lý do (trang chi tiết)', () => {
+    it('BE không cho hủy + có lý do -> nút Hủy bị khoá, câu giải thích hiện ngay bên dưới, không gọi callback', async () => {
+      const user = userEvent.setup();
+      const { onCancel } = setup({}, false, 'cancelBlockedPaidOnline');
+
+      const cancel = screen.getByRole('button', { name: 'Hủy đơn' });
+      expect(cancel).toHaveAttribute('aria-disabled', 'true');
+      expect(
+        screen.getByText(/đã thanh toán trực tuyến nên chưa thể hủy lúc này/),
+      ).toBeInTheDocument();
+      await user.click(cancel);
+
+      expect(onCancel).not.toHaveBeenCalled();
+    });
+
+    it('nút khoá vẫn nhận focus bàn phím và được nối với câu giải thích (aria-describedby)', async () => {
+      const user = userEvent.setup();
+      setup({}, false, 'cancelBlockedProcessing');
+
+      await user.tab();
+
+      const cancel = screen.getByRole('button', { name: 'Hủy đơn' });
+      expect(cancel).toHaveFocus();
+      expect(cancel).toHaveAccessibleDescription(
+        'Shop đã bắt đầu xử lý đơn hàng này nên không thể hủy.',
+      );
+    });
+
+    it('có lý do nhưng BE lại cho hủy (canCancel) -> hiện nút Hủy bình thường, KHÔNG hiện bản khoá/lý do', async () => {
+      const user = userEvent.setup();
+      const { onCancel } = setup({ canCancel: true }, false, 'cancelBlockedPaidOnline');
+
+      expect(screen.getAllByRole('button', { name: 'Hủy đơn' })).toHaveLength(1);
+      expect(screen.queryByText(/chưa thể hủy lúc này/)).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Hủy đơn' }));
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('chỉ có nút khoá (không cờ nào bật) vẫn render — đơn đã trả online chờ xác nhận chẳng có hành động nào khác', () => {
+      const { container } = setup({}, false, 'cancelBlockedPaidOnline');
+
+      expect(container).not.toBeEmptyDOMElement();
+      expect(screen.getAllByRole('button')).toHaveLength(1);
+    });
+
+    it('không truyền lý do (danh sách đơn) -> không có nút khoá nào', () => {
+      const { container } = setup({}, false, undefined);
+
+      expect(container).toBeEmptyDOMElement();
+    });
   });
 });
