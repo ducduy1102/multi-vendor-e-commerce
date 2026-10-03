@@ -124,8 +124,18 @@ export function CheckoutResultView({
                 : t('resultRetryPaymentButton')}
           </Button>
         ) : null}
+        {/* Đơn đã nằm trong Đơn hàng của tôi dù kết quả thế nào (thành công, COD, hết hạn, đã huỷ…) —
+            nút này là lối ra chính khi KHÔNG còn việc thanh toán lại phải làm; còn thanh toán lại
+            thì nút thanh toán là chính, 2 nút kia lùi xuống. */}
         <Button
-          variant={group.canRetry ? 'ghost' : 'default'}
+          variant={group.canRetry ? 'outline' : 'default'}
+          nativeButton={false}
+          render={<Link href="/orders" />}
+        >
+          {t('resultViewOrdersButton')}
+        </Button>
+        <Button
+          variant={group.canRetry ? 'ghost' : 'outline'}
           nativeButton={false}
           render={<Link href="/products" />}
         >

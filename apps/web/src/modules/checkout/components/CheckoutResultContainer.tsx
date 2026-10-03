@@ -67,9 +67,16 @@ export function CheckoutResultContainer({ groupId }: CheckoutResultContainerProp
         <p role="alert" className="text-sm text-destructive">
           {t('resultInvalidLink')}
         </p>
-        <Button nativeButton={false} render={<Link href="/products" />}>
-          {tHome('bannerCta')}
-        </Button>
+        {/* Không biết đơn đã được tạo/thanh toán chưa (vd cổng báo chữ ký sai) — Đơn hàng của tôi là
+            nơi xem kết quả thật. */}
+        <div className="flex flex-wrap gap-2">
+          <Button nativeButton={false} render={<Link href="/orders" />}>
+            {t('resultViewOrdersButton')}
+          </Button>
+          <Button variant="outline" nativeButton={false} render={<Link href="/products" />}>
+            {tHome('bannerCta')}
+          </Button>
+        </div>
       </div>
     );
   }
