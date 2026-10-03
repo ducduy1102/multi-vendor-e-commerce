@@ -204,4 +204,48 @@ describe('OrderTimeline', () => {
 
     expect(history.map((h) => h.toStatus)).toEqual(before);
   });
+
+  it('viewer="seller": người mua hủy -> "Người mua đã hủy đơn hàng" thay vì "Bạn đã hủy"', () => {
+    render(
+      withIntl(
+        <OrderTimeline
+          viewer="seller"
+          history={[
+            entry({ toStatus: 'PENDING' }),
+            entry({
+              fromStatus: 'PENDING',
+              toStatus: 'CANCELLED',
+              actorType: 'BUYER',
+              note: 'Cancelled by buyer',
+              createdAt: '2026-10-01T02:00:00.000Z',
+            }),
+          ]}
+        />,
+      ),
+    );
+
+    expect(screen.getByText('Người mua đã hủy đơn hàng')).toBeInTheDocument();
+    expect(screen.queryByText('Bạn đã hủy đơn hàng')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cancelled by buyer/)).not.toBeInTheDocument();
+  });
+
+  it('không truyền viewer -> mặc định là góc nhìn người mua (trang /orders/[id] không đổi)', () => {
+    render(
+      withIntl(
+        <OrderTimeline
+          history={[
+            entry({ toStatus: 'PENDING' }),
+            entry({
+              fromStatus: 'PENDING',
+              toStatus: 'CANCELLED',
+              actorType: 'BUYER',
+              createdAt: '2026-10-01T02:00:00.000Z',
+            }),
+          ]}
+        />,
+      ),
+    );
+
+    expect(screen.getByText('Bạn đã hủy đơn hàng')).toBeInTheDocument();
+  });
 });

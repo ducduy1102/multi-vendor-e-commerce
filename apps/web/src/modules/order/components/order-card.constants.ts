@@ -12,6 +12,10 @@ export const ORDER_CARD_ITEM_ROW_CLASS = 'flex items-center gap-3 px-3 py-2.5 sm
 export const ORDER_CARD_SUMMARY_CLASS =
   'flex flex-wrap items-end justify-between gap-x-4 gap-y-1 border-t border-border px-3 py-2 sm:px-4';
 
+// Link "Xem chi tiết" ở chân card — dùng chung card của người mua và của Seller.
+export const ORDER_CARD_DETAIL_LINK_CLASS =
+  'ml-auto inline-flex min-h-9 items-center rounded-md px-2 text-sm font-medium text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50';
+
 export const ORDER_CARD_FOOTER_CLASS =
   'flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2 sm:px-4';
 

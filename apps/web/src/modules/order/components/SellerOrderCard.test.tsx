@@ -103,16 +103,30 @@ describe('SellerOrderCard', () => {
     expect(container.textContent).not.toContain('buyer@example.com');
   });
 
-  it('có actions -> hiện trong chân card; không có -> không dựng chân card rỗng', () => {
-    const { container, rerender } = render(
+  it('có actions -> hiện trong chân card cùng link chi tiết', () => {
+    render(
       withIntl(
         <SellerOrderCard order={order()} actions={<button type="button">Xác nhận</button>} />,
       ),
     );
-    expect(screen.getByRole('button', { name: 'Xác nhận' })).toBeInTheDocument();
 
-    rerender(withIntl(<SellerOrderCard order={order()} />));
+    expect(screen.getByRole('button', { name: 'Xác nhận' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Xem chi tiết' })).toBeInTheDocument();
+  });
+
+  it('đơn không còn hành động nào (actions rỗng) vẫn có link tới chi tiết để xem lại', () => {
+    render(withIntl(<SellerOrderCard order={order({ status: 'COMPLETED' })} />));
+
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(container.querySelectorAll('article > div')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Xem chi tiết' })).toBeInTheDocument();
+  });
+
+  it('link chi tiết trỏ /seller/orders/<id đầy đủ> (không phải mã rút gọn, không phải /orders của người mua)', () => {
+    render(withIntl(<SellerOrderCard order={order()} />));
+
+    expect(screen.getByRole('link', { name: 'Xem chi tiết' })).toHaveAttribute(
+      'href',
+      '/seller/orders/abcdef12-3456-4789-8abc-def012345678',
+    );
   });
 });

@@ -74,11 +74,58 @@ describe('describeTimelineEntry — nhãn theo cặp trạng thái', () => {
     for (const toStatus of orderStatusSchema.options) {
       for (const actorType of orderActorTypeSchema.options) {
         for (const fromStatus of [null, ...orderStatusSchema.options]) {
-          const { labelKey } = describeTimelineEntry(entry({ fromStatus, toStatus, actorType }));
-          expect(viOrder[labelKey], `vi ${labelKey}`).toBeTruthy();
-          expect(enOrder[labelKey], `en ${labelKey}`).toBeTruthy();
+          for (const viewer of ['buyer', 'seller'] as const) {
+            const { labelKey } = describeTimelineEntry(
+              entry({ fromStatus, toStatus, actorType }),
+              viewer,
+            );
+            expect(viOrder[labelKey], `vi ${labelKey}`).toBeTruthy();
+            expect(enOrder[labelKey], `en ${labelKey}`).toBeTruthy();
+          }
         }
       }
+    }
+  });
+});
+
+describe('describeTimelineEntry — góc nhìn của người đọc', () => {
+  const cancelled = (actorType: OrderHistoryEntry['actorType'], viewer?: 'buyer' | 'seller') =>
+    describeTimelineEntry(entry({ toStatus: 'CANCELLED', actorType }), viewer).labelKey;
+
+  it('người MUA hủy: người mua đọc "Bạn đã hủy", shop đọc "Người mua đã hủy"', () => {
+    expect(cancelled('BUYER')).toBe('timelineCancelledByBuyer');
+    expect(cancelled('BUYER', 'buyer')).toBe('timelineCancelledByBuyer');
+    expect(cancelled('BUYER', 'seller')).toBe('timelineBuyerCancelled');
+  });
+
+  it('các loại hủy khác không phụ thuộc người đọc', () => {
+    for (const viewer of ['buyer', 'seller'] as const) {
+      expect(cancelled('SELLER', viewer)).toBe('timelineCancelledBySeller');
+      expect(cancelled('SYSTEM', viewer)).toBe('timelineCancelledBySystem');
+      expect(cancelled('ADMIN', viewer)).toBe('timelineCancelled');
+    }
+  });
+
+  it('mọi bước không phải "người mua hủy" có cùng nhãn cho cả hai người đọc', () => {
+    for (const toStatus of orderStatusSchema.options) {
+      for (const actorType of orderActorTypeSchema.options) {
+        if (toStatus === 'CANCELLED' && actorType === 'BUYER') continue;
+        const e = entry({ toStatus, actorType });
+        expect(describeTimelineEntry(e, 'seller')).toEqual(describeTimelineEntry(e, 'buyer'));
+      }
+    }
+  });
+
+  it('quy tắc hiện note giống nhau ở cả hai góc nhìn: chỉ khi shop từ chối', () => {
+    const sellerRejects = entry({ toStatus: 'CANCELLED', actorType: 'SELLER', note: 'Hết hàng' });
+    const buyerCancels = entry({
+      toStatus: 'CANCELLED',
+      actorType: 'BUYER',
+      note: 'Cancelled by buyer',
+    });
+    for (const viewer of ['buyer', 'seller'] as const) {
+      expect(describeTimelineEntry(sellerRejects, viewer).showNote).toBe(true);
+      expect(describeTimelineEntry(buyerCancels, viewer).showNote).toBe(false);
     }
   });
 });

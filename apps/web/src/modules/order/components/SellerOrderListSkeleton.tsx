@@ -44,6 +44,7 @@ export function SellerOrderListSkeleton({ count = 3 }: SellerOrderListSkeletonPr
           </div>
           <div className={ORDER_CARD_FOOTER_CLASS}>
             <Skeleton className={cn('h-8 w-24', SKELETON_CLASS)} />
+            <Skeleton className={cn('ml-auto h-5 w-20', SKELETON_CLASS)} />
           </div>
         </li>
       ))}

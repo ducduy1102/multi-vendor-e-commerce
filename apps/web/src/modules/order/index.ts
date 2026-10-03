@@ -3,7 +3,9 @@
 // không được import modules/checkout hay modules/cart (shared/lib/
 // module-boundaries.test.ts kiểm điều này).
 export { OrderDetailContainer } from './components/OrderDetailContainer';
+export { OrderDetailSkeleton } from './components/OrderDetailSkeleton';
 export { OrdersContainer } from './components/OrdersContainer';
+export { SellerOrderDetailContainer } from './components/SellerOrderDetailContainer';
 export { SellerOrderListSkeleton } from './components/SellerOrderListSkeleton';
 export { SellerOrdersContainer } from './components/SellerOrdersContainer';
 export { parseOrdersPageQuery, parseSellerOrdersPageQuery } from './orders-page-query';

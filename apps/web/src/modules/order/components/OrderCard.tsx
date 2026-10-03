@@ -12,6 +12,7 @@ import { PAYMENT_METHOD_LABEL_KEYS } from '../order-status-display';
 import type { OrderListItem } from '../types';
 import {
   ORDER_CARD_CLASS,
+  ORDER_CARD_DETAIL_LINK_CLASS,
   ORDER_CARD_FOOTER_CLASS,
   ORDER_CARD_HEADER_CLASS,
   ORDER_CARD_SUMMARY_CLASS,
@@ -72,10 +73,7 @@ export function OrderCard({ order, actions }: OrderCardProps) {
 
       <div className={ORDER_CARD_FOOTER_CLASS}>
         {actions}
-        <Link
-          href={`/orders/${order.id}`}
-          className="ml-auto inline-flex min-h-9 items-center rounded-md px-2 text-sm font-medium text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
-        >
+        <Link href={`/orders/${order.id}`} className={ORDER_CARD_DETAIL_LINK_CLASS}>
           {t('cardViewDetail')}
         </Link>
       </div>

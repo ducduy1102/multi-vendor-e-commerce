@@ -6,18 +6,24 @@ import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
 import { cn } from '@/shared/lib/utils';
 
 import { useFormatOrderDate } from '../hooks/useFormatOrderDate';
-import { describeTimelineEntry, sortTimelineNewestFirst } from '../order-timeline';
+import {
+  describeTimelineEntry,
+  sortTimelineNewestFirst,
+  type TimelineViewer,
+} from '../order-timeline';
 import type { OrderHistoryEntry } from '../types';
 
 interface OrderTimelineProps {
   // Thứ tự BE trả: cũ → mới (dòng đầu fromStatus = null). Component tự đảo để hiện mới nhất lên đầu.
   history: readonly OrderHistoryEntry[];
+  // Người đọc — quyết định cách gọi khi người MUA hủy đơn. Mặc định là người mua.
+  viewer?: TimelineViewer;
 }
 
 // Timeline THUẦN từ `history` (OrderStatusHistory — nguồn sự thật duy nhất của lịch sử đơn). Không
 // có tiêu đề riêng: nơi dùng bọc trong <section> có heading. Bước mới nhất được nhấn (chấm primary,
 // chữ đậm, aria-current="step"); chỉ hiện `note` khi shop từ chối đơn (xem describeTimelineEntry).
-export function OrderTimeline({ history }: OrderTimelineProps) {
+export function OrderTimeline({ history, viewer = 'buyer' }: OrderTimelineProps) {
   const t = useTranslations('order');
   const tDynamic = t as unknown as LooseTranslator;
   const formatDate = useFormatOrderDate();
@@ -30,7 +36,7 @@ export function OrderTimeline({ history }: OrderTimelineProps) {
   return (
     <ol className="flex flex-col">
       {steps.map((step, index) => {
-        const { labelKey, showNote } = describeTimelineEntry(step);
+        const { labelKey, showNote } = describeTimelineEntry(step, viewer);
         const isCurrent = index === 0;
         const isLast = index === steps.length - 1;
 

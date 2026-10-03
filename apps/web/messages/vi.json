@@ -519,6 +519,7 @@
     "timelineCancelledBySeller": "Shop đã từ chối đơn hàng",
     "timelineCancelledBySystem": "Đơn hàng bị hủy do hết thời hạn thanh toán",
     "timelineRefunded": "Đã hoàn tiền",
+    "timelineBuyerCancelled": "Người mua đã hủy đơn hàng",
     "sellerOrdersLink": "Đơn hàng",
     "sellerPageTitle": "Đơn hàng của shop",
     "sellerBackToProducts": "Quay lại sản phẩm",
@@ -540,7 +541,8 @@
     "rejectDialogDescription": "Đơn sẽ bị hủy và số lượng hàng được trả lại kho. Người mua sẽ thấy lý do bên dưới. Không thể khôi phục.",
     "rejectReasonLabel": "Lý do từ chối",
     "rejectDialogKeep": "Giữ đơn hàng",
-    "rejectDialogConfirm": "Từ chối đơn"
+    "rejectDialogConfirm": "Từ chối đơn",
+    "sellerDetailBackToList": "Đơn hàng của shop"
   },
   "admin": {
     "validationReasonRequired": "Vui lòng nhập lý do",

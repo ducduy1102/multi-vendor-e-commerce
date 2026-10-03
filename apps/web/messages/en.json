@@ -519,6 +519,7 @@
     "timelineCancelledBySeller": "The shop declined the order",
     "timelineCancelledBySystem": "Order cancelled because the payment window expired",
     "timelineRefunded": "Refunded",
+    "timelineBuyerCancelled": "The buyer cancelled the order",
     "sellerOrdersLink": "Orders",
     "sellerPageTitle": "Shop orders",
     "sellerBackToProducts": "Back to products",
@@ -540,7 +541,8 @@
     "rejectDialogDescription": "The order will be cancelled and the items returned to stock. The buyer will see the reason below. This cannot be undone.",
     "rejectReasonLabel": "Reason for declining",
     "rejectDialogKeep": "Keep order",
-    "rejectDialogConfirm": "Decline order"
+    "rejectDialogConfirm": "Decline order",
+    "sellerDetailBackToList": "Shop orders"
   },
   "admin": {
     "validationReasonRequired": "Please enter a reason",

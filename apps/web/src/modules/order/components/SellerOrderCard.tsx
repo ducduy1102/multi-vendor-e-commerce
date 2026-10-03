@@ -3,14 +3,17 @@
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 
+import { Link } from '@/i18n/navigation';
 import { formatPrice } from '@/modules/product';
 import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
 
 import { useFormatOrderDate } from '../hooks/useFormatOrderDate';
 import { PAYMENT_METHOD_LABEL_KEYS, PAYMENT_STATUS_LABEL_KEYS } from '../order-status-display';
+import { SELLER_ORDERS_PATH } from '../orders-href';
 import type { SellerOrderListItem } from '../types';
 import {
   ORDER_CARD_CLASS,
+  ORDER_CARD_DETAIL_LINK_CLASS,
   ORDER_CARD_FOOTER_CLASS,
   ORDER_CARD_HEADER_CLASS,
   ORDER_CARD_SUMMARY_CLASS,
@@ -80,7 +83,12 @@ export function SellerOrderCard({ order, actions }: SellerOrderCardProps) {
         </p>
       </div>
 
-      {actions ? <div className={ORDER_CARD_FOOTER_CLASS}>{actions}</div> : null}
+      <div className={ORDER_CARD_FOOTER_CLASS}>
+        {actions}
+        <Link href={`${SELLER_ORDERS_PATH}/${order.id}`} className={ORDER_CARD_DETAIL_LINK_CLASS}>
+          {t('cardViewDetail')}
+        </Link>
+      </div>
     </article>
   );
 }
