@@ -14,6 +14,7 @@ import { ERROR_CODE_MESSAGE_KEYS, getErrorCode, getErrorDetails } from '@/shared
 import { useAddresses } from '../hooks/useAddresses';
 import { useCheckoutPreview } from '../hooks/useCheckoutPreview';
 import { usePlaceOrder } from '../hooks/usePlaceOrder';
+import { getUnknownResultHintKey } from '../place-order-hint';
 import type { Address, PaymentMethod } from '../types';
 import { AddressFormContainer } from './AddressFormContainer';
 import { AddressRadioList } from './AddressRadioList';
@@ -106,7 +107,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
     setShowAddressForm(false);
   }
 
-  function handlePlaceOrderError(error: unknown) {
+  function handlePlaceOrderError(error: unknown, method: PaymentMethod) {
     if (!(error instanceof ApiError)) {
       setSubmitError(t('placeOrderGenericError'));
       return;
@@ -121,7 +122,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
     // refetch preview (chưa chắc gì đã đổi), chỉ báo và cho thử lại (Week7.md 1.11/1.16).
     if (code === 'NETWORK_ERROR' || code === 'INVALID_RESPONSE') {
       setSubmitError(
-        `${tGlobal(ERROR_CODE_MESSAGE_KEYS[code])} ${t('placeOrderUnknownResultHint')}`,
+        `${tGlobal(ERROR_CODE_MESSAGE_KEYS[code])} ${t(getUnknownResultHintKey(method))}`,
       );
       return;
     }
@@ -180,11 +181,15 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
         window.location.href = result.paymentUrl;
         return;
       }
-      // Cổng lỗi sau khi đã ghi đơn (paymentUrl null) — đơn vẫn AWAITING_PAYMENT, đưa người dùng
-      // tới trang kết quả để tự bấm "thanh toán lại" (Week7.md 2.7/3.6).
+      // Không có paymentUrl thì không có cổng để chuyển sang, đi thẳng trang kết quả theo groupId.
+      // Hai trường hợp: (1) đơn COD (Week8.md 1.6/3.6) — paymentUrl null là KẾT QUẢ ĐÚNG, đơn đã vào
+      // PENDING và trang kết quả báo "thanh toán khi nhận hàng"; (2) cổng online lỗi sau khi đã ghi
+      // đơn — đơn vẫn AWAITING_PAYMENT, người dùng tự bấm "thanh toán lại" ở đó (Week7.md 2.7/3.6).
+      // Giỏ hàng được làm mới ở trang kết quả (useRefreshCartOnce), không ở đây — làm ở đây sẽ khiến
+      // trang này thấy giỏ trống và nháy "giỏ hàng trống" trong lúc chờ điều hướng.
       router.push({ pathname: '/checkout/result', query: { groupId: result.checkoutGroupId } });
     } catch (error) {
-      handlePlaceOrderError(error);
+      handlePlaceOrderError(error, paymentMethod);
     }
   }
 
