@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, User } from 'lucide-react';
+import { LogOut, Package, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
@@ -20,6 +20,11 @@ import { cn } from '@/shared/lib/utils';
 import { useUIStore } from '@/shared/store/ui.store';
 import { LocaleSwitcher } from './LocaleSwitcher';
 import { ThemeToggle } from './ThemeToggle';
+
+// Kiểu 1 dòng link trong menu tài khoản — dùng chung cho "Đơn hàng của tôi" và link kênh người bán
+// để hai dòng luôn giống hệt nhau.
+const ACCOUNT_LINK_CLASS =
+  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted';
 
 interface AccountSheetProps {
   triggerClassName?: string;
@@ -112,16 +117,20 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
                 <span className="truncate text-sm font-medium text-foreground">{user.name}</span>
               </div>
 
-              {shopLink && (
-                <Link
-                  href={shopLink.href}
-                  onClick={closeSheet}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                >
-                  <shopLink.icon className="size-4" aria-hidden="true" />
-                  {shopLink.label}
+              {/* "Đơn hàng của tôi" đứng đầu (Week8.md 1.9/3.8), cùng thứ tự với dropdown desktop
+                  của Header. Đóng Sheet khi bấm để vào được trang ngay. */}
+              <div className="flex flex-col gap-1">
+                <Link href="/orders" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
+                  <Package className="size-4" aria-hidden="true" />
+                  {t('myOrdersLink')}
                 </Link>
-              )}
+                {shopLink && (
+                  <Link href={shopLink.href} onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
+                    <shopLink.icon className="size-4" aria-hidden="true" />
+                    {shopLink.label}
+                  </Link>
+                )}
+              </div>
 
               <Separator />
 
