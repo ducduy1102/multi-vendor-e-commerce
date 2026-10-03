@@ -10,6 +10,7 @@ import {
   listSellerOrders,
   packOrder,
   rejectOrder,
+  retryPayment,
   shipOrder,
 } from './order.service';
 
@@ -226,6 +227,52 @@ describe('order.service — buyer', () => {
     expect(url).toMatch(/\/orders\/order-1\/confirm-received$/);
     expect(init.method).toBe('POST');
     expect(init.body).toBeUndefined();
+  });
+});
+
+describe('order.service — thanh toán lại', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('retryPayment POST /checkout/groups/:groupId/pay không body, parse URL thanh toán', async () => {
+    mockFetchOnce({
+      success: true,
+      data: { paymentUrl: 'https://pay.example/x', expiresAt: '2026-10-03T10:00:00.000Z' },
+    });
+
+    const result = await retryPayment('group-1');
+
+    expect(result.paymentUrl).toBe('https://pay.example/x');
+    const [url, init] = lastCall();
+    expect(url).toMatch(/\/checkout\/groups\/group-1\/pay$/);
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeUndefined();
+  });
+
+  it('retryPayment — 409 PAYMENT_RETRY_NOT_ALLOWED giữ code + details để FE dịch', async () => {
+    mockFetchOnce(
+      {
+        success: false,
+        data: null,
+        message: 'Payment cannot be retried',
+        code: 'PAYMENT_RETRY_NOT_ALLOWED',
+        details: { reason: 'NOT_ONLINE_PAYMENT' },
+      },
+      409,
+    );
+
+    await expect(retryPayment('group-1')).rejects.toMatchObject({
+      status: 409,
+      code: 'PAYMENT_RETRY_NOT_ALLOWED',
+      details: { reason: 'NOT_ONLINE_PAYMENT' },
+    });
+  });
+
+  it('retryPayment — response thiếu paymentUrl bị Zod từ chối (không redirect tới URL rỗng)', async () => {
+    mockFetchOnce({ success: true, data: { expiresAt: '2026-10-03T10:00:00.000Z' } });
+
+    await expect(retryPayment('group-1')).rejects.toThrow();
   });
 });
 

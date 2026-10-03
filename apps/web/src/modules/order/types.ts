@@ -11,6 +11,7 @@ export type {
   OrderShop,
   OrderStatus,
   OrderTab,
+  PayAttemptResult,
   RejectOrderInput,
   SellerOrderDetail,
   SellerOrderListItem,

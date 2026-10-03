@@ -1,12 +1,14 @@
 import {
   orderDetailSchema,
   orderListResponseSchema,
+  payAttemptResultSchema,
   sellerOrderDetailSchema,
   sellerOrderListResponseSchema,
   type CancelOrderInput,
   type OrderDetail,
   type OrderListQuery,
   type OrderListResponse,
+  type PayAttemptResult,
   type RejectOrderInput,
   type SellerOrderDetail,
   type SellerOrderListQuery,
@@ -57,6 +59,14 @@ export async function cancelOrder(
 export async function confirmReceived(orderId: string): Promise<OrderDetail> {
   const data = await apiFetch<unknown>(`/orders/${orderId}/confirm-received`, { method: 'POST' });
   return orderDetailSchema.parse(data);
+}
+
+// "Thanh toán lại" đơn chưa thanh toán: cùng endpoint với module checkout nhưng gọi bằng service
+// RIÊNG của order (modules/order không được import modules/checkout). Thanh toán gắn theo NHÓM
+// (1 Payment cho N đơn) nên nhận `checkoutGroupId` của đơn, không phải id đơn.
+export async function retryPayment(groupId: string): Promise<PayAttemptResult> {
+  const data = await apiFetch<unknown>(`/checkout/groups/${groupId}/pay`, { method: 'POST' });
+  return payAttemptResultSchema.parse(data);
 }
 
 // --- Seller --------------------------------------------------------------------------------------
