@@ -82,6 +82,7 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
   const tApi = useApiErrorMessage();
   const tShop = useTranslations('shop');
   const tVoucher = useTranslations('voucher');
+  const tOrder = useTranslations('order');
   const tCommon = useTranslations('common');
   const myProductsQuery = useMyProducts(shopId);
   const archiveProductMutation = useUpdateProductStatus('ARCHIVED');
@@ -129,7 +130,7 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-foreground">{t('sellerProductsTitle')}</h1>
-        <div className="flex shrink-0 items-center gap-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <Link
             href="/seller/shop"
             className="shrink-0 text-sm font-medium text-foreground hover:underline"
@@ -138,6 +139,13 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
           </Link>
           {/* Chỉ là 1 link tới route /seller/vouchers, không import gì từ
               modules/voucher (chỉ mượn chuỗi dịch theo namespace). */}
+          {/* Cũng chỉ là link tới route /seller/orders (mượn chuỗi dịch namespace order). */}
+          <Link
+            href="/seller/orders"
+            className="shrink-0 text-sm font-medium text-foreground hover:underline"
+          >
+            {tOrder('sellerOrdersLink')}
+          </Link>
           <Link
             href="/seller/vouchers"
             className="shrink-0 text-sm font-medium text-foreground hover:underline"
