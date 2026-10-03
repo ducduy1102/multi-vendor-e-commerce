@@ -26,6 +26,12 @@ export function orderQueryKey(orderId: string) {
 
 // --- Seller --------------------------------------------------------------------------------------
 
+// Tiền tố của MỌI query seller của 1 shop (danh sách lẫn chi tiết) — dùng khi một hành động thất bại
+// vì đơn đã đổi (thua race với người mua) và cả hai cùng cũ.
+export function sellerOrdersQueryKey(shopId: string) {
+  return ['orders', 'seller', shopId] as const;
+}
+
 export function sellerOrderListsQueryKey(shopId: string) {
   return ['orders', 'seller', shopId, 'list'] as const;
 }

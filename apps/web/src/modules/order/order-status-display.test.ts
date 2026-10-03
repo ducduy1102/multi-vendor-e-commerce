@@ -9,10 +9,12 @@ import { describe, expect, it } from 'vitest';
 import en from '../../../messages/en.json';
 import vi from '../../../messages/vi.json';
 import {
+  BUYER_ORDER_TAB_KEYS,
   ORDER_STATUS_DISPLAY,
   ORDER_TAB_LABEL_KEYS,
   PAYMENT_METHOD_LABEL_KEYS,
   PAYMENT_STATUS_LABEL_KEYS,
+  SELLER_ORDER_TAB_KEYS,
 } from './order-status-display';
 
 // Key tra theo enum lúc chạy nên TypeScript không kiểm được key có tồn tại trong bản dịch hay
@@ -47,5 +49,23 @@ describe('ORDER_STATUS_DISPLAY', () => {
     expect(ORDER_STATUS_DISPLAY.CANCELLED.tone).toBe('muted');
     expect(ORDER_STATUS_DISPLAY.REFUNDED.tone).toBe('muted');
     expect(ORDER_STATUS_DISPLAY.COMPLETED.tone).toBe('success');
+  });
+});
+
+describe('nhóm tab theo vai', () => {
+  it('người mua: "Tất cả" rồi đủ 6 tab theo thứ tự enum dùng chung', () => {
+    expect(BUYER_ORDER_TAB_KEYS).toEqual(['all', ...orderTabSchema.options]);
+  });
+
+  it('Seller: KHÔNG có tab "Chờ thanh toán" (đơn chưa trả tiền không lộ cho Seller)', () => {
+    expect(SELLER_ORDER_TAB_KEYS).toEqual([
+      'all',
+      'pending',
+      'processing',
+      'shipping',
+      'completed',
+      'cancelled',
+    ]);
+    expect(SELLER_ORDER_TAB_KEYS).not.toContain('awaiting-payment');
   });
 });

@@ -1,3 +1,5 @@
+import { orderTabSchema, sellerOrderTabSchema } from '@ecommerce/types';
+
 import type { OrderDetail, OrderStatus, OrderTab } from './types';
 
 // Cách hiển thị 1 trạng thái đơn: key i18n (namespace `order`) + biến thể Badge. Chỉ dùng token
@@ -30,6 +32,14 @@ export const ORDER_TAB_LABEL_KEYS: Record<OrderTabKey, string> = {
   completed: 'tabCompleted',
   cancelled: 'tabCancelled',
 };
+
+// "Tất cả" đứng đầu rồi tới các tab theo đúng thứ tự enum dùng chung (BE lọc theo cùng enum). Seller
+// không có tab "Chờ thanh toán" (đơn chưa trả tiền không lộ cho Seller) — loại ở mức kiểu.
+export const BUYER_ORDER_TAB_KEYS: readonly OrderTabKey[] = ['all', ...orderTabSchema.options];
+export const SELLER_ORDER_TAB_KEYS: readonly OrderTabKey[] = [
+  'all',
+  ...sellerOrderTabSchema.options,
+];
 
 export const PAYMENT_METHOD_LABEL_KEYS = {
   VNPAY: 'paymentMethodVnpay',

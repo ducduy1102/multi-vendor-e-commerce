@@ -1,8 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildOrdersHref, buildOrdersPagination } from './orders-href';
+import {
+  BUYER_ORDERS_PATH,
+  SELLER_ORDERS_PATH,
+  buildOrdersHref,
+  buildOrdersPagination,
+} from './orders-href';
+
+describe('đường dẫn gốc của từng vai', () => {
+  it('buyer /orders, seller /seller/orders', () => {
+    expect(BUYER_ORDERS_PATH).toBe('/orders');
+    expect(SELLER_ORDERS_PATH).toBe('/seller/orders');
+  });
+});
 
 describe('buildOrdersHref', () => {
+  it('basePath của Seller: giữ quy tắc bỏ param mặc định, chỉ đổi đường dẫn gốc', () => {
+    const basePath = SELLER_ORDERS_PATH;
+
+    expect(buildOrdersHref({ basePath })).toBe('/seller/orders');
+    expect(buildOrdersHref({ basePath, tab: 'pending' })).toBe('/seller/orders?tab=pending');
+    expect(buildOrdersHref({ basePath, tab: 'shipping', page: 2 })).toBe(
+      '/seller/orders?tab=shipping&page=2',
+    );
+    expect(buildOrdersHref({ basePath, page: 1 })).toBe('/seller/orders');
+  });
+
   it('không tab, trang 1 -> /orders trần (URL mặc định)', () => {
     expect(buildOrdersHref()).toBe('/orders');
     expect(buildOrdersHref({ page: 1 })).toBe('/orders');
@@ -52,5 +75,18 @@ describe('buildOrdersPagination', () => {
 
   it('limit 0/âm không gây chia cho 0', () => {
     expect(buildOrdersPagination({ page: 1, total: 5, limit: 0 }).totalPages).toBe(5);
+  });
+
+  it('basePath của Seller đi xuyên qua phân trang (prev/next không rơi về /orders của người mua)', () => {
+    const result = buildOrdersPagination({
+      tab: 'pending',
+      page: 2,
+      total: 30,
+      limit: 10,
+      basePath: SELLER_ORDERS_PATH,
+    });
+
+    expect(result.prevHref).toBe('/seller/orders?tab=pending');
+    expect(result.nextHref).toBe('/seller/orders?tab=pending&page=3');
   });
 });

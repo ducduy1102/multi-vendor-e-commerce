@@ -40,17 +40,32 @@ describe('useRejectOrder', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['orders', 'seller', 'shop-1', 'list'] });
   });
 
-  it('lỗi (vd 409 đơn đã trả online) -> ném lại, KHÔNG làm mới danh sách', async () => {
+  it('lỗi (vd 409 đơn đã trả online) -> ném lại, làm mới cả nhánh seller của shop (cờ canConfirm/... đã cũ), KHÔNG đổi cache chi tiết', async () => {
     const error = new Error('boom');
     vi.mocked(orderService.rejectOrder).mockRejectedValue(error);
     const { queryClient, wrapper, invalidate } = setup();
+    queryClient.setQueryData(sellerOrderQueryKey('shop-1', 'order-1'), {
+      id: 'order-1',
+      status: 'PENDING',
+    });
     const { result } = renderHook(() => useRejectOrder('shop-1'), { wrapper });
 
-    await expect(
-      act(() => result.current.mutateAsync({ orderId: 'order-1', reason: 'x' })),
-    ).rejects.toBe(error);
+    // `act` bất đồng bộ + try/catch thay vì `expect(act(() => mutateAsync())).rejects`: mẫu sau làm
+    // `act` ném lỗi TRƯỚC khi `onError` kịp chạy (test thấy 0 lần gọi dù hook đúng).
+    let rejection: unknown;
+    await act(async () => {
+      try {
+        await result.current.mutateAsync({ orderId: 'order-1', reason: 'x' });
+      } catch (caught) {
+        rejection = caught;
+      }
+    });
 
-    expect(invalidate).not.toHaveBeenCalled();
-    expect(queryClient.getQueryData(sellerOrderQueryKey('shop-1', 'order-1'))).toBeUndefined();
+    expect(rejection).toBe(error);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['orders', 'seller', 'shop-1'] });
+    expect(queryClient.getQueryData(sellerOrderQueryKey('shop-1', 'order-1'))).toEqual({
+      id: 'order-1',
+      status: 'PENDING',
+    });
   });
 });
