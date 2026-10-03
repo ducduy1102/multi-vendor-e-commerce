@@ -145,4 +145,69 @@ describe('CheckoutSummary', () => {
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
+
+  describe('đặt hàng bằng COD', () => {
+    const withCod = preview({
+      paymentMethods: [
+        { method: 'VNPAY', available: true },
+        { method: 'COD', available: true },
+      ],
+    });
+
+    it('chọn COD -> có ghi chú dưới dòng COD và nút Đặt hàng bấm được', async () => {
+      const user = userEvent.setup();
+      const { onSubmit } = renderSummary({ preview: withCod, paymentMethod: 'COD' });
+
+      expect(
+        screen.getByText('Trả tiền cho nhân viên giao hàng khi nhận hàng.'),
+      ).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Đặt hàng' }));
+
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    it('bấm COD trong danh sách -> báo lên container đúng phương thức', async () => {
+      const user = userEvent.setup();
+      const { onSelectPaymentMethod } = renderSummary({ preview: withCod, paymentMethod: 'VNPAY' });
+
+      await user.click(screen.getByRole('radio', { name: 'Thanh toán khi nhận hàng (COD)' }));
+
+      expect(onSelectPaymentMethod).toHaveBeenCalledWith('COD');
+    });
+
+    it('COD là phương thức duy nhất khả dụng (cổng online chưa cấu hình) -> vẫn đặt hàng được', () => {
+      renderSummary({
+        preview: preview({
+          paymentMethods: [
+            { method: 'VNPAY', available: false, reason: 'NOT_CONFIGURED' },
+            { method: 'MOMO', available: false, reason: 'NOT_CONFIGURED' },
+            { method: 'COD', available: true },
+          ],
+        }),
+        paymentMethod: 'COD',
+        canSubmit: true,
+      });
+
+      expect(screen.getByRole('button', { name: 'Đặt hàng' })).toBeEnabled();
+      expect(screen.getAllByText('Hiện chưa hỗ trợ phương thức này')).toHaveLength(2);
+    });
+
+    it('đơn vượt trần COD và không còn phương thức nào khả dụng -> không cho đặt, lý do hiện ra', () => {
+      renderSummary({
+        preview: preview({
+          paymentMethods: [
+            { method: 'VNPAY', available: false, reason: 'NOT_CONFIGURED' },
+            { method: 'COD', available: false, reason: 'AMOUNT_TOO_LARGE' },
+          ],
+        }),
+        paymentMethod: null,
+        canSubmit: false,
+      });
+
+      expect(screen.getByRole('button', { name: 'Đặt hàng' })).toBeDisabled();
+      expect(
+        screen.getByText('Số tiền đơn hàng quá lớn để dùng phương thức này'),
+      ).toBeInTheDocument();
+    });
+  });
 });
