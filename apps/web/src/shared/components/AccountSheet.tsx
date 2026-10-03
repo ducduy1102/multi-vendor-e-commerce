@@ -10,7 +10,6 @@ import { Button, buttonVariants } from '@/shared/components/ui/button';
 import { Separator } from '@/shared/components/ui/separator';
 import {
   Sheet,
-  SheetClose,
   SheetContent,
   SheetHeader,
   SheetTitle,
@@ -42,6 +41,12 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
   const setAccountSheetOpen = useUIStore((state) => state.setAccountSheetOpen);
 
   const shopLink = useSellerChannelLink();
+
+  // Các link trong Sheet là <Link> thường, tự đóng Sheet qua store khi bấm — KHÔNG dùng
+  // `SheetClose render={<Link/>}`: Base UI coi SheetClose là nút nên mặc định đòi phần tử gốc là
+  // <button> (`nativeButton`), render <a> vào sẽ báo lỗi console ở dev ("2 Issues") và ép vai trò
+  // trợ năng của link thành button. Đóng bằng store giữ đúng vai trò `link`.
+  const closeSheet = () => setAccountSheetOpen(false);
 
   return (
     <Sheet open={isAccountSheetOpen} onOpenChange={setAccountSheetOpen}>
@@ -85,18 +90,20 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
             </div>
           ) : !user ? (
             <div className="flex flex-col gap-2">
-              <SheetClose
-                render={<Link href="/login" />}
+              <Link
+                href="/login"
+                onClick={closeSheet}
                 className={cn(buttonVariants({ variant: 'outline' }), 'w-full')}
               >
                 {tAuth('guestLoginLink')}
-              </SheetClose>
-              <SheetClose
-                render={<Link href="/register" />}
+              </Link>
+              <Link
+                href="/register"
+                onClick={closeSheet}
                 className={buttonVariants({ className: 'w-full' })}
               >
                 {tAuth('guestRegisterLink')}
-              </SheetClose>
+              </Link>
             </div>
           ) : (
             <>
@@ -106,13 +113,14 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
               </div>
 
               {shopLink && (
-                <SheetClose
-                  render={<Link href={shopLink.href} />}
+                <Link
+                  href={shopLink.href}
+                  onClick={closeSheet}
                   className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                 >
                   <shopLink.icon className="size-4" aria-hidden="true" />
                   {shopLink.label}
-                </SheetClose>
+                </Link>
               )}
 
               <Separator />
