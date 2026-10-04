@@ -112,13 +112,21 @@
     "loadShopError": "Couldn't load your shop info, please log in again",
 
     "shopStatusPendingMessage": "Your shop is pending approval. Some features will unlock once it's approved.",
-    "shopStatusRejectedMessage": "Your shop was rejected. Update your shop info or contact an admin.",
-    "shopStatusSuspendedMessage": "Your shop has been suspended. Some features are temporarily disabled.",
+    "shopStatusRejectedMessage": "Your shop wasn't approved. Update its details, then resubmit it for review.",
+    "shopStatusSuspendedMessage": "Your shop is temporarily suspended: its products are hidden from the marketplace and it can't receive new orders. You can still process the orders you already have.",
     "updateShopSubmit": "Save changes",
     "updateShopSubmitting": "Saving...",
     "updateShopSuccess": "Changes saved",
     "updateShopGenericError": "Failed to update shop, please try again",
-    "shopStatusReason": "Reason: {reason}"
+    "shopStatusReason": "Reason: {reason}",
+    "errorInvalidTransition": "The shop's status just changed, so this action is no longer valid. The data has been refreshed — please check again.",
+    "errorEditNotAllowed": "Shop details can't be edited in the current status.",
+    "shopEditLockedPending": "The shop is waiting for an admin's review, so its details can't be edited right now. If it's rejected, you'll be able to edit it and resubmit.",
+    "shopEditLockedSuspended": "The shop is temporarily suspended, so its details can't be edited.",
+    "resubmitShopSubmit": "Save and resubmit for review",
+    "resubmitShopSubmitting": "Submitting...",
+    "resubmitShopSuccess": "Resubmitted. Your shop is waiting for an admin's review.",
+    "resubmitShopGenericError": "Couldn't resubmit the shop, please try again"
   },
   "product": {
     "validationNameRequired": "Product name is required",
@@ -553,7 +561,6 @@
   "admin": {
     "validationReasonRequired": "Please enter a reason",
     "validationReasonTooLong": "The reason must be at most 500 characters",
-    "errorShopInvalidTransition": "The shop's status was just changed, please reload the list",
     "pageTitle": "Review & manage shops",
     "pageDescription": "Approve new shops, reject, suspend or unsuspend shops on the marketplace.",
     "tabsLabel": "Filter shops by status",
@@ -568,7 +575,6 @@
     "listLabel": "Shop list",
     "columnShop": "Shop",
     "columnOwner": "Owner",
-    "columnCreatedAt": "Created",
     "columnStatus": "Status",
     "columnActions": "Actions",
     "rowReason": "Reason: {reason}",
@@ -594,6 +600,13 @@
     "suspendDialogConfirm": "Suspend shop",
     "unsuspendDialogTitle": "Unsuspend this shop?",
     "unsuspendDialogDescription": "The products of “{name}” will appear on the marketplace again and the shop can receive new orders as usual.",
-    "unsuspendDialogConfirm": "Unsuspend"
+    "unsuspendDialogConfirm": "Unsuspend",
+    "columnWaitingSince": "Waiting since",
+    "columnApprovedAt": "Approved",
+    "columnRejectedAt": "Rejected",
+    "columnSuspendedAt": "Suspended",
+    "createdAtTooltip": "Shop created on {date}",
+    "rowPreviousRejection": "Previous rejection reason: {reason}",
+    "rowResubmitted": "Resubmitted {count, plural, one {# time} other {# times}}"
   }
 }

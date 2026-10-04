@@ -19,26 +19,36 @@ describe('ShopStatusBanner', () => {
     expect(screen.queryByText(/^Lý do:/)).not.toBeInTheDocument();
   });
 
-  it('bị từ chối -> thông báo từ chối kèm lý do của Admin', () => {
+  it('bị từ chối -> nói đúng việc cần làm (sửa rồi gửi duyệt lại) kèm lý do của Admin', () => {
     render(withIntl(<ShopStatusBanner status="REJECTED" reason="Thiếu giấy phép kinh doanh" />));
 
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent(/đã bị từ chối duyệt/);
+    expect(alert).toHaveTextContent(/chưa được duyệt/);
+    expect(alert).toHaveTextContent(/gửi duyệt lại/);
     expect(alert).toHaveTextContent('Lý do: Thiếu giấy phép kinh doanh');
   });
 
-  it('bị khoá -> thông báo đình chỉ kèm lý do của Admin', () => {
+  it('bị khoá -> nêu rõ hạn chế (ẩn sản phẩm, không nhận đơn mới) và việc vẫn làm được (xử lý đơn đã có), kèm lý do', () => {
     render(withIntl(<ShopStatusBanner status="SUSPENDED" reason="Bán hàng cấm" />));
 
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent(/đang bị đình chỉ/);
+    expect(alert).toHaveTextContent(/khoá tạm thời/);
+    expect(alert).toHaveTextContent(/sản phẩm không hiển thị công khai/);
+    expect(alert).toHaveTextContent(/không nhận đơn mới/);
+    expect(alert).toHaveTextContent(/vẫn xử lý được các đơn hàng đã có/);
     expect(alert).toHaveTextContent('Lý do: Bán hàng cấm');
+  });
+
+  it('banner từ chối KHÔNG còn hứa suông "cập nhật lại thông tin hoặc liên hệ quản trị viên"', () => {
+    render(withIntl(<ShopStatusBanner status="REJECTED" reason="x" />));
+
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/liên hệ quản trị viên/);
   });
 
   it('bị từ chối/khoá nhưng chưa có lý do (dữ liệu cũ) -> vẫn hiện thông báo, không có dòng "Lý do:" rỗng', () => {
     render(withIntl(<ShopStatusBanner status="SUSPENDED" reason={null} />));
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/đang bị đình chỉ/);
+    expect(screen.getByRole('alert')).toHaveTextContent(/khoá tạm thời/);
     expect(screen.queryByText(/^Lý do:/)).not.toBeInTheDocument();
   });
 

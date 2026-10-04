@@ -112,13 +112,21 @@
     "loadShopError": "Không tải được thông tin shop, vui lòng đăng nhập lại",
 
     "shopStatusPendingMessage": "Shop của bạn đang chờ duyệt. Một số tính năng sẽ mở khi được duyệt.",
-    "shopStatusRejectedMessage": "Shop của bạn đã bị từ chối duyệt. Hãy cập nhật lại thông tin hoặc liên hệ quản trị viên.",
-    "shopStatusSuspendedMessage": "Shop của bạn đang bị đình chỉ. Một số tính năng đã bị tạm khoá.",
+    "shopStatusRejectedMessage": "Shop của bạn chưa được duyệt. Hãy chỉnh sửa thông tin rồi gửi duyệt lại.",
+    "shopStatusSuspendedMessage": "Shop của bạn đang bị khoá tạm thời: sản phẩm không hiển thị công khai và shop không nhận đơn mới. Bạn vẫn xử lý được các đơn hàng đã có.",
     "updateShopSubmit": "Lưu thay đổi",
     "updateShopSubmitting": "Đang lưu...",
     "updateShopSuccess": "Đã lưu thay đổi",
     "updateShopGenericError": "Cập nhật shop thất bại, vui lòng thử lại",
-    "shopStatusReason": "Lý do: {reason}"
+    "shopStatusReason": "Lý do: {reason}",
+    "errorInvalidTransition": "Trạng thái shop vừa thay đổi nên thao tác này không còn hợp lệ. Dữ liệu đã được làm mới, vui lòng kiểm tra lại.",
+    "errorEditNotAllowed": "Không thể sửa thông tin shop ở trạng thái hiện tại.",
+    "shopEditLockedPending": "Shop đang chờ quản trị viên xem xét nên chưa thể chỉnh sửa thông tin. Nếu shop bị từ chối, bạn sẽ sửa được và gửi duyệt lại.",
+    "shopEditLockedSuspended": "Shop đang bị khoá tạm thời nên chưa thể chỉnh sửa thông tin.",
+    "resubmitShopSubmit": "Lưu và gửi duyệt lại",
+    "resubmitShopSubmitting": "Đang gửi...",
+    "resubmitShopSuccess": "Đã gửi duyệt lại. Shop đang chờ quản trị viên xem xét.",
+    "resubmitShopGenericError": "Gửi duyệt lại thất bại, vui lòng thử lại"
   },
   "product": {
     "validationNameRequired": "Tên sản phẩm không được để trống",
@@ -553,7 +561,6 @@
   "admin": {
     "validationReasonRequired": "Vui lòng nhập lý do",
     "validationReasonTooLong": "Lý do tối đa 500 ký tự",
-    "errorShopInvalidTransition": "Shop vừa được cập nhật trạng thái, vui lòng tải lại danh sách",
     "pageTitle": "Duyệt & quản lý shop",
     "pageDescription": "Duyệt shop mới, từ chối, khoá hoặc mở khoá shop trên sàn.",
     "tabsLabel": "Lọc shop theo trạng thái",
@@ -568,7 +575,6 @@
     "listLabel": "Danh sách shop",
     "columnShop": "Shop",
     "columnOwner": "Chủ shop",
-    "columnCreatedAt": "Ngày tạo",
     "columnStatus": "Trạng thái",
     "columnActions": "Thao tác",
     "rowReason": "Lý do: {reason}",
@@ -594,6 +600,13 @@
     "suspendDialogConfirm": "Khoá shop",
     "unsuspendDialogTitle": "Mở khoá shop này?",
     "unsuspendDialogDescription": "Sản phẩm của “{name}” sẽ hiện lại trên sàn và shop nhận được đơn mới như bình thường.",
-    "unsuspendDialogConfirm": "Mở khoá"
+    "unsuspendDialogConfirm": "Mở khoá",
+    "columnWaitingSince": "Chờ từ",
+    "columnApprovedAt": "Duyệt lúc",
+    "columnRejectedAt": "Từ chối lúc",
+    "columnSuspendedAt": "Khoá lúc",
+    "createdAtTooltip": "Shop tạo ngày {date}",
+    "rowPreviousRejection": "Lý do từ chối lần trước: {reason}",
+    "rowResubmitted": "Đã gửi lại {count} lần"
   }
 }

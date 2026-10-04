@@ -6,12 +6,13 @@ import { useEffect, useState } from 'react';
 import { Link, useRouter } from '@/i18n/navigation';
 import { Alert } from '@/shared/components/ui/alert';
 import { Skeleton } from '@/shared/components/ui/skeleton';
-import { ApiError } from '@/shared/lib/api-client';
-import { useApiErrorMessage } from '@/shared/hooks/useValidationMessage';
-
+import { useDescribeShopError } from '../hooks/useDescribeShopError';
 import { useMyShop } from '../hooks/useMyShop';
+import { useResubmitShop } from '../hooks/useResubmitShop';
 import { useUpdateShop } from '../hooks/useUpdateShop';
+import { getShopFormMode } from '../shop-form-mode';
 import type { UpdateShopInput } from '../types';
+import { SHOP_EDIT_LOCKED_HINT_ID, ShopEditLockedHint } from './ShopEditLockedHint';
 import { ShopFormFieldsSkeleton } from './ShopFormFieldsSkeleton';
 import { ShopStatusBanner } from './ShopStatusBanner';
 import { UpdateShopForm } from './UpdateShopForm';
@@ -21,12 +22,13 @@ import { UpdateShopForm } from './UpdateShopForm';
 // nghiệp vụ trực tiếp (rules/frontend.md mục 1).
 export function ShopDashboardContainer() {
   const t = useTranslations('shop');
-  const tApi = useApiErrorMessage();
+  const describeError = useDescribeShopError();
   const tProduct = useTranslations('product');
   const tCommon = useTranslations('common');
   const router = useRouter();
   const myShopQuery = useMyShop();
   const updateShop = useUpdateShop();
+  const resubmitShop = useResubmitShop();
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -39,15 +41,31 @@ export function ShopDashboardContainer() {
     }
   }, [myShopQuery.isSuccess, myShopQuery.data, router]);
 
+  // Shop REJECTED: nút duy nhất là "Lưu và gửi duyệt lại" — sửa + nộp lại trong 1 request nguyên tử ở BE
+  // (Week8.md 3C.1), không có bước "lưu nháp" rồi quên gửi. Shop APPROVED: lưu như cũ. Shop PENDING/
+  // SUSPENDED không có nút gửi nên không bao giờ tới đây.
   async function handleSubmit(values: UpdateShopInput) {
-    if (!myShopQuery.data) return;
+    const shop = myShopQuery.data;
+    if (!shop) return;
+    const mode = getShopFormMode(shop.status);
+    if (mode === 'readonly') return;
     setError(null);
     setSuccessMessage(null);
     try {
-      await updateShop.mutateAsync({ id: myShopQuery.data.id, values });
-      setSuccessMessage(t('updateShopSuccess'));
+      if (mode === 'resubmit') {
+        await resubmitShop.mutateAsync({ id: shop.id, values });
+        setSuccessMessage(t('resubmitShopSuccess'));
+      } else {
+        await updateShop.mutateAsync({ id: shop.id, values });
+        setSuccessMessage(t('updateShopSuccess'));
+      }
     } catch (err) {
-      setError(err instanceof ApiError ? tApi(err.message) : t('updateShopGenericError'));
+      setError(
+        describeError(
+          err,
+          mode === 'resubmit' ? t('resubmitShopGenericError') : t('updateShopGenericError'),
+        ),
+      );
     }
   }
 
@@ -73,6 +91,7 @@ export function ShopDashboardContainer() {
   }
 
   const shop = myShopQuery.data;
+  const formMode = getShopFormMode(shop.status);
 
   return (
     <div className="flex flex-col gap-6">
@@ -102,7 +121,12 @@ export function ShopDashboardContainer() {
         </Alert>
       )}
 
+      <ShopEditLockedHint status={shop.status} />
+
       <UpdateShopForm
+        isReadOnly={formMode === 'readonly'}
+        readOnlyHintId={SHOP_EDIT_LOCKED_HINT_ID}
+        submitVariant={formMode === 'resubmit' ? 'resubmit' : 'save'}
         defaultValues={{
           name: shop.name,
           description: shop.description ?? undefined,
@@ -110,7 +134,7 @@ export function ShopDashboardContainer() {
           bannerUrl: shop.bannerUrl ?? undefined,
         }}
         onSubmit={handleSubmit}
-        isSubmitting={updateShop.isPending}
+        isSubmitting={updateShop.isPending || resubmitShop.isPending}
       />
     </div>
   );
