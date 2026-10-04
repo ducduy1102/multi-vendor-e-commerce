@@ -29,7 +29,8 @@
     "searchPlaceholder": "Tìm sản phẩm...",
     "searchClearLabel": "Xoá nội dung tìm kiếm",
     "searchSubmitLabel": "Tìm kiếm",
-    "cartLink": "Giỏ hàng"
+    "cartLink": "Giỏ hàng",
+    "adminLink": "Quản trị"
   },
   "home": {
     "bannerHeading": "Chốt đơn nhanh, mua sắm từ nhiều shop",
@@ -116,7 +117,8 @@
     "updateShopSubmit": "Lưu thay đổi",
     "updateShopSubmitting": "Đang lưu...",
     "updateShopSuccess": "Đã lưu thay đổi",
-    "updateShopGenericError": "Cập nhật shop thất bại, vui lòng thử lại"
+    "updateShopGenericError": "Cập nhật shop thất bại, vui lòng thử lại",
+    "shopStatusReason": "Lý do: {reason}"
   },
   "product": {
     "validationNameRequired": "Tên sản phẩm không được để trống",
@@ -551,6 +553,47 @@
   "admin": {
     "validationReasonRequired": "Vui lòng nhập lý do",
     "validationReasonTooLong": "Lý do tối đa 500 ký tự",
-    "errorShopInvalidTransition": "Shop vừa được cập nhật trạng thái, vui lòng tải lại danh sách"
+    "errorShopInvalidTransition": "Shop vừa được cập nhật trạng thái, vui lòng tải lại danh sách",
+    "pageTitle": "Duyệt & quản lý shop",
+    "pageDescription": "Duyệt shop mới, từ chối, khoá hoặc mở khoá shop trên sàn.",
+    "tabsLabel": "Lọc shop theo trạng thái",
+    "statusPending": "Chờ duyệt",
+    "statusApproved": "Đã duyệt",
+    "statusRejected": "Đã từ chối",
+    "statusSuspended": "Đã khoá",
+    "emptyStatePending": "Không có shop nào đang chờ duyệt.",
+    "emptyStateApproved": "Chưa có shop nào được duyệt.",
+    "emptyStateRejected": "Chưa có shop nào bị từ chối.",
+    "emptyStateSuspended": "Chưa có shop nào bị khoá.",
+    "listLabel": "Danh sách shop",
+    "columnShop": "Shop",
+    "columnOwner": "Chủ shop",
+    "columnCreatedAt": "Ngày tạo",
+    "columnStatus": "Trạng thái",
+    "columnActions": "Thao tác",
+    "rowReason": "Lý do: {reason}",
+    "loadError": "Không tải được danh sách shop, vui lòng thử lại.",
+    "retry": "Thử lại",
+    "actionError": "Không thực hiện được thao tác, vui lòng thử lại",
+    "actionApprove": "Duyệt",
+    "actionReject": "Từ chối",
+    "actionSuspend": "Khoá",
+    "actionUnsuspend": "Mở khoá",
+    "actionLabelWithShop": "{action}: {name}",
+    "paginationPrev": "Trang trước",
+    "paginationNext": "Trang sau",
+    "paginationStatus": "Trang {page} / {totalPages}",
+    "dialogBack": "Quay lại",
+    "rejectDialogTitle": "Từ chối shop này?",
+    "rejectDialogDescription": "“{name}” sẽ không được bán hàng trên sàn. Chủ shop sẽ thấy lý do bên dưới ở trang quản lý shop của họ.",
+    "rejectReasonLabel": "Lý do từ chối",
+    "rejectDialogConfirm": "Từ chối shop",
+    "suspendDialogTitle": "Khoá shop này?",
+    "suspendDialogDescription": "Sản phẩm của “{name}” sẽ biến khỏi sàn và shop không nhận được đơn mới. Chủ shop vẫn đăng nhập và xử lý được các đơn đã có. Bạn có thể mở khoá bất cứ lúc nào.",
+    "suspendReasonLabel": "Lý do khoá",
+    "suspendDialogConfirm": "Khoá shop",
+    "unsuspendDialogTitle": "Mở khoá shop này?",
+    "unsuspendDialogDescription": "Sản phẩm của “{name}” sẽ hiện lại trên sàn và shop nhận được đơn mới như bình thường.",
+    "unsuspendDialogConfirm": "Mở khoá"
   }
 }

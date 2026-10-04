@@ -29,7 +29,8 @@
     "searchPlaceholder": "Search products...",
     "searchClearLabel": "Clear search",
     "searchSubmitLabel": "Search",
-    "cartLink": "Cart"
+    "cartLink": "Cart",
+    "adminLink": "Admin"
   },
   "home": {
     "bannerHeading": "Shop from many stores, check out fast",
@@ -116,7 +117,8 @@
     "updateShopSubmit": "Save changes",
     "updateShopSubmitting": "Saving...",
     "updateShopSuccess": "Changes saved",
-    "updateShopGenericError": "Failed to update shop, please try again"
+    "updateShopGenericError": "Failed to update shop, please try again",
+    "shopStatusReason": "Reason: {reason}"
   },
   "product": {
     "validationNameRequired": "Product name is required",
@@ -551,6 +553,47 @@
   "admin": {
     "validationReasonRequired": "Please enter a reason",
     "validationReasonTooLong": "The reason must be at most 500 characters",
-    "errorShopInvalidTransition": "The shop's status was just changed, please reload the list"
+    "errorShopInvalidTransition": "The shop's status was just changed, please reload the list",
+    "pageTitle": "Review & manage shops",
+    "pageDescription": "Approve new shops, reject, suspend or unsuspend shops on the marketplace.",
+    "tabsLabel": "Filter shops by status",
+    "statusPending": "Pending",
+    "statusApproved": "Approved",
+    "statusRejected": "Rejected",
+    "statusSuspended": "Suspended",
+    "emptyStatePending": "No shops are waiting for approval.",
+    "emptyStateApproved": "No shops have been approved yet.",
+    "emptyStateRejected": "No shops have been rejected.",
+    "emptyStateSuspended": "No shops are suspended.",
+    "listLabel": "Shop list",
+    "columnShop": "Shop",
+    "columnOwner": "Owner",
+    "columnCreatedAt": "Created",
+    "columnStatus": "Status",
+    "columnActions": "Actions",
+    "rowReason": "Reason: {reason}",
+    "loadError": "Could not load the shop list, please try again.",
+    "retry": "Try again",
+    "actionError": "The action could not be completed, please try again",
+    "actionApprove": "Approve",
+    "actionReject": "Reject",
+    "actionSuspend": "Suspend",
+    "actionUnsuspend": "Unsuspend",
+    "actionLabelWithShop": "{action}: {name}",
+    "paginationPrev": "Previous page",
+    "paginationNext": "Next page",
+    "paginationStatus": "Page {page} / {totalPages}",
+    "dialogBack": "Go back",
+    "rejectDialogTitle": "Reject this shop?",
+    "rejectDialogDescription": "“{name}” will not be able to sell on the marketplace. The owner will see the reason below on their shop page.",
+    "rejectReasonLabel": "Reason for rejecting",
+    "rejectDialogConfirm": "Reject shop",
+    "suspendDialogTitle": "Suspend this shop?",
+    "suspendDialogDescription": "The products of “{name}” will disappear from the marketplace and the shop will not receive new orders. The owner can still sign in and process existing orders. You can unsuspend it at any time.",
+    "suspendReasonLabel": "Reason for suspending",
+    "suspendDialogConfirm": "Suspend shop",
+    "unsuspendDialogTitle": "Unsuspend this shop?",
+    "unsuspendDialogDescription": "The products of “{name}” will appear on the marketplace again and the shop can receive new orders as usual.",
+    "unsuspendDialogConfirm": "Unsuspend"
   }
 }

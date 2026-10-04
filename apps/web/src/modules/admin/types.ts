@@ -6,4 +6,5 @@ export type {
   AdminShopListResponse,
   AdminShopTargetStatus,
   AdminUpdateShopStatusInput,
+  ShopStatus,
 } from '@ecommerce/types';
