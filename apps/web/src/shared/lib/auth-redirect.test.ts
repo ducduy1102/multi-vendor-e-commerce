@@ -51,6 +51,78 @@ describe('decideAuthRedirect', () => {
         decideAuthRedirect({ pathname: '/ordersevil', search: '', isAuthenticated: false }),
       ).toBeNull();
     });
+
+    it('/admin/shops?status=APPROVED&page=2 -> next giữ nguyên query (admin đăng nhập xong quay lại đúng tab/trang)', () => {
+      const result = decideAuthRedirect({
+        pathname: '/admin/shops',
+        search: '?status=APPROVED&page=2',
+        isAuthenticated: false,
+      });
+      expect(result).toBe(
+        `/login?next=${encodeURIComponent('/admin/shops?status=APPROVED&page=2')}`,
+      );
+    });
+  });
+
+  describe('route /admin/* — chỉ ADMIN', () => {
+    it.each(['/admin', '/admin/shops', '/admin/shops/anything'])(
+      'đã đăng nhập, role USER vào %s -> đẩy về "/" (không lộ route tồn tại)',
+      (pathname) => {
+        expect(
+          decideAuthRedirect({ pathname, search: '', isAuthenticated: true, role: 'USER' }),
+        ).toBe('/');
+      },
+    );
+
+    it.each([undefined, null, '', 'admin', 'SELLER'])(
+      'đã đăng nhập nhưng role đọc được là %p (thiếu/lạ/sai hoa thường) -> coi như không phải ADMIN, về "/"',
+      (role) => {
+        expect(
+          decideAuthRedirect({
+            pathname: '/admin/shops',
+            search: '',
+            isAuthenticated: true,
+            role,
+          }),
+        ).toBe('/');
+      },
+    );
+
+    it.each(['/admin', '/admin/shops'])('role ADMIN vào %s -> được vào', (pathname) => {
+      expect(
+        decideAuthRedirect({ pathname, search: '', isAuthenticated: true, role: 'ADMIN' }),
+      ).toBeNull();
+    });
+
+    it('guest vào /admin/shops -> về /login (kèm next), không phải "/" — guest chưa có role để xét', () => {
+      expect(
+        decideAuthRedirect({
+          pathname: '/admin/shops',
+          search: '',
+          isAuthenticated: false,
+          role: null,
+        }),
+      ).toBe(`/login?next=${encodeURIComponent('/admin/shops')}`);
+    });
+
+    it('/adminevil, /administrator -> không phải route /admin (không khớp tiền tố), không bị chặn', () => {
+      for (const pathname of ['/adminevil', '/administrator']) {
+        expect(
+          decideAuthRedirect({ pathname, search: '', isAuthenticated: true, role: 'USER' }),
+        ).toBeNull();
+      }
+    });
+
+    it('route khác (vd /orders) không bị ảnh hưởng bởi role USER', () => {
+      expect(
+        decideAuthRedirect({
+          pathname: '/orders',
+          search: '',
+          isAuthenticated: true,
+          role: 'USER',
+        }),
+      ).toBeNull();
+    });
   });
 
   describe('guest vào route không cần đăng nhập', () => {
@@ -101,10 +173,20 @@ describe('decideAuthRedirect', () => {
     it('?next= không nằm trong allow-list -> bỏ, về "/"', () => {
       const result = decideAuthRedirect({
         pathname: '/login',
-        search: `?next=${encodeURIComponent('/admin')}`,
+        search: `?next=${encodeURIComponent('/profile')}`,
         isAuthenticated: true,
       });
       expect(result).toBe('/');
+    });
+
+    it('?next=/admin/shops hợp lệ (allow-list có /admin) -> đi thẳng tới đó, việc xét role để lượt sau của proxy làm', () => {
+      const result = decideAuthRedirect({
+        pathname: '/login',
+        search: `?next=${encodeURIComponent('/admin/shops')}`,
+        isAuthenticated: true,
+        role: 'ADMIN',
+      });
+      expect(result).toBe('/admin/shops');
     });
   });
 

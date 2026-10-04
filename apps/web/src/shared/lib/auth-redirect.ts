@@ -4,17 +4,24 @@ import { safeNextPath } from '@ecommerce/types';
 const GUEST_ONLY_PATHS = ['/login', '/register'];
 
 // Route cần đăng nhập (Week7.md 1.2 thêm "/checkout" — trước đó chỉ "/seller"
-// Tuần 3 Bước 3.9, "/wishlist" Week5.md Bước 3.7, "/orders" Week8.md 3.2). Chỉ
-// check được từ cookie ở edge (proxy.ts) — điều kiện cần query DB (đã có shop
-// chưa...) đẩy xuống Server/Client Component (rules/frontend.md mục 1). Mỗi
-// tiền tố ở đây PHẢI có mặt trong SAFE_NEXT_PATH_ALLOWED_PREFIXES
-// (packages/types) — thiếu thì guest bị đẩy về /login mà mất `?next=`.
-export const PROTECTED_PATH_PREFIXES = ['/seller', '/wishlist', '/checkout', '/orders'];
+// Tuần 3 Bước 3.9, "/wishlist" Week5.md Bước 3.7, "/orders" Week8.md 3.2, "/admin" Week8.md 3.9).
+// Chỉ check được từ cookie ở edge (proxy.ts) — điều kiện cần query DB (đã có shop chưa...) đẩy
+// xuống Server/Client Component (rules/frontend.md mục 1). Mỗi tiền tố ở đây PHẢI có mặt trong
+// SAFE_NEXT_PATH_ALLOWED_PREFIXES (packages/types) — thiếu thì guest bị đẩy về /login mà mất
+// `?next=`.
+export const PROTECTED_PATH_PREFIXES = ['/seller', '/wishlist', '/checkout', '/orders', '/admin'];
+
+// Khu quản trị — đã đăng nhập nhưng KHÔNG phải ADMIN thì bị đẩy về trang chủ. Role đọc từ payload JWT
+// không verify (readJwtRole) nên đây chỉ là điều hướng UX; quyền thật nằm ở RolesGuard của BE.
+export const ADMIN_PATH_PREFIX = '/admin';
+const ADMIN_ROLE = 'ADMIN';
+
+function matchesPrefix(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
 
 function isProtectedPath(pathname: string): boolean {
-  return PROTECTED_PATH_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
+  return PROTECTED_PATH_PREFIXES.some((prefix) => matchesPrefix(pathname, prefix));
 }
 
 // `search` dạng chuỗi thô của URL ("" hoặc "?a=1&b=2", giống `NextRequest.nextUrl.search`) —
@@ -30,6 +37,9 @@ export interface AuthRedirectInput {
   pathname: string;
   search: string;
   isAuthenticated: boolean;
+  // Role đọc từ cookie access_token (readJwtRole) — null/thiếu = không đọc được, coi như không phải
+  // ADMIN. Chỉ cần cho route /admin/*.
+  role?: string | null;
 }
 
 // Quyết định THUẦN cho proxy.ts (Week7.md 3.2) — tách khỏi NextRequest/NextResponse để unit test
@@ -40,6 +50,7 @@ export function decideAuthRedirect({
   pathname,
   search,
   isAuthenticated,
+  role,
 }: AuthRedirectInput): string | null {
   if (isAuthenticated && GUEST_ONLY_PATHS.includes(pathname)) {
     const requestedNext = safeNextPath(readNextParam(search));
@@ -51,6 +62,11 @@ export function decideAuthRedirect({
     // dù về lý thuyết pathname luôn khớp allow-list vì nó chính là PROTECTED_PATH_PREFIXES.
     const next = safeNextPath(`${pathname}${search}`);
     return next ? `/login?next=${encodeURIComponent(next)}` : '/login';
+  }
+
+  // Về "/" thay vì 403/404 riêng để không lộ route quản trị tồn tại cho người không có quyền.
+  if (isAuthenticated && matchesPrefix(pathname, ADMIN_PATH_PREFIX) && role !== ADMIN_ROLE) {
+    return '/';
   }
 
   return null;
