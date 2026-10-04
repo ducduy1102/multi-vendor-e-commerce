@@ -20,9 +20,11 @@ export const ORDER_CARD_FOOTER_CLASS =
   'flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2 sm:px-4';
 
 // Trang chi tiết: 1 cột trên mobile, từ lg là cột nội dung chính + cột phụ cố định 20rem. Dùng chung
-// giữa OrderDetailView và OrderDetailSkeleton.
+// giữa OrderDetailView và OrderDetailSkeleton. `grid-cols-1` (= minmax(0, 1fr)) là CHỦ ĐÍCH: không có
+// nó, cột mặc định ở mobile là `auto` và lấy min-content của nội dung — 1 lời nhắn/mã dài không dấu
+// cách (`break-words` không thu nhỏ min-content) sẽ làm cả trang rộng quá màn hình.
 export const ORDER_DETAIL_GRID_CLASS =
-  'grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start';
+  'grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start';
 
 export const ORDER_DETAIL_COLUMN_CLASS = 'flex flex-col gap-4';
 

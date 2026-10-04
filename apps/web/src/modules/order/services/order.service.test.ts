@@ -61,6 +61,7 @@ const BUYER_DETAIL = {
   shippingFee: '20000',
   carrier: null,
   trackingCode: null,
+  buyerNote: null,
   history: HISTORY,
 };
 
@@ -71,6 +72,7 @@ const SELLER_LIST_ITEM = {
   totalAmount: '320000',
   recipientName: 'Nguyễn Văn A',
   shippingProvince: 'TP. Hồ Chí Minh',
+  buyerNote: null,
   items: [ITEM],
   itemCount: 1,
   paymentMethod: 'COD',
@@ -160,6 +162,21 @@ describe('order.service — buyer', () => {
     expect(order.history[0].fromStatus).toBeNull();
     expect(order.shippingProvince).toBe('TP. Hồ Chí Minh');
     expect(lastCall()[0]).toMatch(/\/orders\/order-1$/);
+  });
+
+  it('getOrder giữ lời nhắn cho shop (buyerNote) — field phải có trong schema, nếu không z.object sẽ bỏ mất (Week8.md 3B)', async () => {
+    mockFetchOnce({ success: true, data: { ...BUYER_DETAIL, buyerNote: 'Gọi trước khi giao' } });
+
+    expect((await getOrder('order-1')).buyerNote).toBe('Gọi trước khi giao');
+  });
+
+  it('getOrder — response thiếu buyerNote bị Zod từ chối (BE phải trả null tường minh)', async () => {
+    const withoutNote = Object.fromEntries(
+      Object.entries(BUYER_DETAIL).filter(([key]) => key !== 'buyerNote'),
+    );
+    mockFetchOnce({ success: true, data: withoutNote });
+
+    await expect(getOrder('order-1')).rejects.toThrow();
   });
 
   it('getOrder — 404 giữ nguyên code ORDER_NOT_FOUND của BE (đơn người khác cũng 404)', async () => {
@@ -325,6 +342,23 @@ describe('order.service — seller', () => {
 
     expect(order.recipientPhone).toBe('0901234567');
     expect(lastCall()[0]).toMatch(/\/shops\/shop-1\/orders\/order-1$/);
+  });
+
+  it('seller: danh sách và chi tiết giữ lời nhắn của người mua (buyerNote), đơn không có là null (Week8.md 3B)', async () => {
+    mockFetchOnce({
+      success: true,
+      data: {
+        items: [{ ...SELLER_LIST_ITEM, buyerNote: 'Gói quà' }, SELLER_LIST_ITEM],
+        total: 2,
+        page: 1,
+        limit: 10,
+      },
+    });
+    const list = await listSellerOrders('shop-1');
+    expect(list.items.map((o) => o.buyerNote)).toEqual(['Gói quà', null]);
+
+    mockFetchOnce({ success: true, data: { ...SELLER_DETAIL, buyerNote: 'Gói quà' } });
+    expect((await getSellerOrder('shop-1', 'order-1')).buyerNote).toBe('Gói quà');
   });
 
   it('getSellerOrder — 404 (đơn shop khác/đơn chưa thanh toán/không tồn tại) là ApiError 404', async () => {

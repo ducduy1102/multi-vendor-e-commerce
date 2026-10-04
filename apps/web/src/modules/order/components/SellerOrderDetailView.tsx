@@ -17,6 +17,7 @@ import {
 import {
   DetailSection,
   OrderAddressSection,
+  OrderBuyerNoteSection,
   OrderItemsSection,
   OrderPaymentSection,
   OrderShippingSection,
@@ -32,8 +33,8 @@ interface SellerOrderDetailViewProps {
 
 // Chi tiết 1 đơn của shop — component THUẦN từ `SellerOrderDetail`. Seller cần đủ thông tin để đóng
 // gói và giao: mọi dòng hàng, người nhận (tên, SĐT, địa chỉ đầy đủ — snapshot trên đơn), cách thanh
-// toán (đơn COD còn phải thu tiền khi giao), vận chuyển và lịch sử. KHÔNG có định danh tài khoản
-// người mua (BE không trả userId/email) và đơn không có ghi chú của người mua (schema không có).
+// toán (đơn COD còn phải thu tiền khi giao), lời nhắn của người mua cho shop này (nếu có), vận chuyển
+// và lịch sử. KHÔNG có định danh tài khoản người mua (BE không trả userId/email).
 // Cùng bố cục với trang chi tiết của người mua, chung các khối ở OrderDetailSections.
 export function SellerOrderDetailView({ order, actions }: SellerOrderDetailViewProps) {
   const t = useTranslations('order');
@@ -67,6 +68,7 @@ export function SellerOrderDetailView({ order, actions }: SellerOrderDetailViewP
 
         <div className={ORDER_DETAIL_COLUMN_CLASS}>
           <OrderAddressSection order={order} />
+          <OrderBuyerNoteSection note={order.buyerNote} viewer="seller" />
           <OrderPaymentSection order={order} />
           <OrderShippingSection order={order} />
         </div>

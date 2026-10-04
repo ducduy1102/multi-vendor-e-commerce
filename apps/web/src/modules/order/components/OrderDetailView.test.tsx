@@ -53,6 +53,7 @@ function order(overrides: Partial<OrderDetail> = {}): OrderDetail {
     shippingFee: '20000',
     carrier: null,
     trackingCode: null,
+    buyerNote: null,
     history: [
       {
         fromStatus: null,
@@ -188,6 +189,38 @@ describe('OrderDetailView', () => {
 
       expect(container.querySelector('img')).toBeNull();
       expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
+    });
+  });
+
+  describe('lời nhắn cho shop (Week8.md 3B)', () => {
+    it('có lời nhắn -> mục "Lời nhắn cho shop" hiện đúng nội dung', () => {
+      renderView({ buyerNote: 'Giao giờ hành chính, gọi trước khi giao' });
+
+      expect(
+        section('Lời nhắn cho shop').getByText('Giao giờ hành chính, gọi trước khi giao'),
+      ).toBeInTheDocument();
+    });
+
+    it('không có lời nhắn (null) -> KHÔNG có mục "Lời nhắn cho shop"', () => {
+      renderView({ buyerNote: null });
+
+      expect(screen.queryByRole('region', { name: 'Lời nhắn cho shop' })).not.toBeInTheDocument();
+    });
+
+    it('lời nhắn có HTML hiển thị như văn bản, không chèn thẻ vào trang', () => {
+      const html = '<img src=x onerror=alert(1)> & "quote"';
+      const { container } = renderView({ buyerNote: html });
+
+      expect(container.querySelector('img')).toBeNull();
+      expect(screen.getByText(html)).toBeInTheDocument();
+    });
+
+    it('giữ các dòng người mua đã xuống (whitespace-pre-wrap) và chuỗi dài không dấu cách không tràn (break-words)', () => {
+      renderView({ buyerNote: 'dòng 1\ndòng 2' });
+
+      const note = section('Lời nhắn cho shop').getByText(/dòng 1/);
+      expect(note).toHaveClass('whitespace-pre-wrap', 'break-words');
+      expect(note.textContent).toBe('dòng 1\ndòng 2');
     });
   });
 

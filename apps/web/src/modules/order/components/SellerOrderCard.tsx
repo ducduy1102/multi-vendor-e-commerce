@@ -72,6 +72,14 @@ export function SellerOrderCard({ order, actions }: SellerOrderCardProps) {
         </p>
       ) : null}
 
+      {/* Lời nhắn của người mua cho shop này (Week8.md 3B): tối đa 2 dòng ở danh sách (CSS cắt, BE trả đủ),
+          đọc trọn ở trang chi tiết. Text thuần — React tự escape. */}
+      {order.buyerNote ? (
+        <p className="line-clamp-2 border-t border-border px-3 py-2 text-xs break-words text-muted-foreground sm:px-4">
+          {t('sellerCardBuyerNote', { note: order.buyerNote })}
+        </p>
+      ) : null}
+
       <div className={ORDER_CARD_SUMMARY_CLASS}>
         <p className="text-xs text-muted-foreground">
           {t('cardPlacedAt', { date: formatDate(order.createdAt) })}

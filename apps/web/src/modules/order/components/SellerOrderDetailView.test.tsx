@@ -43,6 +43,7 @@ function order(overrides: Partial<SellerOrderDetail> = {}): SellerOrderDetail {
     shippingFee: '20000',
     carrier: null,
     trackingCode: null,
+    buyerNote: null,
     history: [
       {
         fromStatus: null,
@@ -194,6 +195,35 @@ describe('SellerOrderDetailView', () => {
     );
 
     expect(screen.getByText('Lý do của shop: Hết hàng')).toBeInTheDocument();
+  });
+
+  describe('lời nhắn của người mua (Week8.md 3B)', () => {
+    it('có lời nhắn -> mục "Lời nhắn của người mua" hiện đủ nội dung, giữ các dòng đã xuống', () => {
+      render(
+        withIntl(<SellerOrderDetailView order={order({ buyerNote: 'Gói quà\nđừng ghi giá' })} />),
+      );
+
+      const note = within(screen.getByRole('region', { name: 'Lời nhắn của người mua' }));
+      expect(note.getByText(/Gói quà/).textContent).toBe('Gói quà\nđừng ghi giá');
+    });
+
+    it('không có lời nhắn (null) -> KHÔNG có mục lời nhắn', () => {
+      render(withIntl(<SellerOrderDetailView order={order({ buyerNote: null })} />));
+
+      expect(
+        screen.queryByRole('region', { name: 'Lời nhắn của người mua' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('lời nhắn có HTML hiển thị như văn bản, không chèn thẻ vào trang', () => {
+      const html = '<img src=x onerror=alert(1)> & "quote"';
+      const { container } = render(
+        withIntl(<SellerOrderDetailView order={order({ buyerNote: html })} />),
+      );
+
+      expect(container.querySelector('img')).toBeNull();
+      expect(screen.getByText(html)).toBeInTheDocument();
+    });
   });
 
   it('không lộ định danh người mua (chỉ thông tin người nhận trên đơn)', () => {

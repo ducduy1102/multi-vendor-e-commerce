@@ -123,6 +123,29 @@ export function OrderPaymentSection({ order }: { order: PaymentFields }) {
   );
 }
 
+// Lời nhắn người mua gửi RIÊNG cho shop của đơn này (Week8.md 3B) — chỉ hiện khi có. Văn bản thuần:
+// React tự escape nên `<img onerror>` hiện nguyên dạng chữ; `whitespace-pre-wrap` giữ các dòng người
+// mua đã xuống, `break-words` để 1 chuỗi dài không dấu cách không làm tràn ngang ở 390px.
+export function OrderBuyerNoteSection({
+  note,
+  viewer,
+}: {
+  note: OrderDetail['buyerNote'];
+  // Cùng 1 lời nhắn, nhãn khác theo người xem: người mua "Lời nhắn cho shop", shop "Lời nhắn của người mua".
+  viewer: 'buyer' | 'seller';
+}) {
+  const t = useTranslations('order');
+  if (!note) return null;
+
+  return (
+    <DetailSection
+      title={viewer === 'seller' ? t('detailBuyerNoteTitleSeller') : t('detailBuyerNoteTitleBuyer')}
+    >
+      <p className="text-sm break-words whitespace-pre-wrap text-foreground">{note}</p>
+    </DetailSection>
+  );
+}
+
 type AddressFields = Pick<
   OrderDetail,
   'recipientName' | 'recipientPhone' | 'shippingAddressLine' | 'shippingWard' | 'shippingProvince'

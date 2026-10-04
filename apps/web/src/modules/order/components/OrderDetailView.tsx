@@ -17,6 +17,7 @@ import {
 import {
   DetailSection,
   OrderAddressSection,
+  OrderBuyerNoteSection,
   OrderItemsSection,
   OrderPaymentSection,
   OrderShippingSection,
@@ -68,6 +69,7 @@ export function OrderDetailView({ order, actions }: OrderDetailViewProps) {
         <div className={ORDER_DETAIL_COLUMN_CLASS}>
           <OrderPaymentSection order={order} />
           <OrderAddressSection order={order} />
+          <OrderBuyerNoteSection note={order.buyerNote} viewer="buyer" />
           <OrderShippingSection order={order} />
         </div>
       </div>

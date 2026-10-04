@@ -35,6 +35,7 @@ function order(overrides: Partial<SellerOrderListItem> = {}): SellerOrderListIte
     canPack: false,
     canShip: false,
     canReject: true,
+    buyerNote: null,
     ...overrides,
   };
 }
@@ -119,6 +120,44 @@ describe('SellerOrderCard', () => {
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Xem chi tiết' })).toBeInTheDocument();
+  });
+
+  describe('lời nhắn của người mua (Week8.md 3B)', () => {
+    it('có lời nhắn -> hiện dòng "Lời nhắn: …" ngay trên card', () => {
+      render(withIntl(<SellerOrderCard order={order({ buyerNote: 'Gọi trước khi giao' })} />));
+
+      expect(screen.getByText('Lời nhắn: Gọi trước khi giao')).toBeInTheDocument();
+    });
+
+    it('không có lời nhắn (null) -> không có dòng lời nhắn', () => {
+      render(withIntl(<SellerOrderCard order={order({ buyerNote: null })} />));
+
+      expect(screen.queryByText(/Lời nhắn/)).not.toBeInTheDocument();
+    });
+
+    it('ở danh sách chỉ cắt còn tối đa 2 dòng bằng CSS (line-clamp-2), vẫn truyền đủ nội dung', () => {
+      const long = 'rất dài '.repeat(60).trim();
+      render(withIntl(<SellerOrderCard order={order({ buyerNote: long })} />));
+
+      const note = screen.getByText(`Lời nhắn: ${long}`);
+      expect(note).toHaveClass('line-clamp-2', 'break-words');
+    });
+
+    it('lời nhắn có HTML hiển thị như văn bản, không chèn thẻ vào trang', () => {
+      const html = '<img src=x onerror=alert(1)>';
+      const { container } = render(
+        withIntl(<SellerOrderCard order={order({ buyerNote: html })} />),
+      );
+
+      expect(container.querySelector('img')).toBeNull();
+      expect(screen.getByText(`Lời nhắn: ${html}`)).toBeInTheDocument();
+    });
+
+    it('lời nhắn chứa dấu ngoặc nhọn/ICU không làm hỏng bản dịch', () => {
+      render(withIntl(<SellerOrderCard order={order({ buyerNote: 'giá {count} {x} ' })} />));
+
+      expect(screen.getByText('Lời nhắn: giá {count} {x}')).toBeInTheDocument();
+    });
   });
 
   it('link chi tiết trỏ /seller/orders/<id đầy đủ> (không phải mã rút gọn, không phải /orders của người mua)', () => {
