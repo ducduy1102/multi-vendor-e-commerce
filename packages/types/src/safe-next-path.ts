@@ -13,6 +13,7 @@ export const SAFE_NEXT_PATH_ALLOWED_PREFIXES: readonly string[] = [
   '/wishlist',
   '/orders',
   '/products',
+  '/admin',
 ];
 
 export const SAFE_NEXT_PATH_MAX_LENGTH = 256;
