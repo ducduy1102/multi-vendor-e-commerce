@@ -15,6 +15,7 @@ import { useAddresses } from '../hooks/useAddresses';
 import { useCheckoutPreview } from '../hooks/useCheckoutPreview';
 import { usePlaceOrder } from '../hooks/usePlaceOrder';
 import { getUnknownResultHintKey } from '../place-order-hint';
+import { buildShopNotes } from '../shop-notes';
 import type { Address, PaymentMethod } from '../types';
 import { AddressFormContainer } from './AddressFormContainer';
 import { AddressRadioList } from './AddressRadioList';
@@ -61,6 +62,9 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [outOfStockItems, setOutOfStockItems] = useState<OutOfStockItem[]>([]);
   const [hasPendingCheckouts, setHasPendingCheckouts] = useState(false);
+  // Lời nhắn đang gõ cho từng shop, khoá = shopId (Week8.md 3B). Giữ ở Container (không ở từng khối
+  // shop) để không mất chữ đã gõ khi xem trước tải lại (đổi địa chỉ, giá đổi) làm khối dựng lại.
+  const [shopNotes, setShopNotes] = useState<Record<string, string>>({});
 
   // UUID sinh 1 LẦN cho cả phiên đặt hàng (Week7.md 1.11), giữ trong bộ nhớ trang (không
   // localStorage) — gửi kèm mọi lần gọi POST /checkout của phiên này, kể cả gọi lại sau lỗi mạng,
@@ -167,6 +171,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
           paymentMethod,
           voucherCode: initialVoucherCode || undefined,
           expectedTotal: Number(preview.grandTotal),
+          shopNotes: buildShopNotes(preview.orders, shopNotes),
         },
         idempotencyKey: idempotencyKeyRef.current ?? undefined,
       });
@@ -304,7 +309,14 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
         </section>
 
         {preview.orders.map((order) => (
-          <CheckoutOrderGroup key={order.shopId} order={order} />
+          <CheckoutOrderGroup
+            key={order.shopId}
+            order={order}
+            note={shopNotes[order.shopId] ?? ''}
+            onNoteChange={(note) =>
+              setShopNotes((current) => ({ ...current, [order.shopId]: note }))
+            }
+          />
         ))}
       </div>
 

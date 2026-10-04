@@ -212,6 +212,32 @@ describe('checkout.service', () => {
     expect(result).toEqual(codResult);
   });
 
+  it('placeOrder gửi shopNotes (lời nhắn theo shopId) trong body khi có, không gửi khoá khi không có (Week8.md 3B)', async () => {
+    mockFetchOnce({ success: true, data: CHECKOUT_RESULT }, 201);
+    await placeOrder({
+      addressId: 'address-1',
+      paymentMethod: 'COD',
+      expectedTotal: 320000,
+      shopNotes: { 'shop-1': 'Gọi trước khi giao', 'shop-2': 'Gói quà' },
+    });
+    expect(JSON.parse(lastCall()[1].body as string)).toEqual({
+      addressId: 'address-1',
+      paymentMethod: 'COD',
+      expectedTotal: 320000,
+      shopNotes: { 'shop-1': 'Gọi trước khi giao', 'shop-2': 'Gói quà' },
+    });
+
+    mockFetchOnce({ success: true, data: CHECKOUT_RESULT }, 201);
+    await placeOrder({
+      addressId: 'address-1',
+      paymentMethod: 'COD',
+      expectedTotal: 320000,
+      shopNotes: undefined,
+    });
+    // JSON.stringify bỏ khoá undefined — BE không nhận `shopNotes: null` hay `{}` thừa.
+    expect(JSON.parse(lastCall()[1].body as string)).not.toHaveProperty('shopNotes');
+  });
+
   it('placeOrder gửi header Idempotency-Key khi có truyền', async () => {
     mockFetchOnce({ success: true, data: CHECKOUT_RESULT }, 201);
     const input = {
