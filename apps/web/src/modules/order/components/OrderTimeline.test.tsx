@@ -123,7 +123,7 @@ describe('OrderTimeline', () => {
     expect(screen.getByText('Lý do của shop: Hết hàng')).toBeInTheDocument();
   });
 
-  it('người mua tự hủy không nhập lý do -> KHÔNG lộ ghi chú mặc định tiếng Anh của BE', () => {
+  it('người mua tự hủy KHÔNG nhập lý do (BE ghi null) -> chỉ có dòng "Bạn đã hủy", không có dòng lý do nào', () => {
     render(
       withIntl(
         <OrderTimeline
@@ -133,7 +133,7 @@ describe('OrderTimeline', () => {
               fromStatus: 'PENDING',
               toStatus: 'CANCELLED',
               actorType: 'BUYER',
-              note: 'Cancelled by buyer',
+              note: null,
               createdAt: '2026-10-01T02:00:00.000Z',
             }),
           ]}
@@ -142,7 +142,29 @@ describe('OrderTimeline', () => {
     );
 
     expect(screen.getByText('Bạn đã hủy đơn hàng')).toBeInTheDocument();
-    expect(screen.queryByText(/Cancelled by buyer/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Lý do của/)).not.toBeInTheDocument();
+  });
+
+  it('người mua tự hủy KÈM lý do -> chính người mua đọc lại "Lý do của bạn: …"', () => {
+    render(
+      withIntl(
+        <OrderTimeline
+          history={[
+            entry({ toStatus: 'PENDING' }),
+            entry({
+              fromStatus: 'PENDING',
+              toStatus: 'CANCELLED',
+              actorType: 'BUYER',
+              note: 'Đặt nhầm địa chỉ',
+              createdAt: '2026-10-01T02:00:00.000Z',
+            }),
+          ]}
+        />,
+      ),
+    );
+
+    expect(screen.getByText('Bạn đã hủy đơn hàng')).toBeInTheDocument();
+    expect(screen.getByText('Lý do của bạn: Đặt nhầm địa chỉ')).toBeInTheDocument();
     expect(screen.queryByText(/Lý do của shop/)).not.toBeInTheDocument();
   });
 
@@ -216,7 +238,7 @@ describe('OrderTimeline', () => {
               fromStatus: 'PENDING',
               toStatus: 'CANCELLED',
               actorType: 'BUYER',
-              note: 'Cancelled by buyer',
+              note: null,
               createdAt: '2026-10-01T02:00:00.000Z',
             }),
           ]}
@@ -226,7 +248,33 @@ describe('OrderTimeline', () => {
 
     expect(screen.getByText('Người mua đã hủy đơn hàng')).toBeInTheDocument();
     expect(screen.queryByText('Bạn đã hủy đơn hàng')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Cancelled by buyer/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Lý do của/)).not.toBeInTheDocument();
+  });
+
+  it('viewer="seller": người mua hủy KÈM lý do -> shop đọc "Lý do của người mua: …" (văn bản thuần, HTML không chèn thẻ)', () => {
+    const html = '<img src=x onerror=alert(1)> đổi ý';
+    const { container } = render(
+      withIntl(
+        <OrderTimeline
+          viewer="seller"
+          history={[
+            entry({ toStatus: 'PENDING' }),
+            entry({
+              fromStatus: 'PENDING',
+              toStatus: 'CANCELLED',
+              actorType: 'BUYER',
+              note: html,
+              createdAt: '2026-10-01T02:00:00.000Z',
+            }),
+          ]}
+        />,
+      ),
+    );
+
+    expect(screen.getByText('Người mua đã hủy đơn hàng')).toBeInTheDocument();
+    expect(screen.getByText(`Lý do của người mua: ${html}`)).toBeInTheDocument();
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.queryByText(/Lý do của bạn/)).not.toBeInTheDocument();
   });
 
   it('không truyền viewer -> mặc định là góc nhìn người mua (trang /orders/[id] không đổi)', () => {

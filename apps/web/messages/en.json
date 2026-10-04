@@ -524,6 +524,8 @@
     "cancelBlockedProcessing": "The shop has already started processing this order, so it cannot be cancelled.",
     "timelineTitle": "Order history",
     "timelineReason": "Shop's reason: {reason}",
+    "timelineBuyerReason": "Buyer's reason: {reason}",
+    "timelineYourReason": "Your reason: {reason}",
     "timelineCreatedAwaitingPayment": "Order placed, awaiting payment",
     "timelineCreatedPending": "Order placed, awaiting shop confirmation",
     "timelinePaid": "Paid, awaiting shop confirmation",

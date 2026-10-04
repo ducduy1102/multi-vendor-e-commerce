@@ -524,6 +524,8 @@
     "cancelBlockedProcessing": "Shop đã bắt đầu xử lý đơn hàng này nên không thể hủy.",
     "timelineTitle": "Lịch sử đơn hàng",
     "timelineReason": "Lý do của shop: {reason}",
+    "timelineBuyerReason": "Lý do của người mua: {reason}",
+    "timelineYourReason": "Lý do của bạn: {reason}",
     "timelineCreatedAwaitingPayment": "Đã đặt hàng, chờ thanh toán",
     "timelineCreatedPending": "Đã đặt hàng, chờ shop xác nhận",
     "timelinePaid": "Đã thanh toán, chờ shop xác nhận",

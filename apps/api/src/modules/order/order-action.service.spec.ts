@@ -496,7 +496,7 @@ describe('OrderActionService', () => {
       expect(orderStatusService.transition).not.toHaveBeenCalled();
     });
 
-    it('đơn COD chờ xác nhận — hủy đơn đó, actor BUYER, note mặc định, hoàn kho', async () => {
+    it('đơn COD chờ xác nhận — hủy đơn đó, actor BUYER, KHÔNG có lý do thì note để trống, hoàn kho', async () => {
       prisma.order.findFirst.mockResolvedValue({
         status: 'PENDING',
         checkoutGroupId: 'g1',
@@ -514,13 +514,32 @@ describe('OrderActionService', () => {
         'PENDING',
         'CANCELLED',
         BUYER,
-        'Cancelled by buyer',
+        undefined,
       );
       expect(inventoryService.restock).toHaveBeenCalledTimes(1);
       expect(paymentService.cancelCheckoutGroup).not.toHaveBeenCalled();
     });
 
     describe('COD — buyer hủy đơn CUỐI CÙNG chưa tới đích thì nhóm được thu tiền', () => {
+    it('buyer nhập lý do — lý do được ghi nguyên văn vào note (seller và buyer sẽ đọc được)', async () => {
+      prisma.order.findFirst.mockResolvedValue({
+        status: 'PENDING',
+        checkoutGroupId: 'g1',
+      });
+      tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
+
+      await service.cancelByBuyer('buyer-1', 'o1', 'Đặt nhầm địa chỉ');
+
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1'],
+        'PENDING',
+        'CANCELLED',
+        BUYER,
+        'Đặt nhầm địa chỉ',
+      );
+    });
+
       beforeEach(() => {
         prisma.order.findFirst.mockResolvedValue({
           status: 'PENDING',

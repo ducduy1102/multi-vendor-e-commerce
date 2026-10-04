@@ -22,7 +22,8 @@ interface OrderTimelineProps {
 
 // Timeline THUẦN từ `history` (OrderStatusHistory — nguồn sự thật duy nhất của lịch sử đơn). Không
 // có tiêu đề riêng: nơi dùng bọc trong <section> có heading. Bước mới nhất được nhấn (chấm primary,
-// chữ đậm, aria-current="step"); chỉ hiện `note` khi shop từ chối đơn (xem describeTimelineEntry).
+// chữ đậm, aria-current="step"); chỉ hiện `note` khi đơn bị shop từ chối hoặc người mua hủy kèm lý do
+// (xem describeTimelineEntry).
 export function OrderTimeline({ history, viewer = 'buyer' }: OrderTimelineProps) {
   const t = useTranslations('order');
   const tDynamic = t as unknown as LooseTranslator;
@@ -36,7 +37,7 @@ export function OrderTimeline({ history, viewer = 'buyer' }: OrderTimelineProps)
   return (
     <ol className="flex flex-col">
       {steps.map((step, index) => {
-        const { labelKey, showNote } = describeTimelineEntry(step, viewer);
+        const { labelKey, showNote, noteKey } = describeTimelineEntry(step, viewer);
         const isCurrent = index === 0;
         const isLast = index === steps.length - 1;
 
@@ -73,7 +74,7 @@ export function OrderTimeline({ history, viewer = 'buyer' }: OrderTimelineProps)
               </time>
               {showNote && step.note ? (
                 <span className="text-sm break-words text-foreground">
-                  {t('timelineReason', { reason: step.note })}
+                  {tDynamic(noteKey, { reason: step.note })}
                 </span>
               ) : null}
             </div>

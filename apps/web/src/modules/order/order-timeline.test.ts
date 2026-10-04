@@ -111,26 +111,50 @@ describe('describeTimelineEntry — góc nhìn của người đọc', () => {
       for (const actorType of orderActorTypeSchema.options) {
         if (toStatus === 'CANCELLED' && actorType === 'BUYER') continue;
         const e = entry({ toStatus, actorType });
-        expect(describeTimelineEntry(e, 'seller')).toEqual(describeTimelineEntry(e, 'buyer'));
+        // Chỉ so nhãn bước và việc có hiện note không; câu bọc lý do (noteKey) khác nhau theo người đọc ở
+        // test riêng bên dưới và chỉ có nghĩa khi có note.
+        const { labelKey: sellerLabel, showNote: sellerShow } = describeTimelineEntry(e, 'seller');
+        const { labelKey: buyerLabel, showNote: buyerShow } = describeTimelineEntry(e, 'buyer');
+        expect({ labelKey: sellerLabel, showNote: sellerShow }).toEqual({
+          labelKey: buyerLabel,
+          showNote: buyerShow,
+        });
       }
     }
   });
 
-  it('quy tắc hiện note giống nhau ở cả hai góc nhìn: chỉ khi shop từ chối', () => {
+  it('quy tắc hiện note giống nhau ở cả hai góc nhìn (chỉ khác câu bọc): shop từ chối / người mua hủy CÓ lý do', () => {
     const sellerRejects = entry({ toStatus: 'CANCELLED', actorType: 'SELLER', note: 'Hết hàng' });
-    const buyerCancels = entry({
-      toStatus: 'CANCELLED',
-      actorType: 'BUYER',
-      note: 'Cancelled by buyer',
-    });
+    const buyerCancels = entry({ toStatus: 'CANCELLED', actorType: 'BUYER', note: 'Đặt nhầm' });
+    const buyerCancelsNoReason = entry({ toStatus: 'CANCELLED', actorType: 'BUYER', note: null });
     for (const viewer of ['buyer', 'seller'] as const) {
       expect(describeTimelineEntry(sellerRejects, viewer).showNote).toBe(true);
-      expect(describeTimelineEntry(buyerCancels, viewer).showNote).toBe(false);
+      expect(describeTimelineEntry(buyerCancels, viewer).showNote).toBe(true);
+      expect(describeTimelineEntry(buyerCancelsNoReason, viewer).showNote).toBe(false);
     }
   });
 });
 
-describe('describeTimelineEntry — chỉ hiện note khi shop từ chối đơn', () => {
+describe('describeTimelineEntry — câu bọc lý do theo người viết và người đọc (noteKey)', () => {
+  it('lý do của shop: cùng một câu cho cả người mua lẫn shop đọc', () => {
+    const e = entry({ toStatus: 'CANCELLED', actorType: 'SELLER', note: 'Hết hàng' });
+    expect(describeTimelineEntry(e, 'buyer').noteKey).toBe('timelineReason');
+    expect(describeTimelineEntry(e, 'seller').noteKey).toBe('timelineReason');
+  });
+
+  it('lý do của người mua: shop đọc là "của người mua", chính người mua đọc là "của bạn"', () => {
+    const e = entry({ toStatus: 'CANCELLED', actorType: 'BUYER', note: 'Đặt nhầm' });
+    expect(describeTimelineEntry(e, 'seller').noteKey).toBe('timelineBuyerReason');
+    expect(describeTimelineEntry(e, 'buyer').noteKey).toBe('timelineYourReason');
+  });
+
+  it('không truyền viewer ⇒ góc nhìn người mua', () => {
+    const e = entry({ toStatus: 'CANCELLED', actorType: 'BUYER', note: 'Đặt nhầm' });
+    expect(describeTimelineEntry(e).noteKey).toBe('timelineYourReason');
+  });
+});
+
+describe('describeTimelineEntry — chỉ hiện note khi đơn bị HỦY bởi một người (shop hoặc người mua)', () => {
   it('shop từ chối kèm lý do -> hiện note', () => {
     expect(
       describeTimelineEntry(entry({ toStatus: 'CANCELLED', actorType: 'SELLER', note: 'Hết hàng' }))
@@ -149,16 +173,30 @@ describe('describeTimelineEntry — chỉ hiện note khi shop từ chối đơn
     ).toBe(false);
   });
 
-  it('người mua hủy -> KHÔNG hiện note, kể cả note mặc định tiếng Anh "Cancelled by buyer" của BE', () => {
-    expect(
-      describeTimelineEntry(
-        entry({ toStatus: 'CANCELLED', actorType: 'BUYER', note: 'Cancelled by buyer' }),
-      ).showNote,
-    ).toBe(false);
+  it('người mua hủy KÈM lý do -> hiện note (shop biết vì sao khách hủy)', () => {
     expect(
       describeTimelineEntry(entry({ toStatus: 'CANCELLED', actorType: 'BUYER', note: 'Đặt nhầm' }))
         .showNote,
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it('người mua hủy KHÔNG nhập lý do (BE ghi null) hoặc note rỗng -> không hiện gì', () => {
+    for (const note of [null, '']) {
+      expect(
+        describeTimelineEntry(entry({ toStatus: 'CANCELLED', actorType: 'BUYER', note })).showNote,
+      ).toBe(false);
+    }
+  });
+
+  it('note của người mua/shop ở bước KHÔNG phải hủy (đặt hàng, xác nhận, giao…) không hiện', () => {
+    for (const toStatus of orderStatusSchema.options) {
+      if (toStatus === 'CANCELLED') continue;
+      for (const actorType of ['BUYER', 'SELLER'] as const) {
+        expect(
+          describeTimelineEntry(entry({ toStatus, actorType, note: 'ghi chú' })).showNote,
+        ).toBe(false);
+      }
+    }
   });
 
   it('ghi chú hệ thống ("Payment hold reclaimed", "Payment confirmed", "backfill"...) không bao giờ hiện', () => {

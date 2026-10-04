@@ -553,6 +553,46 @@ describe('PaymentService', () => {
         'Đổi ý',
       );
     });
+
+    it('actor BUYER KHÔNG có note — note để trống, KHÔNG rơi về chuỗi hệ thống "Payment hold reclaimed"', async () => {
+      tx.payment.count.mockResolvedValue(0);
+      tx.$queryRaw.mockResolvedValue([
+        { id: 'o1', status: 'AWAITING_PAYMENT' },
+      ]);
+      orderStatusService.transition.mockResolvedValue(['o1']);
+
+      await service.reclaimCheckoutGroup('g1', {
+        actor: { type: 'BUYER', id: 'user-1' },
+      });
+
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1'],
+        'AWAITING_PAYMENT',
+        'CANCELLED',
+        { type: 'BUYER', id: 'user-1' },
+        undefined,
+      );
+    });
+
+    it('hệ thống (không truyền actor/note, hết hạn thanh toán) vẫn ghi "Payment hold reclaimed"', async () => {
+      tx.payment.count.mockResolvedValue(0);
+      tx.$queryRaw.mockResolvedValue([
+        { id: 'o1', status: 'AWAITING_PAYMENT' },
+      ]);
+      orderStatusService.transition.mockResolvedValue(['o1']);
+
+      await service.reclaimCheckoutGroup('g1');
+
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1'],
+        'AWAITING_PAYMENT',
+        'CANCELLED',
+        { type: 'SYSTEM' },
+        'Payment hold reclaimed',
+      );
+    });
   });
 
   describe('cancelCheckoutGroup (buyer hủy cả nhóm chưa thanh toán)', () => {
@@ -594,7 +634,7 @@ describe('PaymentService', () => {
       expect(result.status).toBe('CANCELLED');
     });
 
-    it('không có lý do — note mặc định', async () => {
+    it('không có lý do — note để trống (không ghi chuỗi mặc định, vì note của buyer được hiển thị nguyên văn)', async () => {
       reclaim.mockResolvedValue({ reclaimed: true });
       getGroup.mockResolvedValue(view('CANCELLED'));
 
@@ -602,7 +642,7 @@ describe('PaymentService', () => {
 
       expect(reclaim).toHaveBeenCalledWith('g1', {
         actor: { type: 'BUYER', id: 'user-1' },
-        note: 'Cancelled by buyer',
+        note: undefined,
       });
     });
 

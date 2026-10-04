@@ -342,13 +342,19 @@ export class PaymentService {
         .map((o) => o.id);
       if (awaitingIds.length === 0) return { reclaimed: false };
 
+      // Ghi chú mặc định "Payment hold reclaimed" chỉ hợp với HỆ THỐNG (hết hạn thanh toán). Buyer chủ động
+      // hủy mà không nhập lý do thì để trống (null): note của buyer được hiển thị nguyên văn trên timeline,
+      // không được lẫn chuỗi hệ thống tiếng Anh.
+      const actor = options.actor ?? { type: 'SYSTEM' as const };
       const cancelledIds = await this.orderStatusService.transition(
         tx,
         awaitingIds,
         'AWAITING_PAYMENT',
         'CANCELLED',
-        options.actor ?? { type: 'SYSTEM' },
-        options.note ?? 'Payment hold reclaimed',
+        actor,
+        actor.type === 'SYSTEM'
+          ? (options.note ?? 'Payment hold reclaimed')
+          : options.note,
       );
       if (cancelledIds.length === 0) return { reclaimed: false };
 
@@ -400,7 +406,9 @@ export class PaymentService {
 
     const { reclaimed } = await this.reclaimCheckoutGroup(groupId, {
       actor: { type: 'BUYER', id: userId },
-      note: reason ?? 'Cancelled by buyer',
+      // Chỉ lý do do chính buyer nhập; không có thì null (không ghi chuỗi mặc định, `note` của buyer được
+      // hiển thị nguyên văn trên timeline).
+      note: reason,
     });
     const view = await this.getCheckoutGroup(userId, groupId);
     if (reclaimed || view.status === 'CANCELLED') return view;

@@ -189,7 +189,9 @@ export class OrderActionService {
       'CANCELLED',
       { type: 'BUYER', id: userId },
       {
-        note: reason ?? 'Cancelled by buyer',
+        // Chỉ lý do do chính buyer nhập; không có thì để trống (null) — KHÔNG ghi chuỗi mặc định, vì
+        // `note` của buyer được hiển thị nguyên văn cho shop và cho chính buyer.
+        note: reason,
         precheck: (order) => this.assertCancellable(order),
         after: (tx, order) => this.afterCodOrderCancelled(tx, order),
       },

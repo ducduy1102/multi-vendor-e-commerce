@@ -159,7 +159,7 @@ describe('SellerOrderDetailView', () => {
                 fromStatus: 'PENDING',
                 toStatus: 'CANCELLED',
                 actorType: 'BUYER',
-                note: 'Cancelled by buyer',
+                note: null,
                 createdAt: '2026-10-01T04:00:00.000Z',
               },
             ],
@@ -171,7 +171,38 @@ describe('SellerOrderDetailView', () => {
     const timeline = within(screen.getByRole('region', { name: 'Lịch sử đơn hàng' }));
     expect(timeline.getByText('Người mua đã hủy đơn hàng')).toBeInTheDocument();
     expect(timeline.queryByText('Bạn đã hủy đơn hàng')).not.toBeInTheDocument();
-    expect(timeline.queryByText(/Cancelled by buyer/)).not.toBeInTheDocument();
+    expect(timeline.queryByText(/Lý do của/)).not.toBeInTheDocument();
+  });
+
+  it('người mua hủy KÈM lý do -> seller thấy "Lý do của người mua: …" ở timeline', () => {
+    render(
+      withIntl(
+        <SellerOrderDetailView
+          order={order({
+            status: 'CANCELLED',
+            history: [
+              {
+                fromStatus: null,
+                toStatus: 'PENDING',
+                actorType: 'BUYER',
+                note: null,
+                createdAt: '2026-10-01T03:30:00.000Z',
+              },
+              {
+                fromStatus: 'PENDING',
+                toStatus: 'CANCELLED',
+                actorType: 'BUYER',
+                note: 'Đặt nhầm địa chỉ',
+                createdAt: '2026-10-01T04:00:00.000Z',
+              },
+            ],
+          })}
+        />,
+      ),
+    );
+
+    const timeline = within(screen.getByRole('region', { name: 'Lịch sử đơn hàng' }));
+    expect(timeline.getByText('Lý do của người mua: Đặt nhầm địa chỉ')).toBeInTheDocument();
   });
 
   it('chính shop từ chối kèm lý do -> hiện lại lý do shop đã nhập', () => {

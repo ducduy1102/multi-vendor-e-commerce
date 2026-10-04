@@ -630,7 +630,7 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       });
     });
 
-    it('buyer hủy kèm lý do — lý do vào timeline', async () => {
+    it('buyer hủy kèm lý do — lý do vào timeline, và SELLER của đơn đọc được lý do đó qua API', async () => {
       const { orderId } = await seedOne('PENDING', cod);
 
       await buyer
@@ -663,10 +663,12 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
     it('POST /orders/:id/cancel trên đơn chưa thanh toán — hủy CẢ NHÓM, nhả giữ chỗ, actor BUYER', async () => {
       const g = await seedGroup(
         [
+      // Không nhập lý do ⇒ note là null (KHÔNG ghi chuỗi mặc định: note của buyer hiển thị nguyên văn).
           { shopId: shopA, status: 'AWAITING_PAYMENT' },
           { shopId: shopA2, status: 'AWAITING_PAYMENT' },
         ],
         unpaid,
+        note: null,
       );
 
       const res = await buyer
@@ -679,6 +681,16 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       for (const v of g.variantIds) {
         expect(await stockOf(v)).toEqual({ stock: STOCK, reservedStock: 0 });
       }
+      const seller = await sellerA.get(
+        `/api/v1/shops/${shopA}/orders/${orderId}`,
+      );
+      expect(seller.status).toBe(200);
+      const last = sellerOrderDetailSchema.parse(data(seller)).history.at(-1);
+      expect(last).toMatchObject({
+        toStatus: 'CANCELLED',
+        actorType: 'BUYER',
+        note: 'Đặt nhầm',
+      });
       expect((await historyOf(g.orderIds[1])).at(-1)).toMatchObject({
         toStatus: 'CANCELLED',
         actorType: 'BUYER',
@@ -724,6 +736,21 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
 
     it('nhóm đã thanh toán — 409 PAID_ONLINE, không đụng gì', async () => {
       const g = await seedGroup(
+    });
+
+    it('hủy nhóm chưa thanh toán KHÔNG nhập lý do — note là null (không ghi chuỗi mặc định)', async () => {
+      const g = await seedGroup(
+        [{ shopId: shopA, status: 'AWAITING_PAYMENT' }],
+        unpaid,
+      );
+
+      await buyer.post(buyerUrl(g.orderIds[0], 'cancel')).expect(200);
+
+      expect((await historyOf(g.orderIds[0])).at(-1)).toMatchObject({
+        toStatus: 'CANCELLED',
+        actorType: 'BUYER',
+        note: null,
+      });
         [{ shopId: shopA, status: 'PENDING' }],
         onlinePaid,
       );
