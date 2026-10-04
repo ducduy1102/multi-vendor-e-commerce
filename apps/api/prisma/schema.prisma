@@ -519,6 +519,12 @@ model Order {
   carrier      String?
   trackingCode String? @map("tracking_code")
 
+  // Lời nhắn của người mua cho ĐÚNG shop của đơn này (Week8.md 3B) — mỗi đơn một lời nhắn riêng nên
+  // shop A không thấy lời nhắn gửi shop B. Văn bản thuần, đã trim, tối đa 500 ký tự
+  // (ORDER_NOTE_MAX_LENGTH), không bao giờ là chuỗi rỗng (rỗng ⇒ NULL), đặt xong không sửa.
+  // Khác OrderStatusHistory.note (lý do đổi trạng thái do shop/hệ thống ghi).
+  buyerNote String? @map("buyer_note") @db.VarChar(500)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

@@ -48,6 +48,9 @@ export interface PlaceOrderInput {
   voucherCode?: string;
   // = grandTotal của lần xem trước (2.7b) — bắt buộc (Week7.md 1.11 (3)).
   expectedTotal: number;
+  // Lời nhắn cho từng shop, khoá = shopId (Week8.md 3B). Schema đã trim và bỏ mục rỗng. `shopId` không
+  // có trong giỏ lúc đặt bị BỎ QUA im lặng (không 400): chỉ shop thật sự có đơn mới nhận lời nhắn.
+  shopNotes?: Record<string, string>;
 }
 
 export interface PlaceOrderResultOrder {
@@ -375,6 +378,9 @@ export class CheckoutService {
             shippingFee: o.shippingFee,
             discountAmount: o.discountAmount,
             totalAmount: o.totalAmount,
+            // Tra theo `o.shopId` (shop có đơn thật) chứ không duyệt `shopNotes`: khoá lạ không đi
+            // vào đâu cả, và đơn nào không có lời nhắn thì null.
+            buyerNote: input.shopNotes?.[o.shopId] ?? null,
             items: o.items.map((item) => ({
               productVariantId: item.productVariantId,
               productName: item.productName,

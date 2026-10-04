@@ -109,6 +109,7 @@ describe('OrderService.createOrders', () => {
         totalAmount: 120_000,
         discountAmount: 0,
         shippingFee: 20_000,
+        buyerNote: null,
         recipientName: 'Nguyễn Văn A',
         recipientPhone: '0912345678',
         shippingAddressLine: '12 Nguyễn Huệ',
@@ -223,6 +224,61 @@ describe('OrderService.createOrders', () => {
     expect(tx.payment.create).toHaveBeenCalledTimes(1);
     expect(result.orders).toHaveLength(2);
     expect(result.orders.map((o) => o.shopId)).toEqual(['shop-1', 'shop-2']);
+  });
+
+  describe('buyerNote (Week8.md 3B)', () => {
+    const secondShopOrder = (buyerNote?: string | null) => ({
+      ...baseInput().orders[0],
+      shopId: 'shop-2',
+      buyerNote,
+    });
+    const buyerNoteOfCall = (index: number) =>
+      (
+        tx.order.create.mock.calls[index] as [
+          { data: { shopId: string; buyerNote: string | null } },
+        ]
+      )[0].data;
+
+    it('mỗi đơn ghi đúng lời nhắn của shop mình, không lẫn sang đơn khác', async () => {
+      await call({
+        orders: [
+          { ...baseInput().orders[0], buyerNote: 'Gọi trước khi giao' },
+          secondShopOrder('Gói quà giúp mình'),
+        ],
+      });
+
+      expect(buyerNoteOfCall(0)).toMatchObject({
+        shopId: 'shop-1',
+        buyerNote: 'Gọi trước khi giao',
+      });
+      expect(buyerNoteOfCall(1)).toMatchObject({
+        shopId: 'shop-2',
+        buyerNote: 'Gói quà giúp mình',
+      });
+    });
+
+    it('đơn không có lời nhắn ghi null (thiếu field hoặc null đều như nhau), không phải chuỗi rỗng', async () => {
+      await call({
+        orders: [
+          baseInput().orders[0],
+          secondShopOrder(null),
+          { ...secondShopOrder(), shopId: 'shop-3' },
+        ],
+      });
+
+      expect(buyerNoteOfCall(0).buyerNote).toBeNull();
+      expect(buyerNoteOfCall(1).buyerNote).toBeNull();
+      expect(buyerNoteOfCall(2).buyerNote).toBeNull();
+    });
+
+    it('chỉ lưu lời nhắn cho shop có đơn: không đơn nào khác nhận lời nhắn của shop kia', async () => {
+      await call({
+        orders: [{ ...baseInput().orders[0], buyerNote: 'Chỉ cho shop 1' }],
+      });
+
+      expect(tx.order.create).toHaveBeenCalledTimes(1);
+      expect(buyerNoteOfCall(0).buyerNote).toBe('Chỉ cho shop 1');
+    });
   });
 
   it('giữ voucherId (truy vết) trên mọi Order khi có voucher toàn sàn', async () => {

@@ -42,6 +42,7 @@ interface SeedOrder {
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
   expiresAt?: Date | null;
+  buyerNote?: string | null;
 }
 
 const fakeMail = createFakeMail();
@@ -110,6 +111,7 @@ describe('SellerOrderController (HTTP thật)', () => {
         createdAt: input.createdAt,
         totalAmount: 220_000,
         shippingFee: 20_000,
+        buyerNote: input.buyerNote,
         recipientName: 'Nguyễn Văn A',
         recipientPhone: '0912345678',
         shippingAddressLine: '12 Nguyễn Huệ',
@@ -456,6 +458,123 @@ describe('SellerOrderController (HTTP thật)', () => {
       expect(list.status).toBe(200);
       expect(sellerOrderListResponseSchema.parse(body(list)).total).toBe(1);
       expect(detail.status).toBe(200);
+    });
+  });
+
+  // Lời nhắn của người mua theo từng shop (Week8.md 3B): cùng 1 buyer đặt ở 2 shop với 2 lời nhắn
+  // khác nhau — mỗi seller chỉ được thấy lời nhắn của ĐƠN CỦA SHOP MÌNH. Dùng 2 seller/shop riêng để
+  // không đổi số đếm của các test danh sách ở trên.
+  describe('buyerNote — mỗi seller chỉ thấy lời nhắn của đơn mình (Week8.md 3B)', () => {
+    const NOTE_C = 'Giao giờ hành chính, gọi trước khi giao';
+    const NOTE_D = 'Gói quà giúp mình, đừng ghi giá';
+    const HTML_NOTE = '<img src=x onerror=alert(1)> & "quote"';
+    let sellerC: ReturnType<typeof newAgent>;
+    let sellerD: ReturnType<typeof newAgent>;
+    let shopC: string;
+    let shopD: string;
+    let orderC: string;
+    let orderD: string;
+    let orderCNoNote: string;
+    let orderCHtml: string;
+
+    beforeAll(async () => {
+      const c = await registerAndLogin('c');
+      const d = await registerAndLogin('d');
+      sellerC = c.agent;
+      sellerD = d.agent;
+      shopC = await createShopFor(c.userId, 'c', 'APPROVED');
+      shopD = await createShopFor(d.userId, 'd', 'APPROVED');
+      const t = (minutes: number) =>
+        new Date(Date.parse('2026-10-02T09:00:00.000Z') + minutes * 60_000);
+      orderC = await seedOrder({
+        buyerId,
+        shopId: shopC,
+        status: 'PENDING',
+        createdAt: t(1),
+        buyerNote: NOTE_C,
+      });
+      orderD = await seedOrder({
+        buyerId,
+        shopId: shopD,
+        status: 'PENDING',
+        createdAt: t(1),
+        buyerNote: NOTE_D,
+      });
+      orderCNoNote = await seedOrder({
+        buyerId,
+        shopId: shopC,
+        status: 'PENDING',
+        createdAt: t(2),
+      });
+      orderCHtml = await seedOrder({
+        buyerId,
+        shopId: shopC,
+        status: 'CONFIRMED',
+        createdAt: t(3),
+        buyerNote: HTML_NOTE,
+      });
+    });
+
+    it('danh sách: seller C thấy lời nhắn của đơn mình, null khi không có, và KHÔNG chứa lời nhắn gửi shop D ở bất kỳ đâu', async () => {
+      const res = await sellerC.get(`/api/v1/shops/${shopC}/orders?limit=50`);
+
+      expect(res.status).toBe(200);
+      const data = sellerOrderListResponseSchema.parse(body(res));
+      const noteById = Object.fromEntries(
+        data.items.map((o) => [o.id, o.buyerNote]),
+      );
+      expect(noteById).toEqual({
+        [orderC]: NOTE_C,
+        [orderCNoNote]: null,
+        [orderCHtml]: HTML_NOTE,
+      });
+      expect(JSON.stringify(res.body)).not.toContain(NOTE_D);
+    });
+
+    it('chi tiết: mỗi seller đọc lời nhắn của đơn mình; đọc đơn của shop kia thì 403/404 và không rò lời nhắn', async () => {
+      const own = await sellerC.get(`/api/v1/shops/${shopC}/orders/${orderC}`);
+      expect(own.status).toBe(200);
+      expect(sellerOrderDetailSchema.parse(body(own)).buyerNote).toBe(NOTE_C);
+
+      const ownD = await sellerD.get(`/api/v1/shops/${shopD}/orders/${orderD}`);
+      expect(sellerOrderDetailSchema.parse(body(ownD)).buyerNote).toBe(NOTE_D);
+
+      // Đơn của D qua đường của C (shopId của C) và qua shopId của D (không phải chủ) — đều không có nội dung.
+      const viaOwnShop = await sellerC.get(
+        `/api/v1/shops/${shopC}/orders/${orderD}`,
+      );
+      const viaOtherShop = await sellerC.get(
+        `/api/v1/shops/${shopD}/orders/${orderD}`,
+      );
+      expect(viaOwnShop.status).toBe(404);
+      expect(viaOtherShop.status).toBe(403);
+      expect(JSON.stringify(viaOwnShop.body)).not.toContain(NOTE_D);
+      expect(JSON.stringify(viaOtherShop.body)).not.toContain(NOTE_D);
+    });
+
+    it('chi tiết đơn không có lời nhắn trả buyerNote = null (khoá có mặt, không bị bỏ)', async () => {
+      const res = await sellerC.get(
+        `/api/v1/shops/${shopC}/orders/${orderCNoNote}`,
+      );
+
+      expect(res.status).toBe(200);
+      const data = body(res) as Record<string, unknown>;
+      expect(data).toHaveProperty('buyerNote', null);
+    });
+
+    it('nội dung chứa HTML được trả NGUYÊN VĂN dạng text (không escape, không cắt) — React escape lúc hiển thị', async () => {
+      const list = await sellerC.get(`/api/v1/shops/${shopC}/orders?limit=50`);
+      const detail = await sellerC.get(
+        `/api/v1/shops/${shopC}/orders/${orderCHtml}`,
+      );
+
+      const listItem = sellerOrderListResponseSchema
+        .parse(body(list))
+        .items.find((o) => o.id === orderCHtml);
+      expect(listItem?.buyerNote).toBe(HTML_NOTE);
+      expect(sellerOrderDetailSchema.parse(body(detail)).buyerNote).toBe(
+        HTML_NOTE,
+      );
     });
   });
 });

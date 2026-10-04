@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { placeOrderSchema } from '@ecommerce/types';
 import {
   addCartItem,
   cleanupByTag,
@@ -359,6 +360,224 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
       expect(replay.checkoutGroupId).toBe(first.checkoutGroupId);
       expect(replay).toMatchObject({ expiresAt: null, paymentUrl: null });
       expect(await stockOf(variant.id)).toEqual({ stock: 8, reservedStock: 0 });
+    });
+  });
+
+  describe('lời nhắn theo từng shop — shopNotes (Week8.md 3B)', () => {
+    // 1 user, giỏ 2 shop (mỗi shop 1 variant), thanh toán COD để đơn vào thẳng PENDING.
+    async function setupTwoShopCart() {
+      const user = await createUser(prisma, TAG);
+      const address = await createAddress(prisma, user.id);
+      const baseA = await createShopWithProduct(prisma, TAG);
+      const baseB = await createShopWithProduct(prisma, TAG);
+      const variantA = await createVariant(prisma, baseA, {
+        stock: 5,
+        price: 100_000,
+      });
+      const variantB = await createVariant(prisma, baseB, {
+        stock: 5,
+        price: 50_000,
+      });
+      await addCartItem(prisma, user.id, variantA.id, 1);
+      await addCartItem(prisma, user.id, variantB.id, 1);
+      const expectedTotal =
+        100_000 + shippingFeeFor(500, 1) + 50_000 + shippingFeeFor(500, 1);
+      return {
+        user,
+        address,
+        shopA: baseA.shopId,
+        shopB: baseB.shopId,
+        expectedTotal,
+      };
+    }
+
+    // Đi qua ĐÚNG schema của controller (ZodValidationPipe) để phần trim/bỏ mục rỗng cũng được kiểm.
+    const parsed = (input: unknown) => placeOrderSchema.parse(input);
+
+    const notesByShop = async (groupId: string) =>
+      Object.fromEntries(
+        (
+          await prisma.order.findMany({
+            where: { checkoutGroupId: groupId },
+            select: { shopId: true, buyerNote: true },
+          })
+        ).map((o) => [o.shopId, o.buyerNote]),
+      );
+
+    it('giỏ 2 shop, 2 lời nhắn khác nhau — mỗi đơn lưu ĐÚNG lời nhắn của shop mình', async () => {
+      const { user, address, shopA, shopB, expectedTotal } =
+        await setupTwoShopCart();
+
+      const result = await place(
+        user.id,
+        parsed({
+          addressId: address.id,
+          paymentMethod: 'COD',
+          expectedTotal,
+          shopNotes: {
+            [shopA]: '  Gọi trước khi giao  ',
+            [shopB]: 'Gói quà giúp mình',
+          },
+        }),
+      );
+
+      expect(await notesByShop(result.checkoutGroupId)).toEqual({
+        [shopA]: 'Gọi trước khi giao', // đã trim
+        [shopB]: 'Gói quà giúp mình',
+      });
+    });
+
+    it('chỉ nhắn 1 shop; shop còn lại NULL (không phải chuỗi rỗng); mục rỗng/toàn khoảng trắng không được lưu', async () => {
+      const { user, address, shopA, shopB, expectedTotal } =
+        await setupTwoShopCart();
+
+      const result = await place(
+        user.id,
+        parsed({
+          addressId: address.id,
+          paymentMethod: 'COD',
+          expectedTotal,
+          shopNotes: { [shopA]: 'Chỉ shop A', [shopB]: '   ' },
+        }),
+      );
+
+      expect(await notesByShop(result.checkoutGroupId)).toEqual({
+        [shopA]: 'Chỉ shop A',
+        [shopB]: null,
+      });
+    });
+
+    it('shopId lạ bị BỎ QUA: đặt hàng vẫn thành công, lời nhắn đó không rơi vào đơn nào', async () => {
+      const { user, address, shopA, shopB, expectedTotal } =
+        await setupTwoShopCart();
+
+      const result = await place(
+        user.id,
+        parsed({
+          addressId: address.id,
+          paymentMethod: 'COD',
+          expectedTotal,
+          shopNotes: {
+            [shopA]: 'Của shop A',
+            'shop-khong-co-trong-gio': 'Gửi nhầm shop',
+          },
+        }),
+      );
+
+      expect(result.orders).toHaveLength(2);
+      expect(await notesByShop(result.checkoutGroupId)).toEqual({
+        [shopA]: 'Của shop A',
+        [shopB]: null,
+      });
+    });
+
+    it('nội dung HTML được lưu NGUYÊN VĂN dạng text (không escape/không loại bỏ), tối đa 500 ký tự lưu đủ', async () => {
+      const { user, address, shopA, shopB, expectedTotal } =
+        await setupTwoShopCart();
+      const html = '<img src=x onerror=alert(1)> & "quote" \n dòng 2';
+      const long = 'a'.repeat(500);
+
+      const result = await place(
+        user.id,
+        parsed({
+          addressId: address.id,
+          paymentMethod: 'COD',
+          expectedTotal,
+          shopNotes: { [shopA]: html, [shopB]: long },
+        }),
+      );
+
+      expect(await notesByShop(result.checkoutGroupId)).toEqual({
+        [shopA]: html,
+        [shopB]: long,
+      });
+    });
+
+    it('lời nhắn quá 500 ký tự bị schema từ chối TRƯỚC khi đặt: 400, không tạo đơn, giỏ nguyên vẹn', async () => {
+      const { user, address, shopA, expectedTotal } = await setupTwoShopCart();
+
+      const result = placeOrderSchema.safeParse({
+        addressId: address.id,
+        paymentMethod: 'COD',
+        expectedTotal,
+        shopNotes: { [shopA]: 'a'.repeat(501) },
+      });
+
+      expect(result.success).toBe(false);
+      expect(await prisma.order.count({ where: { userId: user.id } })).toBe(0);
+      expect(await cartItemCountOf(user.id)).toBe(2);
+    });
+
+    it('cột DB là lưới chắn cuối: VARCHAR(500) từ chối 501 ký tự dù service bị gọi thẳng, bỏ qua schema', async () => {
+      const { user, address, shopA, expectedTotal } = await setupTwoShopCart();
+
+      await expect(
+        place(user.id, {
+          addressId: address.id,
+          paymentMethod: 'COD',
+          expectedTotal,
+          shopNotes: { [shopA]: 'a'.repeat(501) },
+        }),
+      ).rejects.toThrow();
+
+      // Rollback sạch: không đơn nào, giỏ còn nguyên, kho không bị trừ.
+      expect(await prisma.order.count({ where: { userId: user.id } })).toBe(0);
+      expect(await cartItemCountOf(user.id)).toBe(2);
+    });
+
+    it('phát lại cùng Idempotency-Key với lời nhắn KHÁC — trả đơn cũ, lời nhắn đã lưu giữ nguyên, không tạo đơn mới', async () => {
+      const { user, address, shopA, shopB, expectedTotal } =
+        await setupTwoShopCart();
+      const base = {
+        addressId: address.id,
+        paymentMethod: 'COD',
+        expectedTotal,
+      };
+
+      const first = await place(
+        user.id,
+        parsed({ ...base, shopNotes: { [shopA]: 'Lời nhắn lần đầu' } }),
+        'note-key-1',
+      );
+      const replay = await place(
+        user.id,
+        parsed({
+          ...base,
+          shopNotes: { [shopA]: 'Lời nhắn khác', [shopB]: 'Thêm shop B' },
+        }),
+        'note-key-1',
+      );
+
+      expect(replay.checkoutGroupId).toBe(first.checkoutGroupId);
+      expect(await prisma.order.count({ where: { userId: user.id } })).toBe(2);
+      expect(await notesByShop(first.checkoutGroupId)).toEqual({
+        [shopA]: 'Lời nhắn lần đầu',
+        [shopB]: null,
+      });
+    });
+
+    it('đặt hàng online (VNPAY) cũng lưu lời nhắn, đơn vẫn AWAITING_PAYMENT', async () => {
+      const { user, address, shopA, shopB, expectedTotal } =
+        await setupTwoShopCart();
+
+      const result = await place(
+        user.id,
+        parsed({
+          addressId: address.id,
+          paymentMethod: 'VNPAY',
+          expectedTotal,
+          shopNotes: { [shopB]: 'Online vẫn có lời nhắn' },
+        }),
+      );
+
+      expect(await notesByShop(result.checkoutGroupId)).toEqual({
+        [shopA]: null,
+        [shopB]: 'Online vẫn có lời nhắn',
+      });
+      expect(result.orders.map((o) => o.status)).toEqual([
+        'AWAITING_PAYMENT',
+        'AWAITING_PAYMENT',
+      ]);
     });
   });
 

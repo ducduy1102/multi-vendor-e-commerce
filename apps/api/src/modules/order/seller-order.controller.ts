@@ -49,6 +49,7 @@ const SELLER_ORDER_LIST_ITEM_EXAMPLE = {
   totalAmount: '320000',
   recipientName: 'Nguyễn Văn A',
   shippingProvince: 'Hồ Chí Minh',
+  buyerNote: 'Giao giờ hành chính, gọi trước khi giao nhé',
   items: [
     {
       productName: 'Áo thun cotton',
@@ -155,7 +156,7 @@ export class SellerOrderController {
   @ApiCookieAuth('access_token')
   @ApiOperation({
     summary:
-      'Danh sách đơn của shop mình — chỉ đơn đã thanh toán/đã đặt COD (không có đơn chưa thanh toán), lọc theo tab, phân trang',
+      'Danh sách đơn của shop mình — chỉ đơn đã thanh toán/đã đặt COD (không có đơn chưa thanh toán), lọc theo tab, phân trang. Mỗi đơn kèm `buyerNote` (lời nhắn của người mua gửi riêng đơn này, null nếu không có)',
   })
   @ApiQuery({
     name: 'tab',
@@ -215,7 +216,7 @@ export class SellerOrderController {
   @ApiCookieAuth('access_token')
   @ApiOperation({
     summary:
-      'Chi tiết 1 đơn của shop mình — người nhận, dòng hàng lúc đặt, tiền, vận chuyển, timeline',
+      'Chi tiết 1 đơn của shop mình — người nhận, lời nhắn của người mua (`buyerNote`), dòng hàng lúc đặt, tiền, vận chuyển, timeline',
   })
   @ApiResponse({
     status: 200,

@@ -44,6 +44,7 @@ interface SeedOrder {
   paymentStatus?: PaymentStatus;
   // null = COD (không hết hạn); mặc định 15 phút nữa.
   expiresAt?: Date | null;
+  buyerNote?: string | null;
 }
 
 const fakeMail = createFakeMail();
@@ -92,6 +93,7 @@ describe('BuyerOrderController (HTTP thật)', () => {
         createdAt: input.createdAt,
         totalAmount: 100_000 * itemCount + 20_000,
         shippingFee: 20_000,
+        buyerNote: input.buyerNote,
         recipientName: 'Nguyễn Văn A',
         recipientPhone: '0912345678',
         shippingAddressLine: '12 Nguyễn Huệ',
@@ -398,6 +400,66 @@ describe('BuyerOrderController (HTTP thật)', () => {
         const res = await b.get(`/api/v1/orders/${aUnpaid}`);
         expect(res.status).toBe(404);
       });
+    });
+  });
+
+  // Lời nhắn người mua đã gửi cho shop (Week8.md 3B): thấy ở CHI TIẾT đơn của chính mình (mỗi đơn một
+  // lời nhắn riêng), không có ở danh sách, và người khác không đọc được qua đơn của mình.
+  describe('buyerNote (Week8.md 3B)', () => {
+    const NOTE_1 = 'Giao giờ hành chính, gọi trước khi giao';
+    const NOTE_2 = '<img src=x onerror=alert(1)> & "quote"';
+    let c: ReturnType<typeof agentA>;
+    let withNote1: string;
+    let withNote2: string;
+    let withoutNote: string;
+
+    beforeAll(async () => {
+      const registered = await registerAndLogin('c');
+      c = registered.agent;
+      withNote1 = await seedOrder({
+        userId: registered.userId,
+        status: 'PENDING',
+        buyerNote: NOTE_1,
+      });
+      withNote2 = await seedOrder({
+        userId: registered.userId,
+        status: 'PENDING',
+        buyerNote: NOTE_2,
+      });
+      withoutNote = await seedOrder({
+        userId: registered.userId,
+        status: 'PENDING',
+      });
+    });
+
+    it('chi tiết: mỗi đơn trả đúng lời nhắn của nó; HTML trả nguyên văn dạng text; không có ⇒ null', async () => {
+      const read = async (id: string) =>
+        orderDetailSchema.parse(
+          ((await c.get(`/api/v1/orders/${id}`)).body as { data: unknown })
+            .data,
+        );
+
+      expect((await read(withNote1)).buyerNote).toBe(NOTE_1);
+      expect((await read(withNote2)).buyerNote).toBe(NOTE_2);
+      expect((await read(withoutNote)).buyerNote).toBeNull();
+    });
+
+    it('danh sách đơn của tôi KHÔNG có khoá buyerNote (chỉ chi tiết mới cần)', async () => {
+      const res = await c.get('/api/v1/orders?limit=50');
+
+      expect(res.status).toBe(200);
+      const items = (res.body as { data: { items: object[] } }).data.items;
+      expect(items).toHaveLength(3);
+      for (const item of items) {
+        expect(item).not.toHaveProperty('buyerNote');
+      }
+    });
+
+    it('người mua khác đọc đơn này ⇒ 404 và không rò lời nhắn', async () => {
+      const res = await a.get(`/api/v1/orders/${withNote1}`);
+
+      expect(res.status).toBe(404);
+      expect(JSON.stringify(res.body)).not.toContain(NOTE_1);
     });
   });
 });

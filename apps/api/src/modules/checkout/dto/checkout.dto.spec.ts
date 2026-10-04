@@ -102,6 +102,100 @@ describe('placeOrderSchema', () => {
       placeOrderSchema.parse({ ...valid, userId: 'someone-else' }),
     ).not.toHaveProperty('userId');
   });
+
+  describe('shopNotes (lời nhắn theo từng shop, Week8.md 3B)', () => {
+    const parseNotes = (shopNotes: unknown) =>
+      placeOrderSchema.parse({ ...valid, shopNotes }).shopNotes;
+
+    it('tuỳ chọn: thiếu hoặc undefined ⇒ undefined, không lỗi', () => {
+      expect(placeOrderSchema.parse(valid).shopNotes).toBeUndefined();
+      expect(parseNotes(undefined)).toBeUndefined();
+    });
+
+    it('giữ nguyên lời nhắn theo từng shopId', () => {
+      expect(
+        parseNotes({ 'shop-a': 'Giao giờ hành chính', 'shop-b': 'Gói quà' }),
+      ).toEqual({
+        'shop-a': 'Giao giờ hành chính',
+        'shop-b': 'Gói quà',
+      });
+    });
+
+    it('trim hai đầu, giữ nguyên khoảng trắng và xuống dòng ở giữa', () => {
+      expect(parseNotes({ 'shop-a': '  gọi trước\n khi giao  ' })).toEqual({
+        'shop-a': 'gọi trước\n khi giao',
+      });
+    });
+
+    it('mục rỗng hoặc toàn khoảng trắng bị bỏ khỏi map (không lưu chuỗi rỗng)', () => {
+      expect(
+        parseNotes({ 'shop-a': '   ', 'shop-b': 'Có lời nhắn', 'shop-c': '' }),
+      ).toEqual({
+        'shop-b': 'Có lời nhắn',
+      });
+    });
+
+    it('mọi mục đều rỗng ⇒ undefined (không gửi map rỗng xuống service)', () => {
+      expect(parseNotes({ 'shop-a': '', 'shop-b': ' \n ' })).toBeUndefined();
+      expect(parseNotes({})).toBeUndefined();
+    });
+
+    it('đúng 500 ký tự hợp lệ; 501 ký tự bị từ chối với key i18n', () => {
+      expect(
+        placeOrderSchema.safeParse({
+          ...valid,
+          shopNotes: { 'shop-a': 'a'.repeat(500) },
+        }).success,
+      ).toBe(true);
+      expect(
+        messagesOf(placeOrderSchema, {
+          ...valid,
+          shopNotes: { 'shop-a': 'a'.repeat(501) },
+        }),
+      ).toContain('checkout.validationNoteTooLong');
+    });
+
+    it('đếm độ dài SAU khi trim (500 ký tự + khoảng trắng thừa vẫn hợp lệ)', () => {
+      expect(
+        placeOrderSchema.safeParse({
+          ...valid,
+          shopNotes: { 'shop-a': `  ${'a'.repeat(500)}  ` },
+        }).success,
+      ).toBe(true);
+    });
+
+    it('một lời nhắn quá dài làm cả request bị từ chối (không âm thầm cắt bớt)', () => {
+      expect(
+        placeOrderSchema.safeParse({
+          ...valid,
+          shopNotes: { 'shop-a': 'ok', 'shop-b': 'b'.repeat(501) },
+        }).success,
+      ).toBe(false);
+    });
+
+    it.each([
+      ['mảng', ['x']],
+      ['chuỗi', 'x'],
+      ['số', 5],
+      ['null', null],
+      ['giá trị không phải chuỗi', { 'shop-a': 5 }],
+    ])('%s bị từ chối', (_label, shopNotes) => {
+      expect(placeOrderSchema.safeParse({ ...valid, shopNotes }).success).toBe(
+        false,
+      );
+    });
+
+    it('shopId lạ không bị từ chối ở mức validate (service bỏ qua khi đặt)', () => {
+      expect(parseNotes({ 'khong-co-trong-gio': 'vẫn hợp lệ' })).toEqual({
+        'khong-co-trong-gio': 'vẫn hợp lệ',
+      });
+    });
+
+    it('giữ nguyên HTML dạng văn bản thuần (không escape, không loại bỏ — React escape lúc hiển thị)', () => {
+      const html = '<img src=x onerror=alert(1)> & "quote"';
+      expect(parseNotes({ 'shop-a': html })).toEqual({ 'shop-a': html });
+    });
+  });
 });
 
 describe('previewCheckoutSchema', () => {

@@ -79,6 +79,7 @@ const ORDER_DETAIL_EXAMPLE = {
   shippingFee: '20000',
   carrier: null,
   trackingCode: null,
+  buyerNote: 'Giao giờ hành chính, gọi trước khi giao nhé',
   history: [
     {
       fromStatus: null,
@@ -159,7 +160,7 @@ export class BuyerOrderController {
   @Get(':id')
   @ApiOperation({
     summary:
-      'Chi tiết 1 đơn của tôi — địa chỉ nhận và dòng hàng lúc đặt, timeline trạng thái',
+      'Chi tiết 1 đơn của tôi — địa chỉ nhận và dòng hàng lúc đặt, lời nhắn tôi đã gửi cho shop (`buyerNote`, null nếu không có), timeline trạng thái',
   })
   @ApiParam({ name: 'id', description: 'ID đơn hàng' })
   @ApiResponse({

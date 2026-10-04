@@ -6,11 +6,13 @@ import {
   ORDER_TAB_STATUSES,
   orderActorTypeSchema,
   orderDetailSchema,
+  orderListItemSchema,
   orderListQuerySchema,
   orderStatusSchema,
   orderTabSchema,
   rejectOrderSchema,
   sellerOrderDetailSchema,
+  sellerOrderListItemSchema,
   sellerOrderListQuerySchema,
   sellerOrderTabSchema,
   shipOrderSchema,
@@ -212,11 +214,88 @@ describe('response schema', () => {
       shippingFee: '20000',
       carrier: null,
       trackingCode: null,
+      buyerNote: 'Giao giờ hành chính',
       history: [{ ...history[0], actorId: 'secret-user-id' }],
     });
 
     expect(parsed.history[0]).not.toHaveProperty('actorId');
     expect(parsed.paymentMethod).toBe('COD');
+    // z.object tự bỏ field không khai — field phải có trong schema thì FE mới đọc được (general.md mục 4).
+    expect(parsed.buyerNote).toBe('Giao giờ hành chính');
+  });
+
+  describe('buyerNote (Week8.md 3B)', () => {
+    const sellerDetail = {
+      id: 'o1',
+      status: 'PENDING',
+      createdAt: '2026-10-01T10:00:00.000Z',
+      totalAmount: '220000',
+      recipientName: 'Nguyễn Văn A',
+      shippingProvince: 'Hồ Chí Minh',
+      items: [item],
+      itemCount: 1,
+      paymentMethod: 'COD',
+      paymentStatus: 'PENDING',
+      canConfirm: true,
+      canPack: false,
+      canShip: false,
+      canReject: true,
+      recipientPhone: '0912345678',
+      shippingAddressLine: '12 Nguyễn Huệ',
+      shippingWard: 'Phường Bến Nghé',
+      subtotal: '200000',
+      discountAmount: '0',
+      shippingFee: '20000',
+      carrier: null,
+      trackingCode: null,
+      history,
+    };
+
+    it('seller: danh sách và chi tiết đều mang buyerNote (chuỗi hoặc null)', () => {
+      expect(
+        sellerOrderListItemSchema.parse({
+          ...sellerDetail,
+          buyerNote: 'Gói quà',
+        }).buyerNote,
+      ).toBe('Gói quà');
+      expect(
+        sellerOrderListItemSchema.parse({ ...sellerDetail, buyerNote: null })
+          .buyerNote,
+      ).toBeNull();
+      expect(
+        sellerOrderDetailSchema.parse({ ...sellerDetail, buyerNote: 'Gói quà' })
+          .buyerNote,
+      ).toBe('Gói quà');
+    });
+
+    it('seller: thiếu buyerNote bị từ chối (BE phải trả null tường minh, không để undefined)', () => {
+      expect(sellerOrderListItemSchema.safeParse(sellerDetail).success).toBe(
+        false,
+      );
+      expect(sellerOrderDetailSchema.safeParse(sellerDetail).success).toBe(
+        false,
+      );
+    });
+
+    it('buyer: danh sách đơn KHÔNG có buyerNote (chỉ chi tiết) — schema tự bỏ nếu BE lỡ trả thừa', () => {
+      const parsed = orderListItemSchema.parse({
+        id: 'o1',
+        checkoutGroupId: 'g1',
+        status: 'PENDING',
+        createdAt: '2026-10-01T10:00:00.000Z',
+        totalAmount: '220000',
+        shop: { id: 's1', name: 'Shop A', slug: 'shop-a', logoUrl: null },
+        items: [item],
+        itemCount: 1,
+        paymentMethod: 'COD',
+        paymentStatus: 'PENDING',
+        canCancel: true,
+        canConfirmReceived: false,
+        canRetryPayment: false,
+        buyerNote: 'không nên lộ ở danh sách',
+      });
+      expect(parsed).not.toHaveProperty('buyerNote');
+    });
   });
 
   it('sellerOrderDetailSchema không có userId/email của buyer (kể cả khi BE lỡ trả thừa)', () => {
@@ -243,6 +322,7 @@ describe('response schema', () => {
       shippingFee: '20000',
       carrier: null,
       trackingCode: null,
+      buyerNote: null,
       history,
       userId: 'buyer-id',
       email: 'buyer@example.com',

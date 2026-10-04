@@ -123,6 +123,9 @@ export const orderDetailSchema = orderListItemSchema.extend({
   shippingFee: moneySchema,
   carrier: z.string().nullable(),
   trackingCode: z.string().nullable(),
+  // Lời nhắn người mua đã gửi cho shop này lúc đặt (Week8.md 3B); null = không để lại lời nhắn.
+  // Chỉ ở chi tiết — danh sách đơn của người mua không cần.
+  buyerNote: z.string().nullable(),
   // Cũ → mới; dòng đầu có fromStatus = null (mốc tạo đơn).
   history: z.array(orderHistoryEntrySchema),
 });
@@ -137,6 +140,9 @@ export const sellerOrderListItemSchema = z.object({
   totalAmount: moneySchema,
   recipientName: z.string(),
   shippingProvince: z.string(),
+  // Lời nhắn của người mua cho shop (Week8.md 3B) — chỉ lời nhắn của ĐƠN NÀY; card ở danh sách chỉ
+  // hiện tối đa 2 dòng nhưng BE trả đủ (≤ 500 ký tự), cắt dòng là việc của CSS.
+  buyerNote: z.string().nullable(),
   items: z.array(checkoutOrderItemSchema),
   itemCount: z.number().int().nonnegative(),
   paymentMethod: paymentMethodSchema.nullable(),

@@ -25,6 +25,8 @@ export interface CreateOrdersOrderInput {
   shippingFee: number;
   discountAmount: number;
   totalAmount: number;
+  // Lời nhắn của người mua cho shop này (đã chuẩn hoá ở schema: trim, không rỗng). Thiếu/null = không có.
+  buyerNote?: string | null;
   items: CreateOrdersItemInput[];
 }
 
@@ -94,6 +96,7 @@ export class OrderService {
           totalAmount: orderInput.totalAmount,
           discountAmount: orderInput.discountAmount,
           shippingFee: orderInput.shippingFee,
+          buyerNote: orderInput.buyerNote ?? null,
           recipientName: input.shipping.recipientName,
           recipientPhone: input.shipping.recipientPhone,
           shippingAddressLine: input.shipping.shippingAddressLine,

@@ -664,6 +664,152 @@ describe('CheckoutService.placeOrder', () => {
     });
   });
 
+  describe('lời nhắn theo từng shop — shopNotes (Week8.md 3B)', () => {
+    const TWO_SHOP_TOTAL = SUBTOTAL_1_LINE + 100_000 + 2 * SHIPPING_FEE_2_ITEMS;
+
+    function setUpTwoShops() {
+      tx.cartItem.deleteMany.mockResolvedValue({ count: 2 });
+      cartService.buildCartView.mockResolvedValue(
+        cartView([
+          {
+            shopId: 'shop-1',
+            items: [cartLine({ id: 'item-1', productVariantId: 'variant-1' })],
+          },
+          {
+            shopId: 'shop-2',
+            items: [
+              cartLine({
+                id: 'item-2',
+                productVariantId: 'variant-2',
+                unitPrice: '50000',
+              }),
+            ],
+          },
+        ]),
+      );
+      tx.productVariant.findMany.mockResolvedValue([
+        variantMetaRow('variant-1'),
+        variantMetaRow('variant-2'),
+      ]);
+      inventoryService.reserve.mockResolvedValue(
+        new Map([
+          ['variant-1', new Prisma.Decimal(100_000)],
+          ['variant-2', new Prisma.Decimal(50_000)],
+        ]),
+      );
+    }
+
+    const buyerNotesPassed = () => {
+      const [, orderArgs] = orderService.createOrders.mock.calls[0] as [
+        unknown,
+        { orders: Array<{ shopId: string; buyerNote: string | null }> },
+      ];
+      return Object.fromEntries(
+        orderArgs.orders.map((o) => [o.shopId, o.buyerNote]),
+      );
+    };
+
+    it('mỗi shop nhận đúng lời nhắn của mình, shop không có lời nhắn nhận null', async () => {
+      setUpTwoShops();
+
+      await service.placeOrder('user-1', {
+        ...INPUT,
+        expectedTotal: TWO_SHOP_TOTAL,
+        shopNotes: { 'shop-1': 'Gọi trước khi giao' },
+      });
+
+      expect(buyerNotesPassed()).toEqual({
+        'shop-1': 'Gọi trước khi giao',
+        'shop-2': null,
+      });
+    });
+
+    it('2 shop 2 lời nhắn khác nhau — không lẫn sang shop kia', async () => {
+      setUpTwoShops();
+
+      await service.placeOrder('user-1', {
+        ...INPUT,
+        expectedTotal: TWO_SHOP_TOTAL,
+        shopNotes: { 'shop-1': 'Lời nhắn A', 'shop-2': 'Lời nhắn B' },
+      });
+
+      expect(buyerNotesPassed()).toEqual({
+        'shop-1': 'Lời nhắn A',
+        'shop-2': 'Lời nhắn B',
+      });
+    });
+
+    it('không gửi shopNotes ⇒ mọi đơn buyerNote null', async () => {
+      setUpTwoShops();
+
+      await service.placeOrder('user-1', {
+        ...INPUT,
+        expectedTotal: TWO_SHOP_TOTAL,
+      });
+
+      expect(buyerNotesPassed()).toEqual({ 'shop-1': null, 'shop-2': null });
+    });
+
+    it('shopId lạ (không có trong giỏ lúc đặt) bị BỎ QUA im lặng — vẫn đặt được, không đơn nào nhận lời nhắn đó', async () => {
+      setUpTwoShops();
+
+      const result = await service.placeOrder('user-1', {
+        ...INPUT,
+        expectedTotal: TWO_SHOP_TOTAL,
+        shopNotes: {
+          'shop-1': 'Của shop 1',
+          'shop-khong-co-trong-gio': 'Gửi nhầm shop',
+        },
+      });
+
+      expect(result.checkoutGroupId).toBe('group-1');
+      expect(buyerNotesPassed()).toEqual({
+        'shop-1': 'Của shop 1',
+        'shop-2': null,
+      });
+    });
+
+    it('lời nhắn chỉ gửi cho shop lạ ⇒ mọi đơn null, đặt hàng vẫn thành công', async () => {
+      setUpTwoShops();
+
+      await service.placeOrder('user-1', {
+        ...INPUT,
+        expectedTotal: TWO_SHOP_TOTAL,
+        shopNotes: { 'shop-cu-da-bi-bo-khoi-gio': 'Không còn shop này' },
+      });
+
+      expect(buyerNotesPassed()).toEqual({ 'shop-1': null, 'shop-2': null });
+    });
+
+    it('khoá trùng tên thuộc tính của Object ("constructor", "__proto__") không bị hiểu thành lời nhắn', async () => {
+      setUpTwoShops();
+
+      await service.placeOrder('user-1', {
+        ...INPUT,
+        expectedTotal: TWO_SHOP_TOTAL,
+        shopNotes: JSON.parse(
+          '{"constructor":"x","__proto__":"y","toString":"z"}',
+        ) as Record<string, string>,
+      });
+
+      expect(buyerNotesPassed()).toEqual({ 'shop-1': null, 'shop-2': null });
+    });
+
+    it('PRICE_CHANGED rollback toàn bộ — không tạo đơn nào (lời nhắn không được ghi lẻ)', async () => {
+      setUpTwoShops();
+
+      await expectAppException(
+        service.placeOrder('user-1', {
+          ...INPUT,
+          expectedTotal: TWO_SHOP_TOTAL + 1,
+          shopNotes: { 'shop-1': 'Sẽ không được lưu' },
+        }),
+        { status: 409, code: 'PRICE_CHANGED' },
+      );
+      expect(orderService.createOrders).not.toHaveBeenCalled();
+    });
+  });
+
   describe('lọc dòng khả dụng (1.12)', () => {
     it('chỉ dòng isAvailable=true được mua — dòng không khả dụng không vào deleteMany/reserve', async () => {
       cartService.buildCartView.mockResolvedValue(
@@ -1060,6 +1206,38 @@ describe('CheckoutService.placeOrder', () => {
         },
         select: expect.any(Object) as unknown,
       });
+    });
+
+    it('phát lại cùng key với lời nhắn KHÁC — vẫn trả đơn cũ, không tạo đơn mới, không ghi đè lời nhắn đã lưu (Week8.md 3B)', async () => {
+      prisma.checkoutGroup.findUnique.mockResolvedValue({
+        id: 'group-old',
+        orders: [
+          {
+            id: 'order-old',
+            shopId: 'shop-1',
+            status: 'AWAITING_PAYMENT',
+            totalAmount: '220000',
+          },
+        ],
+        payments: [
+          {
+            method: 'VNPAY',
+            amount: new Prisma.Decimal(220_000),
+            expiresAt: new Date('2026-09-27T04:00:00Z'),
+            payUrl: 'https://pay.example/old',
+          },
+        ],
+      });
+
+      const result = await service.placeOrder(
+        'user-1',
+        { ...INPUT, shopNotes: { 'shop-1': 'Lời nhắn mới, khác lần trước' } },
+        'key-1',
+      );
+
+      expect(result.checkoutGroupId).toBe('group-old');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(orderService.createOrders).not.toHaveBeenCalled();
     });
 
     it('CART_CHANGED khi có key — tra lại theo key, thấy nhóm đã tạo bởi request thắng cuộc → trả kết quả đó', async () => {

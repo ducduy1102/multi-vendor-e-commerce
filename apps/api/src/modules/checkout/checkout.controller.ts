@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
+  ApiBody,
   ApiCookieAuth,
   ApiHeader,
   ApiOperation,
@@ -180,7 +181,35 @@ export class CheckoutController {
     name: 'idempotency-key',
     required: false,
     description:
-      'UUID do FE sinh mỗi phiên đặt hàng; gọi lại cùng key trả đúng nhóm đã tạo thay vì đặt trùng',
+      'UUID do FE sinh mỗi phiên đặt hàng; gọi lại cùng key trả đúng nhóm đã tạo thay vì đặt trùng (kể cả khi body khác — lời nhắn mới không ghi đè lời nhắn của đơn đã tạo)',
+  })
+  @ApiBody({
+    description:
+      '`shopNotes` (tuỳ chọn): lời nhắn cho từng shop, khoá là shopId, tối đa 500 ký tự mỗi lời nhắn, văn bản thuần (trim hai đầu; mục rỗng bị bỏ). shopId không có trong giỏ lúc đặt bị bỏ qua, không báo lỗi. Mỗi shop chỉ thấy lời nhắn của đơn mình.',
+    examples: {
+      withShopNotes: {
+        summary: 'Giỏ 2 shop, mỗi shop một lời nhắn',
+        value: {
+          addressId: 'd1b2c3d4-1234-4a5b-8c9d-abcdef000004',
+          paymentMethod: 'COD',
+          voucherCode: 'GIAM50K',
+          expectedTotal: 320000,
+          shopNotes: {
+            'c1b2c3d4-1234-4a5b-8c9d-abcdef000003':
+              'Giao giờ hành chính, gọi trước khi giao nhé',
+            'c1b2c3d4-1234-4a5b-8c9d-abcdef000009': 'Gói quà giúp mình',
+          },
+        },
+      },
+      withoutShopNotes: {
+        summary: 'Không có lời nhắn',
+        value: {
+          addressId: 'd1b2c3d4-1234-4a5b-8c9d-abcdef000004',
+          paymentMethod: 'VNPAY',
+          expectedTotal: 320000,
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 201,
@@ -209,7 +238,7 @@ export class CheckoutController {
   @ApiResponse({
     status: 400,
     description:
-      'Giỏ rỗng/không còn item khả dụng, hoặc thiếu/sai expectedTotal',
+      'Giỏ rỗng/không còn item khả dụng, thiếu/sai expectedTotal, hoặc lời nhắn cho shop quá 500 ký tự',
     examples: {
       noPurchasableItems: {
         summary: 'NO_PURCHASABLE_ITEMS',
@@ -226,6 +255,16 @@ export class CheckoutController {
           success: false,
           data: null,
           message: 'expectedTotal: checkout.validationExpectedTotalInvalid',
+        },
+      },
+      noteTooLong: {
+        summary:
+          'Lời nhắn cho shop quá 500 ký tự (lỗi validate Zod, không có code)',
+        value: {
+          success: false,
+          data: null,
+          message:
+            'shopNotes.c1b2c3d4-1234-4a5b-8c9d-abcdef000003: checkout.validationNoteTooLong',
         },
       },
     },

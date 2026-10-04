@@ -15,6 +15,27 @@ const moneySchema = z.string();
 // Gọi lại cùng key trả đúng nhóm đã tạo thay vì đặt trùng.
 export const idempotencyKeySchema = z.string().uuid('checkout.validationIdempotencyKeyInvalid');
 
+// Lời nhắn của người mua cho 1 shop (Week8.md 3B): văn bản thuần, tối đa 500 ký tự. Dùng chung độ
+// dài cho cột `orders.buyer_note` (VARCHAR(500)) và ô nhập ở /checkout.
+export const ORDER_NOTE_MAX_LENGTH = 500;
+
+// Giỏ nhiều shop ⇒ mỗi đơn một lời nhắn riêng, khoá là `shopId` (lời nhắn gửi shop A không lộ cho shop B).
+// `.trim()` TRƯỚC `.max()` nên 500 ký tự + khoảng trắng thừa vẫn hợp lệ. Mục rỗng/toàn khoảng trắng bị
+// bỏ khỏi map ở CUỐI chain (`transform`, cùng cách `shop.ts`) — "không có lời nhắn" không phải 1 giá trị
+// để lưu — và map rỗng ⇒ `undefined`. `shopId` không có trong giỏ lúc đặt KHÔNG bị lỗi: service bỏ qua
+// (lời nhắn không quan trọng bằng việc đặt được hàng khi giỏ vừa đổi giữa lúc xem trước và lúc đặt).
+const shopNotesSchema = z
+  .record(
+    z.string(),
+    z.string().trim().max(ORDER_NOTE_MAX_LENGTH, 'checkout.validationNoteTooLong'),
+  )
+  .optional()
+  .transform((notes) => {
+    if (!notes) return undefined;
+    const kept = Object.entries(notes).filter(([, note]) => note !== '');
+    return kept.length > 0 ? Object.fromEntries(kept) : undefined;
+  });
+
 // POST /checkout. userId luôn lấy từ token; địa chỉ phải thuộc user (service kiểm, không thuộc ⇒ 404).
 // `expectedTotal` BẮT BUỘC: là `grandTotal` của lần xem trước — thiếu ⇒ 400 để 1 client quên gửi
 // không làm mất bảo vệ "số thấy = số trả"; BE tính lại từ giá đã khoá, lệch ⇒ 409 PRICE_CHANGED.
@@ -31,6 +52,7 @@ export const placeOrderSchema = z.object({
     })
     .int('checkout.validationExpectedTotalInvalid')
     .nonnegative('checkout.validationExpectedTotalInvalid'),
+  shopNotes: shopNotesSchema,
 });
 export type PlaceOrderInput = z.infer<typeof placeOrderSchema>;
 

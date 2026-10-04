@@ -53,6 +53,7 @@ function loadedDetail(overrides: Record<string, unknown> = {}) {
     shippingFee: D(20_000),
     carrier: null,
     trackingCode: null,
+    buyerNote: null,
     statusHistory: [
       {
         fromStatus: null,
@@ -332,6 +333,49 @@ describe('OrderQueryService (buyer)', () => {
 
       expect(order.history[0]).not.toHaveProperty('actorId');
     });
+
+    describe('buyerNote (Week8.md 3B)', () => {
+      it('chi tiết trả đúng lời nhắn của đơn, null khi không có', async () => {
+        prisma.order.findFirst.mockResolvedValueOnce(
+          loadedDetail({ buyerNote: 'Giao giờ hành chính' }),
+        );
+        expect((await service.getForBuyer('user-1', 'o1')).buyerNote).toBe(
+          'Giao giờ hành chính',
+        );
+
+        prisma.order.findFirst.mockResolvedValueOnce(loadedDetail());
+        expect(
+          (await service.getForBuyer('user-1', 'o1')).buyerNote,
+        ).toBeNull();
+      });
+
+      it('chi tiết select buyerNote, còn danh sách thì KHÔNG (không đọc cột không cần)', async () => {
+        prisma.order.findFirst.mockResolvedValue(loadedDetail());
+        await service.getForBuyer('user-1', 'o1');
+        const [detailArgs] = prisma.order.findFirst.mock.calls[0] as [
+          { select: Record<string, unknown> },
+        ];
+        expect(detailArgs.select.buyerNote).toBe(true);
+
+        await service.listForBuyer('user-1', { page: 1, limit: 10 });
+        const [listArgs] = prisma.order.findMany.mock.calls[0] as [
+          { select: Record<string, unknown> },
+        ];
+        expect(listArgs.select).not.toHaveProperty('buyerNote');
+      });
+
+      it('danh sách đơn của buyer không lộ buyerNote kể cả khi dòng đọc về có field đó', async () => {
+        prisma.order.findMany.mockResolvedValue([
+          loadedOrder({ buyerNote: 'không nên xuất hiện ở danh sách' }),
+        ]);
+
+        const [item] = (
+          await service.listForBuyer('user-1', { page: 1, limit: 10 })
+        ).items;
+
+        expect(item).not.toHaveProperty('buyerNote');
+      });
+    });
   });
 });
 
@@ -344,6 +388,7 @@ function sellerLoaded(overrides: Record<string, unknown> = {}) {
     totalAmount: D(220_000),
     recipientName: 'Nguyễn Văn A',
     shippingProvince: 'Hồ Chí Minh',
+    buyerNote: null,
     items,
     _count: { items: items.length },
     checkoutGroup: { payments: [{ method: 'VNPAY', status: 'SUCCESS' }] },
@@ -445,6 +490,7 @@ describe('OrderQueryService (seller)', () => {
         totalAmount: '220000',
         recipientName: 'Nguyễn Văn A',
         shippingProvince: 'Hồ Chí Minh',
+        buyerNote: null,
         items: expect.any(Array) as unknown[],
         itemCount: 2,
         paymentMethod: 'VNPAY',
@@ -564,6 +610,65 @@ describe('OrderQueryService (seller)', () => {
       ]);
       expect(order).not.toHaveProperty('userId');
       expect(order.history[0]).not.toHaveProperty('actorId');
+    });
+
+    describe('buyerNote (Week8.md 3B)', () => {
+      it('danh sách và chi tiết trả lời nhắn của đúng đơn, null khi không có', async () => {
+        prisma.order.findMany.mockResolvedValue([
+          sellerLoaded({ id: 'a', buyerNote: 'Gọi trước khi giao' }),
+          sellerLoaded({ id: 'b' }),
+        ]);
+        const byId = Object.fromEntries(
+          (
+            await service.listForSeller('shop-1', { page: 1, limit: 10 })
+          ).items.map((o) => [o.id, o]),
+        );
+        expect(byId.a.buyerNote).toBe('Gọi trước khi giao');
+        expect(byId.b.buyerNote).toBeNull();
+
+        prisma.order.findFirst.mockResolvedValue(
+          sellerLoaded({
+            buyerNote: 'Gói quà',
+            recipientPhone: '0912345678',
+            shippingAddressLine: '12 Nguyễn Huệ',
+            shippingWard: 'Phường Bến Nghé',
+            discountAmount: D(0),
+            shippingFee: D(20_000),
+            carrier: null,
+            trackingCode: null,
+            statusHistory: [],
+          }),
+        );
+        expect((await service.getForSeller('shop-1', 'a')).buyerNote).toBe(
+          'Gói quà',
+        );
+      });
+
+      it('cả danh sách lẫn chi tiết đều select buyerNote (mock không tự kiểm select nên kiểm tường minh)', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          sellerLoaded({
+            recipientPhone: '0912345678',
+            shippingAddressLine: '12 Nguyễn Huệ',
+            shippingWard: 'Phường Bến Nghé',
+            discountAmount: D(0),
+            shippingFee: D(20_000),
+            carrier: null,
+            trackingCode: null,
+            statusHistory: [],
+          }),
+        );
+        await service.listForSeller('shop-1', { page: 1, limit: 10 });
+        await service.getForSeller('shop-1', 'o1');
+
+        const [listArgs] = prisma.order.findMany.mock.calls[0] as [
+          { select: Record<string, unknown> },
+        ];
+        const [detailArgs] = prisma.order.findFirst.mock.calls[0] as [
+          { select: Record<string, unknown> },
+        ];
+        expect(listArgs.select.buyerNote).toBe(true);
+        expect(detailArgs.select.buyerNote).toBe(true);
+      });
     });
   });
 });

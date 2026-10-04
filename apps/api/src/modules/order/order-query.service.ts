@@ -90,6 +90,7 @@ const detailSelect = {
   shippingFee: true,
   carrier: true,
   trackingCode: true,
+  buyerNote: true,
   statusHistory: historyArgs,
 } satisfies Prisma.OrderSelect;
 
@@ -102,6 +103,8 @@ const sellerListSelect = {
   totalAmount: true,
   recipientName: true,
   shippingProvince: true,
+  // Lời nhắn của người mua gửi RIÊNG đơn này (mỗi đơn một lời nhắn, Week8.md 3B) — cả danh sách lẫn chi tiết.
+  buyerNote: true,
   items: {
     select: itemSelect,
     orderBy: { id: 'asc' },
@@ -223,6 +226,7 @@ export class OrderQueryService {
       shippingFee: money(order.shippingFee),
       carrier: order.carrier,
       trackingCode: order.trackingCode,
+      buyerNote: order.buyerNote,
       // Không trả actorId — buyer không cần (và không nên) biết định danh seller/admin.
       history: order.statusHistory.map(toHistoryEntry),
     };
@@ -315,6 +319,7 @@ export class OrderQueryService {
       totalAmount: money(order.totalAmount),
       recipientName: order.recipientName,
       shippingProvince: order.shippingProvince,
+      buyerNote: order.buyerNote,
       items: order.items
         .slice(0, ORDER_LIST_PREVIEW_ITEMS)
         .map((item) => this.toItem(item)),
