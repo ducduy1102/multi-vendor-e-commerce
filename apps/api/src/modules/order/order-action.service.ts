@@ -148,7 +148,7 @@ export class OrderActionService {
       {
         note: reason,
         precheck: (order) => this.assertCancellable(order),
-        after: (tx, order) => this.restockOrder(tx, order),
+        after: (tx, order) => this.afterCodOrderCancelled(tx, order),
       },
     );
     await this.orderEmailService.notifyCancelled(
@@ -191,7 +191,7 @@ export class OrderActionService {
       {
         note: reason ?? 'Cancelled by buyer',
         precheck: (order) => this.assertCancellable(order),
-        after: (tx, order) => this.restockOrder(tx, order),
+        after: (tx, order) => this.afterCodOrderCancelled(tx, order),
       },
     );
     // Nhóm chưa thanh toán đã được báo ở reclaimCheckoutGroup (nhánh trên); đây là đơn COD hủy lẻ.
@@ -203,7 +203,8 @@ export class OrderActionService {
   }
 
   // Buyer xác nhận đã nhận hàng: SHIPPING → COMPLETED. Với COD, đây là lúc thu tiền: khi mọi đơn
-  // không bị hủy của nhóm đã COMPLETED ⇒ Payment COD → SUCCESS (Week8.md 1.6).
+  // không bị hủy của nhóm đã COMPLETED ⇒ Payment COD → SUCCESS (Week8.md 1.6). Điều kiện được kiểm lại
+  // cả khi một đơn COD của nhóm bị hủy/từ chối (afterCodOrderCancelled) vì đó có thể là đơn cuối cùng.
   async confirmReceived(userId: string, orderId: string): Promise<void> {
     await this.completeShipped(
       { id: orderId, userId },
@@ -332,6 +333,22 @@ export class OrderActionService {
         quantity: item.quantity,
       })),
     );
+  }
+
+  // Đơn COD bị hủy/từ chối (chỉ còn đường PENDING → CANCELLED): hoàn kho, rồi kiểm lại điều kiện thu tiền
+  // của nhóm. Đơn bị hủy có thể chính là đơn CUỐI CÙNG chưa tới đích — các đơn còn lại đã COMPLETED từ
+  // trước và lúc đó nhóm còn đơn này nên chưa thu tiền; nếu không kiểm lại ở đây, Payment COD kẹt PENDING
+  // mãi dù mọi đơn đã tới đích (phát hiện khi test tay 3.12). Không cần khoá nhóm như lúc hoàn tất:
+  // `transition` ở trên đã giữ khoá dòng của đơn này, còn bên hoàn tất đơn kia khoá cả nhóm theo id tăng
+  // dần nên hai bên xếp hàng nhau và bên commit sau luôn thấy kết quả của bên trước.
+  private async afterCodOrderCancelled(
+    tx: TxClient,
+    order: LoadedOrder,
+  ): Promise<void> {
+    await this.restockOrder(tx, order);
+    if (order.paymentMethod === 'COD') {
+      await this.settleCodPayment(tx, order.checkoutGroupId);
+    }
   }
 
   private async lockGroupOrders(tx: TxClient, checkoutGroupId: string) {

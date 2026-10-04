@@ -333,6 +333,82 @@ describe('OrderActionService', () => {
       ]);
     });
 
+    describe('COD — hủy/từ chối đơn CUỐI CÙNG chưa tới đích thì nhóm được thu tiền', () => {
+      const SETTLE = {
+        where: { checkoutGroupId: 'g1', method: 'COD', status: 'PENDING' },
+        data: { status: 'SUCCESS', paidAt: expect.any(Date) as Date },
+      };
+
+      it('các đơn còn lại đã COMPLETED, đơn này bị shop từ chối ⇒ Payment COD → SUCCESS', async () => {
+        tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
+        tx.order.findMany.mockResolvedValue([
+          { status: 'COMPLETED' },
+          { status: 'CANCELLED' },
+        ]);
+
+        await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
+
+        expect(tx.payment.updateMany).toHaveBeenCalledWith(SETTLE);
+      });
+
+      it('nhóm còn đơn đang xử lý/giao ⇒ CHƯA thu tiền', async () => {
+        tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
+        tx.order.findMany.mockResolvedValue([
+          { status: 'COMPLETED' },
+          { status: 'SHIPPING' },
+          { status: 'CANCELLED' },
+        ]);
+
+        await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
+
+        expect(tx.payment.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('mọi đơn của nhóm đều bị hủy (không có đơn COMPLETED) ⇒ KHÔNG ghi nhận đã thu tiền', async () => {
+        tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
+        tx.order.findMany.mockResolvedValue([
+          { status: 'CANCELLED' },
+          { status: 'CANCELLED' },
+        ]);
+
+        await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
+
+        expect(tx.payment.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('hoàn kho vẫn xảy ra TRƯỚC khi kiểm thu tiền, cùng transaction', async () => {
+        const order: string[] = [];
+        inventoryService.restock.mockImplementation(() => {
+          order.push('restock');
+          return Promise.resolve();
+        });
+        tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
+        tx.order.findMany.mockImplementation(() => {
+          order.push('settleRead');
+          return Promise.resolve([
+            { status: 'COMPLETED' },
+            { status: 'CANCELLED' },
+          ]);
+        });
+
+        await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
+
+        expect(order).toEqual(['restock', 'settleRead']);
+      });
+
+      it('thua race (đơn không bị hủy bởi yêu cầu này) ⇒ không kiểm thu tiền', async () => {
+        tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
+        orderStatusService.transition.mockResolvedValue([]);
+
+        await expectAppException(
+          service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng'),
+          { status: 409, code: 'ORDER_ALREADY_CHANGED' },
+        );
+        expect(tx.order.findMany).not.toHaveBeenCalled();
+        expect(tx.payment.updateMany).not.toHaveBeenCalled();
+      });
+    });
+
     it.each(['VNPAY', 'MOMO'] as const)(
       'đơn đã trả online (%s): 409 ORDER_CANCEL_NOT_ALLOWED / PAID_ONLINE, không chuyển, không hoàn kho',
       async (method) => {
@@ -442,6 +518,63 @@ describe('OrderActionService', () => {
       );
       expect(inventoryService.restock).toHaveBeenCalledTimes(1);
       expect(paymentService.cancelCheckoutGroup).not.toHaveBeenCalled();
+    });
+
+    describe('COD — buyer hủy đơn CUỐI CÙNG chưa tới đích thì nhóm được thu tiền', () => {
+      beforeEach(() => {
+        prisma.order.findFirst.mockResolvedValue({
+          status: 'PENDING',
+          checkoutGroupId: 'g1',
+        });
+        tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
+      });
+
+      it('đơn còn lại đã COMPLETED ⇒ Payment COD → SUCCESS kèm paidAt (đúng kịch bản test tay: shop X giao xong rồi buyer hủy đơn shop Y)', async () => {
+        tx.order.findMany.mockResolvedValue([
+          { status: 'COMPLETED' },
+          { status: 'CANCELLED' },
+        ]);
+
+        await service.cancelByBuyer('buyer-1', 'o1', 'Đổi ý');
+
+        expect(tx.payment.updateMany).toHaveBeenCalledWith({
+          where: { checkoutGroupId: 'g1', method: 'COD', status: 'PENDING' },
+          data: { status: 'SUCCESS', paidAt: expect.any(Date) as Date },
+        });
+      });
+
+      it('nhóm còn đơn đang giao ⇒ chưa thu tiền', async () => {
+        tx.order.findMany.mockResolvedValue([
+          { status: 'SHIPPING' },
+          { status: 'CANCELLED' },
+        ]);
+
+        await service.cancelByBuyer('buyer-1', 'o1');
+
+        expect(tx.payment.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('hủy toàn bộ nhóm (không có đơn COMPLETED) ⇒ không ghi nhận đã thu tiền', async () => {
+        tx.order.findMany.mockResolvedValue([
+          { status: 'CANCELLED' },
+          { status: 'CANCELLED' },
+        ]);
+
+        await service.cancelByBuyer('buyer-1', 'o1');
+
+        expect(tx.payment.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('thua race với seller xác nhận ⇒ không hoàn kho và không kiểm thu tiền', async () => {
+        orderStatusService.transition.mockResolvedValue([]);
+
+        await expectAppException(service.cancelByBuyer('buyer-1', 'o1'), {
+          status: 409,
+          code: 'ORDER_ALREADY_CHANGED',
+        });
+        expect(inventoryService.restock).not.toHaveBeenCalled();
+        expect(tx.order.findMany).not.toHaveBeenCalled();
+      });
     });
 
     it('đơn đã trả online — 409 ORDER_CANCEL_NOT_ALLOWED / PAID_ONLINE (hoàn tiền: Tuần 9)', async () => {

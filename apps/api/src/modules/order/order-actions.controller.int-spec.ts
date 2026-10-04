@@ -794,6 +794,127 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       expect(payment.status).toBe('SUCCESS');
     });
 
+    describe('hủy/từ chối đơn COD CUỐI CÙNG chưa tới đích (đơn kia đã COMPLETED từ trước)', () => {
+      const paymentOf = (groupId: string) =>
+        prisma.payment.findFirstOrThrow({
+          where: { checkoutGroupId: groupId },
+        });
+
+      it('buyer nhận đơn 1 (chưa thu) rồi HỦY đơn 2 — Payment SUCCESS + paidAt, kho đơn 2 hoàn lại', async () => {
+        const g = await seedGroup(
+          [
+            { shopId: shopA, status: 'SHIPPING' },
+            { shopId: shopA2, status: 'PENDING' },
+          ],
+          cod,
+        );
+
+        await buyer
+          .post(buyerUrl(g.orderIds[0], 'confirm-received'))
+          .expect(200);
+        expect((await paymentOf(g.groupId)).status).toBe('PENDING');
+
+        await buyer.post(buyerUrl(g.orderIds[1], 'cancel')).expect(200);
+
+        const payment = await paymentOf(g.groupId);
+        expect(payment.status).toBe('SUCCESS');
+        expect(payment.paidAt).not.toBeNull();
+        expect(await statusOf(g.orderIds[1])).toBe('CANCELLED');
+        expect((await stockOf(g.variantIds[1])).stock).toBe(STOCK + QTY);
+      });
+
+      it('buyer nhận đơn 1 rồi SELLER TỪ CHỐI đơn 2 — Payment SUCCESS', async () => {
+        const g = await seedGroup(
+          [
+            { shopId: shopA, status: 'SHIPPING' },
+            { shopId: shopA2, status: 'PENDING' },
+          ],
+          cod,
+        );
+        await buyer
+          .post(buyerUrl(g.orderIds[0], 'confirm-received'))
+          .expect(200);
+
+        await sellerA
+          .post(sellerUrl(shopA2, g.orderIds[1], 'reject'))
+          .send({ reason: 'Hết hàng' })
+          .expect(200);
+
+        expect((await paymentOf(g.groupId)).status).toBe('SUCCESS');
+      });
+
+      it('HỦY đơn 2 TRƯỚC khi đơn 1 hoàn tất — chưa thu; nhận đơn 1 xong mới thu (đường cũ vẫn đúng)', async () => {
+        const g = await seedGroup(
+          [
+            { shopId: shopA, status: 'SHIPPING' },
+            { shopId: shopA2, status: 'PENDING' },
+          ],
+          cod,
+        );
+
+        await buyer.post(buyerUrl(g.orderIds[1], 'cancel')).expect(200);
+        expect((await paymentOf(g.groupId)).status).toBe('PENDING');
+
+        await buyer
+          .post(buyerUrl(g.orderIds[0], 'confirm-received'))
+          .expect(200);
+        expect((await paymentOf(g.groupId)).status).toBe('SUCCESS');
+      });
+
+      it('hủy một đơn khi nhóm còn đơn khác ĐANG GIAO — chưa thu tiền', async () => {
+        const g = await seedGroup(
+          [
+            { shopId: shopA, status: 'SHIPPING' },
+            { shopId: shopA2, status: 'PENDING' },
+          ],
+          cod,
+        );
+
+        await buyer.post(buyerUrl(g.orderIds[1], 'cancel')).expect(200);
+
+        expect((await paymentOf(g.groupId)).status).toBe('PENDING');
+      });
+
+      it('hủy HẾT mọi đơn của nhóm (không có đơn COMPLETED) — KHÔNG ghi nhận đã thu tiền', async () => {
+        const g = await seedGroup(
+          [
+            { shopId: shopA, status: 'PENDING' },
+            { shopId: shopA2, status: 'PENDING' },
+          ],
+          cod,
+        );
+
+        await buyer.post(buyerUrl(g.orderIds[0], 'cancel')).expect(200);
+        await buyer.post(buyerUrl(g.orderIds[1], 'cancel')).expect(200);
+
+        const payment = await paymentOf(g.groupId);
+        expect(payment.status).toBe('PENDING');
+        expect(payment.paidAt).toBeNull();
+      });
+
+      it('RACE: nhận đơn 1 và HỦY đơn 2 cùng nhóm ĐỒNG THỜI — dù thứ tự nào Payment cũng ra SUCCESS (không bên nào bỏ sót)', async () => {
+        for (let round = 0; round < 6; round++) {
+          const g = await seedGroup(
+            [
+              { shopId: shopA, status: 'SHIPPING' },
+              { shopId: shopA2, status: 'PENDING' },
+            ],
+            cod,
+          );
+
+          const [receive, cancel] = await Promise.all([
+            buyer.post(buyerUrl(g.orderIds[0], 'confirm-received')),
+            buyer.post(buyerUrl(g.orderIds[1], 'cancel')),
+          ]);
+
+          expect([receive.status, cancel.status]).toEqual([200, 200]);
+          expect(await statusOf(g.orderIds[0])).toBe('COMPLETED');
+          expect(await statusOf(g.orderIds[1])).toBe('CANCELLED');
+          expect((await paymentOf(g.groupId)).status).toBe('SUCCESS');
+        }
+      });
+    });
+
     it('RACE: 2 đơn COD cùng nhóm được xác nhận nhận hàng ĐỒNG THỜI — vẫn thu tiền đúng 1 lần (không bên nào bỏ sót)', async () => {
       // Lặp nhiều nhóm để tăng xác suất 2 transaction thật sự chồng lên nhau.
       for (let round = 0; round < 5; round++) {
