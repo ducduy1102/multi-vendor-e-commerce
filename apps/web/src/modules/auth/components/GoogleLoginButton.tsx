@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useTranslations } from "next-intl";
+import { useTranslations } from 'next-intl';
 
-import { Button } from "@/shared/components/ui/button";
-import { API_BASE_URL, API_PREFIX } from "@/shared/lib/api-client";
+import { Button } from '@/shared/components/ui/button';
+import { API_BASE_URL, API_PREFIX } from '@/shared/lib/api-client';
 
 // "use client" dù component thuần tĩnh (không state/effect) — nơi duy nhất
 // dùng component này là LoginFormContainer/RegisterFormContainer, cả 2 đều
@@ -28,7 +28,7 @@ interface GoogleLoginButtonProps {
 }
 
 export function GoogleLoginButton({ label, next }: GoogleLoginButtonProps) {
-  const t = useTranslations("auth");
+  const t = useTranslations('auth');
   const googleAuthUrl = `${API_BASE_URL}${API_PREFIX}/auth/google`;
   const href = next ? `${googleAuthUrl}?next=${encodeURIComponent(next)}` : googleAuthUrl;
 
@@ -40,7 +40,7 @@ export function GoogleLoginButton({ label, next }: GoogleLoginButtonProps) {
       nativeButton={false}
       render={<a href={href} />}
     >
-      {label ?? t("googleSignIn")}
+      {label ?? t('googleSignIn')}
     </Button>
   );
 }
