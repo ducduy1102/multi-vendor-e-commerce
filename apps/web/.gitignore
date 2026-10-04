@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# file mẫu (không chứa giá trị thật) được phép commit
+!.env.example
 
 # vercel
 .vercel
