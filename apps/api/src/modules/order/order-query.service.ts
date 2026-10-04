@@ -22,6 +22,7 @@ import {
   getBuyerOrderActions,
   getSellerOrderActions,
 } from './order-actions';
+import { sellerVisibleOrderFilter } from './seller-order-visibility';
 
 // Số tiền VND luôn là chuỗi số nguyên đồng trong response (cùng quy ước CartView/CheckoutGroup).
 const money = (value: Prisma.Decimal): string => String(value.toNumber());
@@ -241,7 +242,7 @@ export class OrderQueryService {
   ): Promise<SellerOrderListResponse> {
     const where: Prisma.OrderWhereInput = {
       shopId,
-      status: { in: this.visibleStatuses(query.tab) },
+      ...sellerVisibleOrderFilter(this.visibleStatuses(query.tab)),
     };
 
     const [total, orders] = await Promise.all([
@@ -273,7 +274,7 @@ export class OrderQueryService {
       where: {
         id: orderId,
         shopId,
-        status: { in: this.visibleStatuses() },
+        ...sellerVisibleOrderFilter(this.visibleStatuses()),
       },
       select: sellerDetailSelect,
     });

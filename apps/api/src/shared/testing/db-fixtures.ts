@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { OrderActorType, OrderStatus, PrismaClient } from '@prisma/client';
 
 // Dữ liệu dựng cho các integration test (`*.int-spec.ts`, chạy bằng `pnpm test:int`) trên DB dev
 // thật. Mọi bản ghi mang tiền tố `tag` riêng của từng file spec và được dọn theo tiền tố đó, để
@@ -64,6 +64,58 @@ export async function createVariant(
     },
     select: { id: true },
   });
+}
+
+// Lịch sử trạng thái THỰC TẾ cho 1 đơn seed ở `status` (cũ → mới, đúng đường đi mà luồng thật tạo ra):
+//  - đơn COD tạo thẳng ở PENDING (đã đặt, chưa thu tiền); hủy ở PENDING do người mua;
+//  - đơn online tạo ở AWAITING_PAYMENT, thanh toán xong → PENDING; đơn online CANCELLED là đơn CHƯA TỪNG
+//    được thanh toán (hết hạn / người mua hủy nhóm) nên không có bước PENDING — chính là điều Seller
+//    không được thấy (sellerVisibleOrderFilter).
+// Dùng thay cho 1 dòng `null → AWAITING_PAYMENT` cho mọi trạng thái như trước, vì bộ lọc Seller giờ dựa
+// vào việc đơn TỪNG ở PENDING.
+export function seedOrderHistory(
+  status: OrderStatus,
+  options: { isCod: boolean },
+): Array<{
+  fromStatus: OrderStatus | null;
+  toStatus: OrderStatus;
+  actorType: OrderActorType;
+  createdAt: Date;
+}> {
+  const base = Date.parse('2026-10-01T10:00:00.000Z');
+  const rows: ReturnType<typeof seedOrderHistory> = [];
+  let last: OrderStatus | null = null;
+  const step = (toStatus: OrderStatus, actorType: OrderActorType) => {
+    rows.push({
+      fromStatus: last,
+      toStatus,
+      actorType,
+      createdAt: new Date(base + rows.length * 60_000),
+    });
+    last = toStatus;
+  };
+
+  if (options.isCod && status === 'AWAITING_PAYMENT') {
+    throw new Error('Đơn COD không bao giờ ở trạng thái AWAITING_PAYMENT');
+  }
+  step(options.isCod ? 'PENDING' : 'AWAITING_PAYMENT', 'BUYER');
+  if (status === 'AWAITING_PAYMENT') return rows;
+  if (status === 'CANCELLED') {
+    step('CANCELLED', options.isCod ? 'BUYER' : 'SYSTEM');
+    return rows;
+  }
+  if (!options.isCod) step('PENDING', 'SYSTEM');
+  for (const next of [
+    'CONFIRMED',
+    'PACKED',
+    'SHIPPING',
+    'COMPLETED',
+  ] as const) {
+    if (status === 'PENDING') break;
+    step(next, next === 'COMPLETED' ? 'BUYER' : 'SELLER');
+    if (next === status) break;
+  }
+  return rows;
 }
 
 export async function createCheckoutGroup(

@@ -22,6 +22,7 @@ import {
   createCheckoutGroup,
   createShopWithProduct,
   createVariant,
+  seedOrderHistory,
 } from '../../shared/testing/db-fixtures';
 
 // Integration test qua HTTP THẬT (supertest + Postgres thật) cho các HÀNH ĐỘNG đổi trạng thái đơn
@@ -142,16 +143,14 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
               },
             ],
           },
+          // Lịch sử THỰC TẾ theo trạng thái + cách thanh toán (bộ lọc Seller dựa vào việc đơn từng ở PENDING).
           statusHistory: {
-            create: [
-              {
-                fromStatus: null,
-                toStatus: 'AWAITING_PAYMENT',
-                actorType: 'BUYER',
-                actorId: userId,
-                createdAt: new Date('2026-10-01T10:00:00.000Z'),
-              },
-            ],
+            create: seedOrderHistory(line.status, {
+              isCod: payment.method === 'COD',
+            }).map((row) => ({
+              ...row,
+              actorId: row.actorType === 'BUYER' ? userId : undefined,
+            })),
           },
         },
         select: { id: true },
@@ -382,10 +381,11 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
         canConfirmReceived: false,
       });
 
-      // Timeline: mốc tạo (seed) + 4 lần chuyển thật, đúng thứ tự và đúng người.
+      // Timeline: mốc tạo + thanh toán (seed) + 4 lần chuyển thật, đúng thứ tự và đúng người.
       const history = await historyOf(orderId);
       expect(history.map((h) => [h.toStatus, h.actorType])).toEqual([
         ['AWAITING_PAYMENT', 'BUYER'],
+        ['PENDING', 'SYSTEM'],
         ['CONFIRMED', 'SELLER'],
         ['PACKED', 'SELLER'],
         ['SHIPPING', 'SELLER'],
@@ -491,6 +491,46 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
         .send({ reason: 'x' });
       expect(reject.status).toBe(404);
       expect(await statusOf(orderId)).toBe('AWAITING_PAYMENT');
+    });
+
+    it('đơn CHƯA TỪNG thanh toán rồi bị hủy (hết hạn) của CHÍNH shop mình — 404, không phải 409 (không lộ là có đơn đó)', async () => {
+      const { orderId } = await seedOne('CANCELLED', {
+        method: 'VNPAY',
+        status: 'FAILED',
+      });
+
+      for (const action of ['confirm', 'pack', 'ship']) {
+        const res = await sellerA.post(sellerUrl(shopA, orderId, action));
+        expect(res.status).toBe(404);
+        expect(code(res)).toBe('ORDER_NOT_FOUND');
+      }
+      const reject = await sellerA
+        .post(sellerUrl(shopA, orderId, 'reject'))
+        .send({ reason: 'x' });
+      expect(reject.status).toBe(404);
+      expect(await statusOf(orderId)).toBe('CANCELLED');
+    });
+
+    it('người mua HỦY NHÓM chưa thanh toán qua API thật — seller của các shop trong nhóm không còn thấy đơn (chi tiết 404), còn buyer vẫn thấy', async () => {
+      const g = await seedGroup(
+        [
+          { shopId: shopA, status: 'AWAITING_PAYMENT' },
+          { shopId: shopA2, status: 'AWAITING_PAYMENT' },
+        ],
+        { method: 'VNPAY', status: 'PENDING' },
+      );
+
+      await buyer.post(buyerUrl(g.orderIds[0], 'cancel')).expect(200);
+
+      for (const id of g.orderIds) {
+        expect(await statusOf(id)).toBe('CANCELLED');
+        const seller = await sellerA.get(`/api/v1/shops/${shopA}/orders/${id}`);
+        const seller2 = await sellerA.get(
+          `/api/v1/shops/${shopA2}/orders/${id}`,
+        );
+        expect([seller.status, seller2.status]).toEqual([404, 404]);
+        await buyer.get(`/api/v1/orders/${id}`).expect(200);
+      }
     });
 
     it('shop bị khoá tạm (SUSPENDED) vẫn xử lý được đơn đã có (Week8.md 1.8)', async () => {
@@ -623,10 +663,12 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
         stock: STOCK + QTY,
         reservedStock: 0,
       });
+      // Không nhập lý do ⇒ note là null (KHÔNG ghi chuỗi mặc định: note của buyer hiển thị nguyên văn).
       expect((await historyOf(orderId)).at(-1)).toMatchObject({
         toStatus: 'CANCELLED',
         actorType: 'BUYER',
         actorId: buyerId,
+        note: null,
       });
     });
 
@@ -639,6 +681,16 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
         .expect(200);
 
       expect((await historyOf(orderId)).at(-1)?.note).toBe('Đặt nhầm');
+      const seller = await sellerA.get(
+        `/api/v1/shops/${shopA}/orders/${orderId}`,
+      );
+      expect(seller.status).toBe(200);
+      const last = sellerOrderDetailSchema.parse(data(seller)).history.at(-1);
+      expect(last).toMatchObject({
+        toStatus: 'CANCELLED',
+        actorType: 'BUYER',
+        note: 'Đặt nhầm',
+      });
     });
 
     it('buyer KHÔNG hủy được đơn đã trả online — 409 PAID_ONLINE; đơn đã xác nhận — PROCESSING_STARTED', async () => {
@@ -663,12 +715,10 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
     it('POST /orders/:id/cancel trên đơn chưa thanh toán — hủy CẢ NHÓM, nhả giữ chỗ, actor BUYER', async () => {
       const g = await seedGroup(
         [
-      // Không nhập lý do ⇒ note là null (KHÔNG ghi chuỗi mặc định: note của buyer hiển thị nguyên văn).
           { shopId: shopA, status: 'AWAITING_PAYMENT' },
           { shopId: shopA2, status: 'AWAITING_PAYMENT' },
         ],
         unpaid,
-        note: null,
       );
 
       const res = await buyer
@@ -681,20 +731,25 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       for (const v of g.variantIds) {
         expect(await stockOf(v)).toEqual({ stock: STOCK, reservedStock: 0 });
       }
-      const seller = await sellerA.get(
-        `/api/v1/shops/${shopA}/orders/${orderId}`,
-      );
-      expect(seller.status).toBe(200);
-      const last = sellerOrderDetailSchema.parse(data(seller)).history.at(-1);
-      expect(last).toMatchObject({
-        toStatus: 'CANCELLED',
-        actorType: 'BUYER',
-        note: 'Đặt nhầm',
-      });
       expect((await historyOf(g.orderIds[1])).at(-1)).toMatchObject({
         toStatus: 'CANCELLED',
         actorType: 'BUYER',
         note: 'Đổi ý',
+      });
+    });
+
+    it('hủy nhóm chưa thanh toán KHÔNG nhập lý do — note là null (không ghi chuỗi mặc định)', async () => {
+      const g = await seedGroup(
+        [{ shopId: shopA, status: 'AWAITING_PAYMENT' }],
+        unpaid,
+      );
+
+      await buyer.post(buyerUrl(g.orderIds[0], 'cancel')).expect(200);
+
+      expect((await historyOf(g.orderIds[0])).at(-1)).toMatchObject({
+        toStatus: 'CANCELLED',
+        actorType: 'BUYER',
+        note: null,
       });
       const payment = await prisma.payment.findFirstOrThrow({
         where: { checkoutGroupId: g.groupId },
@@ -736,21 +791,6 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
 
     it('nhóm đã thanh toán — 409 PAID_ONLINE, không đụng gì', async () => {
       const g = await seedGroup(
-    });
-
-    it('hủy nhóm chưa thanh toán KHÔNG nhập lý do — note là null (không ghi chuỗi mặc định)', async () => {
-      const g = await seedGroup(
-        [{ shopId: shopA, status: 'AWAITING_PAYMENT' }],
-        unpaid,
-      );
-
-      await buyer.post(buyerUrl(g.orderIds[0], 'cancel')).expect(200);
-
-      expect((await historyOf(g.orderIds[0])).at(-1)).toMatchObject({
-        toStatus: 'CANCELLED',
-        actorType: 'BUYER',
-        note: null,
-      });
         [{ shopId: shopA, status: 'PENDING' }],
         onlinePaid,
       );

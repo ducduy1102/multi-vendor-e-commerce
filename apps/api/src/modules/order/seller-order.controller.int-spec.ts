@@ -25,6 +25,7 @@ import {
   createCheckoutGroup,
   createShopWithProduct,
   createVariant,
+  seedOrderHistory,
 } from '../../shared/testing/db-fixtures';
 
 // Integration test qua HTTP THẬT (supertest + Postgres thật) cho GET /shops/:shopId/orders[/:orderId]
@@ -128,16 +129,14 @@ describe('SellerOrderController (HTTP thật)', () => {
             imageUrl: null,
           })),
         },
+        // Lịch sử THỰC TẾ theo trạng thái + cách thanh toán: bộ lọc Seller dựa vào việc đơn từng ở PENDING.
         statusHistory: {
-          create: [
-            {
-              fromStatus: null,
-              toStatus: 'AWAITING_PAYMENT',
-              actorType: 'BUYER',
-              actorId: input.buyerId,
-              createdAt: new Date('2026-10-01T10:00:00.000Z'),
-            },
-          ],
+          create: seedOrderHistory(input.status, {
+            isCod: (input.paymentMethod ?? 'VNPAY') === 'COD',
+          }).map((row) => ({
+            ...row,
+            actorId: row.actorType === 'BUYER' ? input.buyerId : undefined,
+          })),
         },
       },
       select: { id: true },
@@ -213,6 +212,8 @@ describe('SellerOrderController (HTTP thật)', () => {
     let shipping: string;
     let completed: string;
     let cancelled: string;
+    // Đơn CHƯA TỪNG được thanh toán rồi bị hủy (hết hạn / người mua hủy nhóm): Seller không được thấy.
+    let cancelledNeverPaid: string;
     let otherShopOrder: string;
 
     beforeAll(async () => {
@@ -240,7 +241,15 @@ describe('SellerOrderController (HTTP thật)', () => {
       packed = await seed('PACKED', 5);
       shipping = await seed('SHIPPING', 6);
       completed = await seed('COMPLETED', 7);
-      cancelled = await seed('CANCELLED', 8);
+      // Đơn COD người mua hủy trước khi shop xác nhận: đã từng PENDING nên shop VẪN thấy (đã tới lượt shop).
+      cancelled = await seed('CANCELLED', 8, {
+        paymentMethod: 'COD',
+        paymentStatus: 'PENDING',
+        expiresAt: null,
+      });
+      cancelledNeverPaid = await seed('CANCELLED', 10, {
+        paymentStatus: 'FAILED',
+      });
       otherShopOrder = await seedOrder({
         buyerId,
         shopId: shopB,
@@ -293,6 +302,26 @@ describe('SellerOrderController (HTTP thật)', () => {
         expect(data.items.map((o) => o.status)).not.toContain(
           'AWAITING_PAYMENT',
         );
+      });
+
+      it('đơn CHƯA TỪNG thanh toán rồi bị hủy KHÔNG hiện cho seller (danh sách, tab đã hủy, tổng); đơn COD bị hủy thì vẫn hiện', async () => {
+        const all = sellerOrderListResponseSchema.parse(
+          body(await sellerA.get(`/api/v1/shops/${shopA}/orders?limit=50`)),
+        );
+        expect(all.items.map((o) => o.id)).not.toContain(cancelledNeverPaid);
+        expect(all.total).toBe(7);
+
+        const tab = sellerOrderListResponseSchema.parse(
+          body(
+            await sellerA.get(
+              `/api/v1/shops/${shopA}/orders?tab=cancelled&limit=50`,
+            ),
+          ),
+        );
+        expect(tab.items.map((o) => o.id)).toEqual([cancelled]);
+        expect(tab.total).toBe(1);
+        // Không lộ tên người nhận của đơn chưa từng mua ở bất kỳ đâu.
+        expect(JSON.stringify(all)).not.toContain(cancelledNeverPaid);
       });
 
       it('KHÔNG lộ định danh buyer (userId/email) ở bất kỳ đâu trong response', async () => {
@@ -419,6 +448,29 @@ describe('SellerOrderController (HTTP thật)', () => {
         );
         expect(res.status).toBe(404);
         expect((res.body as { code: string }).code).toBe('ORDER_NOT_FOUND');
+      });
+
+      it('đơn chưa từng thanh toán rồi bị hủy — 404 y hệt đơn không tồn tại (không lộ là có đơn đó)', async () => {
+        const never = await sellerA.get(
+          `/api/v1/shops/${shopA}/orders/${cancelledNeverPaid}`,
+        );
+        const missing = await sellerA.get(
+          `/api/v1/shops/${shopA}/orders/khong-ton-tai`,
+        );
+
+        expect(never.status).toBe(404);
+        expect(never.body).toEqual(missing.body);
+      });
+
+      it('đơn COD người mua đã hủy trước khi shop xác nhận — vẫn đọc được chi tiết', async () => {
+        const res = await sellerA.get(
+          `/api/v1/shops/${shopA}/orders/${cancelled}`,
+        );
+
+        expect(res.status).toBe(200);
+        expect(sellerOrderDetailSchema.parse(body(res)).status).toBe(
+          'CANCELLED',
+        );
       });
 
       it('đơn của shop khác (id có thật) và đơn không tồn tại — cùng 1 body 404, không lộ id có thật', async () => {

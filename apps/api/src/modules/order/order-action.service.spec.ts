@@ -192,6 +192,7 @@ describe('OrderActionService', () => {
             id: 'o1',
             shopId: 'shop-1',
             status: { in: ORDER_STATUSES_VISIBLE_TO_SELLER },
+            statusHistory: { some: { toStatus: 'PENDING' } },
           },
         }),
       );
@@ -520,7 +521,6 @@ describe('OrderActionService', () => {
       expect(paymentService.cancelCheckoutGroup).not.toHaveBeenCalled();
     });
 
-    describe('COD — buyer hủy đơn CUỐI CÙNG chưa tới đích thì nhóm được thu tiền', () => {
     it('buyer nhập lý do — lý do được ghi nguyên văn vào note (seller và buyer sẽ đọc được)', async () => {
       prisma.order.findFirst.mockResolvedValue({
         status: 'PENDING',
@@ -540,6 +540,7 @@ describe('OrderActionService', () => {
       );
     });
 
+    describe('COD — buyer hủy đơn CUỐI CÙNG chưa tới đích thì nhóm được thu tiền', () => {
       beforeEach(() => {
         prisma.order.findFirst.mockResolvedValue({
           status: 'PENDING',

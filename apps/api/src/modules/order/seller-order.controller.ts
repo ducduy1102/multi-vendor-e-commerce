@@ -103,7 +103,7 @@ const ApiActionErrors = () =>
     ApiResponse({
       status: 404,
       description:
-        'Shop không tồn tại; hoặc đơn không tồn tại / thuộc shop khác / chưa thanh toán (không phân biệt)',
+        'Shop không tồn tại; hoặc đơn không tồn tại / thuộc shop khác / chưa từng được thanh toán (kể cả đã bị hủy) — không phân biệt',
       schema: { example: ORDER_NOT_FOUND_EXAMPLE },
     }),
     ApiResponse({
@@ -156,7 +156,7 @@ export class SellerOrderController {
   @ApiCookieAuth('access_token')
   @ApiOperation({
     summary:
-      'Danh sách đơn của shop mình — chỉ đơn đã thanh toán/đã đặt COD (không có đơn chưa thanh toán), lọc theo tab, phân trang. Mỗi đơn kèm `buyerNote` (lời nhắn của người mua gửi riêng đơn này, null nếu không có)',
+      'Danh sách đơn của shop mình — chỉ đơn đã thanh toán/đã đặt COD (không có đơn chưa thanh toán, kể cả đơn chưa từng thanh toán đã bị hủy; đơn COD người mua hủy trước khi shop xác nhận vẫn hiện), lọc theo tab, phân trang. Mỗi đơn kèm `buyerNote` (lời nhắn của người mua gửi riêng đơn này, null nếu không có)',
   })
   @ApiQuery({
     name: 'tab',
@@ -225,7 +225,7 @@ export class SellerOrderController {
   @ApiResponse({
     status: 404,
     description:
-      'Shop không tồn tại; hoặc đơn không tồn tại / thuộc shop khác / chưa thanh toán (không phân biệt)',
+      'Shop không tồn tại; hoặc đơn không tồn tại / thuộc shop khác / chưa từng được thanh toán (kể cả đã bị hủy) — không phân biệt',
     schema: { example: ORDER_NOT_FOUND_EXAMPLE },
   })
   getOne(

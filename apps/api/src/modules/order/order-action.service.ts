@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { OrderStatus, PaymentMethod, Prisma } from '@prisma/client';
-import {
-  ORDER_STATUSES_VISIBLE_TO_SELLER,
-  type ShipOrderInput,
-} from '@ecommerce/types';
+import type { ShipOrderInput } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { TxClient } from '../../shared/prisma/tx-client';
@@ -12,6 +9,7 @@ import { getCancelBlockReason } from './order-actions';
 import { OrderEmailService } from './order-email.service';
 import { OrderStatusService, type OrderActor } from './order-status.service';
 import { PaymentService } from './payment.service';
+import { sellerVisibleOrderFilter } from './seller-order-visibility';
 
 // Đơn cần cho 1 hành động: định danh + đủ dữ kiện để kiểm luật và hoàn kho. Đọc 1 lần ở đầu mỗi
 // transaction (không khoá) — câu UPDATE có điều kiện của OrderStatusService mới là trọng tài.
@@ -39,12 +37,13 @@ type LoadedOrder = Prisma.OrderGetPayload<{
 // ShopOwnerGuard xác nhận) VÀ ở trạng thái Seller được thấy. Không bao giờ tin id đơn suông.
 type OrderScope = Prisma.OrderWhereInput & { id: string };
 
-// Seller thao tác đơn: đơn AWAITING_PAYMENT TUYỆT ĐỐI không đụng được và cũng không lộ là có tồn tại
-// (404 y hệt đơn không có thật, không phải 409) — cùng lớp chặn với danh sách/chi tiết (Week7.md 1.13).
+// Seller thao tác đơn: đơn chưa thanh toán (và đơn chưa từng được thanh toán rồi bị hủy) TUYỆT ĐỐI không
+// đụng được và cũng không lộ là có tồn tại (404 y hệt đơn không có thật, không phải 409) — cùng điều
+// kiện với danh sách/chi tiết (sellerVisibleOrderFilter, Week7.md 1.13).
 const sellerScope = (shopId: string, orderId: string): OrderScope => ({
+  ...sellerVisibleOrderFilter(),
   id: orderId,
   shopId,
-  status: { in: [...ORDER_STATUSES_VISIBLE_TO_SELLER] },
 });
 
 interface ChangeStatusOptions {

@@ -432,6 +432,7 @@ describe('OrderQueryService (seller)', () => {
       const expected = {
         shopId: 'shop-1',
         status: { in: VISIBLE },
+        statusHistory: { some: { toStatus: 'PENDING' } },
       };
       expect(prisma.order.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expected }),
@@ -448,6 +449,7 @@ describe('OrderQueryService (seller)', () => {
           where: {
             shopId: 'shop-1',
             status: { in: ['CONFIRMED', 'PACKED'] },
+            statusHistory: { some: { toStatus: 'PENDING' } },
           },
         }),
       );
@@ -461,7 +463,11 @@ describe('OrderQueryService (seller)', () => {
 
       expect(prisma.order.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { shopId: 'shop-1', status: { in: [] } },
+          where: {
+            shopId: 'shop-1',
+            status: { in: [] },
+            statusHistory: { some: { toStatus: 'PENDING' } },
+          },
         }),
       );
     });
@@ -544,7 +550,12 @@ describe('OrderQueryService (seller)', () => {
 
       expect(prisma.order.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'o1', shopId: 'shop-1', status: { in: VISIBLE } },
+          where: {
+            id: 'o1',
+            shopId: 'shop-1',
+            status: { in: VISIBLE },
+            statusHistory: { some: { toStatus: 'PENDING' } },
+          },
         }),
       );
     });
