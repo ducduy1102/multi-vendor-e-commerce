@@ -1,11 +1,11 @@
 // Export để dùng cho những chỗ điều hướng thẳng trình duyệt (không qua
 // apiFetch) — vd GoogleLoginButton trỏ <a href> thẳng tới BE.
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:4000";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || 'http://localhost:4000';
 
 // BE version từ endpoint đầu tiên (Tuần 3 Bước 1.5, app.setGlobalPrefix('api/v1')
 // ở apps/api/src/main.ts) — khai 1 chỗ duy nhất, cả apiFetch lẫn chỗ điều
 // hướng thẳng trình duyệt (GoogleLoginButton) đều phải tự nối thêm.
-export const API_PREFIX = "/api/v1";
+export const API_PREFIX = '/api/v1';
 
 // Khớp ApiErrorBody (packages/types) — `code`/`details` chỉ có ở lỗi đã di chuyển sang
 // AppException (Week7.md 1.16/2.2c), lỗi cũ (validate Zod...) chỉ có `message`.
@@ -27,7 +27,7 @@ export class ApiError extends Error {
     public readonly details?: unknown,
   ) {
     super(message);
-    this.name = "ApiError";
+    this.name = 'ApiError';
   }
 }
 
@@ -46,26 +46,26 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   try {
     res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
       ...init,
-      credentials: "include",
+      credentials: 'include',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
         ...init?.headers,
       },
     });
   } catch {
-    throw new ApiError("Network error", 0, "NETWORK_ERROR");
+    throw new ApiError('Network error', 0, 'NETWORK_ERROR');
   }
 
   let body: ApiEnvelope<T>;
   try {
     body = (await res.json()) as ApiEnvelope<T>;
   } catch {
-    throw new ApiError("Invalid response", res.status, "INVALID_RESPONSE");
+    throw new ApiError('Invalid response', res.status, 'INVALID_RESPONSE');
   }
 
   if (!res.ok || !body.success) {
     throw new ApiError(
-      body.message ?? "Đã có lỗi xảy ra, vui lòng thử lại sau",
+      body.message ?? 'Đã có lỗi xảy ra, vui lòng thử lại sau',
       res.status,
       body.code,
       body.details,
