@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, Package, User } from 'lucide-react';
+import { LogOut, Package, ShieldCheck, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
@@ -128,6 +128,13 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
                   <Link href={shopLink.href} onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
                     <shopLink.icon className="size-4" aria-hidden="true" />
                     {shopLink.label}
+                  </Link>
+                )}
+                {/* "Quản trị" chỉ hiện cho ADMIN, cùng thứ tự với dropdown desktop của Header. */}
+                {user.role === 'ADMIN' && (
+                  <Link href="/admin/shops" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
+                    <ShieldCheck className="size-4" aria-hidden="true" />
+                    {t('adminLink')}
                   </Link>
                 )}
               </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, Package, Search, ShoppingCart, X } from 'lucide-react';
+import { ChevronDown, Package, Search, ShieldCheck, ShoppingCart, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
@@ -206,6 +206,14 @@ export function Header() {
           <DropdownMenuItem render={<Link href={shopLink.href} />}>
             <shopLink.icon />
             {shopLink.label}
+          </DropdownMenuItem>
+        )}
+        {/* "Quản trị" (Week8.md 3.9) chỉ hiện cho ADMIN — user thường không có link tới /admin. Đây
+            chỉ là lối vào cho gọn; chặn truy cập thật nằm ở proxy.ts (điều hướng) + RolesGuard (BE). */}
+        {user.role === 'ADMIN' && (
+          <DropdownMenuItem render={<Link href="/admin/shops" />}>
+            <ShieldCheck />
+            {t('adminLink')}
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />

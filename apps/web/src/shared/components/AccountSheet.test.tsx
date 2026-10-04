@@ -9,6 +9,7 @@ import { AccountSheet } from './AccountSheet';
 
 interface MockUser {
   name: string;
+  role?: 'USER' | 'ADMIN';
 }
 
 const auth = { user: null as MockUser | null, isHydrating: false };
@@ -119,6 +120,44 @@ describe('AccountSheet — mục "Đơn hàng của tôi"', () => {
 
     const links = screen.getAllByRole('link').map((link) => link.textContent);
     expect(links).toEqual(['Đơn hàng của tôi', 'Trở thành người bán']);
+  });
+
+  describe('mục "Quản trị" (Week8.md 3.9) — chỉ ADMIN', () => {
+    it('ADMIN -> có link "Quản trị" trỏ /admin/shops, đứng sau mục người bán, cùng khối', () => {
+      auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
+      openSheet();
+
+      const admin = screen.getByRole('link', { name: 'Quản trị' });
+      const shop = screen.getByRole('link', { name: 'Sản phẩm của tôi' });
+      expect(admin).toHaveAttribute('href', '/admin/shops');
+      expect(shop.compareDocumentPosition(admin) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(admin.parentElement).toBe(shop.parentElement);
+    });
+
+    it('bấm "Quản trị" -> đóng Sheet', async () => {
+      const user = userEvent.setup();
+      auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
+      openSheet();
+
+      await user.click(screen.getByRole('link', { name: 'Quản trị' }));
+
+      expect(useUIStore.getState().isAccountSheetOpen).toBe(false);
+    });
+
+    it('người dùng thường (USER) -> KHÔNG có link tới /admin', () => {
+      auth.user = { name: 'Nguyễn Văn A', role: 'USER' };
+      openSheet();
+
+      expect(screen.queryByRole('link', { name: 'Quản trị' })).not.toBeInTheDocument();
+      expect(document.querySelector('a[href^="/admin"]')).toBeNull();
+    });
+
+    it('khách chưa đăng nhập -> không có "Quản trị"', () => {
+      auth.user = null;
+      openSheet();
+
+      expect(screen.queryByRole('link', { name: 'Quản trị' })).not.toBeInTheDocument();
+    });
   });
 
   it('khách chưa đăng nhập -> KHÔNG có "Đơn hàng của tôi", chỉ Đăng nhập/Đăng ký', () => {

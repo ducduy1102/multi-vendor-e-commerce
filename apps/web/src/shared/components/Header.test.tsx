@@ -8,6 +8,7 @@ import { Header } from './Header';
 
 interface MockUser {
   name: string;
+  role?: 'USER' | 'ADMIN';
 }
 
 const auth = { user: null as MockUser | null, isHydrating: false };
@@ -105,6 +106,45 @@ describe('Header — menu tài khoản (desktop)', () => {
     expect(screen.getByRole('menuitem', { name: 'Đơn hàng của tôi' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Đăng xuất' })).toBeInTheDocument();
     expect(menu.querySelector('[role="separator"]')).not.toBeNull();
+  });
+
+  describe('mục "Quản trị" (Week8.md 3.9) — chỉ ADMIN', () => {
+    it('ADMIN -> có "Quản trị" trỏ /admin/shops, đứng sau mục người bán và trước Đăng xuất', async () => {
+      auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
+      const menu = await openAccountMenu();
+
+      expect(screen.getByRole('menuitem', { name: 'Quản trị' })).toHaveAttribute(
+        'href',
+        '/admin/shops',
+      );
+      const labels = Array.from(menu.querySelectorAll('[role="menuitem"], button')).map((el) =>
+        el.textContent?.trim(),
+      );
+      expect(labels).toEqual(['Đơn hàng của tôi', 'Sản phẩm của tôi', 'Quản trị', 'Đăng xuất']);
+    });
+
+    it('ADMIN nhưng chưa kịp biết shop (shopLink null) -> vẫn có "Quản trị"', async () => {
+      auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
+      sellerLink.mockReturnValue(null);
+      await openAccountMenu();
+
+      expect(screen.getByRole('menuitem', { name: 'Quản trị' })).toBeInTheDocument();
+    });
+
+    it('người dùng thường (USER) -> KHÔNG có link tới /admin', async () => {
+      auth.user = { name: 'Nguyễn Văn A', role: 'USER' };
+      const menu = await openAccountMenu();
+
+      expect(screen.queryByText('Quản trị')).not.toBeInTheDocument();
+      expect(menu.querySelector('a[href^="/admin"]')).toBeNull();
+    });
+
+    it('khách chưa đăng nhập -> không có "Quản trị"', () => {
+      auth.user = null;
+      render(withIntl(<Header />));
+
+      expect(screen.queryByText('Quản trị')).not.toBeInTheDocument();
+    });
   });
 
   it('mục "Trang cá nhân" vẫn ẨN (chưa có trang tài khoản thật)', async () => {
