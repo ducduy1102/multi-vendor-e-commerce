@@ -1,6 +1,6 @@
-import { hasLocale } from "next-intl";
-import { getRequestConfig } from "next-intl/server";
-import { routing } from "./routing";
+import { hasLocale } from 'next-intl';
+import { getRequestConfig } from 'next-intl/server';
+import { routing } from './routing';
 
 // Chạy ở server cho mỗi request — quyết định locale thật sự dùng (fallback
 // về defaultLocale nếu URL có prefix lạ không nằm trong routing.locales) và
