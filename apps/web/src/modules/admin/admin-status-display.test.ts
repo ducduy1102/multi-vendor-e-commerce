@@ -19,13 +19,14 @@ describe('ADMIN_SHOP_STATUS_DISPLAY', () => {
   });
 
   it.each(shopStatusSchema.options)(
-    '%s có nhãn và câu "danh sách trống" ở cả vi và en',
+    '%s có nhãn, câu "danh sách trống" và nhãn cột ngày ở cả vi và en',
     (status) => {
-      const { labelKey, emptyKey } = ADMIN_SHOP_STATUS_DISPLAY[status];
+      const { labelKey, emptyKey, dateLabelKey } = ADMIN_SHOP_STATUS_DISPLAY[status];
 
       for (const messages of [vi.admin, en.admin] as Record<string, string>[]) {
         expect(messages[labelKey]).toBeTruthy();
         expect(messages[emptyKey]).toBeTruthy();
+        expect(messages[dateLabelKey]).toBeTruthy();
       }
     },
   );

@@ -57,7 +57,7 @@ export function AdminShopsContainer({ status, page }: AdminShopsContainerProps) 
         {shopsQuery.isPending ? (
           <div aria-busy="true">
             <span className="sr-only">{tCommon('loading')}</span>
-            <AdminShopListSkeleton />
+            <AdminShopListSkeleton status={status} />
           </div>
         ) : (
           <div className="flex flex-col items-start gap-3">
@@ -86,7 +86,7 @@ export function AdminShopsContainer({ status, page }: AdminShopsContainerProps) 
         </p>
       ) : (
         <div className={ADMIN_SHOP_TABLE_CLASS}>
-          <AdminShopListHeader />
+          <AdminShopListHeader status={status} />
           <ul aria-label={t('listLabel')} className="divide-y divide-border">
             {items.map((shop) => (
               <AdminShopRow

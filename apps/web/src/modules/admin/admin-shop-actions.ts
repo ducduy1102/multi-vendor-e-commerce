@@ -1,4 +1,4 @@
-import { SHOP_STATUS_TRANSITIONS } from '@ecommerce/types';
+import { shopTransitionTargets } from '@ecommerce/types';
 
 import type { AdminShopTargetStatus, ShopStatus } from './types';
 
@@ -21,11 +21,12 @@ const ACTION_BY_TRANSITION: Partial<Record<string, AdminShopAction>> = {
   'SUSPENDED>APPROVED': 'unsuspend',
 };
 
-// Hành động Admin làm được với 1 shop đang ở `status` — suy từ SHOP_STATUS_TRANSITIONS (cùng bảng
-// BE dùng để chặn chuyển sai) nên FE không tự nhớ luật riêng; bảng thêm cạnh mới mà FE chưa có nút
-// thì admin-shop-actions.test.ts đỏ. Shop bị từ chối (trạng thái cuối ở Tuần 8) không có hành động.
+// Hành động Admin làm được với 1 shop đang ở `status` — suy từ các cạnh có actor ADMIN của
+// SHOP_STATUS_TRANSITIONS (cùng bảng BE dùng để chặn chuyển sai) nên FE không tự nhớ luật riêng; bảng
+// thêm cạnh ADMIN mới mà FE chưa có nút thì admin-shop-actions.test.ts đỏ. Shop đang REJECTED không có
+// hành động Admin nào: cạnh duy nhất đi ra (REJECTED → PENDING) thuộc về chủ shop.
 export function getAdminShopActions(status: ShopStatus): AdminShopAction[] {
-  return SHOP_STATUS_TRANSITIONS[status].flatMap((target) => {
+  return shopTransitionTargets('ADMIN', status).flatMap((target) => {
     const action = ACTION_BY_TRANSITION[`${status}>${target}`];
     return action ? [action] : [];
   });

@@ -8,14 +8,36 @@ import type { ShopStatus } from './types';
 // (`muted`). Accent (cam) không dùng cho trạng thái.
 export type AdminShopBadgeTone = 'warning' | 'success' | 'destructive' | 'muted';
 
+// `dateLabelKey`: nhãn của cột ngày — cột này hiện `statusChangedAt` (mốc VÀO trạng thái hiện tại, cũng là khoá
+// sắp xếp của mọi tab) nên nhãn nói đúng sự kiện: "Chờ từ" (hàng chờ), "Duyệt lúc", "Từ chối lúc", "Khoá lúc".
 export const ADMIN_SHOP_STATUS_DISPLAY: Record<
   ShopStatus,
-  { labelKey: string; emptyKey: string; tone: AdminShopBadgeTone }
+  { labelKey: string; emptyKey: string; dateLabelKey: string; tone: AdminShopBadgeTone }
 > = {
-  PENDING: { labelKey: 'statusPending', emptyKey: 'emptyStatePending', tone: 'warning' },
-  APPROVED: { labelKey: 'statusApproved', emptyKey: 'emptyStateApproved', tone: 'success' },
-  REJECTED: { labelKey: 'statusRejected', emptyKey: 'emptyStateRejected', tone: 'muted' },
-  SUSPENDED: { labelKey: 'statusSuspended', emptyKey: 'emptyStateSuspended', tone: 'destructive' },
+  PENDING: {
+    labelKey: 'statusPending',
+    emptyKey: 'emptyStatePending',
+    dateLabelKey: 'columnWaitingSince',
+    tone: 'warning',
+  },
+  APPROVED: {
+    labelKey: 'statusApproved',
+    emptyKey: 'emptyStateApproved',
+    dateLabelKey: 'columnApprovedAt',
+    tone: 'success',
+  },
+  REJECTED: {
+    labelKey: 'statusRejected',
+    emptyKey: 'emptyStateRejected',
+    dateLabelKey: 'columnRejectedAt',
+    tone: 'muted',
+  },
+  SUSPENDED: {
+    labelKey: 'statusSuspended',
+    emptyKey: 'emptyStateSuspended',
+    dateLabelKey: 'columnSuspendedAt',
+    tone: 'destructive',
+  },
 };
 
 // Mặc định của BE (adminShopListQuerySchema): hàng chờ duyệt. Tab này không cần `?status=` trên URL.

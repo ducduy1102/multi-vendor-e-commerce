@@ -7,20 +7,23 @@ import {
   ADMIN_SHOP_ROW_CLASS,
   ADMIN_SHOP_TABLE_CLASS,
 } from './admin-shop-row.constants';
+import type { ShopStatus } from '../types';
 import { AdminShopListHeader } from './AdminShopListHeader';
 
 const SKELETON_CLASS = 'motion-reduce:animate-none';
 
 interface AdminShopListSkeletonProps {
+  // Tab đang tải — để dòng tiêu đề cột giống hệt bảng thật (nhãn cột ngày đổi theo tab).
+  status: ShopStatus;
   count?: number;
 }
 
 // Khớp bố cục bảng thật (cùng khung, cùng template cột, cùng dòng tiêu đề) để không nhảy layout khi
 // dữ liệu về. Chỉ mang tính trang trí (aria-hidden) — vùng bọc ở Container có aria-busy + dòng sr-only.
-export function AdminShopListSkeleton({ count = 5 }: AdminShopListSkeletonProps) {
+export function AdminShopListSkeleton({ status, count = 5 }: AdminShopListSkeletonProps) {
   return (
     <div aria-hidden="true" className={ADMIN_SHOP_TABLE_CLASS}>
-      <AdminShopListHeader />
+      <AdminShopListHeader status={status} />
       <ul className="divide-y divide-border">
         {Array.from({ length: count }, (_, index) => (
           <li key={index} className={cn(ADMIN_SHOP_GRID_CLASS, ADMIN_SHOP_ROW_CLASS)}>

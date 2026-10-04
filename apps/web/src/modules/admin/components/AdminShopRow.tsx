@@ -3,8 +3,10 @@
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 
+import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
 import { cn } from '@/shared/lib/utils';
 
+import { ADMIN_SHOP_STATUS_DISPLAY } from '../admin-status-display';
 import { useFormatAdminDate } from '../hooks/useFormatAdminDate';
 import type { AdminShop } from '../types';
 import {
@@ -28,7 +30,13 @@ interface AdminShopRowProps {
 // chuỗi do chủ shop nhập (tên, slug, lý do) hiện dạng text (React tự escape).
 export function AdminShopRow({ shop, actions }: AdminShopRowProps) {
   const t = useTranslations('admin');
+  const tDynamic = t as unknown as LooseTranslator;
   const formatDate = useFormatAdminDate();
+  // Shop đang ở hàng chờ mà từng bị từ chối = shop NỘP LẠI: Admin cần thấy lần trước bị từ chối vì gì. Shop
+  // REJECTED đã hiện lý do hiện tại (statusReason) ngay dưới nên không lặp lại ở đây.
+  const showPreviousRejection = shop.status === 'PENDING' && shop.lastRejectionReason !== null;
+  const showResubmissionCount =
+    (shop.status === 'PENDING' || shop.status === 'REJECTED') && shop.resubmissionCount > 0;
 
   return (
     <li className={cn(ADMIN_SHOP_GRID_CLASS, ADMIN_SHOP_ROW_CLASS)}>
@@ -47,9 +55,16 @@ export function AdminShopRow({ shop, actions }: AdminShopRowProps) {
       </div>
 
       <div className="flex flex-col">
-        <span className={ADMIN_SHOP_FIELD_LABEL_CLASS}>{t('columnCreatedAt')}</span>
-        <time dateTime={shop.createdAt} className="text-sm text-foreground">
-          {formatDate(shop.createdAt)}
+        <span className={ADMIN_SHOP_FIELD_LABEL_CLASS}>
+          {tDynamic(ADMIN_SHOP_STATUS_DISPLAY[shop.status].dateLabelKey)}
+        </span>
+        {/* Mốc VÀO trạng thái hiện tại (cùng khoá sắp xếp của tab); ngày tạo shop ở tooltip. */}
+        <time
+          dateTime={shop.statusChangedAt}
+          title={t('createdAtTooltip', { date: formatDate(shop.createdAt) })}
+          className="text-sm text-foreground"
+        >
+          {formatDate(shop.statusChangedAt)}
         </time>
       </div>
 
@@ -63,6 +78,19 @@ export function AdminShopRow({ shop, actions }: AdminShopRowProps) {
             className="line-clamp-2 text-xs break-words text-muted-foreground"
           >
             {t('rowReason', { reason: shop.statusReason })}
+          </p>
+        ) : null}
+        {showPreviousRejection ? (
+          <p
+            title={shop.lastRejectionReason ?? undefined}
+            className="line-clamp-2 text-xs break-words text-muted-foreground"
+          >
+            {t('rowPreviousRejection', { reason: shop.lastRejectionReason ?? '' })}
+          </p>
+        ) : null}
+        {showResubmissionCount ? (
+          <p className="text-xs text-muted-foreground">
+            {t('rowResubmitted', { count: shop.resubmissionCount })}
           </p>
         ) : null}
       </div>

@@ -59,7 +59,7 @@ describe('useAdminShopActionFlow', () => {
       await act(() => result.current.approve(SHOP));
 
       expect(result.current.actionError).toBe(
-        'Shop vừa được cập nhật trạng thái, vui lòng tải lại danh sách',
+        'Trạng thái shop vừa thay đổi nên thao tác này không còn hợp lệ. Dữ liệu đã được làm mới, vui lòng kiểm tra lại.',
       );
     });
 
@@ -126,7 +126,7 @@ describe('useAdminShopActionFlow', () => {
 
       await waitFor(() => expect(result.current.dialogs.isOpen).toBe(false));
       expect(result.current.actionError).toBe(
-        'Shop vừa được cập nhật trạng thái, vui lòng tải lại danh sách',
+        'Trạng thái shop vừa thay đổi nên thao tác này không còn hợp lệ. Dữ liệu đã được làm mới, vui lòng kiểm tra lại.',
       );
     });
 

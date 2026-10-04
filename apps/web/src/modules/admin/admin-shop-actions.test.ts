@@ -1,4 +1,4 @@
-import { SHOP_STATUS_TRANSITIONS, shopStatusSchema } from '@ecommerce/types';
+import { SHOP_STATUS_TRANSITIONS, shopStatusSchema, shopTransitionTargets } from '@ecommerce/types';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -19,16 +19,25 @@ describe('getAdminShopActions', () => {
     );
   });
 
-  // Lưới an toàn khi bảng chuyển trạng thái dùng chung đổi: thêm cạnh mới ở packages/types mà FE
+  // Lưới an toàn khi bảng chuyển trạng thái dùng chung đổi: thêm cạnh ADMIN mới ở packages/types mà FE
   // chưa có nút tương ứng thì test này đỏ, thay vì admin lặng lẽ không có cách thực hiện cạnh đó.
   it.each(shopStatusSchema.options)(
-    'shop %s: tập trạng thái đích của các nút = đúng tập đích hợp lệ trong SHOP_STATUS_TRANSITIONS',
+    'shop %s: tập trạng thái đích của các nút = đúng tập đích ADMIN trong SHOP_STATUS_TRANSITIONS',
     (status) => {
       const targets = getAdminShopActions(status).map((action) => ADMIN_SHOP_ACTION_TARGET[action]);
 
-      expect([...targets].sort()).toEqual([...SHOP_STATUS_TRANSITIONS[status]].sort());
+      expect([...targets].sort()).toEqual([...shopTransitionTargets('ADMIN', status)].sort());
     },
   );
+
+  it('cạnh của OWNER (REJECTED → PENDING) KHÔNG thành nút của Admin dù bảng chung có cạnh đó', () => {
+    expect(
+      SHOP_STATUS_TRANSITIONS.some(
+        (edge) => edge.from === 'REJECTED' && edge.to === 'PENDING' && edge.actor === 'OWNER',
+      ),
+    ).toBe(true);
+    expect(getAdminShopActions('REJECTED')).toEqual([]);
+  });
 
   it('"Duyệt" và "Mở khoá" cùng đích APPROVED nhưng không bao giờ cùng xuất hiện trên 1 shop', () => {
     expect(ADMIN_SHOP_ACTION_TARGET.approve).toBe('APPROVED');
