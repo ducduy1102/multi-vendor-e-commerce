@@ -11,19 +11,10 @@ import { useApiErrorMessage } from '@/shared/hooks/useValidationMessage';
 
 import { useMyShop } from '../hooks/useMyShop';
 import { useUpdateShop } from '../hooks/useUpdateShop';
-import type { Shop, UpdateShopInput } from '../types';
+import type { UpdateShopInput } from '../types';
 import { ShopFormFieldsSkeleton } from './ShopFormFieldsSkeleton';
+import { ShopStatusBanner } from './ShopStatusBanner';
 import { UpdateShopForm } from './UpdateShopForm';
-
-const SHOP_STATUS_ALERT = {
-  PENDING: { variant: 'warning', messageKey: 'shopStatusPendingMessage' },
-  APPROVED: null,
-  REJECTED: { variant: 'destructive', messageKey: 'shopStatusRejectedMessage' },
-  SUSPENDED: { variant: 'destructive', messageKey: 'shopStatusSuspendedMessage' },
-} as const satisfies Record<
-  Shop['status'],
-  { variant: 'warning' | 'destructive'; messageKey: string } | null
->;
 
 // Nối UpdateShopForm (Bước 3.8) với useMyShop/useUpdateShop (Bước 3.5) — đặt
 // trong modules/ để app/seller/shop/page.tsx chỉ compose, không viết logic
@@ -82,7 +73,6 @@ export function ShopDashboardContainer() {
   }
 
   const shop = myShopQuery.data;
-  const statusAlert = SHOP_STATUS_ALERT[shop.status];
 
   return (
     <div className="flex flex-col gap-6">
@@ -99,7 +89,7 @@ export function ShopDashboardContainer() {
         </Link>
       </div>
 
-      {statusAlert && <Alert variant={statusAlert.variant}>{t(statusAlert.messageKey)}</Alert>}
+      <ShopStatusBanner status={shop.status} reason={shop.statusReason} />
 
       {error && (
         <Alert variant="destructive" role="alert">
