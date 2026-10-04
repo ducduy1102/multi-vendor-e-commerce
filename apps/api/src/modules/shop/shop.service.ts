@@ -2,12 +2,17 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { SHOP_EDITABLE_STATUSES } from '@ecommerce/types';
+import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { slugify } from '../../shared/utils/slugify';
+import { ShopStatusService } from './shop-status.service';
 import type { CreateShopDto } from './dto/create-shop.dto';
+import type { ResubmitShopDto } from './dto/resubmit-shop.dto';
 import type { UpdateShopDto } from './dto/update-shop.dto';
 
 const shopSelect = {
@@ -20,6 +25,7 @@ const shopSelect = {
   description: true,
   status: true,
   statusReason: true,
+  statusChangedAt: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.ShopSelect;
@@ -41,7 +47,12 @@ const MAX_GENERATED_SLUG_ATTEMPTS = 20;
 
 @Injectable()
 export class ShopService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ShopService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly shopStatusService: ShopStatusService,
+  ) {}
 
   // Giới hạn 1 shop/user (Week3.md Bước 1.6) chỉ enforce ở đây, không có
   // @unique trên Shop.ownerId — chấp nhận khe hở race hiếm gặp giữa 2 request
@@ -80,33 +91,128 @@ export class ShopService {
     return shop;
   }
 
-  // shopId lấy từ URL param, không tin client — đối chiếu ownerId với userId
-  // từ JWT ngay trong service (không tách guard riêng, xem Week3.md Bước 2.6).
+  // Sửa thông tin shop (không đổi slug/status). Là MỘT câu UPDATE có điều kiện, KHÔNG đọc-rồi-ghi
+  // (Week8.md 3C.1): `WHERE id AND ownerId AND status IN (REJECTED, APPROVED)` — shop đang PENDING (chờ
+  // duyệt) hoặc SUSPENDED (bị khoá) không sửa được, và việc kiểm trạng thái + ghi là nguyên tử nên không
+  // có kẽ hở giữa 2 tab (1 tab vừa nộp lại, tab kia đang sửa). shopId lấy từ URL param, không tin client:
+  // điều kiện `ownerId` nằm ngay trong câu UPDATE. 0 dòng khớp ⇒ đọc lại 1 lần để phân biệt 404 / 403 /
+  // 409 SHOP_EDIT_NOT_ALLOWED (chỉ chạy ở đường lỗi).
   async updateShop(
     userId: string,
     shopId: string,
     dto: UpdateShopDto,
   ): Promise<ShopSummary> {
-    const shop = await this.prisma.shop.findUnique({
-      where: { id: shopId },
-      select: { id: true, ownerId: true },
-    });
-    if (!shop) {
-      throw new NotFoundException('Shop not found');
-    }
-    if (shop.ownerId !== userId) {
-      throw new ForbiddenException('Not the shop owner');
+    const where: Prisma.ShopWhereInput = {
+      id: shopId,
+      ownerId: userId,
+      status: { in: [...SHOP_EDITABLE_STATUSES] },
+    };
+    const data = this.editableFields(dto);
+
+    // updateMany với data toàn undefined trả count = 0 mà không đụng dòng nào (đã thử với Prisma 6.19) —
+    // body rỗng `{}` hợp lệ nên phải đếm riêng để vẫn kiểm được trạng thái thay vì báo nhầm 409.
+    const matched =
+      Object.keys(data).length === 0
+        ? await this.prisma.shop.count({ where })
+        : (await this.prisma.shop.updateMany({ where, data })).count;
+    if (matched === 0) {
+      throw await this.explainEditRefusal(userId, shopId);
     }
 
-    return this.prisma.shop.update({
+    return this.prisma.shop.findUniqueOrThrow({
       where: { id: shopId },
-      data: {
-        name: dto.name,
-        description: dto.description,
-        logoUrl: dto.logoUrl,
-        bannerUrl: dto.bannerUrl,
-      },
       select: shopSelect,
+    });
+  }
+
+  // "Lưu và gửi duyệt lại" (REJECTED → PENDING) — chủ shop sửa (tuỳ chọn) và nộp lại trong MỘT
+  // transaction (Week8.md 3C.1). Chuyển trạng thái TRƯỚC rồi mới sửa field: câu UPDATE `WHERE status =
+  // 'REJECTED'` của ShopStatusService lấy khoá hàng và thất bại sớm (409) nếu shop không còn REJECTED
+  // (đã nộp lại ở tab khác...) — khi đó phần sửa field cũng rollback; sau khi lật, shop đang bị khoá hàng
+  // nên không ai chen vào giữa. ShopOwnerGuard đã xác nhận `userId` là chủ shop (không kiểm lại ở đây).
+  async resubmitShop(
+    userId: string,
+    shopId: string,
+    dto: ResubmitShopDto,
+  ): Promise<ShopSummary> {
+    const data = this.editableFields(dto);
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.shopStatusService.transition(
+        tx,
+        shopId,
+        'REJECTED',
+        'PENDING',
+        { type: 'OWNER', id: userId },
+      );
+      if (Object.keys(data).length > 0) {
+        await tx.shop.update({ where: { id: shopId }, data });
+      }
+    });
+
+    this.logger.log(`Owner ${userId} resubmitted shop ${shopId}`);
+
+    return this.prisma.shop.findUniqueOrThrow({
+      where: { id: shopId },
+      select: shopSelect,
+    });
+  }
+
+  // Chỉ các field chủ shop được sửa, bỏ field undefined (PATCH một phần). slug/status không bao giờ có
+  // ở đây — schema đã loại ngay ở validate.
+  private editableFields(
+    dto: UpdateShopDto,
+  ): Prisma.ShopUpdateManyMutationInput {
+    const fields = {
+      name: dto.name,
+      description: dto.description,
+      logoUrl: dto.logoUrl,
+      bannerUrl: dto.bannerUrl,
+    };
+    return Object.fromEntries(
+      Object.entries(fields).filter(([, value]) => value !== undefined),
+    );
+  }
+
+  private async explainEditRefusal(
+    userId: string,
+    shopId: string,
+  ): Promise<Error> {
+    const shop = await this.prisma.shop.findUnique({
+      where: { id: shopId },
+      select: { ownerId: true, status: true },
+    });
+    if (!shop) {
+      return new NotFoundException('Shop not found');
+    }
+    if (shop.ownerId !== userId) {
+      return new ForbiddenException('Not the shop owner');
+    }
+    return new AppException(
+      409,
+      'SHOP_EDIT_NOT_ALLOWED',
+      `Shop details cannot be edited while the shop is ${shop.status}`,
+      { status: shop.status },
+    );
+  }
+
+  // Tạo shop + ghi mốc đầu `null → PENDING` trong CÙNG transaction (Week8.md 3C.1) để history luôn có đủ
+  // vòng đời. Mỗi lần thử slug là 1 transaction riêng: P2002 làm hỏng transaction đang mở (Postgres không
+  // cho chạy tiếp câu lệnh nào), nên vòng thử lại slug phải nằm NGOÀI transaction, như ở hai nơi gọi.
+  private createShopRecord(
+    data: ShopCreateData,
+    slug: string,
+  ): Promise<ShopSummary> {
+    return this.prisma.$transaction(async (tx) => {
+      const shop = await tx.shop.create({
+        data: { ...data, slug },
+        select: shopSelect,
+      });
+      await this.shopStatusService.recordCreated(tx, shop, {
+        type: 'OWNER',
+        id: data.ownerId,
+      });
+      return shop;
     });
   }
 
@@ -123,10 +229,7 @@ export class ShopService {
     }
 
     try {
-      return await this.prisma.shop.create({
-        data: { ...data, slug },
-        select: shopSelect,
-      });
+      return await this.createShopRecord(data, slug);
     } catch (error) {
       if (this.isSlugConflict(error)) {
         throw new ConflictException('Slug already exists');
@@ -150,10 +253,7 @@ export class ShopService {
       }
 
       try {
-        return await this.prisma.shop.create({
-          data: { ...data, slug },
-          select: shopSelect,
-        });
+        return await this.createShopRecord(data, slug);
       } catch (error) {
         // Race: 2 request generate cùng slug gần như đồng thời, cả 2 đều pass
         // check "taken" ở trên trước khi 1 trong 2 commit trước — không tin

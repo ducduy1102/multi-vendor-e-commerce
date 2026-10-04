@@ -1,13 +1,39 @@
 import { Logger, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Prisma, ShopStatus } from '@prisma/client';
-import { SHOP_STATUS_TRANSITIONS } from '@ecommerce/types';
+import {
+  canActorTransitionShop,
+  SHOP_STATUS_TRANSITIONS,
+  shopStatusSchema,
+} from '@ecommerce/types';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
+import { ShopStatusService } from '../shop/shop-status.service';
 import { AdminService } from './admin.service';
+
+// Matcher lồng trong object literal trả `any` — ép kiểu 1 lần ở đây thay vì để `any` rò rỉ ra từng chỗ
+// dùng (@typescript-eslint/no-unsafe-assignment).
+const anyDate = expect.any(Date) as unknown;
+const containing = (fields: Record<string, unknown>) =>
+  expect.objectContaining(fields) as unknown;
 
 const SHOP_ID = 'shop-1';
 const ADMIN_ID = 'admin-1';
+
+// Hàng Prisma trả về cho 1 shop: ngoài field thường còn 2 khối THÔ `statusHistory` (dòng `→ REJECTED` mới
+// nhất) và `_count.statusHistory` (số dòng `REJECTED → PENDING`) — AdminService phải gỡ chúng và đổi thành
+// `lastRejectionReason` / `resubmissionCount`.
+const shopRow = (
+  overrides: Record<string, unknown> = {},
+  rejectionNote: string | null | undefined = undefined,
+  resubmitted = 0,
+) => ({
+  id: 'a',
+  status: 'PENDING',
+  statusHistory: rejectionNote === undefined ? [] : [{ note: rejectionNote }],
+  _count: { statusHistory: resubmitted },
+  ...overrides,
+});
 
 describe('AdminService', () => {
   let service: AdminService;
@@ -19,19 +45,31 @@ describe('AdminService', () => {
       count: jest.fn(),
       updateMany: jest.fn(),
     },
+    shopStatusHistory: { create: jest.fn() },
+    $transaction: jest.fn(),
   };
 
+  // ShopStatusService là THẬT (không mock): AdminService chỉ điều phối nên điều cần chứng minh ở đây là
+  // luật cạnh + actor ADMIN và các thao tác DB mà nó sinh ra; tx của $transaction chính là mock prisma.
   beforeEach(async () => {
     jest.resetAllMocks();
+    prisma.$transaction.mockImplementation(
+      (callback: (tx: unknown) => unknown) => callback(prisma),
+    );
+    prisma.shopStatusHistory.create.mockResolvedValue({});
     const moduleRef = await Test.createTestingModule({
-      providers: [AdminService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        AdminService,
+        ShopStatusService,
+        { provide: PrismaService, useValue: prisma },
+      ],
     }).compile();
     service = moduleRef.get(AdminService);
   });
 
   describe('listShops', () => {
     beforeEach(() => {
-      prisma.shop.findMany.mockResolvedValue([{ id: 'a' }]);
+      prisma.shop.findMany.mockResolvedValue([shopRow()]);
       prisma.shop.count.mockResolvedValue(41);
     });
 
@@ -43,7 +81,7 @@ describe('AdminService', () => {
       });
 
       expect(prisma.shop.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
+        containing({
           where: { status: 'APPROVED' },
           skip: 40,
           take: 20,
@@ -53,31 +91,38 @@ describe('AdminService', () => {
         where: { status: 'APPROVED' },
       });
       expect(result).toEqual({
-        items: [{ id: 'a' }],
+        items: [
+          {
+            id: 'a',
+            status: 'PENDING',
+            lastRejectionReason: null,
+            resubmissionCount: 0,
+          },
+        ],
         total: 41,
         page: 3,
         limit: 20,
       });
     });
 
-    it('hàng chờ duyệt (PENDING): cũ nhất trước, id làm tie-break', async () => {
+    it('hàng chờ duyệt (PENDING): xếp theo MỐC VÀO HÀNG CHỜ (statusChangedAt) cũ nhất trước — shop nộp lại không nhảy lên đầu hàng dù createdAt cũ; id làm tie-break', async () => {
       await service.listShops({ status: 'PENDING', page: 1, limit: 20 });
 
       expect(prisma.shop.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        containing({
+          orderBy: [{ statusChangedAt: 'asc' }, { id: 'asc' }],
         }),
       );
     });
 
     it.each<ShopStatus>(['APPROVED', 'REJECTED', 'SUSPENDED'])(
-      'trạng thái %s: lần đổi gần nhất trước, id làm tie-break',
+      'trạng thái %s: lần đổi TRẠNG THÁI gần nhất trước (không phải updatedAt — nó đổi cả khi chủ shop sửa thông tin), id làm tie-break',
       async (status) => {
         await service.listShops({ status, page: 1, limit: 20 });
 
         expect(prisma.shop.findMany).toHaveBeenCalledWith(
-          expect.objectContaining({
-            orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+          containing({
+            orderBy: [{ statusChangedAt: 'desc' }, { id: 'desc' }],
           }),
         );
       },
@@ -91,23 +136,103 @@ describe('AdminService', () => {
         select: { name: true, email: true },
       });
     });
+
+    describe('lastRejectionReason / resubmissionCount suy từ ShopStatusHistory', () => {
+      it('select đúng: 1 dòng `→ REJECTED` mới nhất (note) + đếm có lọc `REJECTED → PENDING`, cùng 1 truy vấn (không N+1)', async () => {
+        await service.listShops({ status: 'PENDING', page: 1, limit: 20 });
+
+        const [args] = prisma.shop.findMany.mock.calls[0];
+        expect(args.select?.statusHistory).toEqual({
+          where: { toStatus: 'REJECTED' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 1,
+          select: { note: true },
+        });
+        expect(args.select?._count).toEqual({
+          select: {
+            statusHistory: {
+              where: { fromStatus: 'REJECTED', toStatus: 'PENDING' },
+            },
+          },
+        });
+        expect(prisma.shop.findMany).toHaveBeenCalledTimes(1);
+      });
+
+      it('shop từng bị từ chối và nộp lại 2 lần: trả lý do lần gần nhất + số lần', async () => {
+        prisma.shop.findMany.mockResolvedValue([
+          shopRow({}, 'Thiếu giấy phép', 2),
+        ]);
+
+        const { items } = await service.listShops({
+          status: 'PENDING',
+          page: 1,
+          limit: 20,
+        });
+
+        expect(items[0]).toMatchObject({
+          lastRejectionReason: 'Thiếu giấy phép',
+          resubmissionCount: 2,
+        });
+      });
+
+      it('shop chưa từng bị từ chối: null và 0', async () => {
+        prisma.shop.findMany.mockResolvedValue([shopRow()]);
+
+        const { items } = await service.listShops({
+          status: 'PENDING',
+          page: 1,
+          limit: 20,
+        });
+
+        expect(items[0]).toMatchObject({
+          lastRejectionReason: null,
+          resubmissionCount: 0,
+        });
+      });
+
+      it('dòng từ chối không có note (dữ liệu cũ) ⇒ null, không sập', async () => {
+        prisma.shop.findMany.mockResolvedValue([shopRow({}, null, 0)]);
+
+        const { items } = await service.listShops({
+          status: 'REJECTED',
+          page: 1,
+          limit: 20,
+        });
+
+        expect(items[0].lastRejectionReason).toBeNull();
+      });
+
+      it('GỠ 2 khối thô statusHistory/_count khỏi response (không lộ field nội bộ)', async () => {
+        prisma.shop.findMany.mockResolvedValue([shopRow({}, 'x', 1)]);
+
+        const { items } = await service.listShops({
+          status: 'PENDING',
+          page: 1,
+          limit: 20,
+        });
+
+        expect(items[0]).not.toHaveProperty('statusHistory');
+        expect(items[0]).not.toHaveProperty('_count');
+      });
+    });
   });
 
   describe('updateShopStatus', () => {
-    const validEdges = Object.entries(SHOP_STATUS_TRANSITIONS).flatMap(
-      ([from, targets]) =>
-        targets.map((to) => [from, to] as [ShopStatus, ShopStatus]),
-    );
-    const allStatuses = Object.keys(SHOP_STATUS_TRANSITIONS) as ShopStatus[];
+    // Chỉ các cạnh ADMIN được phép; cạnh của OWNER (REJECTED → PENDING) nằm trong nhóm không hợp lệ
+    // với Admin.
+    const validEdges = SHOP_STATUS_TRANSITIONS.filter(
+      (edge) => edge.actor === 'ADMIN',
+    ).map((edge) => [edge.from, edge.to] as [ShopStatus, ShopStatus]);
+    const allStatuses = shopStatusSchema.options as ShopStatus[];
     const invalidEdges = allStatuses.flatMap((from) =>
       allStatuses
-        .filter((to) => !SHOP_STATUS_TRANSITIONS[from].includes(to))
+        .filter((to) => !canActorTransitionShop('ADMIN', from, to))
         .map((to) => [from, to] as [ShopStatus, ShopStatus]),
     );
 
     beforeEach(() => {
       prisma.shop.updateMany.mockResolvedValue({ count: 1 });
-      prisma.shop.findUniqueOrThrow.mockResolvedValue({ id: SHOP_ID });
+      prisma.shop.findUniqueOrThrow.mockResolvedValue(shopRow({ id: SHOP_ID }));
     });
 
     it('shop không tồn tại — 404, không ghi gì', async () => {
@@ -134,7 +259,36 @@ describe('AdminService', () => {
           data: {
             status: to,
             statusReason: to === 'APPROVED' ? null : 'lý do',
+            statusChangedAt: anyDate,
           },
+        });
+      },
+    );
+
+    it.each(validEdges)(
+      'cạnh hợp lệ %s → %s: ghi 1 dòng history với actor ADMIN = đúng admin đang thao tác, cùng giờ với statusChangedAt',
+      async (from, to) => {
+        prisma.shop.findUnique.mockResolvedValue({ status: from });
+
+        await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+          status: to as 'APPROVED' | 'REJECTED' | 'SUSPENDED',
+          reason: 'lý do',
+        });
+
+        expect(prisma.shopStatusHistory.create).toHaveBeenCalledTimes(1);
+        const [{ data: history }] = prisma.shopStatusHistory.create.mock
+          .calls[0] as [{ data: Record<string, unknown> }];
+        const [{ data: update }] = prisma.shop.updateMany.mock.calls[0] as [
+          { data: { statusChangedAt: Date } },
+        ];
+        expect(history).toEqual({
+          shopId: SHOP_ID,
+          fromStatus: from,
+          toStatus: to,
+          actorType: 'ADMIN',
+          actorId: ADMIN_ID,
+          note: to === 'APPROVED' ? null : 'lý do',
+          createdAt: update.statusChangedAt,
         });
       },
     );
@@ -158,8 +312,22 @@ describe('AdminService', () => {
           },
         );
         expect(prisma.shop.updateMany).not.toHaveBeenCalled();
+        expect(prisma.shopStatusHistory.create).not.toHaveBeenCalled();
       },
     );
+
+    it('Admin KHÔNG làm được cạnh của chủ shop: REJECTED → PENDING bị 409 dù cạnh này có trong bảng chung', async () => {
+      prisma.shop.findUnique.mockResolvedValue({ status: 'REJECTED' });
+
+      await expectAppException(
+        service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+          status: 'PENDING' as 'APPROVED',
+        }),
+        { status: 409, code: 'SHOP_INVALID_TRANSITION' },
+      );
+      expect(prisma.shop.updateMany).not.toHaveBeenCalled();
+      expect(prisma.shopStatusHistory.create).not.toHaveBeenCalled();
+    });
 
     it('từ chối/khoá: ghi lý do Admin nhập', async () => {
       prisma.shop.findUnique.mockResolvedValue({ status: 'APPROVED' });
@@ -171,7 +339,11 @@ describe('AdminService', () => {
 
       expect(prisma.shop.updateMany).toHaveBeenCalledWith({
         where: { id: SHOP_ID, status: 'APPROVED' },
-        data: { status: 'SUSPENDED', statusReason: 'Vi phạm chính sách' },
+        data: {
+          status: 'SUSPENDED',
+          statusReason: 'Vi phạm chính sách',
+          statusChangedAt: anyDate,
+        },
       });
     });
 
@@ -187,7 +359,15 @@ describe('AdminService', () => {
 
         expect(prisma.shop.updateMany).toHaveBeenCalledWith({
           where: { id: SHOP_ID, status: from },
-          data: { status: 'APPROVED', statusReason: null },
+          data: {
+            status: 'APPROVED',
+            statusReason: null,
+            statusChangedAt: anyDate,
+          },
+        });
+        // Lý do gửi kèm bị bỏ qua ở cả history (note), không chỉ ở statusReason.
+        expect(prisma.shopStatusHistory.create).toHaveBeenCalledWith({
+          data: containing({ note: null }),
         });
       },
     );
@@ -201,26 +381,41 @@ describe('AdminService', () => {
         { status: 409, code: 'SHOP_INVALID_TRANSITION' },
       );
       expect(prisma.shop.findUniqueOrThrow).not.toHaveBeenCalled();
+      // Thua race ⇒ không ghi history cho một lần chuyển không xảy ra.
+      expect(prisma.shopStatusHistory.create).not.toHaveBeenCalled();
     });
 
     it('trả shop đọc lại sau khi ghi (kèm statusReason, chủ shop)', async () => {
       prisma.shop.findUnique.mockResolvedValue({ status: 'PENDING' });
-      const updated = {
-        id: SHOP_ID,
-        status: 'REJECTED',
-        statusReason: 'Thiếu thông tin',
-        owner: { name: 'A', email: 'a@example.com' },
-      };
-      prisma.shop.findUniqueOrThrow.mockResolvedValue(updated);
+      prisma.shop.findUniqueOrThrow.mockResolvedValue(
+        shopRow(
+          {
+            id: SHOP_ID,
+            status: 'REJECTED',
+            statusReason: 'Thiếu thông tin',
+            owner: { name: 'A', email: 'a@example.com' },
+          },
+          'Thiếu thông tin',
+          0,
+        ),
+      );
 
       const result = await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
         status: 'REJECTED',
         reason: 'Thiếu thông tin',
       });
 
-      expect(result).toBe(updated);
+      // Response của PATCH cũng có đủ 2 trường suy ra (FE parse bằng cùng adminShopSchema) và đã gỡ khối thô.
+      expect(result).toEqual({
+        id: SHOP_ID,
+        status: 'REJECTED',
+        statusReason: 'Thiếu thông tin',
+        owner: { name: 'A', email: 'a@example.com' },
+        lastRejectionReason: 'Thiếu thông tin',
+        resubmissionCount: 0,
+      });
       expect(prisma.shop.findUniqueOrThrow).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: SHOP_ID } }),
+        containing({ where: { id: SHOP_ID } }),
       );
     });
 

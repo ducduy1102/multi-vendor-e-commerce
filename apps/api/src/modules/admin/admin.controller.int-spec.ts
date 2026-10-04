@@ -433,6 +433,179 @@ describe('AdminController (HTTP thật)', () => {
     });
   });
 
+  // Week8.md 3C.6: hàng chờ duyệt xếp theo mốc vào hàng chờ (statusChangedAt), và dòng danh sách cho thấy lịch sử
+  // từ chối ⇄ nộp lại SUY TỪ ShopStatusHistory (không phải cột DB).
+  describe('hàng chờ theo statusChangedAt + lịch sử từ chối ⇄ nộp lại', () => {
+    const resubmit = (shopId: string, payload: Record<string, unknown> = {}) =>
+      seller.post(`/api/v1/shops/${shopId}/resubmit`).send(payload);
+
+    // Vị trí (theo thứ tự trả về của API, qua mọi trang) của các shop trong 1 tab — dev DB có thể còn nhiều shop
+    // cũ nên không giả định hàng chờ chỉ có shop của test.
+    async function queueOrder(status: ShopStatus, ids: string[]) {
+      const seen: string[] = [];
+      for (let page = 1; page <= 40; page++) {
+        const res = await admin
+          .get(`/api/v1/admin/shops?status=${status}&limit=50&page=${page}`)
+          .expect(200);
+        const data = adminShopListResponseSchema.parse(body(res));
+        seen.push(
+          ...data.items.map((item) => item.id).filter((id) => ids.includes(id)),
+        );
+        if (page * 50 >= data.total) break;
+      }
+      return seen;
+    }
+
+    const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+
+    it('shop chưa từng bị từ chối: lastRejectionReason null, resubmissionCount 0', async () => {
+      const { shopId } = await createShop(sellerId, 'PENDING');
+
+      const found = await findInList('PENDING', shopId);
+
+      expect(found).toMatchObject({
+        lastRejectionReason: null,
+        resubmissionCount: 0,
+      });
+    });
+
+    it('từ chối ⇄ nộp lại 2 vòng: dòng danh sách trả lý do lần GẦN NHẤT và số lần nộp lại', async () => {
+      const { shopId } = await createShop(sellerId, 'PENDING');
+
+      await patchStatus(shopId, {
+        status: 'REJECTED',
+        reason: 'Thiếu giấy phép',
+      }).expect(200);
+      expect(await findInList('REJECTED', shopId)).toMatchObject({
+        lastRejectionReason: 'Thiếu giấy phép',
+        resubmissionCount: 0,
+      });
+
+      await resubmit(shopId).expect(200);
+      expect(await findInList('PENDING', shopId)).toMatchObject({
+        status: 'PENDING',
+        statusReason: null, // lý do hiện tại đã xoá khi nộp lại...
+        lastRejectionReason: 'Thiếu giấy phép', // ...nhưng Admin vẫn thấy lý do lần trước
+        resubmissionCount: 1,
+      });
+
+      await patchStatus(shopId, {
+        status: 'REJECTED',
+        reason: 'Ảnh logo mờ',
+      }).expect(200);
+      await resubmit(shopId, { description: 'Đã đổi logo' }).expect(200);
+      expect(await findInList('PENDING', shopId)).toMatchObject({
+        lastRejectionReason: 'Ảnh logo mờ',
+        resubmissionCount: 2,
+      });
+    });
+
+    it('response của PATCH cũng có đủ 2 trường (FE parse bằng cùng adminShopSchema) và không lộ khối thô', async () => {
+      const { shopId } = await createShop(sellerId, 'PENDING');
+
+      const res = await patchStatus(shopId, {
+        status: 'REJECTED',
+        reason: 'Thiếu giấy phép',
+      }).expect(200);
+      const raw = (body(res) as { shop: Record<string, unknown> }).shop;
+
+      expect(adminShopSchema.parse(raw)).toMatchObject({
+        status: 'REJECTED',
+        lastRejectionReason: 'Thiếu giấy phép',
+        resubmissionCount: 0,
+      });
+      expect(raw).not.toHaveProperty('statusHistory');
+      expect(raw).not.toHaveProperty('_count');
+    });
+
+    it('lý do từ chối lần trước là của chính shop đó (shop khác từ chối khác lý do không lẫn sang)', async () => {
+      const a = await createShop(sellerId, 'PENDING');
+      const b = await createShop(sellerId, 'PENDING');
+
+      await patchStatus(a.shopId, {
+        status: 'REJECTED',
+        reason: 'Lý do của A',
+      }).expect(200);
+      await patchStatus(b.shopId, {
+        status: 'REJECTED',
+        reason: 'Lý do của B',
+      }).expect(200);
+      await resubmit(a.shopId).expect(200);
+      await resubmit(b.shopId).expect(200);
+
+      expect(await findInList('PENDING', a.shopId)).toMatchObject({
+        lastRejectionReason: 'Lý do của A',
+        resubmissionCount: 1,
+      });
+      expect(await findInList('PENDING', b.shopId)).toMatchObject({
+        lastRejectionReason: 'Lý do của B',
+        resubmissionCount: 1,
+      });
+    });
+
+    it('hàng chờ: shop nộp lại xếp theo LÚC NỘP LẠI — không nhảy lên đầu hàng dù tạo từ lâu', async () => {
+      const older = await createShop(sellerId, 'PENDING');
+      const newer = await createShop(sellerId, 'PENDING');
+      // older vào hàng chờ cách đây 2 giờ, newer cách đây 1 giờ.
+      await prisma.shop.update({
+        where: { id: older.shopId },
+        data: { statusChangedAt: ago(120), createdAt: ago(120) },
+      });
+      await prisma.shop.update({
+        where: { id: newer.shopId },
+        data: { statusChangedAt: ago(60), createdAt: ago(60) },
+      });
+      const ids = [older.shopId, newer.shopId];
+
+      expect(await queueOrder('PENDING', ids)).toEqual([
+        older.shopId,
+        newer.shopId,
+      ]);
+
+      // older bị từ chối rồi nộp lại BÂY GIỜ: mốc vào hàng chờ mới là bây giờ nên phải xếp SAU newer, dù
+      // createdAt của older cũ hơn (nếu sắp theo createdAt, older sẽ vẫn nằm đầu hàng).
+      await patchStatus(older.shopId, {
+        status: 'REJECTED',
+        reason: 'x',
+      }).expect(200);
+      await resubmit(older.shopId).expect(200);
+
+      expect(await queueOrder('PENDING', ids)).toEqual([
+        newer.shopId,
+        older.shopId,
+      ]);
+    });
+
+    it('các tab khác xếp theo lần đổi TRẠNG THÁI gần nhất, không phải updatedAt — chủ shop sửa thông tin không làm shop nhảy vị trí', async () => {
+      const first = await createShop(sellerId, 'APPROVED');
+      const second = await createShop(sellerId, 'APPROVED');
+      await prisma.shop.update({
+        where: { id: first.shopId },
+        data: { statusChangedAt: ago(10) },
+      });
+      await prisma.shop.update({
+        where: { id: second.shopId },
+        data: { statusChangedAt: ago(120) },
+      });
+      const ids = [first.shopId, second.shopId];
+      expect(await queueOrder('APPROVED', ids)).toEqual([
+        first.shopId,
+        second.shopId,
+      ]);
+
+      // Chủ shop sửa thông tin của shop CŨ hơn ⇒ updatedAt của nó mới nhất, nhưng thứ tự không đổi.
+      await seller
+        .patch(`/api/v1/shops/${second.shopId}`)
+        .send({ description: 'Mô tả vừa sửa' })
+        .expect(200);
+
+      expect(await queueOrder('APPROVED', ids)).toEqual([
+        first.shopId,
+        second.shopId,
+      ]);
+    });
+  });
+
   describe('khoá/mở khoá có hiệu lực ngay lên trang công khai và giỏ hàng (không sửa query nào)', () => {
     let shop: Awaited<ReturnType<typeof createShop>>;
     // Chủ shop riêng, chỉ có đúng 1 shop — để /shops/me (trả shop đầu tiên của user) xác định được.

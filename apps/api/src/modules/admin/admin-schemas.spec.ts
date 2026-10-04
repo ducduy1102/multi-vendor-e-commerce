@@ -4,11 +4,11 @@ import {
   adminShopListQuerySchema,
   adminShopListResponseSchema,
   adminShopTargetStatusSchema,
+  adminShopSchema,
   adminUpdateShopStatusSchema,
-  isValidShopStatusTransition,
   shopSchema,
   shopStatusSchema,
-  SHOP_STATUS_TRANSITIONS,
+  shopTransitionTargets,
 } from '@ecommerce/types';
 import { ShopStatus } from '@prisma/client';
 
@@ -23,51 +23,23 @@ describe('enum dùng chung khớp Prisma', () => {
   });
 });
 
-describe('SHOP_STATUS_TRANSITIONS', () => {
-  it('đúng bảng 1.8 (nguyên bảng, không chỉ vài cạnh)', () => {
-    expect(SHOP_STATUS_TRANSITIONS).toEqual({
-      PENDING: ['APPROVED', 'REJECTED'],
-      APPROVED: ['SUSPENDED'],
-      SUSPENDED: ['APPROVED'],
-      REJECTED: [],
-    });
-  });
-
-  it('có khoá cho mọi ShopStatus', () => {
-    expect(Object.keys(SHOP_STATUS_TRANSITIONS).sort()).toEqual(
-      [...shopStatusSchema.options].sort(),
+// Bảng chuyển trạng thái (cạnh + actor) được test ở modules/shop/shop-status-transitions.spec.ts; ở đây chỉ
+// giữ ràng buộc riêng của Admin: tập đích của body phải đúng bằng tập đích ADMIN của bảng.
+describe('adminShopTargetStatusSchema', () => {
+  it('tập đích của body (APPROVED/REJECTED/SUSPENDED) đúng bằng tập đích ADMIN có thật trong bảng', () => {
+    const adminTargets = new Set(
+      shopStatusSchema.options.flatMap((from) =>
+        shopTransitionTargets('ADMIN', from),
+      ),
     );
-  });
-
-  it('không cạnh nào dẫn về PENDING và REJECTED là trạng thái cuối', () => {
-    const targets = Object.values(SHOP_STATUS_TRANSITIONS).flat();
-
-    expect(targets).not.toContain('PENDING');
-    expect(SHOP_STATUS_TRANSITIONS.REJECTED).toHaveLength(0);
-  });
-
-  it('không trạng thái nào tự trỏ vào chính nó', () => {
-    for (const status of shopStatusSchema.options) {
-      expect(SHOP_STATUS_TRANSITIONS[status]).not.toContain(status);
-    }
-  });
-
-  it('isValidShopStatusTransition khớp bảng', () => {
-    expect(isValidShopStatusTransition('PENDING', 'APPROVED')).toBe(true);
-    expect(isValidShopStatusTransition('APPROVED', 'SUSPENDED')).toBe(true);
-    expect(isValidShopStatusTransition('SUSPENDED', 'APPROVED')).toBe(true);
-    expect(isValidShopStatusTransition('APPROVED', 'APPROVED')).toBe(false);
-    expect(isValidShopStatusTransition('APPROVED', 'REJECTED')).toBe(false);
-    expect(isValidShopStatusTransition('REJECTED', 'APPROVED')).toBe(false);
-    expect(isValidShopStatusTransition('PENDING', 'SUSPENDED')).toBe(false);
-  });
-
-  it('tập đích của body (APPROVED/REJECTED/SUSPENDED) đúng bằng tập đích có thật trong bảng', () => {
-    const targets = new Set(Object.values(SHOP_STATUS_TRANSITIONS).flat());
 
     expect([...adminShopTargetStatusSchema.options].sort()).toEqual(
-      [...targets].sort(),
+      [...adminTargets].sort(),
     );
+  });
+
+  it('PENDING không phải đích của Admin (cạnh về PENDING thuộc chủ shop)', () => {
+    expect(adminShopTargetStatusSchema.options).not.toContain('PENDING');
   });
 });
 
@@ -191,8 +163,14 @@ describe('response schema', () => {
     description: null,
     status: 'SUSPENDED',
     statusReason: 'Vi phạm',
+    statusChangedAt: '2026-10-02T00:00:00.000Z',
     createdAt: '2026-10-01T00:00:00.000Z',
     updatedAt: '2026-10-02T00:00:00.000Z',
+  };
+  const adminExtras = {
+    owner: { name: 'An', email: 'an@example.com' },
+    lastRejectionReason: null,
+    resubmissionCount: 0,
   };
 
   it('shopSchema đọc được statusReason (không bị z.object strip mất)', () => {
@@ -207,9 +185,52 @@ describe('response schema', () => {
     expect(shopSchema.safeParse(withoutReason).success).toBe(false);
   });
 
+  it('shopSchema đọc được statusChangedAt (không bị z.object strip mất) và bắt buộc có', () => {
+    expect(shopSchema.parse(shop).statusChangedAt).toBe(
+      '2026-10-02T00:00:00.000Z',
+    );
+    const { statusChangedAt: _omitted, ...withoutChangedAt } = shop;
+    expect(shopSchema.safeParse(withoutChangedAt).success).toBe(false);
+  });
+
+  it('adminShopSchema đọc được lastRejectionReason + resubmissionCount (suy từ history) và bắt buộc có cả hai', () => {
+    const parsed = adminShopSchema.parse({
+      ...shop,
+      ...adminExtras,
+      lastRejectionReason: 'Thiếu giấy phép',
+      resubmissionCount: 2,
+    });
+
+    expect(parsed.lastRejectionReason).toBe('Thiếu giấy phép');
+    expect(parsed.resubmissionCount).toBe(2);
+    const { lastRejectionReason: _a, ...withoutReason } = {
+      ...shop,
+      ...adminExtras,
+    };
+    const { resubmissionCount: _b, ...withoutCount } = {
+      ...shop,
+      ...adminExtras,
+    };
+    expect(adminShopSchema.safeParse(withoutReason).success).toBe(false);
+    expect(adminShopSchema.safeParse(withoutCount).success).toBe(false);
+  });
+
+  it.each([-1, 1.5, '2'])(
+    'resubmissionCount %j không hợp lệ (phải là số nguyên không âm)',
+    (resubmissionCount) => {
+      expect(
+        adminShopSchema.safeParse({
+          ...shop,
+          ...adminExtras,
+          resubmissionCount,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
   it('danh sách admin: mỗi shop kèm chủ shop (name + email)', () => {
     const parsed = adminShopListResponseSchema.parse({
-      items: [{ ...shop, owner: { name: 'An', email: 'an@example.com' } }],
+      items: [{ ...shop, ...adminExtras }],
       total: 1,
       page: 1,
       limit: 20,

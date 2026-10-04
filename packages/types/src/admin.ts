@@ -5,8 +5,10 @@ import { shopSchema, shopStatusSchema } from './shop';
 
 export const ADMIN_SHOP_REASON_MAX_LENGTH = 500;
 
-// Trạng thái ĐÍCH Admin được đặt — không cạnh nào của SHOP_STATUS_TRANSITIONS dẫn về PENDING nên
-// PENDING không phải đích hợp lệ (loại ở mức kiểu, 400 ngay ở validate thay vì đợi tới service).
+// Trạng thái ĐÍCH Admin được đặt — không cạnh ADMIN nào của SHOP_STATUS_TRANSITIONS dẫn về PENDING
+// (cạnh REJECTED → PENDING thuộc về OWNER) nên PENDING không phải đích hợp lệ cho Admin (loại ở mức
+// kiểu, 400 ngay ở validate thay vì đợi tới service). Test parity: tập này đúng bằng tập đích ADMIN
+// của bảng chuyển trạng thái.
 export const adminShopTargetStatusSchema = z.enum(['APPROVED', 'REJECTED', 'SUSPENDED']);
 export type AdminShopTargetStatus = z.infer<typeof adminShopTargetStatusSchema>;
 
@@ -50,11 +52,18 @@ export const adminShopListQuerySchema = z.object({
 export type AdminShopListQuery = z.infer<typeof adminShopListQuerySchema>;
 
 // Shop kèm thông tin chủ shop để Admin biết liên hệ ai khi duyệt/khoá (route chỉ ADMIN gọi được).
+//
+// `lastRejectionReason` / `resubmissionCount` (Week8.md 3C) giúp Admin xét lại shop được nộp lại ngay trên
+// dòng danh sách: lý do từ chối lần gần nhất (`note` của dòng history `→ REJECTED` mới nhất, null nếu chưa
+// từng bị từ chối) và số lần chủ shop đã bấm "gửi duyệt lại" (số dòng history `REJECTED → PENDING`).
+// Cả hai SUY TỪ ShopStatusHistory, không phải cột DB.
 export const adminShopSchema = shopSchema.extend({
   owner: z.object({
     name: z.string(),
     email: z.string(),
   }),
+  lastRejectionReason: z.string().nullable(),
+  resubmissionCount: z.number().int().nonnegative(),
 });
 export type AdminShop = z.infer<typeof adminShopSchema>;
 

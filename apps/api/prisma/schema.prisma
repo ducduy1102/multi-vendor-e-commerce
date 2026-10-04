@@ -48,6 +48,15 @@ enum ShopStatus {
   SUSPENDED
 }
 
+// Ai thực hiện 1 lần chuyển trạng thái shop (ShopStatusHistory.actorType). OWNER = chủ shop (nộp lại
+// hồ sơ bị từ chối); SYSTEM = backfill/hệ thống, không có actorId. Không dùng lại OrderActorType (của
+// module khác).
+enum ShopActorType {
+  OWNER
+  ADMIN
+  SYSTEM
+}
+
 enum ProductStatus {
   DRAFT
   PUBLISHED
@@ -197,30 +206,59 @@ model Address {
 // khe hở race hiếm gặp (2 request POST /shops gần như đồng thời) để không
 // giả định cứng "sẽ không bao giờ cần multi-shop".
 model Shop {
-  id           String     @id @default(uuid())
-  ownerId      String     @map("owner_id")
-  name         String
-  slug         String     @unique
-  logoUrl      String?    @map("logo_url")
-  bannerUrl    String?    @map("banner_url")
-  description  String?
-  status       ShopStatus @default(PENDING)
-  // Lý do của trạng thái hiện tại do Admin nhập (từ chối hoặc khoá, Week8.md 1.8); null khi
-  // APPROVED/PENDING. 1 cột chung cho cả 2 trường hợp, không có bảng lịch sử khoá/mở ở Tuần 8.
-  statusReason String?    @map("status_reason")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  id              String     @id @default(uuid())
+  ownerId         String     @map("owner_id")
+  name            String
+  slug            String     @unique
+  logoUrl         String?    @map("logo_url")
+  bannerUrl       String?    @map("banner_url")
+  description     String?
+  status          ShopStatus @default(PENDING)
+  // Lý do của trạng thái HIỆN TẠI do Admin nhập (từ chối hoặc khoá); null khi PENDING/APPROVED. Là
+  // bản sao có chủ đích để banner seller và danh sách Admin không phải đọc ShopStatusHistory mỗi lần
+  // render — nguồn audit đầy đủ là ShopStatusHistory (ghi cùng transaction ở ShopStatusService).
+  statusReason    String?    @map("status_reason")
+  // Mốc đổi trạng thái gần nhất (hàng chờ duyệt xếp theo cột này, shop nộp lại xếp theo lúc nộp lại).
+  // KHÔNG dùng updatedAt: updatedAt đổi cả khi chủ shop sửa thông tin. Denormalization có chủ đích
+  // (= ShopStatusHistory.createdAt mới nhất) để khỏi MAX() mỗi lần truy vấn; chỉ ShopStatusService
+  // được ghi cột này.
+  statusChangedAt DateTime   @default(now()) @map("status_changed_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner         User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   addresses     Address[]
   products      Product[]
   variants      ProductVariant[]
   orders        Order[]
   vouchers      Voucher[]
   conversations Conversation[]
+  statusHistory ShopStatusHistory[]
 
   @@index([ownerId])
+  // Hàng chờ duyệt: WHERE status = 'PENDING' ORDER BY status_changed_at (Week8.md 3C).
+  @@index([status, statusChangedAt])
   @@map("shops")
+}
+
+// Lịch sử đổi trạng thái shop (cùng mẫu OrderStatusHistory): audit + nguồn suy ra "lý do từ chối lần
+// trước" và "số lần nộp lại" ở danh sách Admin. fromStatus null = mốc tạo shop. Không có cột `action`
+// — suy ra từ cặp (from -> to). `note` là LÝ DO DO NGƯỜI NHẬP, hiển thị được cho seller; không bao giờ
+// ghi chuỗi hệ thống vào đây (dòng backfill phân biệt bằng actorType = SYSTEM, không bằng note).
+model ShopStatusHistory {
+  id         String        @id @default(uuid())
+  shopId     String        @map("shop_id")
+  fromStatus ShopStatus?   @map("from_status")
+  toStatus   ShopStatus    @map("to_status")
+  actorType  ShopActorType @map("actor_type")
+  actorId    String?       @map("actor_id")
+  note       String?
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, createdAt])
+  @@map("shop_status_histories")
 }
 
 // =========================================================
