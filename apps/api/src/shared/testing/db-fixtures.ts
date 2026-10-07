@@ -177,6 +177,28 @@ export async function cleanupByTag(prisma: PrismaClient, tag: string) {
   // Thứ tự xoá theo chiều FK RESTRICT (Payment/Order/VoucherUsage → CheckoutGroup → User;
   // Order/OrderItem → Shop/ProductVariant): xoá "lá" trước "gốc". Cart/CartItem/Address cascade
   // tự động theo User (onDelete: Cascade) nên không cần dọn riêng.
+  // Tuần 9 thêm 3 bảng giữ FK RESTRICT/không cascade tới Order/Payment/Shop/User nên phải xoá TRƯỚC:
+  // PaymentRefund trước RefundRequest (nó tham chiếu RefundRequest), RefundRequestHistory tự xoá theo
+  // RefundRequest (cascade); Review trước Order (Review.order không cascade).
+  await prisma.paymentRefund.deleteMany({
+    where: { payment: { checkoutGroup: { userId: { in: userIds } } } },
+  });
+  await prisma.refundRequest.deleteMany({
+    where: {
+      OR: [
+        { userId: { in: userIds } },
+        { shop: { slug: { startsWith: tag } } },
+      ],
+    },
+  });
+  await prisma.review.deleteMany({
+    where: {
+      OR: [
+        { userId: { in: userIds } },
+        { product: { shop: { slug: { startsWith: tag } } } },
+      ],
+    },
+  });
   await prisma.payment.deleteMany({
     where: { checkoutGroup: { userId: { in: userIds } } },
   });

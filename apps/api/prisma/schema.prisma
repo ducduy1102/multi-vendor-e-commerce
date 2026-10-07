@@ -95,7 +95,11 @@ enum PaymentStatus {
   PENDING
   SUCCESS
   FAILED
+  // Hoàn ĐỦ amount (Payment.refundedAmount = amount). Hoàn một phần (nhóm nhiều đơn, hủy 1 đơn) vẫn SUCCESS.
   REFUNDED
+  // "Không thu" (Week9.md 1.2): nhóm COD mà mọi đơn đều CANCELLED — tiền chưa từng được thu. Khác FAILED
+  // (lỗi cổng thanh toán, mở đường thanh toán lại) và khác PENDING (còn đang chờ thu).
+  CANCELLED
 }
 
 enum VoucherType {
@@ -143,6 +147,7 @@ model User {
   checkoutGroups CheckoutGroup[]
   voucherUsages  VoucherUsage[]
   reviews        Review[]
+  refundRequests RefundRequest[]
   wishlists      Wishlist[]
   conversations  Conversation[]  @relation("BuyerConversations")
   messages       Message[]
@@ -226,14 +231,15 @@ model Shop {
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  owner         User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  addresses     Address[]
-  products      Product[]
-  variants      ProductVariant[]
-  orders        Order[]
-  vouchers      Voucher[]
-  conversations Conversation[]
-  statusHistory ShopStatusHistory[]
+  owner          User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  addresses      Address[]
+  products       Product[]
+  variants       ProductVariant[]
+  orders         Order[]
+  vouchers       Voucher[]
+  conversations  Conversation[]
+  statusHistory  ShopStatusHistory[]
+  refundRequests RefundRequest[]
 
   @@index([ownerId])
   // Hàng chờ duyệt: WHERE status = 'PENDING' ORDER BY status_changed_at (Week8.md 3C).
@@ -296,6 +302,13 @@ model Product {
   // đồng bộ hộ.
   minPrice    Decimal       @map("min_price") @db.Decimal(12, 2)
   maxPrice    Decimal       @map("max_price") @db.Decimal(12, 2)
+  // Denormalized từ reviews (Week9.md 1.8) — cùng lý do với minPrice/maxPrice: Prisma không orderBy được
+  // theo aggregate của quan hệ 1-nhiều, mà danh sách public cần sort theo rating và card cần hiện sao.
+  // Không phải tiền nên Float đủ (làm tròn 2 chữ số khi ghi). Chỉ ProductRatingService.recompute được ghi
+  // 2 cột này (tính lại từ COUNT/AVG dưới khoá dòng product nên tự chữa lành nếu có lệch); CHECK DB:
+  // 0 <= avg_rating <= 5, review_count >= 0.
+  avgRating   Float         @default(0) @map("avg_rating")
+  reviewCount Int           @default(0) @map("review_count")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
@@ -322,6 +335,8 @@ model Product {
   // shopId, mọi status) nên không cần giữ thêm index đơn song song.
   @@index([shopId, status])
   @@index([categoryId, status])
+  // Sort theo rating ở danh sách public (luôn kèm status = PUBLISHED) — Week9.md 1.8.
+  @@index([status, avgRating])
   @@index([searchVector], type: Gin)
   @@map("products")
 }
@@ -528,13 +543,15 @@ model Order {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user          User                 @relation(fields: [userId], references: [id])
-  shop          Shop                 @relation(fields: [shopId], references: [id])
-  voucher       Voucher?             @relation(fields: [voucherId], references: [id])
-  checkoutGroup CheckoutGroup        @relation(fields: [checkoutGroupId], references: [id])
-  items         OrderItem[]
-  reviews       Review[]
-  statusHistory OrderStatusHistory[]
+  user           User                 @relation(fields: [userId], references: [id])
+  shop           Shop                 @relation(fields: [shopId], references: [id])
+  voucher        Voucher?             @relation(fields: [voucherId], references: [id])
+  checkoutGroup  CheckoutGroup        @relation(fields: [checkoutGroupId], references: [id])
+  items          OrderItem[]
+  reviews        Review[]
+  statusHistory  OrderStatusHistory[]
+  refundRequests RefundRequest[]
+  paymentRefund  PaymentRefund?
 
   // Khớp đúng query Tuần 8 (Week8.md 1.11): danh sách đơn của buyer (userId, mới nhất trước) và của
   // seller (shopId + lọc status, mới nhất trước). Cột đứng đầu đã tự phục vụ mọi query theo
@@ -588,6 +605,31 @@ model OrderStatusHistory {
   @@map("order_status_histories")
 }
 
+// Loại yêu cầu của người mua (Week9.md 1.3): CANCEL = xin hủy khi shop đã xác nhận/đóng gói (CONFIRMED,
+// PACKED); RETURN = xin trả hàng/hoàn tiền sau khi đã nhận (COMPLETED, trong cửa sổ hoàn trả).
+enum RefundRequestKind {
+  CANCEL
+  RETURN
+}
+
+// Vòng đời yêu cầu (Week9.md 1.4). Bảng chuyển hợp lệ + actor là hằng số REFUND_REQUEST_TRANSITIONS ở
+// packages/types; điểm ghi duy nhất là RefundRequestService.transition (kèm RefundRequestHistory).
+enum RefundRequestStatus {
+  PENDING_SELLER
+  APPROVED
+  REJECTED_BY_SELLER
+  ESCALATED
+  REJECTED
+  WITHDRAWN
+}
+
+// Trạng thái của MỘT lần hoàn tiền ra khỏi hệ thống (sổ cái tiền, tách khỏi quy trình xin/duyệt).
+enum PaymentRefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
 // 1 Payment (1 giao dịch VNPay/Momo) có thể trả cho nhiều Order (nhiều shop)
 // cùng lúc, gộp nhóm qua checkoutGroupId — không FK trực tiếp tới Order.
 model Payment {
@@ -606,13 +648,115 @@ model Payment {
   // null = không hết hạn (chỉ COD, Week8.md 1.6). PaymentExpiryJob lọc `expiresAt < now` nên tự bỏ
   // qua NULL (so sánh với NULL không bao giờ đúng).
   expiresAt       DateTime?     @map("expires_at")
+  // Tổng các PaymentRefund đã SUCCEEDED của Payment này (Week9.md 1.2). Denormalization có chủ đích để
+  // kiểm "không hoàn quá số đã thu" bằng 1 câu UPDATE có điều kiện + CHECK DB (0 <= refunded_amount <=
+  // amount, SQL tay trong migration) thay vì cộng lại sổ cái mỗi lần; chỉ RefundService ghi cột này.
+  // status REFUNDED chỉ khi refundedAmount = amount.
+  refundedAmount  Decimal       @default(0) @map("refunded_amount") @db.Decimal(12, 2)
   createdAt       DateTime      @default(now()) @map("created_at")
 
-  checkoutGroup CheckoutGroup @relation(fields: [checkoutGroupId], references: [id])
+  checkoutGroup CheckoutGroup   @relation(fields: [checkoutGroupId], references: [id])
+  refunds       PaymentRefund[]
 
   @@index([checkoutGroupId])
   @@index([status, expiresAt])
   @@map("payments")
+}
+
+// Yêu cầu hủy/trả hàng của người mua (Week9.md 1.4) — QUY TRÌNH xin/duyệt. Hủy ngay khi shop chưa xác
+// nhận và hoàn tiền do Admin chủ động KHÔNG có dòng ở đây (chỉ có PaymentRefund). Mỗi đơn tối đa 1 yêu
+// cầu mỗi loại trừ yêu cầu đã rút: index duy nhất từng phần (order_id, kind) WHERE status <> 'WITHDRAWN'
+// viết tay trong migration vì Prisma không biểu diễn được. shopId nhân bản bất biến từ đơn (đơn không bao
+// giờ đổi shop) để có hàng chờ seller theo index [shopId, status, createdAt] mà không join. reasonNote do
+// NGƯỜI MUA nhập; lý do của người ra quyết định nằm ở RefundRequestHistory.note.
+model RefundRequest {
+  id              String              @id @default(uuid())
+  orderId         String              @map("order_id")
+  shopId          String              @map("shop_id")
+  userId          String              @map("user_id")
+  kind            RefundRequestKind
+  status          RefundRequestStatus @default(PENDING_SELLER)
+  // Mã lý do là chuỗi kiểm bằng Zod (REFUND_REASON_CODES ở packages/types), không phải enum DB, để thêm mã
+  // không cần migration.
+  reasonCode      String              @map("reason_code")
+  reasonNote      String?             @map("reason_note") @db.VarChar(500)
+  // Hạn seller phản hồi; quá hạn RefundJob tự duyệt (CANCEL) hoặc chuyển Admin (RETURN).
+  sellerRespondBy DateTime            @map("seller_respond_by")
+  // Mốc đổi trạng thái gần nhất (cùng mẫu Shop.statusChangedAt): tính cửa sổ khiếu nại từ lúc seller từ chối
+  // và xếp hàng chờ Admin theo lúc được chuyển lên. Chỉ RefundRequestService.transition được ghi cột này.
+  statusChangedAt DateTime            @default(now()) @map("status_changed_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  order         Order                  @relation(fields: [orderId], references: [id])
+  shop          Shop                   @relation(fields: [shopId], references: [id])
+  user          User                   @relation(fields: [userId], references: [id])
+  history       RefundRequestHistory[]
+  paymentRefund PaymentRefund?
+
+  @@index([orderId])
+  @@index([shopId, status, createdAt])
+  @@index([userId, createdAt])
+  // RefundJob: PENDING_SELLER quá hạn phản hồi.
+  @@index([status, sellerRespondBy])
+  @@map("refund_requests")
+}
+
+// Dòng thời gian của yêu cầu (cùng mẫu OrderStatusHistory/ShopStatusHistory): nguồn sự thật cho timeline
+// và cho "ai quyết định". fromStatus null = mốc tạo yêu cầu. `note` là LÝ DO DO NGƯỜI RA QUYẾT ĐỊNH nhập
+// (seller từ chối, Admin duyệt/từ chối), người kia đọc được; luôn NULL khi không có lý do — không bao giờ
+// ghi chuỗi mặc định. API không trả actorId cho buyer/seller.
+model RefundRequestHistory {
+  id              String               @id @default(uuid())
+  refundRequestId String               @map("refund_request_id")
+  fromStatus      RefundRequestStatus? @map("from_status")
+  toStatus        RefundRequestStatus  @map("to_status")
+  actorType       OrderActorType       @map("actor_type")
+  actorId         String?              @map("actor_id")
+  note            String?
+  createdAt       DateTime             @default(now()) @map("created_at")
+
+  refundRequest RefundRequest @relation(fields: [refundRequestId], references: [id], onDelete: Cascade)
+
+  @@index([refundRequestId, createdAt])
+  @@map("refund_request_histories")
+}
+
+// Sổ cái tiền hoàn (Week9.md 1.4/1.5): mỗi dòng là một khoản tiền ra khỏi hệ thống qua cổng. Tạo cả khi hủy
+// ngay/seller hủy/Admin hoàn thanh toán bất thường (không cần RefundRequest). orderId unique ⇒ một đơn chỉ
+// được hoàn một lần (thử lại dùng lại CÙNG dòng, tăng attempts); orderId NULL = hoàn thanh toán không gắn
+// đơn (PAID_AFTER_EXPIRY, thanh toán trùng) — mỗi Payment chỉ một dòng như vậy (index duy nhất từng phần
+// (payment_id) WHERE order_id IS NULL, SQL tay). Đơn COD KHÔNG có dòng ở đây (hoàn tiền mặt ngoài hệ thống).
+// Chỉ RefundService ghi bảng này (và cột Payment.refundedAmount).
+model PaymentRefund {
+  id              String              @id @default(uuid())
+  paymentId       String              @map("payment_id")
+  orderId         String?             @unique @map("order_id")
+  refundRequestId String?             @unique @map("refund_request_id")
+  amount          Decimal             @db.Decimal(12, 2)
+  status          PaymentRefundStatus @default(PENDING)
+  // Mã hoàn do cổng trả về; hoàn thủ công ghi 'MANUAL:<mã tham chiếu>'.
+  gatewayRef      String?             @map("gateway_ref")
+  failureReason   String?             @map("failure_reason") @db.VarChar(500)
+  reason          String?             @db.VarChar(500)
+  initiatedByType OrderActorType      @map("initiated_by_type")
+  initiatedById   String?             @map("initiated_by_id")
+  attempts        Int                 @default(0)
+  createdAt       DateTime            @default(now()) @map("created_at")
+  completedAt     DateTime?           @map("completed_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  payment       Payment        @relation(fields: [paymentId], references: [id])
+  // Restrict TƯỜNG MINH: với quan hệ tuỳ chọn Prisma mặc định SET NULL, mà order_id NULL mang nghĩa "hoàn
+  // thanh toán không gắn đơn" — xoá đơn không được âm thầm biến dòng hoàn tiền thành loại đó.
+  order         Order?         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  refundRequest RefundRequest? @relation(fields: [refundRequestId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId])
+  // Màn Admin (FAILED/PENDING quá hạn) và lượt quét hoàn tiền bỏ dở của RefundJob; mỗi lần thử làm mới
+  // updatedAt nên các lần thử cách nhau đủ xa.
+  @@index([status, updatedAt])
+  @@map("payment_refunds")
 }
 
 // =========================================================
@@ -670,21 +814,30 @@ model VoucherUsage {
 // Review
 // =========================================================
 
+// Đánh giá của người mua cho 1 sản phẩm trong 1 đơn đã COMPLETED (Week9.md 1.8): mỗi (user, sản phẩm,
+// đơn) một đánh giá. Rating 1-5 và độ dài comment được CHECK ở DB (SQL tay trong migration). Người mua sửa
+// ĐƯỢC MỘT LẦN (editedAt đánh dấu đã sửa) và không tự xoá. Seller trả lời một lần ngay trên dòng này
+// (sellerReply/sellerRepliedAt, có thể sửa lại, không xoá). Khi tạo/sửa, Product.avgRating/reviewCount
+// được tính lại bởi ProductRatingService (điểm ghi duy nhất).
 model Review {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  productId String   @map("product_id")
-  orderId   String   @map("order_id")
-  rating    Int
-  comment   String?
-  createdAt DateTime @default(now()) @map("created_at")
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  productId       String    @map("product_id")
+  orderId         String    @map("order_id")
+  rating          Int
+  comment         String?
+  editedAt        DateTime? @map("edited_at")
+  sellerReply     String?   @map("seller_reply") @db.VarChar(1000)
+  sellerRepliedAt DateTime? @map("seller_replied_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   order   Order   @relation(fields: [orderId], references: [id])
 
   @@unique([userId, productId, orderId])
-  @@index([productId])
+  // Danh sách đánh giá của 1 sản phẩm, mới nhất trước; lọc theo số sao là bộ lọc trên tập nhỏ đó.
+  @@index([productId, createdAt])
   @@index([orderId])
   @@map("reviews")
 }
