@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { readPositiveInt } from '../utils/read-positive-int';
 import type { AmountLimits } from './payment-gateway.interface';
 
 // Cấu hình cổng thanh toán đọc từ ENV LÚC DÙNG, không lúc boot (rules/backend.md mục 8): thiếu khoá
@@ -43,12 +44,6 @@ export function readVnpayConfig(): VnpayConfig {
   return result.data;
 }
 
-function readPositiveInt(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim() || String(fallback);
-  const parsed = z.coerce.number().int().positive().safeParse(raw);
-  return parsed.success ? parsed.data : fallback;
-}
-
 export function readVnpayAmountLimits(): AmountLimits {
   const min = readPositiveInt('VNPAY_MIN_AMOUNT', DEFAULT_MIN_AMOUNT);
   const max = Math.min(
@@ -56,6 +51,17 @@ export function readVnpayAmountLimits(): AmountLimits {
     VNPAY_MAX_AMOUNT_HARD_LIMIT,
   );
   return { min, max };
+}
+
+// COD (Week8.md 1.6) không có cổng nên không cần khoá ENV — chỉ có trần giá trị đơn (rủi ro không
+// thu được tiền tăng theo giá trị đơn). Sàn 1 đồng: đơn 0 đồng không có ý nghĩa thanh toán.
+const DEFAULT_COD_MAX_AMOUNT = 10_000_000;
+
+export function readCodAmountLimits(): AmountLimits {
+  return {
+    min: 1,
+    max: readPositiveInt('COD_MAX_AMOUNT', DEFAULT_COD_MAX_AMOUNT),
+  };
 }
 
 // Hạn thanh toán = lúc tạo lần thử + TTL (Week7.md 1.4). Áp dụng chung cho mọi cổng nên đặt ở đây,

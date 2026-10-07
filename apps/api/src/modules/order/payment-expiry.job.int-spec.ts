@@ -12,7 +12,10 @@ import { PaymentGatewayService } from '../../shared/payment/payment-gateway.serv
 import { VnpayProvider } from '../../shared/payment/vnpay.provider';
 import { InventoryService } from '../product/inventory.service';
 import { VoucherUsageService } from '../voucher/voucher-usage.service';
+import { createFakeMail } from '../../shared/testing/fake-mail';
+import { OrderEmailService } from './order-email.service';
 import { PaymentExpiryJob } from './payment-expiry.job';
+import { OrderStatusService } from './order-status.service';
 import { PaymentService } from './payment.service';
 
 // Integration test trên DB dev THẬT (cần Postgres đang chạy) — chứng minh PaymentExpiryJob (Week7.md
@@ -36,6 +39,11 @@ describe('PaymentExpiryJob (DB thật)', () => {
     inventoryService,
     voucherUsageService,
     paymentGateway,
+    new OrderStatusService(),
+    new OrderEmailService(
+      prisma as unknown as PrismaService,
+      createFakeMail().mailService,
+    ),
   );
   const job = new PaymentExpiryJob(
     prisma as unknown as PrismaService,
@@ -158,6 +166,63 @@ describe('PaymentExpiryJob (DB thật)', () => {
       where: { id: voucherId },
     });
     expect(voucher.usedCount).toBe(0);
+  });
+
+  it('nhóm COD (đơn PENDING, Payment COD không hạn, tạo từ rất lâu) — job.run() KHÔNG BAO GIỜ thu hồi, kho/đơn/Payment nguyên vẹn', async () => {
+    const user = await createUser(prisma, TAG);
+    const base = await createShopWithProduct(prisma, TAG);
+    const variant = await createVariant(prisma, base, { stock: 8 }); // đã chốt kho lúc đặt
+    const group = await createCheckoutGroup(prisma, user.id);
+    const old = new Date('2020-01-01T00:00:00.000Z');
+    const order = await prisma.order.create({
+      data: {
+        userId: user.id,
+        shopId: base.shopId,
+        checkoutGroupId: group.id,
+        status: 'PENDING',
+        createdAt: old,
+        totalAmount: 100_000,
+        recipientName: 'A',
+        recipientPhone: '0900000000',
+        shippingAddressLine: 'x',
+        shippingWard: 'x',
+        shippingProvince: 'Hồ Chí Minh',
+        items: {
+          create: [
+            {
+              productVariantId: variant.id,
+              quantity: 2,
+              priceAtPurchase: 50_000,
+              productName: `${TAG}product`,
+              sku: `SKU-${variant.id}`,
+              variantLabel: null,
+              imageUrl: null,
+            },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    const payment = await prisma.payment.create({
+      data: {
+        checkoutGroupId: group.id,
+        method: 'COD',
+        status: 'PENDING',
+        amount: 100_000,
+        txnRef: `${TAG.toUpperCase()}COD${Date.now().toString(36).toUpperCase()}`,
+        expiresAt: null,
+        createdAt: old,
+      },
+    });
+
+    await job.run();
+
+    expect(await orderStatusOf(order.id)).toBe('PENDING');
+    expect(await stockOf(variant.id)).toEqual({ stock: 8, reservedStock: 0 });
+    const after = await prisma.payment.findUniqueOrThrow({
+      where: { id: payment.id },
+    });
+    expect(after.status).toBe('PENDING');
   });
 
   it('nhóm CHƯA hết hạn — job.run() không đụng tới', async () => {

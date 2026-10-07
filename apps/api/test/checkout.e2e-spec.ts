@@ -5,6 +5,8 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
+import { MAIL_PROVIDER } from '../src/shared/mail/mail-provider.interface';
+import { createFakeMail } from '../src/shared/testing/fake-mail';
 import { AllExceptionsFilter } from '../src/shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from '../src/shared/interceptors/transform-response.interceptor';
 import {
@@ -23,6 +25,7 @@ import {
 // Dữ liệu mang tiền tố TAG, dọn ở beforeAll/afterAll giống các `*.int-spec.ts` khác. Bật
 // `PAYMENT_MOCK_ENABLED=true` chỉ trong file này rồi trả lại giá trị cũ (không rò sang test khác).
 const TAG = 'e2e-checkout-';
+const fakeMail = createFakeMail();
 
 describe('Luồng checkout (e2e thật qua HTTP)', () => {
   let app: INestApplication<App>;
@@ -33,9 +36,13 @@ describe('Luồng checkout (e2e thật qua HTTP)', () => {
     process.env.PAYMENT_MOCK_ENABLED = 'true';
     await cleanupByTag(prisma, TAG);
 
+    // MailProvider GIẢ: không gọi Resend thật và cho phép assert email đã gửi (Week8.md 2.8).
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(MAIL_PROVIDER)
+      .useValue(fakeMail.provider)
+      .compile();
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
     // JwtStrategy đọc access_token từ cookie httpOnly (không phải header) — thiếu middleware này thì
@@ -178,6 +185,258 @@ describe('Luồng checkout (e2e thật qua HTTP)', () => {
     expect((groupRes.body as { data: { status: string } }).data.status).toBe(
       'PAID',
     );
+  });
+
+  it('COD trọn vòng đời (Week8.md): đặt hàng → kho trừ ngay → seller xác nhận/đóng gói/giao → buyer nhận hàng → thu tiền COD', async () => {
+    const password = 'password123';
+    const stamp = Date.now();
+    const data = (res: { body: unknown }) =>
+      (res.body as { data: Record<string, unknown> }).data;
+
+    // Buyer: đăng ký → xác thực email (set thẳng, xem ghi chú ở test trên) → đăng nhập.
+    const buyer = request.agent(app.getHttpServer());
+    const buyerEmail = `${TAG}cod-buyer-${stamp}@test.local`;
+    await buyer
+      .post('/api/v1/auth/register')
+      .send({ email: buyerEmail, password, name: `${TAG}cod-buyer` })
+      .expect(201);
+    await prisma.user.update({
+      where: { email: buyerEmail },
+      data: { emailVerifiedAt: new Date() },
+    });
+    await buyer
+      .post('/api/v1/auth/login')
+      .send({ email: buyerEmail, password })
+      .expect(200);
+
+    // Seller: tài khoản thật đăng nhập được, sở hữu 1 shop đã duyệt + 1 sản phẩm còn hàng.
+    const seller = request.agent(app.getHttpServer());
+    const sellerEmail = `${TAG}cod-seller-${stamp}@test.local`;
+    await seller
+      .post('/api/v1/auth/register')
+      .send({ email: sellerEmail, password, name: `${TAG}cod-seller` })
+      .expect(201);
+    await seller
+      .post('/api/v1/auth/login')
+      .send({ email: sellerEmail, password })
+      .expect(200);
+    const sellerUser = await prisma.user.findUniqueOrThrow({
+      where: { email: sellerEmail },
+      select: { id: true },
+    });
+    const category = await prisma.category.create({
+      data: { name: `${TAG}cat`, slug: `${TAG}cat-cod-${stamp}` },
+      select: { id: true },
+    });
+    const shop = await prisma.shop.create({
+      data: {
+        ownerId: sellerUser.id,
+        name: `${TAG}shop-cod`,
+        slug: `${TAG}shop-cod-${stamp}`,
+        status: 'APPROVED',
+      },
+      select: { id: true },
+    });
+    const product = await prisma.product.create({
+      data: {
+        shopId: shop.id,
+        categoryId: category.id,
+        name: `${TAG}product-cod`,
+        slug: `${TAG}product-cod-${stamp}`,
+        status: 'PUBLISHED',
+        minPrice: 150_000,
+        maxPrice: 150_000,
+      },
+      select: { id: true },
+    });
+    const variant = await createVariant(
+      prisma,
+      { shopId: shop.id, productId: product.id },
+      { stock: 10, price: 150_000 },
+    );
+    const stockOf = () =>
+      prisma.productVariant.findUniqueOrThrow({
+        where: { id: variant.id },
+        select: { stock: true, reservedStock: true },
+      });
+
+    const addressRes = await buyer
+      .post('/api/v1/addresses')
+      .send({
+        recipientName: 'Nguyễn Văn A',
+        phone: '0912345678',
+        line1: '12 Nguyễn Huệ',
+        ward: 'Phường Bến Nghé',
+        province: 'Hồ Chí Minh',
+      })
+      .expect(201);
+    const addressId = (addressRes.body as { data: { address: { id: string } } })
+      .data.address.id;
+
+    // ---- Đơn 1: đi trọn vòng đời ----
+    await buyer
+      .post('/api/v1/cart/items')
+      .send({ productVariantId: variant.id, quantity: 2 })
+      .expect(201);
+    const preview = await buyer
+      .post('/api/v1/checkout/preview')
+      .send({ addressId })
+      .expect(200);
+    const methods = data(preview).paymentMethods as Array<{
+      method: string;
+      available: boolean;
+    }>;
+    // COD không cần cổng/ENV nên luôn khả dụng trong trần giá trị.
+    expect(methods.find((m) => m.method === 'COD')?.available).toBe(true);
+    const grandTotal = Number(data(preview).grandTotal);
+
+    const checkout = await buyer
+      .post('/api/v1/checkout')
+      .send({ addressId, paymentMethod: 'COD', expectedTotal: grandTotal })
+      .expect(201);
+    const placed = data(checkout) as {
+      checkoutGroupId: string;
+      orders: Array<{ id: string; status: string }>;
+      expiresAt: string | null;
+      paymentUrl: string | null;
+    };
+    const groupId = placed.checkoutGroupId;
+    const orderId = placed.orders[0].id;
+    // Không cổng, không hạn thanh toán; đơn vào thẳng PENDING (chờ shop xác nhận).
+    expect(placed.paymentUrl).toBeNull();
+    expect(placed.expiresAt).toBeNull();
+    expect(placed.orders[0].status).toBe('PENDING');
+    // Kho TRỪ NGAY (khác đơn online chỉ giữ chỗ).
+    expect(await stockOf()).toEqual({ stock: 8, reservedStock: 0 });
+
+    const groupUrl = `/api/v1/checkout/groups/${groupId}`;
+    expect(data(await buyer.get(groupUrl).expect(200)).status).toBe(
+      'COD_PLACED',
+    );
+    // Không có gì để "thanh toán lại" với COD.
+    const retry = await buyer.post(`${groupUrl}/pay`);
+    expect(retry.status).toBe(409);
+    expect((retry.body as { details: unknown }).details).toEqual({
+      reason: 'NOT_ONLINE_PAYMENT',
+    });
+
+    // Buyer thấy đơn trong "Đơn hàng của tôi", seller thấy trong danh sách của shop.
+    const buyerList = await buyer.get('/api/v1/orders').expect(200);
+    expect(
+      (data(buyerList).items as Array<{ id: string }>).map((o) => o.id),
+    ).toContain(orderId);
+    const sellerBase = `/api/v1/shops/${shop.id}/orders/${orderId}`;
+    const sellerView = await seller.get(sellerBase).expect(200);
+    expect(data(sellerView)).toMatchObject({
+      status: 'PENDING',
+      paymentMethod: 'COD',
+      canConfirm: true,
+      canReject: true,
+    });
+
+    await seller.post(`${sellerBase}/confirm`).expect(200);
+    await seller.post(`${sellerBase}/pack`).expect(200);
+    await seller
+      .post(`${sellerBase}/ship`)
+      .send({ carrier: 'GHN', trackingCode: 'GHN-COD-1' })
+      .expect(200);
+    // Đang giao: vẫn chưa thu tiền.
+    expect(data(await buyer.get(groupUrl).expect(200)).status).toBe(
+      'COD_PLACED',
+    );
+
+    const received = await buyer
+      .post(`/api/v1/orders/${orderId}/confirm-received`)
+      .expect(200);
+    expect(data(received)).toMatchObject({
+      status: 'COMPLETED',
+      carrier: 'GHN',
+      trackingCode: 'GHN-COD-1',
+    });
+
+    // Thu tiền COD khi đã nhận hàng.
+    const payment = await prisma.payment.findFirstOrThrow({
+      where: { checkoutGroupId: groupId },
+    });
+    expect(payment.status).toBe('SUCCESS');
+    expect(payment.paidAt).not.toBeNull();
+    expect(data(await buyer.get(groupUrl).expect(200)).status).toBe('PAID');
+    // Kho không đổi sau khi giao xong (đã trừ từ lúc đặt).
+    expect(await stockOf()).toEqual({ stock: 8, reservedStock: 0 });
+    // Timeline đủ mốc, đúng người.
+    const detail = await buyer.get(`/api/v1/orders/${orderId}`).expect(200);
+    expect(
+      (data(detail).history as Array<{ toStatus: string }>).map(
+        (h) => h.toStatus,
+      ),
+    ).toEqual(['PENDING', 'CONFIRMED', 'PACKED', 'SHIPPING', 'COMPLETED']);
+
+    // ---- Đơn 2: buyer hủy trước khi shop xác nhận ⇒ kho được hoàn lại ----
+    await buyer
+      .post('/api/v1/cart/items')
+      .send({ productVariantId: variant.id, quantity: 1 })
+      .expect(201);
+    const preview2 = await buyer
+      .post('/api/v1/checkout/preview')
+      .send({ addressId })
+      .expect(200);
+    const checkout2 = await buyer
+      .post('/api/v1/checkout')
+      .send({
+        addressId,
+        paymentMethod: 'COD',
+        expectedTotal: Number(data(preview2).grandTotal),
+      })
+      .expect(201);
+    const orderId2 = (data(checkout2) as { orders: Array<{ id: string }> })
+      .orders[0].id;
+    expect(await stockOf()).toEqual({ stock: 7, reservedStock: 0 });
+
+    const cancelled = await buyer
+      .post(`/api/v1/orders/${orderId2}/cancel`)
+      .send({ reason: 'Đặt nhầm' })
+      .expect(200);
+    expect(data(cancelled).status).toBe('CANCELLED');
+    expect(await stockOf()).toEqual({ stock: 8, reservedStock: 0 });
+
+    // ---- Email giao dịch (Week8.md 2.8): đúng thứ tự vòng đời, gửi tới buyer ----
+    const buyerMails = fakeMail.sent.filter(
+      (m) => m.to === buyerEmail && m.subject !== 'Xác thực email của bạn',
+    );
+    expect(buyerMails.map((m) => m.subject)).toEqual([
+      'Đặt hàng thành công — thanh toán khi nhận hàng', // đơn 1 đặt
+      `${TAG}shop-cod đã xác nhận đơn hàng của bạn`, // seller xác nhận
+      'Đơn hàng của bạn đang được giao', // seller giao
+      'Đặt hàng thành công — thanh toán khi nhận hàng', // đơn 2 đặt
+      'Bạn đã hủy đơn hàng', // buyer hủy đơn 2
+    ]);
+    expect(buyerMails[2].html).toContain('GHN-COD-1');
+
+    // ---- Mail lỗi KHÔNG làm hỏng việc đặt hàng ----
+    fakeMail.failWith(new Error('Resend down'));
+    await buyer
+      .post('/api/v1/cart/items')
+      .send({ productVariantId: variant.id, quantity: 1 })
+      .expect(201);
+    const preview3 = await buyer
+      .post('/api/v1/checkout/preview')
+      .send({ addressId })
+      .expect(200);
+    const checkout3 = await buyer
+      .post('/api/v1/checkout')
+      .send({
+        addressId,
+        paymentMethod: 'COD',
+        expectedTotal: Number(data(preview3).grandTotal),
+      })
+      .expect(201);
+    const orderId3 = (data(checkout3) as { orders: Array<{ id: string }> })
+      .orders[0].id;
+    expect(
+      (await prisma.order.findUniqueOrThrow({ where: { id: orderId3 } }))
+        .status,
+    ).toBe('PENDING');
+    expect(await stockOf()).toEqual({ stock: 7, reservedStock: 0 });
   });
 
   it('email chưa xác thực — POST /checkout bị chặn 403 EMAIL_NOT_VERIFIED, không tạo gì trong DB', async () => {

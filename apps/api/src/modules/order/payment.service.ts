@@ -17,6 +17,8 @@ import {
   canRetryFromStatus,
   deriveCheckoutGroupStatus,
 } from './checkout-group-status';
+import { OrderEmailService } from './order-email.service';
+import { OrderStatusService, type OrderActor } from './order-status.service';
 
 // Kết quả nội bộ của confirmPayment — controller của từng cổng (2.9) tự ánh xạ sang mã phản hồi
 // riêng (VNPay RspCode, Momo 204...), PaymentService không biết gì về hình dạng phản hồi của cổng.
@@ -136,6 +138,8 @@ export class PaymentService {
     private readonly inventoryService: InventoryService,
     private readonly voucherUsageService: VoucherUsageService,
     private readonly paymentGateway: PaymentGatewayService,
+    private readonly orderStatusService: OrderStatusService,
+    private readonly orderEmailService: OrderEmailService,
   ) {}
 
   // Được gọi bởi cả IPN lẫn return (2 nguồn, cùng 1 hàm, idempotent — Week7.md 1.10). Thứ tự bắt
@@ -173,7 +177,14 @@ export class PaymentService {
     }
 
     if (callback.outcome === 'SUCCESS') {
-      return this.confirmSuccess(payment, callback, source);
+      const result = await this.confirmSuccess(payment, callback, source);
+      // Email "đặt hàng/thanh toán thành công" CHỈ ở lần xác nhận thật sự đầu tiên (CONFIRMED): IPN và
+      // return cùng gọi hàm này, lần 2 là ALREADY_CONFIRMED nên không gửi trùng. Sau commit, không bao
+      // giờ ném (Week8.md 2.8).
+      if (result.outcome === 'CONFIRMED') {
+        await this.orderEmailService.notifyPlaced(payment.checkoutGroupId);
+      }
+      return result;
     }
     if (callback.outcome === 'FAILED') {
       return this.confirmFailure(payment, source);
@@ -212,10 +223,14 @@ export class PaymentService {
         SELECT id, status FROM orders WHERE checkout_group_id = ${payment.checkoutGroupId} ORDER BY id FOR UPDATE`;
       const orderIds = orders.map((o) => o.id);
 
-      const { count: flippedCount } = await tx.order.updateMany({
-        where: { id: { in: orderIds }, status: 'AWAITING_PAYMENT' },
-        data: { status: 'PENDING' },
-      });
+      const flippedIds = await this.orderStatusService.transition(
+        tx,
+        orderIds,
+        'AWAITING_PAYMENT',
+        'PENDING',
+        { type: 'SYSTEM' },
+        'Payment confirmed',
+      );
 
       await tx.payment.update({
         where: { id: payment.id },
@@ -226,14 +241,14 @@ export class PaymentService {
         },
       });
 
-      if (flippedCount > 0) {
+      if (flippedIds.length > 0) {
         if (currentStatus === 'FAILED') {
           this.logger.warn(
             `[${source}] payment ${payment.id} was FAILED but orders were still AWAITING_PAYMENT — flipped to SUCCESS anyway (gateway is the source of truth for money)`,
           );
         }
         const items = await tx.orderItem.findMany({
-          where: { orderId: { in: orderIds } },
+          where: { orderId: { in: flippedIds } },
           select: { productVariantId: true, quantity: true },
         });
         await this.inventoryService.commit(
@@ -301,8 +316,10 @@ export class PaymentService {
   // không nhả/chốt gì thêm. KHÔNG bao giờ đụng tới nhóm đã có Payment SUCCESS.
   async reclaimCheckoutGroup(
     checkoutGroupId: string,
+    // Mặc định là hệ thống (hết hạn thanh toán); buyer chủ động hủy truyền actor BUYER (Week8.md 2.6).
+    options: { actor?: OrderActor; note?: string } = {},
   ): Promise<{ reclaimed: boolean }> {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const hasSuccess = await tx.payment.count({
         where: { checkoutGroupId, status: 'SUCCESS' },
       });
@@ -310,8 +327,10 @@ export class PaymentService {
 
       // (1) Mọi lần thử PENDING của nhóm → FAILED. 1 câu UPDATE duy nhất (không khoá từng dòng riêng
       // theo thứ tự tuỳ ý) để không deadlock với confirmPayment đang khoá đúng 1 dòng Payment khác.
+      // KHÔNG đụng Payment COD: COD không có lần thử trên cổng để "thất bại" — nhóm COD không bao giờ hết
+      // hạn, và buyer hủy nhóm (cancelCheckoutGroup) gọi tới đây cũng không được làm hỏng khoản COD.
       await tx.payment.updateMany({
-        where: { checkoutGroupId, status: 'PENDING' },
+        where: { checkoutGroupId, status: 'PENDING', method: { not: 'COD' } },
         data: { status: 'FAILED' },
       });
 
@@ -323,16 +342,26 @@ export class PaymentService {
         .map((o) => o.id);
       if (awaitingIds.length === 0) return { reclaimed: false };
 
-      const { count } = await tx.order.updateMany({
-        where: { id: { in: awaitingIds }, status: 'AWAITING_PAYMENT' },
-        data: { status: 'CANCELLED' },
-      });
-      if (count === 0) return { reclaimed: false };
+      // Ghi chú mặc định "Payment hold reclaimed" chỉ hợp với HỆ THỐNG (hết hạn thanh toán). Buyer chủ động
+      // hủy mà không nhập lý do thì để trống (null): note của buyer được hiển thị nguyên văn trên timeline,
+      // không được lẫn chuỗi hệ thống tiếng Anh.
+      const actor = options.actor ?? { type: 'SYSTEM' as const };
+      const cancelledIds = await this.orderStatusService.transition(
+        tx,
+        awaitingIds,
+        'AWAITING_PAYMENT',
+        'CANCELLED',
+        actor,
+        actor.type === 'SYSTEM'
+          ? (options.note ?? 'Payment hold reclaimed')
+          : options.note,
+      );
+      if (cancelledIds.length === 0) return { reclaimed: false };
 
       // (3) Nhả giữ chỗ tồn kho của ĐÚNG các đơn vừa lật (theo id variant tăng dần — InventoryService
       // tự sắp trong normalizeLines).
       const items = await tx.orderItem.findMany({
-        where: { orderId: { in: awaitingIds } },
+        where: { orderId: { in: cancelledIds } },
         select: { productVariantId: true, quantity: true },
       });
       await this.inventoryService.release(
@@ -347,10 +376,56 @@ export class PaymentService {
       await this.voucherUsageService.release(tx, checkoutGroupId);
 
       this.logger.log(
-        `Reclaimed checkoutGroup=${checkoutGroupId}: cancelled ${count} order(s)`,
+        `Reclaimed checkoutGroup=${checkoutGroupId}: cancelled ${cancelledIds.length} order(s)`,
       );
       return { reclaimed: true };
     });
+
+    // Báo buyer SAU commit, chỉ khi lần gọi này thật sự thu hồi (idempotent: gọi lặp không gửi lại).
+    // Buyer chủ động hủy ⇒ "bạn đã hủy"; còn lại (job/hết hạn lười) ⇒ "hết hạn thanh toán".
+    if (result.reclaimed) {
+      await this.orderEmailService.notifyCancelled(
+        { checkoutGroupId },
+        options.actor?.type === 'BUYER' ? 'BUYER' : 'SYSTEM',
+        options.actor?.type === 'BUYER' ? (options.note ?? null) : null,
+      );
+    }
+    return result;
+  }
+
+  // Buyer chủ động hủy cả nhóm CHƯA thanh toán (Week8.md 2.6) — dùng lại đúng reclaimCheckoutGroup
+  // (idempotent, nhả kho + voucher, ghi history với actor BUYER). Hủy theo NHÓM chứ không lẻ từng đơn
+  // vì 1 Payment cho cả nhóm. Chỉ chủ nhóm (người khác ⇒ 404). Gọi lại khi nhóm đã hủy ⇒ trả trạng thái
+  // hiện tại (idempotent); nhóm đã trả tiền hoặc không còn đơn chờ thanh toán ⇒ 409.
+  async cancelCheckoutGroup(
+    userId: string,
+    groupId: string,
+    reason?: string,
+  ): Promise<CheckoutGroupView> {
+    await this.loadGroupForOwner(userId, groupId);
+
+    const { reclaimed } = await this.reclaimCheckoutGroup(groupId, {
+      actor: { type: 'BUYER', id: userId },
+      // Chỉ lý do do chính buyer nhập; không có thì null (không ghi chuỗi mặc định, `note` của buyer được
+      // hiển thị nguyên văn trên timeline).
+      note: reason,
+    });
+    const view = await this.getCheckoutGroup(userId, groupId);
+    if (reclaimed || view.status === 'CANCELLED') return view;
+
+    if (view.status === 'PAID' || view.status === 'PAID_AFTER_EXPIRY') {
+      throw new AppException(
+        409,
+        'ORDER_CANCEL_NOT_ALLOWED',
+        'This checkout group has already been paid',
+        { reason: 'PAID_ONLINE' },
+      );
+    }
+    throw new AppException(
+      409,
+      'ORDER_INVALID_TRANSITION',
+      'This checkout group has no unpaid order to cancel',
+    );
   }
 
   // Chỉ chủ nhóm xem được — người khác coi như không tồn tại (404, cùng luật AddressService).
@@ -386,6 +461,14 @@ export class PaymentService {
         { reason: 'ALREADY_PAID' },
       );
     }
+    if (status === 'COD_PLACED') {
+      throw new AppException(
+        409,
+        'PAYMENT_RETRY_NOT_ALLOWED',
+        'Cash on delivery orders have no online payment to retry',
+        { reason: 'NOT_ONLINE_PAYMENT' },
+      );
+    }
     if (!canRetryFromStatus(status)) {
       // CANCELLED / PAYMENT_EXPIRED — giữ chỗ đã hết hạn hoặc đã bị thu hồi.
       throw new AppException(
@@ -409,6 +492,10 @@ export class PaymentService {
     }
 
     const latest = fresh.payments[0];
+    // COD không có cổng để thử lại và không hết hạn — đường COD làm ở Week8.md 2.7.
+    if (latest.method === 'COD' || latest.expiresAt === null) {
+      throw new Error('Retrying a COD payment is not supported');
+    }
     if (status === 'AWAITING_PAYMENT' && latest.payUrl) {
       return {
         paymentUrl: latest.payUrl,
@@ -508,7 +595,7 @@ export class PaymentService {
   ): Promise<LoadedGroup> {
     const latest = group.payments[0];
     const hasSuccess = group.payments.some((p) => p.status === 'SUCCESS');
-    if (!latest || hasSuccess) return group;
+    if (!latest || hasSuccess || latest.expiresAt === null) return group;
 
     const graceMs = readPaymentReclaimGraceMinutes() * 60_000;
     const lapsed = Date.now() >= latest.expiresAt.getTime() + graceMs;
@@ -530,7 +617,7 @@ export class PaymentService {
       id: group.id,
       status,
       canRetry: canRetryFromStatus(status),
-      expiresAt: latest ? latest.expiresAt.toISOString() : null,
+      expiresAt: latest?.expiresAt ? latest.expiresAt.toISOString() : null,
       createdAt: group.createdAt.toISOString(),
       totalAmount: String(totalAmount),
       paymentMethod: latest?.method ?? null,

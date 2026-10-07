@@ -9,11 +9,7 @@ import {
 } from './modules/auth/auth.constants';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from './shared/interceptors/transform-response.interceptor';
-
-// Origin FE cho phép gọi kèm cookie (credentials) — CORS_ORIGIN có thể là
-// nhiều origin cách nhau bởi dấu phẩy, vd khi `next dev` tự đổi cổng lúc 3000
-// đã bị chiếm. Mặc định cho cả 2 cổng hay dùng ở local.
-const DEFAULT_CORS_ORIGINS = ['http://localhost:3000', 'http://localhost:3001'];
+import { readCorsOrigins } from './shared/utils/read-cors-origins';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -23,7 +19,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',') ?? DEFAULT_CORS_ORIGINS,
+    origin: readCorsOrigins(),
     credentials: true,
   });
   app.useGlobalInterceptors(new TransformResponseInterceptor());

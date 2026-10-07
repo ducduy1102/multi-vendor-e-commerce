@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, Search, ShoppingCart, X } from 'lucide-react';
+import { ChevronDown, Package, Search, ShieldCheck, ShoppingCart, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
@@ -191,23 +191,32 @@ export function Header() {
           rộng bằng đúng trigger (--anchor-width), không đủ chỗ cho
           "Sản phẩm của tôi" trên 1 dòng. */}
       <DropdownMenuContent align="end" className="min-w-48">
-        {/* TODO: bật lại mục "Trang cá nhân" (key i18n header.myAccountLink,
-            giữ nguyên trong messages/*.json) khi có trang "tài khoản tổng"
-            thật để trỏ tới. Week5.md Bước 1.13/3.8: Wishlist (Tuần 5) đã
-            xong nhưng cố tình làm route RIÊNG (/wishlist, không có link nào
-            trỏ tới từ đây) — "Trang cá nhân" chỉ đáng bật lại khi có thêm
-            "Đơn hàng của tôi" (Tuần 8) để gộp chung thành 1 trang tài khoản
-            thật sự. Ẩn tạm vì trỏ "/" không có đích thật, dễ gây hiểu nhầm
+        {/* "Đơn hàng của tôi" (Week8.md 1.9/3.8) đứng ĐẦU — việc người mua dùng thường xuyên hơn
+            kênh người bán. Trang /orders có route riêng, không qua trang "tài khoản tổng".
+            TODO: bật lại mục "Trang cá nhân" (key i18n header.myAccountLink, giữ nguyên trong
+            messages/*.json) khi có trang tài khoản thật để trỏ tới — hồ sơ, sổ địa chỉ, đổi mật
+            khẩu (Tuần 9, roadmap). Wishlist (/wishlist) và Đơn hàng (/orders) cố tình là route
+            RIÊNG, không gộp vào trang đó. Ẩn tạm vì trỏ "/" không có đích thật, dễ gây hiểu nhầm
             là bug. */}
+        <DropdownMenuItem render={<Link href="/orders" />}>
+          <Package />
+          {t('myOrdersLink')}
+        </DropdownMenuItem>
         {shopLink && (
-          <>
-            <DropdownMenuItem render={<Link href={shopLink.href} />}>
-              <shopLink.icon />
-              {shopLink.label}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
+          <DropdownMenuItem render={<Link href={shopLink.href} />}>
+            <shopLink.icon />
+            {shopLink.label}
+          </DropdownMenuItem>
         )}
+        {/* "Quản trị" (Week8.md 3.9) chỉ hiện cho ADMIN — user thường không có link tới /admin. Đây
+            chỉ là lối vào cho gọn; chặn truy cập thật nằm ở proxy.ts (điều hướng) + RolesGuard (BE). */}
+        {user.role === 'ADMIN' && (
+          <DropdownMenuItem render={<Link href="/admin/shops" />}>
+            <ShieldCheck />
+            {t('adminLink')}
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
         <LogoutButton />
       </DropdownMenuContent>
     </DropdownMenu>

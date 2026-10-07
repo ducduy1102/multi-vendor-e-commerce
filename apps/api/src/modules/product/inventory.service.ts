@@ -120,6 +120,23 @@ export class InventoryService {
     }
   }
 
+  // Đơn ĐÃ chốt kho (commit) bị hủy trước khi giao (Week8.md 2.6): cộng lại kho vật lý. Giữ chỗ không
+  // đổi — đã được giải phóng cùng lúc với commit. Không cần điều kiện số lượng: cộng thêm không thể
+  // vi phạm CHECK (stock >= 0, reserved_stock <= stock). Khác `release` (đơn chưa thanh toán, kho vật
+  // lý chưa từng bị trừ). variant không còn (không xảy ra: FK RESTRICT) ⇒ báo lỗi, rollback cả giao dịch.
+  async restock(tx: TxClient, lines: InventoryLine[]): Promise<void> {
+    for (const { productVariantId, quantity } of normalizeLines(lines)) {
+      const affected = await tx.$executeRaw`
+        UPDATE product_variants
+        SET stock = stock + ${quantity},
+            updated_at = now() AT TIME ZONE 'UTC'
+        WHERE id = ${productVariantId}`;
+      if (affected !== 1) {
+        throw new InventoryInvariantError('restock', productVariantId);
+      }
+    }
+  }
+
   private async describeShortages(
     tx: TxClient,
     failed: { productVariantId: string; requested: number }[],

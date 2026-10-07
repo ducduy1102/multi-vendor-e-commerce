@@ -87,6 +87,8 @@ describe('PaymentGatewayService', () => {
       expect(service.getAvailability(100_000)).toEqual([
         { method: 'VNPAY', available: false, reason: 'NOT_CONFIGURED' },
         { method: 'MOMO', available: false, reason: 'NOT_CONFIGURED' },
+        // COD không có cổng nên không cần cấu hình gì — luôn khả dụng trong trần giá trị.
+        { method: 'COD', available: true },
       ]);
     });
 
@@ -96,6 +98,7 @@ describe('PaymentGatewayService', () => {
       expect(service.getAvailability(100_000)).toEqual([
         { method: 'VNPAY', available: true },
         { method: 'MOMO', available: false, reason: 'NOT_CONFIGURED' },
+        { method: 'COD', available: true },
       ]);
     });
 
@@ -127,6 +130,50 @@ describe('PaymentGatewayService', () => {
       expect(service.availabilityOf('VNPAY', 50_000_000).available).toBe(true);
     });
 
+    describe('COD — chỉ phụ thuộc trần giá trị đơn (Week8.md 1.6)', () => {
+      it('khả dụng không cần ENV nào, kể cả khi mock tắt hay bật', () => {
+        expect(service.availabilityOf('COD', 100_000)).toEqual({
+          method: 'COD',
+          available: true,
+        });
+
+        setEnv('PAYMENT_MOCK_ENABLED', 'true');
+        expect(service.availabilityOf('COD', 100_000).available).toBe(true);
+      });
+
+      it.each([
+        [0, 'AMOUNT_TOO_SMALL'],
+        [1, undefined],
+        [10_000_000, undefined],
+        [10_000_001, 'AMOUNT_TOO_LARGE'],
+      ])('số tiền %i → %s (trần mặc định 10.000.000)', (amount, reason) => {
+        const result = service.availabilityOf('COD', amount);
+
+        expect(result.available).toBe(reason === undefined);
+        expect(result.reason).toBe(reason);
+      });
+
+      it('trần lấy từ COD_MAX_AMOUNT; giá trị rỗng/sai ⇒ về mặc định', () => {
+        setEnv('COD_MAX_AMOUNT', '2000000');
+        expect(service.availabilityOf('COD', 2_000_001).reason).toBe(
+          'AMOUNT_TOO_LARGE',
+        );
+        expect(service.availabilityOf('COD', 2_000_000).available).toBe(true);
+
+        setEnv('COD_MAX_AMOUNT', '');
+        expect(service.availabilityOf('COD', 5_000_000).available).toBe(true);
+        setEnv('COD_MAX_AMOUNT', 'abc');
+        expect(service.availabilityOf('COD', 5_000_000).available).toBe(true);
+      });
+
+      it('get(COD) không trả cổng nào, kể cả khi mock bật (COD không có cổng)', () => {
+        setEnv('PAYMENT_MOCK_ENABLED', 'true');
+
+        expect(service.get('COD')).toBeNull();
+        expect(service.getConfigured('COD')).toBeNull();
+      });
+    });
+
     it('mock bật: mọi phương thức khả dụng không cần khoá (để chạy Playwright)', () => {
       setEnv('PAYMENT_MOCK_ENABLED', 'true');
 
@@ -135,13 +182,16 @@ describe('PaymentGatewayService', () => {
       );
     });
 
-    it('production + mock bật nhầm + chưa có khoá VNPay: không phương thức nào khả dụng', () => {
+    it('production + mock bật nhầm + chưa có khoá VNPay: KHÔNG phương thức online nào khả dụng (COD không cần cổng nên vẫn khả dụng)', () => {
       setEnv('PAYMENT_MOCK_ENABLED', 'true');
       setEnv('NODE_ENV', 'production');
 
-      expect(service.getAvailability(100_000).some((m) => m.available)).toBe(
-        false,
-      );
+      const methods = service.getAvailability(100_000);
+
+      expect(
+        methods.filter((m) => m.method !== 'COD').some((m) => m.available),
+      ).toBe(false);
+      expect(methods.find((m) => m.method === 'COD')?.available).toBe(true);
     });
   });
 });

@@ -9,6 +9,7 @@ import {
   MockPaymentProvider,
 } from './mock-payment.provider';
 import type { PaymentGateway } from './payment-gateway.interface';
+import { readCodAmountLimits } from './payment-config';
 import { VnpayProvider } from './vnpay.provider';
 
 // Chọn cổng theo PaymentMethod và cho biết phương thức nào khả dụng — BE quyết định, FE không tự đoán
@@ -23,6 +24,7 @@ export class PaymentGatewayService {
   // Mock bật (chỉ ngoài production) thì thay MỌI phương thức; ngược lại theo provider thật.
   // Kiểm NODE_ENV ở đây là lớp thứ nhất trong 3 lớp chặn mock ở production.
   get(method: PaymentMethod): PaymentGateway | null {
+    if (method === 'COD') return null; // COD không có cổng, kể cả khi mock bật
     if (isMockPaymentEnabled()) return this.mock;
     return method === 'VNPAY' ? this.vnpay : null;
   }
@@ -45,6 +47,18 @@ export class PaymentGatewayService {
     method: PaymentMethod,
     amountVnd: number,
   ): PaymentMethodAvailability {
+    // COD không có cổng thanh toán nên không phụ thuộc cấu hình ENV hay mock — chỉ có trần giá trị
+    // đơn (Week8.md 1.6). Xử lý TRƯỚC khi hỏi cổng: get() trả mock cho MỌI phương thức khi mock bật.
+    if (method === 'COD') {
+      const { min, max } = readCodAmountLimits();
+      if (amountVnd < min) {
+        return { method, available: false, reason: 'AMOUNT_TOO_SMALL' };
+      }
+      if (amountVnd > max) {
+        return { method, available: false, reason: 'AMOUNT_TOO_LARGE' };
+      }
+      return { method, available: true };
+    }
     const gateway = this.getConfigured(method);
     if (!gateway) {
       return { method, available: false, reason: 'NOT_CONFIGURED' };

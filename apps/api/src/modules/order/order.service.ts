@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type { PaymentMethod } from '@ecommerce/types';
+import type { OrderStatus } from '@prisma/client';
 import type { TxClient } from '../../shared/prisma/tx-client';
+import { OrderStatusService } from './order-status.service';
 
 // Sở hữu Order, OrderItem, Payment (Week7.md 1.14). `order` KHÔNG được import `checkout` — các kiểu
 // dưới đây khai LẶP LẠI (không import) hình dạng dữ liệu mà CheckoutService truyền vào; TypeScript
@@ -23,6 +25,8 @@ export interface CreateOrdersOrderInput {
   shippingFee: number;
   discountAmount: number;
   totalAmount: number;
+  // Lời nhắn của người mua cho shop này (đã chuẩn hoá ở schema: trim, không rỗng). Thiếu/null = không có.
+  buyerNote?: string | null;
   items: CreateOrdersItemInput[];
 }
 
@@ -39,7 +43,8 @@ export interface CreateOrdersPaymentInput {
   // = Σ Order.totalAmount, số nguyên VND.
   amount: number;
   txnRef: string;
-  expiresAt: Date;
+  // null = không hết hạn (COD, Week8.md 1.6).
+  expiresAt: Date | null;
 }
 
 export interface CreateOrdersInput {
@@ -51,6 +56,9 @@ export interface CreateOrdersInput {
   shipping: CreateOrdersShippingSnapshot;
   orders: CreateOrdersOrderInput[];
   payment: CreateOrdersPaymentInput;
+  // Trạng thái đầu của đơn: mặc định AWAITING_PAYMENT (chờ cổng thanh toán); COD vào thẳng PENDING
+  // (chưa thu tiền, chờ shop xác nhận) — Week8.md 1.6.
+  initialStatus?: Extract<OrderStatus, 'AWAITING_PAYMENT' | 'PENDING'>;
 }
 
 export interface CreatedOrderSummary {
@@ -67,6 +75,8 @@ export interface CreateOrdersResult {
 
 @Injectable()
 export class OrderService {
+  constructor(private readonly orderStatusService: OrderStatusService) {}
+
   // Được CheckoutService.placeOrder gọi TRONG transaction đặt hàng (2.7) — nhận `tx` làm tham số
   // đầu tiên, không tự mở $transaction lồng, cùng quy ước với InventoryService/VoucherUsageService
   // (Week7.md 1.14). Tạo đủ N Order (kèm snapshot địa chỉ + OrderItem) và ĐÚNG 1 Payment cho cả nhóm.
@@ -81,10 +91,12 @@ export class OrderService {
           userId: input.userId,
           shopId: orderInput.shopId,
           checkoutGroupId: input.checkoutGroupId,
+          status: input.initialStatus ?? 'AWAITING_PAYMENT',
           voucherId: input.voucherId,
           totalAmount: orderInput.totalAmount,
           discountAmount: orderInput.discountAmount,
           shippingFee: orderInput.shippingFee,
+          buyerNote: orderInput.buyerNote ?? null,
           recipientName: input.shipping.recipientName,
           recipientPhone: input.shipping.recipientPhone,
           shippingAddressLine: input.shipping.shippingAddressLine,
@@ -111,6 +123,13 @@ export class OrderService {
         totalAmount: order.totalAmount.toString(),
       });
     }
+
+    // Mốc đầu của timeline (fromStatus = null) — người đặt đơn là buyer.
+    await this.orderStatusService.recordCreated(
+      tx,
+      orders.map((o) => ({ id: o.id, status: o.status as OrderStatus })),
+      { type: 'BUYER', id: input.userId },
+    );
 
     const payment = await tx.payment.create({
       data: {

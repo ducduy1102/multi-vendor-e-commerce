@@ -11,6 +11,7 @@ import { CartModule } from './modules/cart/cart.module';
 import { VoucherModule } from './modules/voucher/voucher.module';
 import { OrderModule } from './modules/order/order.module';
 import { CheckoutModule } from './modules/checkout/checkout.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { CheckoutModule } from './modules/checkout/checkout.module';
     VoucherModule,
     OrderModule,
     CheckoutModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

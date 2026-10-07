@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { TxClient } from '../../shared/prisma/tx-client';
 import type { CreateOrdersInput } from './order.service';
+import { OrderStatusService } from './order-status.service';
 import { OrderService } from './order.service';
 
 function baseInput(
@@ -48,6 +49,7 @@ function baseInput(
 
 describe('OrderService.createOrders', () => {
   let service: OrderService;
+  let orderStatusService: { recordCreated: jest.Mock };
   let tx: {
     order: { create: jest.Mock };
     payment: { create: jest.Mock };
@@ -63,7 +65,7 @@ describe('OrderService.createOrders', () => {
           }) => ({
             id: `order-${++orderSeq}`,
             shopId: args.data.shopId,
-            status: 'AWAITING_PAYMENT',
+            status: args.data.status ?? 'AWAITING_PAYMENT',
             totalAmount: new Prisma.Decimal(args.data.totalAmount),
           }),
         ),
@@ -72,11 +74,26 @@ describe('OrderService.createOrders', () => {
         create: jest.fn(() => ({ id: 'payment-1' })),
       },
     };
-    service = new OrderService();
+    orderStatusService = {
+      recordCreated: jest.fn().mockResolvedValue(undefined),
+    };
+    service = new OrderService(
+      orderStatusService as unknown as OrderStatusService,
+    );
   });
 
   const call = (overrides: Partial<CreateOrdersInput> = {}) =>
     service.createOrders(tx as unknown as TxClient, baseInput(overrides));
+
+  it('ghi mốc tạo đơn (fromStatus = null) cho mọi đơn vừa tạo, actor là buyer', async () => {
+    await call();
+
+    expect(orderStatusService.recordCreated).toHaveBeenCalledWith(
+      tx,
+      [{ id: 'order-1', status: 'AWAITING_PAYMENT' }],
+      { type: 'BUYER', id: 'user-1' },
+    );
+  });
 
   it('tạo đúng 1 Order kèm snapshot địa chỉ và OrderItem, 1 Payment', async () => {
     const result = await call();
@@ -87,10 +104,12 @@ describe('OrderService.createOrders', () => {
         userId: 'user-1',
         shopId: 'shop-1',
         checkoutGroupId: 'group-1',
+        status: 'AWAITING_PAYMENT',
         voucherId: null,
         totalAmount: 120_000,
         discountAmount: 0,
         shippingFee: 20_000,
+        buyerNote: null,
         recipientName: 'Nguyễn Văn A',
         recipientPhone: '0912345678',
         shippingAddressLine: '12 Nguyễn Huệ',
@@ -137,6 +156,46 @@ describe('OrderService.createOrders', () => {
     });
   });
 
+  describe('COD (Week8.md 1.6)', () => {
+    const codInput = (): Partial<CreateOrdersInput> => ({
+      initialStatus: 'PENDING',
+      payment: {
+        method: 'COD',
+        amount: 120_000,
+        txnRef: 'TXNREF123',
+        expiresAt: null,
+      },
+    });
+
+    it('initialStatus PENDING — đơn vào thẳng PENDING, mốc timeline đầu cũng là PENDING', async () => {
+      const result = await call(codInput());
+
+      expect(tx.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'PENDING' }) as unknown,
+        }),
+      );
+      expect(result.orders[0].status).toBe('PENDING');
+      expect(orderStatusService.recordCreated).toHaveBeenCalledWith(
+        tx,
+        [{ id: 'order-1', status: 'PENDING' }],
+        { type: 'BUYER', id: 'user-1' },
+      );
+    });
+
+    it('Payment COD không có hạn: expiresAt = null', async () => {
+      await call(codInput());
+
+      expect(tx.payment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          method: 'COD',
+          expiresAt: null,
+        }) as unknown,
+        select: { id: true },
+      });
+    });
+  });
+
   it('nhiều shop — tạo N Order nhưng ĐÚNG 1 Payment cho cả nhóm', async () => {
     const result = await call({
       orders: [
@@ -165,6 +224,61 @@ describe('OrderService.createOrders', () => {
     expect(tx.payment.create).toHaveBeenCalledTimes(1);
     expect(result.orders).toHaveLength(2);
     expect(result.orders.map((o) => o.shopId)).toEqual(['shop-1', 'shop-2']);
+  });
+
+  describe('buyerNote (Week8.md 3B)', () => {
+    const secondShopOrder = (buyerNote?: string | null) => ({
+      ...baseInput().orders[0],
+      shopId: 'shop-2',
+      buyerNote,
+    });
+    const buyerNoteOfCall = (index: number) =>
+      (
+        tx.order.create.mock.calls[index] as [
+          { data: { shopId: string; buyerNote: string | null } },
+        ]
+      )[0].data;
+
+    it('mỗi đơn ghi đúng lời nhắn của shop mình, không lẫn sang đơn khác', async () => {
+      await call({
+        orders: [
+          { ...baseInput().orders[0], buyerNote: 'Gọi trước khi giao' },
+          secondShopOrder('Gói quà giúp mình'),
+        ],
+      });
+
+      expect(buyerNoteOfCall(0)).toMatchObject({
+        shopId: 'shop-1',
+        buyerNote: 'Gọi trước khi giao',
+      });
+      expect(buyerNoteOfCall(1)).toMatchObject({
+        shopId: 'shop-2',
+        buyerNote: 'Gói quà giúp mình',
+      });
+    });
+
+    it('đơn không có lời nhắn ghi null (thiếu field hoặc null đều như nhau), không phải chuỗi rỗng', async () => {
+      await call({
+        orders: [
+          baseInput().orders[0],
+          secondShopOrder(null),
+          { ...secondShopOrder(), shopId: 'shop-3' },
+        ],
+      });
+
+      expect(buyerNoteOfCall(0).buyerNote).toBeNull();
+      expect(buyerNoteOfCall(1).buyerNote).toBeNull();
+      expect(buyerNoteOfCall(2).buyerNote).toBeNull();
+    });
+
+    it('chỉ lưu lời nhắn cho shop có đơn: không đơn nào khác nhận lời nhắn của shop kia', async () => {
+      await call({
+        orders: [{ ...baseInput().orders[0], buyerNote: 'Chỉ cho shop 1' }],
+      });
+
+      expect(tx.order.create).toHaveBeenCalledTimes(1);
+      expect(buyerNoteOfCall(0).buyerNote).toBe('Chỉ cho shop 1');
+    });
   });
 
   it('giữ voucherId (truy vết) trên mọi Order khi có voucher toàn sàn', async () => {

@@ -125,6 +125,42 @@ describe('InventoryService (DB thật)', () => {
     ).rejects.toBeInstanceOf(InventoryInvariantError);
   });
 
+  it('restock: cộng lại stock vật lý, giữ nguyên reservedStock; reserve → commit → restock trả đúng số ban đầu', async () => {
+    const v = await createVariant(prisma, base, { stock: 10 });
+    const lines = [{ productVariantId: v.id, quantity: 2 }];
+
+    await run((tx) => service.reserve(tx, lines));
+    await run((tx) => service.commit(tx, lines));
+    expect(await stockOf(v.id)).toEqual({ stock: 8, reservedStock: 0 });
+
+    await run((tx) => service.restock(tx, lines));
+    expect(await stockOf(v.id)).toEqual({ stock: 10, reservedStock: 0 });
+  });
+
+  it('restock không động tới reservedStock của người khác đang giữ chỗ (CHECK reserved <= stock vẫn đúng)', async () => {
+    const v = await createVariant(prisma, base, { stock: 5, reservedStock: 5 });
+
+    await run((tx) =>
+      service.restock(tx, [{ productVariantId: v.id, quantity: 3 }]),
+    );
+
+    expect(await stockOf(v.id)).toEqual({ stock: 8, reservedStock: 5 });
+  });
+
+  it('restock: variant không tồn tại — ném và ROLLBACK cả variant đã cộng trước đó', async () => {
+    const a = await createVariant(prisma, base, { stock: 5 });
+
+    await expect(
+      run((tx) =>
+        service.restock(tx, [
+          { productVariantId: a.id, quantity: 2 },
+          { productVariantId: `zzz-${a.id}`, quantity: 1 }, // id lớn hơn ⇒ xử lý sau a
+        ]),
+      ),
+    ).rejects.toBeInstanceOf(InventoryInvariantError);
+    expect((await stockOf(a.id)).stock).toBe(5);
+  });
+
   it('commit/release lỗi giữa chừng thì rollback cả các variant đã xử lý trước đó', async () => {
     const a = await createVariant(prisma, base, { stock: 5, reservedStock: 2 });
     const b = await createVariant(prisma, base, { stock: 5, reservedStock: 0 });

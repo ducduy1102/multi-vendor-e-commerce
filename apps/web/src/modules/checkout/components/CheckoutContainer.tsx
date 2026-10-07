@@ -14,6 +14,8 @@ import { ERROR_CODE_MESSAGE_KEYS, getErrorCode, getErrorDetails } from '@/shared
 import { useAddresses } from '../hooks/useAddresses';
 import { useCheckoutPreview } from '../hooks/useCheckoutPreview';
 import { usePlaceOrder } from '../hooks/usePlaceOrder';
+import { getUnknownResultHintKey } from '../place-order-hint';
+import { buildShopNotes } from '../shop-notes';
 import type { Address, PaymentMethod } from '../types';
 import { AddressFormContainer } from './AddressFormContainer';
 import { AddressRadioList } from './AddressRadioList';
@@ -59,7 +61,10 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [outOfStockItems, setOutOfStockItems] = useState<OutOfStockItem[]>([]);
-  const [pendingGroupIds, setPendingGroupIds] = useState<string[]>([]);
+  const [hasPendingCheckouts, setHasPendingCheckouts] = useState(false);
+  // Lời nhắn đang gõ cho từng shop, khoá = shopId (Week8.md 3B). Giữ ở Container (không ở từng khối
+  // shop) để không mất chữ đã gõ khi xem trước tải lại (đổi địa chỉ, giá đổi) làm khối dựng lại.
+  const [shopNotes, setShopNotes] = useState<Record<string, string>>({});
 
   // UUID sinh 1 LẦN cho cả phiên đặt hàng (Week7.md 1.11), giữ trong bộ nhớ trang (không
   // localStorage) — gửi kèm mọi lần gọi POST /checkout của phiên này, kể cả gọi lại sau lỗi mạng,
@@ -106,7 +111,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
     setShowAddressForm(false);
   }
 
-  function handlePlaceOrderError(error: unknown) {
+  function handlePlaceOrderError(error: unknown, method: PaymentMethod) {
     if (!(error instanceof ApiError)) {
       setSubmitError(t('placeOrderGenericError'));
       return;
@@ -121,7 +126,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
     // refetch preview (chưa chắc gì đã đổi), chỉ báo và cho thử lại (Week7.md 1.11/1.16).
     if (code === 'NETWORK_ERROR' || code === 'INVALID_RESPONSE') {
       setSubmitError(
-        `${tGlobal(ERROR_CODE_MESSAGE_KEYS[code])} ${t('placeOrderUnknownResultHint')}`,
+        `${tGlobal(ERROR_CODE_MESSAGE_KEYS[code])} ${t(getUnknownResultHintKey(method))}`,
       );
       return;
     }
@@ -132,9 +137,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
       setOutOfStockItems(getErrorDetails(error.details, 'OUT_OF_STOCK')?.items ?? []);
     }
     if (code === 'TOO_MANY_PENDING_CHECKOUTS') {
-      setPendingGroupIds(
-        getErrorDetails(error.details, 'TOO_MANY_PENDING_CHECKOUTS')?.pendingGroupIds ?? [],
-      );
+      setHasPendingCheckouts(true);
     }
     // Mọi mã nghiệp vụ còn lại là KẾT QUẢ CHẮC CHẮN (đơn không được tạo) — tải lại xem trước để
     // người dùng thấy số/danh sách mới nhất trước khi tự quyết định đặt lại (1.11/1.16).
@@ -159,7 +162,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
 
     setSubmitError(null);
     setOutOfStockItems([]);
-    setPendingGroupIds([]);
+    setHasPendingCheckouts(false);
 
     try {
       const result = await placeOrder.mutateAsync({
@@ -168,6 +171,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
           paymentMethod,
           voucherCode: initialVoucherCode || undefined,
           expectedTotal: Number(preview.grandTotal),
+          shopNotes: buildShopNotes(preview.orders, shopNotes),
         },
         idempotencyKey: idempotencyKeyRef.current ?? undefined,
       });
@@ -180,11 +184,15 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
         window.location.href = result.paymentUrl;
         return;
       }
-      // Cổng lỗi sau khi đã ghi đơn (paymentUrl null) — đơn vẫn AWAITING_PAYMENT, đưa người dùng
-      // tới trang kết quả để tự bấm "thanh toán lại" (Week7.md 2.7/3.6).
+      // Không có paymentUrl thì không có cổng để chuyển sang, đi thẳng trang kết quả theo groupId.
+      // Hai trường hợp: (1) đơn COD (Week8.md 1.6/3.6) — paymentUrl null là KẾT QUẢ ĐÚNG, đơn đã vào
+      // PENDING và trang kết quả báo "thanh toán khi nhận hàng"; (2) cổng online lỗi sau khi đã ghi
+      // đơn — đơn vẫn AWAITING_PAYMENT, người dùng tự bấm "thanh toán lại" ở đó (Week7.md 2.7/3.6).
+      // Giỏ hàng được làm mới ở trang kết quả (useRefreshCartOnce), không ở đây — làm ở đây sẽ khiến
+      // trang này thấy giỏ trống và nháy "giỏ hàng trống" trong lúc chờ điều hướng.
       router.push({ pathname: '/checkout/result', query: { groupId: result.checkoutGroupId } });
     } catch (error) {
-      handlePlaceOrderError(error);
+      handlePlaceOrderError(error, paymentMethod);
     }
   }
 
@@ -301,7 +309,14 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
         </section>
 
         {preview.orders.map((order) => (
-          <CheckoutOrderGroup key={order.shopId} order={order} />
+          <CheckoutOrderGroup
+            key={order.shopId}
+            order={order}
+            note={shopNotes[order.shopId] ?? ''}
+            onNoteChange={(note) =>
+              setShopNotes((current) => ({ ...current, [order.shopId]: note }))
+            }
+          />
         ))}
       </div>
 
@@ -314,7 +329,7 @@ export function CheckoutContainer({ initialVoucherCode = '' }: CheckoutContainer
         canSubmit={canSubmit}
         submitError={submitError}
         outOfStockItems={outOfStockItems}
-        pendingGroupIds={pendingGroupIds}
+        hasPendingCheckouts={hasPendingCheckouts}
       />
     </div>
   );

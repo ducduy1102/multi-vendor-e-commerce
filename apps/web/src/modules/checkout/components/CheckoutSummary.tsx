@@ -7,8 +7,14 @@ import { formatPrice } from '@/modules/product';
 import { Alert } from '@/shared/components/ui/alert';
 import { Button } from '@/shared/components/ui/button';
 
+import type { OrderTab } from '@ecommerce/types';
+
 import type { CheckoutPreview, PaymentMethod } from '../types';
 import { PaymentMethodSelector } from './PaymentMethodSelector';
+
+// Tab "Chờ thanh toán" của /orders (giá trị tab lấy từ enum dùng chung để không gõ sai).
+const PENDING_PAYMENT_TAB: OrderTab = 'awaiting-payment';
+const PENDING_PAYMENT_ORDERS_HREF = `/orders?tab=${PENDING_PAYMENT_TAB}`;
 
 export interface OutOfStockItem {
   productVariantId: string;
@@ -26,7 +32,9 @@ interface CheckoutSummaryProps {
   canSubmit: boolean;
   submitError: string | null;
   outOfStockItems: OutOfStockItem[];
-  pendingGroupIds: string[];
+  // Có đơn chờ thanh toán chặn đặt thêm (409 TOO_MANY_PENDING_CHECKOUTS) — chỉ cần biết CÓ hay không,
+  // danh sách và việc xử lý nằm ở Đơn hàng của tôi.
+  hasPendingCheckouts: boolean;
 }
 
 // Cột tóm tắt bên phải (giống CartSummary): tổng tiền hàng/phí ship/giảm giá/tổng thanh toán từ
@@ -42,7 +50,7 @@ export function CheckoutSummary({
   canSubmit,
   submitError,
   outOfStockItems,
-  pendingGroupIds,
+  hasPendingCheckouts,
 }: CheckoutSummaryProps) {
   const t = useTranslations('checkout');
   const hasDiscount = Number(preview.discountTotal) > 0;
@@ -127,21 +135,15 @@ export function CheckoutSummary({
         </Alert>
       ) : null}
 
-      {pendingGroupIds.length > 0 ? (
+      {hasPendingCheckouts ? (
         <Alert variant="destructive">
           <p className="font-medium">{t('pendingCheckoutsTitle')}</p>
-          <ul className="list-inside list-disc">
-            {pendingGroupIds.map((groupId, index) => (
-              <li key={groupId}>
-                <Link
-                  href={{ pathname: '/checkout/result', query: { groupId } }}
-                  className="underline"
-                >
-                  {t('pendingCheckoutLink', { index: index + 1 })}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          {/* Dẫn tới tab "Chờ thanh toán" của Đơn hàng của tôi thay vì từng trang kết quả: ở đó vừa
+              "Thanh toán lại" vừa "Hủy đơn" được, còn trang kết quả của 1 nhóm chỉ thanh toán được
+              — mà thông báo lỗi yêu cầu "hoàn tất hoặc huỷ bớt" đơn chờ thanh toán. */}
+          <Link href={PENDING_PAYMENT_ORDERS_HREF} className="underline">
+            {t('pendingCheckoutsViewLink')}
+          </Link>
         </Alert>
       ) : null}
 

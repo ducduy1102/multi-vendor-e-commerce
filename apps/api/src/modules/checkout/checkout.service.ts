@@ -20,6 +20,7 @@ import {
   InsufficientStockError,
   InventoryService,
 } from '../product/inventory.service';
+import { OrderEmailService } from '../order/order-email.service';
 import { OrderService } from '../order/order.service';
 import {
   PaymentService,
@@ -47,6 +48,9 @@ export interface PlaceOrderInput {
   voucherCode?: string;
   // = grandTotal của lần xem trước (2.7b) — bắt buộc (Week7.md 1.11 (3)).
   expectedTotal: number;
+  // Lời nhắn cho từng shop, khoá = shopId (Week8.md 3B). Schema đã trim và bỏ mục rỗng. `shopId` không
+  // có trong giỏ lúc đặt bị BỎ QUA im lặng (không 400): chỉ shop thật sự có đơn mới nhận lời nhắn.
+  shopNotes?: Record<string, string>;
 }
 
 export interface PlaceOrderResultOrder {
@@ -61,7 +65,8 @@ export interface PlaceOrderResult {
   orders: PlaceOrderResultOrder[];
   totalAmount: string;
   paymentMethod: PaymentMethod;
-  expiresAt: string;
+  // null với đơn COD (không có hạn thanh toán).
+  expiresAt: string | null;
   paymentUrl: string | null;
 }
 
@@ -100,6 +105,7 @@ export class CheckoutService {
     private readonly addressService: AddressService,
     private readonly paymentGateway: PaymentGatewayService,
     private readonly paymentService: PaymentService,
+    private readonly orderEmailService: OrderEmailService,
   ) {}
 
   // Route đặt ở checkout (nhóm thanh toán là thực thể của checkout theo domain-erd.md) nhưng đơn
@@ -113,6 +119,14 @@ export class CheckoutService {
 
   retryPayment(userId: string, groupId: string): Promise<RetryPaymentResult> {
     return this.paymentService.retryPayment(userId, groupId);
+  }
+
+  // Buyer hủy cả nhóm chưa thanh toán (Week8.md 2.6) — order sở hữu logic hủy, checkout chỉ chuyển tiếp.
+  cancelCheckoutGroup(
+    userId: string,
+    groupId: string,
+  ): Promise<CheckoutGroupView> {
+    return this.paymentService.cancelCheckoutGroup(userId, groupId);
   }
 
   async placeOrder(
@@ -177,8 +191,12 @@ export class CheckoutService {
       orders: PlaceOrderResultOrder[];
       txnRef: string;
       amount: number;
-      expiresAt: Date;
+      // null với COD (không hết hạn).
+      expiresAt: Date | null;
     };
+    // COD (Week8.md 1.6): không cổng thanh toán, không hết hạn; đơn vào thẳng PENDING và kho được chốt
+    // NGAY trong cùng transaction (không có bước "thanh toán thành công" để chốt kho sau).
+    const isCod = input.paymentMethod === 'COD';
     try {
       created = await this.prisma.$transaction(async (tx) => {
         // [2] Xoá đúng các dòng đã đọc (khớp id + quantity) — ổ khoá theo user; lệch ⇒ giỏ đã đổi.
@@ -331,10 +349,23 @@ export class CheckoutService {
         const expiresAt = new Date(
           Date.now() + readPaymentTtlMinutes() * 60_000,
         );
+        // COD: chốt kho ngay (reserve ở trên + commit ở đây trong CÙNG transaction). Đặt SAU kiểm
+        // expectedTotal nên lệch giá vẫn rollback sạch.
+        if (isCod) {
+          await this.inventoryService.commit(
+            tx,
+            purchasableLines.map((l) => ({
+              productVariantId: l.productVariantId,
+              quantity: l.quantity,
+            })),
+          );
+        }
+
         const { orders } = await this.orderService.createOrders(tx, {
           checkoutGroupId: group.id,
           userId,
           voucherId,
+          initialStatus: isCod ? 'PENDING' : undefined,
           shipping: {
             recipientName: address.recipientName,
             recipientPhone: address.phone,
@@ -347,6 +378,9 @@ export class CheckoutService {
             shippingFee: o.shippingFee,
             discountAmount: o.discountAmount,
             totalAmount: o.totalAmount,
+            // Tra theo `o.shopId` (shop có đơn thật) chứ không duyệt `shopNotes`: khoá lạ không đi
+            // vào đâu cả, và đơn nào không có lời nhắn thì null.
+            buyerNote: input.shopNotes?.[o.shopId] ?? null,
             items: o.items.map((item) => ({
               productVariantId: item.productVariantId,
               productName: item.productName,
@@ -361,7 +395,7 @@ export class CheckoutService {
             method: input.paymentMethod,
             amount: plan.grandTotal,
             txnRef,
-            expiresAt,
+            expiresAt: isCod ? null : expiresAt,
           },
         });
 
@@ -370,7 +404,7 @@ export class CheckoutService {
           orders,
           txnRef,
           amount: plan.grandTotal,
-          expiresAt,
+          expiresAt: isCod ? null : expiresAt,
         };
       });
     } catch (error) {
@@ -388,17 +422,27 @@ export class CheckoutService {
 
     // [7] Ngoài transaction: gọi cổng lấy payUrl. Lỗi ở bước này KHÔNG rollback phần đã ghi — đơn
     // vẫn AWAITING_PAYMENT, "tiếp tục thanh toán" ở 2.9 xử lý (rules/backend.md mục 4).
-    const paymentUrl = await this.createPayUrlSafely(
-      input.paymentMethod,
-      created,
-    );
+    // COD: báo "đặt hàng thành công" ngay (đơn online được báo khi thanh toán xác nhận, ở PaymentService).
+    // SAU commit, không bao giờ ném. Phát lại theo Idempotency-Key trả sớm ở trên nên không gửi trùng.
+    if (isCod) {
+      await this.orderEmailService.notifyPlaced(created.groupId);
+    }
+
+    // COD không có cổng nên không có payUrl (paymentUrl null là KẾT QUẢ ĐÚNG, không phải lỗi cổng).
+    const paymentUrl =
+      created.expiresAt === null
+        ? null
+        : await this.createPayUrlSafely(input.paymentMethod, {
+            ...created,
+            expiresAt: created.expiresAt,
+          });
 
     return {
       checkoutGroupId: created.groupId,
       orders: created.orders,
       totalAmount: String(created.amount),
       paymentMethod: input.paymentMethod,
-      expiresAt: created.expiresAt.toISOString(),
+      expiresAt: created.expiresAt?.toISOString() ?? null,
       paymentUrl,
     };
   }
@@ -786,7 +830,7 @@ export class CheckoutService {
       })),
       totalAmount: payment.amount.toString(),
       paymentMethod: payment.method,
-      expiresAt: payment.expiresAt.toISOString(),
+      expiresAt: payment.expiresAt?.toISOString() ?? null,
       paymentUrl: payment.payUrl,
     };
   }

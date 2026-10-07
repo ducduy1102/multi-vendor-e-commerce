@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useEffect } from "react";
+import { useEffect } from 'react';
 
-import { me } from "../services/auth.service";
-import { useAuthStore } from "../store/auth.store";
+import { me } from '../services/auth.service';
+import { useAuthStore } from '../store/auth.store';
 
 // Gọi 1 lần lúc app khởi động để khôi phục `user` vào store — access token
 // là httpOnly cookie nên JS không đọc được, phải hỏi lại BE mới biết ai

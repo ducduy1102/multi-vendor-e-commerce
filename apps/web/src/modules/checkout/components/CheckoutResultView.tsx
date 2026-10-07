@@ -32,6 +32,7 @@ const STATUS_ALERT_VARIANT: Record<
   PAYMENT_EXPIRED: 'destructive',
   CANCELLED: 'destructive',
   PAID_AFTER_EXPIRY: 'warning',
+  COD_PLACED: 'default',
 };
 
 const STATUS_MESSAGE_KEY: Record<CheckoutGroupStatus, string> = {
@@ -41,11 +42,13 @@ const STATUS_MESSAGE_KEY: Record<CheckoutGroupStatus, string> = {
   PAYMENT_EXPIRED: 'resultStatusPaymentExpired',
   CANCELLED: 'resultStatusCancelled',
   PAID_AFTER_EXPIRY: 'resultStatusPaidAfterExpiry',
+  COD_PLACED: 'resultStatusCodPlaced',
 };
 
 const PAYMENT_METHOD_LABEL_KEY: Record<PaymentMethod, string> = {
   VNPAY: 'paymentMethodVnpayLabel',
   MOMO: 'paymentMethodMomoLabel',
+  COD: 'paymentMethodCodLabel',
 };
 
 // Trang kết quả (Week7.md 3.6) hiển thị ĐÚNG theo `status` BE đã suy ra từ Order/Payment thật
@@ -121,8 +124,18 @@ export function CheckoutResultView({
                 : t('resultRetryPaymentButton')}
           </Button>
         ) : null}
+        {/* Đơn đã nằm trong Đơn hàng của tôi dù kết quả thế nào (thành công, COD, hết hạn, đã huỷ…) —
+            nút này là lối ra chính khi KHÔNG còn việc thanh toán lại phải làm; còn thanh toán lại
+            thì nút thanh toán là chính, 2 nút kia lùi xuống. */}
         <Button
-          variant={group.canRetry ? 'ghost' : 'default'}
+          variant={group.canRetry ? 'outline' : 'default'}
+          nativeButton={false}
+          render={<Link href="/orders" />}
+        >
+          {t('resultViewOrdersButton')}
+        </Button>
+        <Button
+          variant={group.canRetry ? 'ghost' : 'outline'}
           nativeButton={false}
           render={<Link href="/products" />}
         >

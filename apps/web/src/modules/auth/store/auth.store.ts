@@ -1,5 +1,5 @@
-import type { AuthUser } from "@ecommerce/types";
-import { create } from "zustand";
+import type { AuthUser } from '@ecommerce/types';
+import { create } from 'zustand';
 
 interface AuthState {
   user: AuthUser | null;

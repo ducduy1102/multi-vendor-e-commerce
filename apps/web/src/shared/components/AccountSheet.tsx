@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, User } from 'lucide-react';
+import { LogOut, Package, ShieldCheck, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
@@ -10,7 +10,6 @@ import { Button, buttonVariants } from '@/shared/components/ui/button';
 import { Separator } from '@/shared/components/ui/separator';
 import {
   Sheet,
-  SheetClose,
   SheetContent,
   SheetHeader,
   SheetTitle,
@@ -21,6 +20,11 @@ import { cn } from '@/shared/lib/utils';
 import { useUIStore } from '@/shared/store/ui.store';
 import { LocaleSwitcher } from './LocaleSwitcher';
 import { ThemeToggle } from './ThemeToggle';
+
+// Kiểu 1 dòng link trong menu tài khoản — dùng chung cho "Đơn hàng của tôi" và link kênh người bán
+// để hai dòng luôn giống hệt nhau.
+const ACCOUNT_LINK_CLASS =
+  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted';
 
 interface AccountSheetProps {
   triggerClassName?: string;
@@ -42,6 +46,12 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
   const setAccountSheetOpen = useUIStore((state) => state.setAccountSheetOpen);
 
   const shopLink = useSellerChannelLink();
+
+  // Các link trong Sheet là <Link> thường, tự đóng Sheet qua store khi bấm — KHÔNG dùng
+  // `SheetClose render={<Link/>}`: Base UI coi SheetClose là nút nên mặc định đòi phần tử gốc là
+  // <button> (`nativeButton`), render <a> vào sẽ báo lỗi console ở dev ("2 Issues") và ép vai trò
+  // trợ năng của link thành button. Đóng bằng store giữ đúng vai trò `link`.
+  const closeSheet = () => setAccountSheetOpen(false);
 
   return (
     <Sheet open={isAccountSheetOpen} onOpenChange={setAccountSheetOpen}>
@@ -85,18 +95,20 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
             </div>
           ) : !user ? (
             <div className="flex flex-col gap-2">
-              <SheetClose
-                render={<Link href="/login" />}
+              <Link
+                href="/login"
+                onClick={closeSheet}
                 className={cn(buttonVariants({ variant: 'outline' }), 'w-full')}
               >
                 {tAuth('guestLoginLink')}
-              </SheetClose>
-              <SheetClose
-                render={<Link href="/register" />}
+              </Link>
+              <Link
+                href="/register"
+                onClick={closeSheet}
                 className={buttonVariants({ className: 'w-full' })}
               >
                 {tAuth('guestRegisterLink')}
-              </SheetClose>
+              </Link>
             </div>
           ) : (
             <>
@@ -105,15 +117,27 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
                 <span className="truncate text-sm font-medium text-foreground">{user.name}</span>
               </div>
 
-              {shopLink && (
-                <SheetClose
-                  render={<Link href={shopLink.href} />}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                >
-                  <shopLink.icon className="size-4" aria-hidden="true" />
-                  {shopLink.label}
-                </SheetClose>
-              )}
+              {/* "Đơn hàng của tôi" đứng đầu (Week8.md 1.9/3.8), cùng thứ tự với dropdown desktop
+                  của Header. Đóng Sheet khi bấm để vào được trang ngay. */}
+              <div className="flex flex-col gap-1">
+                <Link href="/orders" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
+                  <Package className="size-4" aria-hidden="true" />
+                  {t('myOrdersLink')}
+                </Link>
+                {shopLink && (
+                  <Link href={shopLink.href} onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
+                    <shopLink.icon className="size-4" aria-hidden="true" />
+                    {shopLink.label}
+                  </Link>
+                )}
+                {/* "Quản trị" chỉ hiện cho ADMIN, cùng thứ tự với dropdown desktop của Header. */}
+                {user.role === 'ADMIN' && (
+                  <Link href="/admin/shops" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
+                    <ShieldCheck className="size-4" aria-hidden="true" />
+                    {t('adminLink')}
+                  </Link>
+                )}
+              </div>
 
               <Separator />
 

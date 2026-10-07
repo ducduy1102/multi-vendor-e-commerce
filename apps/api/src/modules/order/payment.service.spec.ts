@@ -6,6 +6,8 @@ import { expectAppException } from '../../shared/testing/expect-app-exception';
 import type { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
 import type { InventoryService } from '../product/inventory.service';
 import type { VoucherUsageService } from '../voucher/voucher-usage.service';
+import { OrderEmailService } from './order-email.service';
+import { OrderStatusService } from './order-status.service';
 import { PaymentService } from './payment.service';
 
 const SUCCESS_CALLBACK: VerifiedCallback = {
@@ -35,18 +37,21 @@ describe('PaymentService', () => {
   };
   let tx: {
     $queryRaw: jest.Mock;
-    order: { updateMany: jest.Mock };
     payment: { update: jest.Mock; count: jest.Mock; updateMany: jest.Mock };
     orderItem: { findMany: jest.Mock };
   };
   let inventoryService: { commit: jest.Mock; release: jest.Mock };
+  let orderStatusService: { transition: jest.Mock };
+  let orderEmailService: {
+    notifyPlaced: jest.Mock;
+    notifyCancelled: jest.Mock;
+  };
   let voucherUsageService: { release: jest.Mock };
   let paymentGateway: { availabilityOf: jest.Mock; getConfigured: jest.Mock };
 
   beforeEach(() => {
     tx = {
       $queryRaw: jest.fn(),
-      order: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       payment: {
         update: jest.fn().mockResolvedValue({}),
         count: jest.fn().mockResolvedValue(0),
@@ -69,6 +74,11 @@ describe('PaymentService', () => {
       release: jest.fn().mockResolvedValue(undefined),
     };
     voucherUsageService = { release: jest.fn().mockResolvedValue(0) };
+    orderStatusService = { transition: jest.fn().mockResolvedValue([]) };
+    orderEmailService = {
+      notifyPlaced: jest.fn().mockResolvedValue(undefined),
+      notifyCancelled: jest.fn().mockResolvedValue(undefined),
+    };
     paymentGateway = {
       availabilityOf: jest.fn().mockReturnValue({ available: true }),
       getConfigured: jest.fn().mockReturnValue({
@@ -83,6 +93,8 @@ describe('PaymentService', () => {
       inventoryService as unknown as InventoryService,
       voucherUsageService as unknown as VoucherUsageService,
       paymentGateway as unknown as PaymentGatewayService,
+      orderStatusService as unknown as OrderStatusService,
+      orderEmailService as unknown as OrderEmailService,
     );
   });
 
@@ -186,7 +198,7 @@ describe('PaymentService', () => {
           { id: 'o1', status: 'AWAITING_PAYMENT' },
           { id: 'o2', status: 'AWAITING_PAYMENT' },
         ]); // khoá đơn
-      tx.order.updateMany.mockResolvedValue({ count: 2 });
+      orderStatusService.transition.mockResolvedValue(['o1', 'o2']);
       tx.orderItem.findMany.mockResolvedValue([
         { productVariantId: 'v1', quantity: 2 },
         { productVariantId: 'v2', quantity: 1 },
@@ -195,9 +207,18 @@ describe('PaymentService', () => {
       const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
 
       expect(result).toEqual({ outcome: 'CONFIRMED', checkoutGroupId: 'g1' });
-      expect(tx.order.updateMany).toHaveBeenCalledWith({
-        where: { id: { in: ['o1', 'o2'] }, status: 'AWAITING_PAYMENT' },
-        data: { status: 'PENDING' },
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1', 'o2'],
+        'AWAITING_PAYMENT',
+        'PENDING',
+        { type: 'SYSTEM' },
+        expect.any(String) as string,
+      );
+      // Chỉ chốt kho cho ĐÚNG các đơn thật sự lật được.
+      expect(tx.orderItem.findMany).toHaveBeenCalledWith({
+        where: { orderId: { in: ['o1', 'o2'] } },
+        select: { productVariantId: true, quantity: true },
       });
       expect(tx.payment.update).toHaveBeenCalledWith({
         where: { id: 'p1' },
@@ -211,6 +232,66 @@ describe('PaymentService', () => {
         { productVariantId: 'v1', quantity: 2 },
         { productVariantId: 'v2', quantity: 1 },
       ]);
+    });
+
+    describe('email "thanh toán thành công" (Week8.md 2.8)', () => {
+      it('lần xác nhận thật sự đầu tiên (CONFIRMED) — gửi ĐÚNG 1 email cho nhóm, SAU transaction', async () => {
+        tx.$queryRaw
+          .mockResolvedValueOnce([{ status: 'PENDING' }])
+          .mockResolvedValueOnce([{ id: 'o1', status: 'AWAITING_PAYMENT' }]);
+        orderStatusService.transition.mockResolvedValue(['o1']);
+        tx.orderItem.findMany.mockResolvedValue([
+          { productVariantId: 'v1', quantity: 1 },
+        ]);
+        const order: string[] = [];
+        prisma.$transaction.mockImplementation(
+          async (fn: (t: unknown) => unknown) => {
+            const result = await fn(tx);
+            order.push('commit');
+            return result;
+          },
+        );
+        orderEmailService.notifyPlaced.mockImplementation(() => {
+          order.push('email');
+          return Promise.resolve();
+        });
+
+        await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+
+        expect(orderEmailService.notifyPlaced).toHaveBeenCalledTimes(1);
+        expect(orderEmailService.notifyPlaced).toHaveBeenCalledWith('g1');
+        expect(order).toEqual(['commit', 'email']); // email SAU commit, không nằm trong transaction
+      });
+
+      it.each([
+        ['đã SUCCESS từ trước (IPN + return gọi lặp)', 'ALREADY_CONFIRMED'],
+      ])('%s — KHÔNG gửi lại', async () => {
+        tx.$queryRaw.mockResolvedValueOnce([{ status: 'SUCCESS' }]);
+
+        const result = await service.confirmPayment(SUCCESS_CALLBACK, 'RETURN');
+
+        expect(result.outcome).toBe('ALREADY_CONFIRMED');
+        expect(orderEmailService.notifyPlaced).not.toHaveBeenCalled();
+      });
+
+      it('thanh toán trùng / đến muộn sau khi nhóm đã hủy — KHÔNG gửi email "thành công"', async () => {
+        for (const orderStatus of ['PENDING', 'CANCELLED']) {
+          tx.$queryRaw
+            .mockResolvedValueOnce([{ status: 'PENDING' }])
+            .mockResolvedValueOnce([{ id: 'o1', status: orderStatus }]);
+          orderStatusService.transition.mockResolvedValue([]);
+
+          await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+        }
+
+        expect(orderEmailService.notifyPlaced).not.toHaveBeenCalled();
+      });
+
+      it('thanh toán thất bại — không gửi email', async () => {
+        await service.confirmPayment(FAILED_CALLBACK, 'IPN');
+
+        expect(orderEmailService.notifyPlaced).not.toHaveBeenCalled();
+      });
     });
 
     it('đã SUCCESS từ trước (dưới khoá) — ALREADY_CONFIRMED, không ghi lại/không chốt kho', async () => {
@@ -231,7 +312,7 @@ describe('PaymentService', () => {
       tx.$queryRaw
         .mockResolvedValueOnce([{ status: 'FAILED' }])
         .mockResolvedValueOnce([{ id: 'o1', status: 'AWAITING_PAYMENT' }]);
-      tx.order.updateMany.mockResolvedValue({ count: 1 });
+      orderStatusService.transition.mockResolvedValue(['o1']);
 
       const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
 
@@ -243,7 +324,7 @@ describe('PaymentService', () => {
       tx.$queryRaw
         .mockResolvedValueOnce([{ status: 'PENDING' }])
         .mockResolvedValueOnce([{ id: 'o1', status: 'PENDING' }]);
-      tx.order.updateMany.mockResolvedValue({ count: 0 });
+      orderStatusService.transition.mockResolvedValue([]);
 
       const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
 
@@ -263,7 +344,7 @@ describe('PaymentService', () => {
       tx.$queryRaw
         .mockResolvedValueOnce([{ status: 'FAILED' }])
         .mockResolvedValueOnce([{ id: 'o1', status: 'CANCELLED' }]);
-      tx.order.updateMany.mockResolvedValue({ count: 0 });
+      orderStatusService.transition.mockResolvedValue([]);
 
       const result = await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
 
@@ -346,7 +427,7 @@ describe('PaymentService', () => {
         { id: 'o1', status: 'AWAITING_PAYMENT' },
         { id: 'o2', status: 'CANCELLED' }, // đơn khác của nhóm đã huỷ trước đó (không liên quan)
       ]);
-      tx.order.updateMany.mockResolvedValue({ count: 1 });
+      orderStatusService.transition.mockResolvedValue(['o1']);
       tx.orderItem.findMany.mockResolvedValue([
         { productVariantId: 'v1', quantity: 3 },
       ]);
@@ -355,13 +436,22 @@ describe('PaymentService', () => {
 
       expect(result).toEqual({ reclaimed: true });
       expect(tx.payment.updateMany).toHaveBeenCalledWith({
-        where: { checkoutGroupId: 'g1', status: 'PENDING' },
+        // KHÔNG đụng Payment COD (Week8.md 2.7).
+        where: {
+          checkoutGroupId: 'g1',
+          status: 'PENDING',
+          method: { not: 'COD' },
+        },
         data: { status: 'FAILED' },
       });
-      expect(tx.order.updateMany).toHaveBeenCalledWith({
-        where: { id: { in: ['o1'] }, status: 'AWAITING_PAYMENT' },
-        data: { status: 'CANCELLED' },
-      });
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1'],
+        'AWAITING_PAYMENT',
+        'CANCELLED',
+        { type: 'SYSTEM' },
+        expect.any(String) as string,
+      );
       expect(inventoryService.release).toHaveBeenCalledWith(tx, [
         { productVariantId: 'v1', quantity: 3 },
       ]);
@@ -375,22 +465,218 @@ describe('PaymentService', () => {
       const result = await service.reclaimCheckoutGroup('g1');
 
       expect(result).toEqual({ reclaimed: false });
-      expect(tx.order.updateMany).not.toHaveBeenCalled();
+      expect(orderStatusService.transition).not.toHaveBeenCalled();
       expect(inventoryService.release).not.toHaveBeenCalled();
       expect(voucherUsageService.release).not.toHaveBeenCalled();
     });
 
-    it('race: khoá được đơn nhưng updateMany lật 0 dòng — không nhả (lưới an toàn)', async () => {
+    it('race: khoá được đơn nhưng chuyển trạng thái lật 0 đơn — không nhả (lưới an toàn)', async () => {
       tx.payment.count.mockResolvedValue(0);
       tx.$queryRaw.mockResolvedValue([
         { id: 'o1', status: 'AWAITING_PAYMENT' },
       ]);
-      tx.order.updateMany.mockResolvedValue({ count: 0 });
+      orderStatusService.transition.mockResolvedValue([]);
 
       const result = await service.reclaimCheckoutGroup('g1');
 
       expect(result).toEqual({ reclaimed: false });
       expect(inventoryService.release).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reclaimCheckoutGroup — email báo hủy (Week8.md 2.8)', () => {
+    beforeEach(() => {
+      tx.payment.count.mockResolvedValue(0);
+      tx.$queryRaw.mockResolvedValue([
+        { id: 'o1', status: 'AWAITING_PAYMENT' },
+      ]);
+    });
+
+    it('hết hạn thanh toán (actor mặc định SYSTEM) — báo "hết hạn", không có lý do', async () => {
+      orderStatusService.transition.mockResolvedValue(['o1']);
+
+      await service.reclaimCheckoutGroup('g1');
+
+      expect(orderEmailService.notifyCancelled).toHaveBeenCalledWith(
+        { checkoutGroupId: 'g1' },
+        'SYSTEM',
+        null,
+      );
+    });
+
+    it('buyer chủ động hủy — báo "bạn đã hủy" kèm lý do buyer nhập', async () => {
+      orderStatusService.transition.mockResolvedValue(['o1']);
+
+      await service.reclaimCheckoutGroup('g1', {
+        actor: { type: 'BUYER', id: 'user-1' },
+        note: 'Đổi ý',
+      });
+
+      expect(orderEmailService.notifyCancelled).toHaveBeenCalledWith(
+        { checkoutGroupId: 'g1' },
+        'BUYER',
+        'Đổi ý',
+      );
+    });
+
+    it('không thu hồi được gì (nhóm đã có SUCCESS / đã hủy từ trước) — KHÔNG gửi lại (idempotent)', async () => {
+      tx.payment.count.mockResolvedValue(1);
+      await service.reclaimCheckoutGroup('g1');
+
+      tx.payment.count.mockResolvedValue(0);
+      orderStatusService.transition.mockResolvedValue([]);
+      await service.reclaimCheckoutGroup('g1');
+
+      expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reclaimCheckoutGroup — actor tuỳ chọn (buyer chủ động hủy)', () => {
+    it('truyền actor BUYER + note — ghi đúng người thực hiện thay vì SYSTEM mặc định', async () => {
+      tx.payment.count.mockResolvedValue(0);
+      tx.$queryRaw.mockResolvedValue([
+        { id: 'o1', status: 'AWAITING_PAYMENT' },
+      ]);
+      orderStatusService.transition.mockResolvedValue(['o1']);
+
+      await service.reclaimCheckoutGroup('g1', {
+        actor: { type: 'BUYER', id: 'user-1' },
+        note: 'Đổi ý',
+      });
+
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1'],
+        'AWAITING_PAYMENT',
+        'CANCELLED',
+        { type: 'BUYER', id: 'user-1' },
+        'Đổi ý',
+      );
+    });
+
+    it('actor BUYER KHÔNG có note — note để trống, KHÔNG rơi về chuỗi hệ thống "Payment hold reclaimed"', async () => {
+      tx.payment.count.mockResolvedValue(0);
+      tx.$queryRaw.mockResolvedValue([
+        { id: 'o1', status: 'AWAITING_PAYMENT' },
+      ]);
+      orderStatusService.transition.mockResolvedValue(['o1']);
+
+      await service.reclaimCheckoutGroup('g1', {
+        actor: { type: 'BUYER', id: 'user-1' },
+      });
+
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1'],
+        'AWAITING_PAYMENT',
+        'CANCELLED',
+        { type: 'BUYER', id: 'user-1' },
+        undefined,
+      );
+    });
+
+    it('hệ thống (không truyền actor/note, hết hạn thanh toán) vẫn ghi "Payment hold reclaimed"', async () => {
+      tx.payment.count.mockResolvedValue(0);
+      tx.$queryRaw.mockResolvedValue([
+        { id: 'o1', status: 'AWAITING_PAYMENT' },
+      ]);
+      orderStatusService.transition.mockResolvedValue(['o1']);
+
+      await service.reclaimCheckoutGroup('g1');
+
+      expect(orderStatusService.transition).toHaveBeenCalledWith(
+        tx,
+        ['o1'],
+        'AWAITING_PAYMENT',
+        'CANCELLED',
+        { type: 'SYSTEM' },
+        'Payment hold reclaimed',
+      );
+    });
+  });
+
+  describe('cancelCheckoutGroup (buyer hủy cả nhóm chưa thanh toán)', () => {
+    const view = (status: string) =>
+      ({ id: 'g1', status }) as unknown as Awaited<
+        ReturnType<PaymentService['getCheckoutGroup']>
+      >;
+    let reclaim: jest.SpyInstance;
+    let getGroup: jest.SpyInstance;
+
+    beforeEach(() => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue({
+        id: 'g1',
+        userId: 'user-1',
+      });
+      reclaim = jest.spyOn(service, 'reclaimCheckoutGroup');
+      getGroup = jest.spyOn(service, 'getCheckoutGroup');
+    });
+
+    it('nhóm của người khác / không tồn tại — 404, không thu hồi gì', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.cancelCheckoutGroup('user-1', 'g-khac'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(reclaim).not.toHaveBeenCalled();
+    });
+
+    it('thu hồi thành công — gọi reclaim với actor BUYER, trả trạng thái mới', async () => {
+      reclaim.mockResolvedValue({ reclaimed: true });
+      getGroup.mockResolvedValue(view('CANCELLED'));
+
+      const result = await service.cancelCheckoutGroup('user-1', 'g1', 'Đổi ý');
+
+      expect(reclaim).toHaveBeenCalledWith('g1', {
+        actor: { type: 'BUYER', id: 'user-1' },
+        note: 'Đổi ý',
+      });
+      expect(result.status).toBe('CANCELLED');
+    });
+
+    it('không có lý do — note để trống (không ghi chuỗi mặc định, vì note của buyer được hiển thị nguyên văn)', async () => {
+      reclaim.mockResolvedValue({ reclaimed: true });
+      getGroup.mockResolvedValue(view('CANCELLED'));
+
+      await service.cancelCheckoutGroup('user-1', 'g1');
+
+      expect(reclaim).toHaveBeenCalledWith('g1', {
+        actor: { type: 'BUYER', id: 'user-1' },
+        note: undefined,
+      });
+    });
+
+    it('idempotent: nhóm đã hủy từ trước (reclaim 0 đơn) — trả trạng thái hiện tại, không lỗi', async () => {
+      reclaim.mockResolvedValue({ reclaimed: false });
+      getGroup.mockResolvedValue(view('CANCELLED'));
+
+      await expect(
+        service.cancelCheckoutGroup('user-1', 'g1'),
+      ).resolves.toMatchObject({ status: 'CANCELLED' });
+    });
+
+    it.each(['PAID', 'PAID_AFTER_EXPIRY'])(
+      'nhóm đã thanh toán (%s) — 409 ORDER_CANCEL_NOT_ALLOWED / PAID_ONLINE',
+      async (status) => {
+        reclaim.mockResolvedValue({ reclaimed: false });
+        getGroup.mockResolvedValue(view(status));
+
+        await expectAppException(service.cancelCheckoutGroup('user-1', 'g1'), {
+          status: 409,
+          code: 'ORDER_CANCEL_NOT_ALLOWED',
+          details: { reason: 'PAID_ONLINE' },
+        });
+      },
+    );
+
+    it('nhóm không còn đơn chờ thanh toán (vd COD đã đặt) — 409 ORDER_INVALID_TRANSITION', async () => {
+      reclaim.mockResolvedValue({ reclaimed: false });
+      getGroup.mockResolvedValue(view('COD_PLACED'));
+
+      await expectAppException(service.cancelCheckoutGroup('user-1', 'g1'), {
+        status: 409,
+        code: 'ORDER_INVALID_TRANSITION',
+      });
     });
   });
 
@@ -555,6 +841,30 @@ describe('PaymentService', () => {
         code: 'PAYMENT_RETRY_NOT_ALLOWED',
         details: { reason: 'ALREADY_PAID' },
       });
+    });
+
+    it('nhóm COD (COD_PLACED) — 409 reason NOT_ONLINE_PAYMENT, không gọi cổng', async () => {
+      prisma.checkoutGroup.findFirst.mockResolvedValue(
+        pendingGroup({
+          orders: [{ id: 'o1', status: 'PENDING' }],
+          payments: [
+            {
+              ...pendingGroup().payments[0],
+              method: 'COD',
+              payUrl: null,
+              expiresAt: null,
+            },
+          ],
+        }),
+      );
+
+      await expectAppException(service.retryPayment('user-1', 'g1'), {
+        status: 409,
+        code: 'PAYMENT_RETRY_NOT_ALLOWED',
+        details: { reason: 'NOT_ONLINE_PAYMENT' },
+      });
+      expect(paymentGateway.getConfigured).not.toHaveBeenCalled();
+      expect(prisma.payment.create).not.toHaveBeenCalled();
     });
 
     it('đã hết hạn giữ (PAYMENT_EXPIRED) — 409 reason HOLD_EXPIRED', async () => {

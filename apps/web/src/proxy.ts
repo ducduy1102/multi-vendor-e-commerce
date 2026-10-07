@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { routing } from '@/i18n/routing';
 import { decideAuthRedirect } from '@/shared/lib/auth-redirect';
+import { readJwtRole } from '@/shared/lib/read-jwt-role';
 
 // Tên cookie phải khớp ACCESS_TOKEN_COOKIE ở
 // apps/api/src/modules/auth/auth.constants.ts.
@@ -36,12 +37,15 @@ function withLocalePrefix(prefix: string, path: string): string {
 
 // Chặn route dành cho guest (login/register) khi đã có session — quay lại
 // đúng `?next=` nếu có (Week7.md 1.2/3.2); chặn route cần đăng nhập
-// (/seller/*, /wishlist, /checkout) khi chưa có session, giữ lại đích tới
-// qua `?next=` để quay lại sau khi login. Phân quyền theo role (Seller/Admin)
-// làm ở phase sau khi có route thật cần. Quyết định redirect nằm ở hàm thuần
+// (/seller/*, /wishlist, /checkout, /orders, /admin/*) khi chưa có session, giữ
+// lại đích tới qua `?next=` để quay lại sau khi login. Riêng /admin/* còn đẩy
+// người KHÔNG phải ADMIN về "/" — role đọc từ payload JWT KHÔNG verify chữ ký
+// (readJwtRole), chỉ để điều hướng; quyền thật nằm ở RolesGuard của BE
+// (Week8.md 1.8). Quyết định redirect nằm ở hàm thuần
 // decideAuthRedirect (shared/lib/auth-redirect.ts) để unit test được —
 // proxy() chỉ nối hàm đó với NextRequest/NextResponse, tự gắn lại locale.
 export function proxy(request: NextRequest) {
+  const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
   const isAuthenticated = request.cookies.has(ACCESS_TOKEN_COOKIE);
   const localePrefix = detectLocalePrefix(request.nextUrl.pathname);
   const pathWithoutLocale = stripLocalePrefix(request.nextUrl.pathname);
@@ -50,6 +54,7 @@ export function proxy(request: NextRequest) {
     pathname: pathWithoutLocale,
     search: request.nextUrl.search,
     isAuthenticated,
+    role: readJwtRole(accessToken),
   });
   if (redirectTo) {
     return NextResponse.redirect(new URL(withLocalePrefix(localePrefix, redirectTo), request.url));

@@ -1,7 +1,7 @@
-import type { ReactElement } from "react";
-import { NextIntlClientProvider } from "next-intl";
+import type { ReactElement } from 'react';
+import { NextIntlClientProvider } from 'next-intl';
 
-import messages from "../../../messages/vi.json";
+import messages from '../../../messages/vi.json';
 
 // Bọc component cần test khi nó dùng Link/useRouter/useTranslations từ
 // @/i18n/navigation hoặc next-intl — các API đó đọc locale + messages hiện

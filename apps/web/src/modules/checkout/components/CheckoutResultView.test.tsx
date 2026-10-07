@@ -137,6 +137,25 @@ describe('CheckoutResultView', () => {
     expect(alert).not.toHaveTextContent('Đặt hàng và thanh toán thành công');
   });
 
+  it('COD_PLACED -> báo thanh toán khi nhận hàng, KHÔNG nói đã thanh toán, không có nút thanh toán/thử lại, hiện nhãn COD', () => {
+    renderView({
+      group: group({
+        status: 'COD_PLACED',
+        canRetry: false,
+        paymentMethod: 'COD',
+        expiresAt: null,
+        latestPaymentStatus: 'PENDING',
+      }),
+    });
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('thanh toán khi nhận hàng');
+    expect(alert).not.toHaveTextContent('thanh toán thành công');
+    expect(screen.getByText('Thanh toán khi nhận hàng (COD)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Thanh toán lại' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tiếp tục thanh toán' })).not.toBeInTheDocument();
+  });
+
   it('lỗi thanh toán lại (retryPaymentError) -> hiện thành alert riêng', () => {
     renderView({ retryPaymentError: 'Không thể thanh toán lại cho đơn này lúc này' });
 
@@ -201,5 +220,85 @@ describe('CheckoutResultView', () => {
       'href',
       '/products',
     );
+  });
+
+  describe('nút "Xem đơn hàng của tôi" (Week8.md 3.7)', () => {
+    const STATUSES = [
+      'PAID',
+      'AWAITING_PAYMENT',
+      'PAYMENT_FAILED',
+      'PAYMENT_EXPIRED',
+      'CANCELLED',
+      'PAID_AFTER_EXPIRY',
+      'COD_PLACED',
+    ] as const;
+
+    it.each(STATUSES)(
+      '%s -> luôn có nút trỏ /orders (đơn đã nằm trong Đơn hàng của tôi dù kết quả thế nào)',
+      (status) => {
+        renderView({ group: group({ status, canRetry: false }) });
+
+        expect(screen.getByRole('button', { name: 'Xem đơn hàng của tôi' })).toHaveAttribute(
+          'href',
+          '/orders',
+        );
+      },
+    );
+
+    it('đơn COD vừa đặt: cùng nút này là lối ra chính, vẫn không nói "đã thanh toán"', () => {
+      renderView({
+        group: group({
+          status: 'COD_PLACED',
+          canRetry: false,
+          paymentMethod: 'COD',
+          expiresAt: null,
+          latestPaymentStatus: 'PENDING',
+        }),
+      });
+
+      expect(screen.getByRole('button', { name: 'Xem đơn hàng của tôi' })).toBeInTheDocument();
+      expect(screen.getByRole('alert')).not.toHaveTextContent('thanh toán thành công');
+    });
+
+    it('còn thanh toán lại được (canRetry) -> nút thanh toán đứng TRƯỚC, "Xem đơn hàng của tôi" lùi xuống, mua sắm cuối', () => {
+      renderView({ group: group({ status: 'PAYMENT_FAILED', canRetry: true }) });
+
+      const names = screen.getAllByRole('button').map((button) => button.textContent);
+      expect(names).toEqual(['Thanh toán lại', 'Xem đơn hàng của tôi', 'Khám phá sản phẩm']);
+      // Chỉ MỘT nút nhấn mạnh (primary): thanh toán lại. 2 nút điều hướng lùi xuống.
+      expect(screen.getByRole('button', { name: 'Thanh toán lại' })).toHaveClass('bg-primary');
+      expect(screen.getByRole('button', { name: 'Xem đơn hàng của tôi' })).not.toHaveClass(
+        'bg-primary',
+      );
+      expect(screen.getByRole('button', { name: 'Khám phá sản phẩm' })).not.toHaveClass(
+        'bg-primary',
+      );
+    });
+
+    it('đang chờ xác nhận thanh toán (AWAITING_PAYMENT, canRetry) -> Thử lại, Tiếp tục thanh toán rồi mới tới 2 nút điều hướng', () => {
+      renderView({ group: group({ status: 'AWAITING_PAYMENT', canRetry: true }) });
+
+      const names = screen.getAllByRole('button').map((button) => button.textContent);
+      expect(names).toEqual([
+        'Thử lại',
+        'Tiếp tục thanh toán',
+        'Xem đơn hàng của tôi',
+        'Khám phá sản phẩm',
+      ]);
+    });
+
+    it('không còn việc thanh toán lại -> "Xem đơn hàng của tôi" đứng trước nút mua sắm', () => {
+      renderView({ group: group({ status: 'PAID', canRetry: false }) });
+
+      const names = screen.getAllByRole('button').map((button) => button.textContent);
+      expect(names).toEqual(['Xem đơn hàng của tôi', 'Khám phá sản phẩm']);
+      // Không còn việc thanh toán lại: "Xem đơn hàng của tôi" là nút nhấn mạnh, mua sắm là phụ.
+      expect(screen.getByRole('button', { name: 'Xem đơn hàng của tôi' })).toHaveClass(
+        'bg-primary',
+      );
+      expect(screen.getByRole('button', { name: 'Khám phá sản phẩm' })).not.toHaveClass(
+        'bg-primary',
+      );
+    });
   });
 });

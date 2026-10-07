@@ -9,13 +9,17 @@ import { describe, expect, it } from 'vitest';
 //   1. import SÂU vào file nội bộ của module khác (`@/modules/<x>/...` thay vì
 //      đúng `@/modules/<x>`) — kể cả từ shared/;
 //   2. `modules/cart` import `modules/checkout` (kể cả qua barrel) — nút thanh
-//      toán ở /cart chỉ là <Link> tới /checkout (Week7.md 1.14).
+//      toán ở /cart chỉ là <Link> tới /checkout (Week7.md 1.14);
+//   3. `modules/order` import `modules/checkout`/`modules/cart` (kể cả qua
+//      barrel) — nút "Thanh toán lại" gọi `POST /checkout/groups/:groupId/pay`
+//      bằng service riêng của `order`, hoặc ghép ở page.tsx (Week8.md 3.0).
 
 const SRC_ROOT = resolve(__dirname, '..', '..'); // apps/web/src
 
 // module (khoá) KHÔNG được import module (giá trị) — kể cả qua barrel.
 export const FORBIDDEN_MODULE_IMPORTS: Record<string, string[]> = {
   cart: ['checkout'],
+  order: ['checkout', 'cart'],
 };
 
 const BARREL_ONLY_NAMES = new Set(['index', 'index.ts', 'index.tsx']);
@@ -135,6 +139,24 @@ describe('module boundaries (FE)', () => {
       ]);
       expect(v).toHaveLength(1);
       expect(v[0]).toContain("'cart' không được phụ thuộc module 'checkout'");
+    });
+
+    it('cấm modules/order import modules/checkout hoặc modules/cart, kể cả qua barrel', () => {
+      const v = findViolations([
+        file('modules/order/a.ts', "import { useRetryPayment } from '@/modules/checkout';"),
+        file('modules/order/b.ts', "import { useCart } from '@/modules/cart';"),
+      ]);
+      expect(v).toHaveLength(2);
+      expect(v[0]).toContain("'order' không được phụ thuộc module 'checkout'");
+      expect(v[1]).toContain("'order' không được phụ thuộc module 'cart'");
+    });
+
+    it('cho phép module khác (admin, product...) import barrel modules/order', () => {
+      const v = findViolations([
+        file('modules/admin/a.ts', "import type { OrderStatus } from '@/modules/order';"),
+        file('modules/checkout/a.ts', "import { X } from '@/modules/order';"),
+      ]);
+      expect(v).toEqual([]);
     });
 
     it('bỏ qua import nội bộ trong cùng module và package ngoài', () => {

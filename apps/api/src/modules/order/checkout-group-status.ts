@@ -1,18 +1,18 @@
-import type { OrderStatus, PaymentStatus } from '@prisma/client';
+import type { OrderStatus, PaymentMethod, PaymentStatus } from '@prisma/client';
 import type { CheckoutGroupStatus } from '@ecommerce/types';
 
-// Bảng chuyển trạng thái Order hợp lệ (Week7.md 1.13) — chỉ khai các cạnh ĐÃ triển khai ở Tuần 7
-// (AWAITING_PAYMENT → PENDING/CANCELLED); Tuần 8 mở rộng thêm PENDING → CONFIRMED → ... vào đúng mảng
-// tương ứng, không đổi cấu trúc. Thực thi thật nằm ở câu UPDATE có điều kiện (WHERE status = ...) tại
-// PaymentService — hằng số này là tài liệu-dạng-code + để test chặn chuyển sai.
+// Bảng chuyển trạng thái Order hợp lệ (Week7.md 1.13, mở rộng ở Week8.md 1.3). Chỉ nói cạnh nào hợp lệ
+// về mặt trạng thái; AI được làm cạnh nào (buyer/seller/hệ thống) và điều kiện kèm theo (vd chỉ đơn COD
+// mới hủy được ở PENDING) là luật của service nghiệp vụ. Thực thi thật nằm ở OrderStatusService.transition
+// (UPDATE có điều kiện WHERE status = ...). REFUNDED và hủy sau CONFIRMED: Tuần 9.
 export const ORDER_STATUS_TRANSITIONS: Readonly<
   Record<OrderStatus, readonly OrderStatus[]>
 > = {
   AWAITING_PAYMENT: ['PENDING', 'CANCELLED'],
-  PENDING: [],
-  CONFIRMED: [],
-  PACKED: [],
-  SHIPPING: [],
+  PENDING: ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED: ['PACKED'],
+  PACKED: ['SHIPPING'],
+  SHIPPING: ['COMPLETED'],
   COMPLETED: [],
   CANCELLED: [],
   REFUNDED: [],
@@ -30,8 +30,10 @@ export interface CheckoutGroupStatusOrder {
 }
 
 export interface CheckoutGroupStatusPayment {
+  method: PaymentMethod;
   status: PaymentStatus;
-  expiresAt: Date;
+  // null = không hết hạn (Payment COD, Week8.md 1.6).
+  expiresAt: Date | null;
   createdAt: Date;
 }
 
@@ -58,8 +60,11 @@ export function deriveCheckoutGroupStatus(
   )[0];
   // Không nên xảy ra thật (placeOrder luôn tạo kèm đúng 1 Payment) — coi như vừa đặt, an toàn.
   if (!latest) return 'AWAITING_PAYMENT';
+  // COD: đã đặt thành công, còn đơn hoạt động, CHƯA thu tiền (thu khi nhận hàng) — không có hạn
+  // thanh toán nên không bao giờ PAYMENT_EXPIRED/PAYMENT_FAILED, và không có gì để "thử lại".
+  if (latest.method === 'COD') return 'COD_PLACED';
 
-  const stillWithinHold = latest.expiresAt > now;
+  const stillWithinHold = latest.expiresAt === null || latest.expiresAt > now;
   if (latest.status === 'PENDING') {
     return stillWithinHold ? 'AWAITING_PAYMENT' : 'PAYMENT_EXPIRED';
   }

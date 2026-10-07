@@ -1,0 +1,685 @@
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../shared/prisma/prisma.service';
+import { expectAppException } from '../../shared/testing/expect-app-exception';
+import { OrderQueryService } from './order-query.service';
+
+const D = (value: number) => new Prisma.Decimal(value);
+
+function loadedItem(n: number, quantity = 1, price = 100_000) {
+  return {
+    productName: `Sản phẩm ${n}`,
+    variantLabel: n % 2 === 0 ? null : 'Đỏ / M',
+    sku: `SKU-${n}`,
+    imageUrl: null,
+    quantity,
+    priceAtPurchase: D(price),
+  };
+}
+
+function loadedOrder(overrides: Record<string, unknown> = {}) {
+  const items = [loadedItem(1), loadedItem(2)];
+  return {
+    id: 'o1',
+    checkoutGroupId: 'g1',
+    status: 'AWAITING_PAYMENT',
+    createdAt: new Date('2026-10-01T10:00:00.000Z'),
+    totalAmount: D(220_000),
+    shop: { id: 's1', name: 'Shop A', slug: 'shop-a', logoUrl: null },
+    items,
+    _count: { items: items.length },
+    checkoutGroup: {
+      createdAt: new Date(),
+      payments: [
+        {
+          method: 'VNPAY',
+          status: 'PENDING',
+          expiresAt: new Date(Date.now() + 10 * 60_000),
+          createdAt: new Date(),
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+function loadedDetail(overrides: Record<string, unknown> = {}) {
+  return loadedOrder({
+    recipientName: 'Nguyễn Văn A',
+    recipientPhone: '0912345678',
+    shippingAddressLine: '12 Nguyễn Huệ',
+    shippingWard: 'Phường Bến Nghé',
+    shippingProvince: 'Hồ Chí Minh',
+    discountAmount: D(0),
+    shippingFee: D(20_000),
+    carrier: null,
+    trackingCode: null,
+    buyerNote: null,
+    statusHistory: [
+      {
+        fromStatus: null,
+        toStatus: 'AWAITING_PAYMENT',
+        actorType: 'BUYER',
+        note: null,
+        createdAt: new Date('2026-10-01T10:00:00.000Z'),
+      },
+    ],
+    ...overrides,
+  });
+}
+
+describe('OrderQueryService (buyer)', () => {
+  let service: OrderQueryService;
+  let prisma: {
+    order: { count: jest.Mock; findMany: jest.Mock; findFirst: jest.Mock };
+  };
+
+  beforeEach(() => {
+    prisma = {
+      order: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+    service = new OrderQueryService(prisma as unknown as PrismaService);
+  });
+
+  describe('listForBuyer', () => {
+    const query = { page: 1, limit: 10 };
+
+    it('luôn lọc theo userId (không tab: không lọc status), mới nhất trước', async () => {
+      await service.listForBuyer('user-1', query);
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user-1' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: 0,
+          take: 10,
+        }),
+      );
+      expect(prisma.order.count).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+      });
+    });
+
+    it('tab → lọc theo ĐÚNG nhóm trạng thái, vẫn kèm userId', async () => {
+      await service.listForBuyer('user-1', { ...query, tab: 'processing' });
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user-1', status: { in: ['CONFIRMED', 'PACKED'] } },
+        }),
+      );
+    });
+
+    it('phân trang: trang 3, 5 đơn/trang → skip 10', async () => {
+      await service.listForBuyer('user-1', { page: 3, limit: 5 });
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 10, take: 5 }),
+      );
+    });
+
+    it('trả total/page/limit và map dữ liệu (tiền là chuỗi số nguyên, ngày ISO)', async () => {
+      prisma.order.count.mockResolvedValue(25);
+      prisma.order.findMany.mockResolvedValue([loadedOrder()]);
+
+      const result = await service.listForBuyer('user-1', {
+        page: 2,
+        limit: 10,
+      });
+
+      expect(result.total).toBe(25);
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(10);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        id: 'o1',
+        checkoutGroupId: 'g1',
+        status: 'AWAITING_PAYMENT',
+        createdAt: '2026-10-01T10:00:00.000Z',
+        totalAmount: '220000',
+        shop: { id: 's1', name: 'Shop A', slug: 'shop-a', logoUrl: null },
+        itemCount: 2,
+        paymentMethod: 'VNPAY',
+        paymentStatus: 'PENDING',
+      });
+      expect(result.items[0].items[0]).toEqual({
+        productName: 'Sản phẩm 1',
+        variantLabel: 'Đỏ / M',
+        sku: 'SKU-1',
+        imageUrl: null,
+        quantity: 1,
+        priceAtPurchase: '100000',
+      });
+    });
+
+    it('xem nhanh dòng hàng tối đa 3, itemCount là tổng thật', async () => {
+      const items = [1, 2, 3, 4, 5].map((n) => loadedItem(n));
+      prisma.order.findMany.mockResolvedValue([
+        loadedOrder({ items: items.slice(0, 3), _count: { items: 5 } }),
+      ]);
+
+      const [order] = (await service.listForBuyer('user-1', query)).items;
+
+      expect(order.items).toHaveLength(3);
+      expect(order.itemCount).toBe(5);
+    });
+
+    it('không có Payment nào — phương thức/trạng thái null, không thử lại được', async () => {
+      prisma.order.findMany.mockResolvedValue([
+        loadedOrder({
+          checkoutGroup: { createdAt: new Date(), payments: [] },
+        }),
+      ]);
+
+      const [order] = (await service.listForBuyer('user-1', query)).items;
+
+      expect(order.paymentMethod).toBeNull();
+      expect(order.paymentStatus).toBeNull();
+      expect(order.canRetryPayment).toBe(false);
+    });
+
+    it('cờ hành động theo status + phương thức', async () => {
+      prisma.order.findMany.mockResolvedValue([
+        loadedOrder({ id: 'unpaid' }), // AWAITING_PAYMENT + VNPAY đang chờ, còn hạn
+        loadedOrder({
+          id: 'paid-online',
+          status: 'PENDING',
+          checkoutGroup: {
+            createdAt: new Date(),
+            payments: [
+              {
+                method: 'VNPAY',
+                status: 'SUCCESS',
+                expiresAt: new Date(),
+                createdAt: new Date(),
+              },
+            ],
+          },
+        }),
+        loadedOrder({
+          id: 'cod',
+          status: 'PENDING',
+          checkoutGroup: {
+            createdAt: new Date(),
+            payments: [
+              {
+                method: 'COD',
+                status: 'PENDING',
+                expiresAt: null,
+                createdAt: new Date(),
+              },
+            ],
+          },
+        }),
+        loadedOrder({ id: 'shipping', status: 'SHIPPING' }),
+      ]);
+
+      const byId = Object.fromEntries(
+        (await service.listForBuyer('user-1', query)).items.map((o) => [
+          o.id,
+          o,
+        ]),
+      );
+
+      expect(byId.unpaid).toMatchObject({
+        canCancel: true,
+        canRetryPayment: true,
+        canConfirmReceived: false,
+      });
+      expect(byId['paid-online']).toMatchObject({
+        canCancel: false,
+        canRetryPayment: false,
+        canConfirmReceived: false,
+      });
+      expect(byId.cod).toMatchObject({
+        canCancel: true,
+        canRetryPayment: false,
+      });
+      expect(byId.shipping).toMatchObject({
+        canCancel: false,
+        canConfirmReceived: true,
+      });
+    });
+  });
+
+  describe('getForBuyer', () => {
+    it('lọc theo CẢ id lẫn userId (không tin id suông)', async () => {
+      prisma.order.findFirst.mockResolvedValue(loadedDetail());
+
+      await service.getForBuyer('user-1', 'o1');
+
+      expect(prisma.order.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'o1', userId: 'user-1' } }),
+      );
+    });
+
+    it('đơn không tồn tại / của người khác — 404 ORDER_NOT_FOUND (không phân biệt)', async () => {
+      prisma.order.findFirst.mockResolvedValue(null);
+
+      await expectAppException(service.getForBuyer('user-1', 'o-khac'), {
+        status: 404,
+        code: 'ORDER_NOT_FOUND',
+        message: 'Order not found',
+      });
+    });
+
+    it('trả đủ dòng hàng, snapshot địa chỉ, tiền, vận chuyển và timeline', async () => {
+      const items = [
+        loadedItem(1, 2, 100_000),
+        loadedItem(2, 1, 50_000),
+        loadedItem(3, 1, 10_000),
+        loadedItem(4, 1, 10_000),
+      ];
+      prisma.order.findFirst.mockResolvedValue(
+        loadedDetail({
+          items,
+          _count: { items: 4 },
+          discountAmount: D(10_000),
+          shippingFee: D(20_000),
+          totalAmount: D(280_000),
+          carrier: 'GHN',
+          trackingCode: 'GHN123',
+        }),
+      );
+
+      const order = await service.getForBuyer('user-1', 'o1');
+
+      expect(order.items).toHaveLength(4); // đủ, không cắt còn 3 như danh sách
+      expect(order.itemCount).toBe(4);
+      expect(order.subtotal).toBe('270000'); // 2×100k + 50k + 10k + 10k
+      expect(order.discountAmount).toBe('10000');
+      expect(order.shippingFee).toBe('20000');
+      expect(order.totalAmount).toBe('280000');
+      expect(order).toMatchObject({
+        recipientName: 'Nguyễn Văn A',
+        recipientPhone: '0912345678',
+        shippingAddressLine: '12 Nguyễn Huệ',
+        shippingWard: 'Phường Bến Nghé',
+        shippingProvince: 'Hồ Chí Minh',
+        carrier: 'GHN',
+        trackingCode: 'GHN123',
+      });
+      expect(order.history).toEqual([
+        {
+          fromStatus: null,
+          toStatus: 'AWAITING_PAYMENT',
+          actorType: 'BUYER',
+          note: null,
+          createdAt: '2026-10-01T10:00:00.000Z',
+        },
+      ]);
+    });
+
+    it('timeline KHÔNG lộ actorId dù DB có', async () => {
+      prisma.order.findFirst.mockResolvedValue(
+        loadedDetail({
+          statusHistory: [
+            {
+              fromStatus: 'PENDING',
+              toStatus: 'CONFIRMED',
+              actorType: 'SELLER',
+              actorId: 'seller-secret',
+              note: null,
+              createdAt: new Date(),
+            },
+          ],
+        }),
+      );
+
+      const order = await service.getForBuyer('user-1', 'o1');
+
+      expect(order.history[0]).not.toHaveProperty('actorId');
+    });
+
+    describe('buyerNote (Week8.md 3B)', () => {
+      it('chi tiết trả đúng lời nhắn của đơn, null khi không có', async () => {
+        prisma.order.findFirst.mockResolvedValueOnce(
+          loadedDetail({ buyerNote: 'Giao giờ hành chính' }),
+        );
+        expect((await service.getForBuyer('user-1', 'o1')).buyerNote).toBe(
+          'Giao giờ hành chính',
+        );
+
+        prisma.order.findFirst.mockResolvedValueOnce(loadedDetail());
+        expect(
+          (await service.getForBuyer('user-1', 'o1')).buyerNote,
+        ).toBeNull();
+      });
+
+      it('chi tiết select buyerNote, còn danh sách thì KHÔNG (không đọc cột không cần)', async () => {
+        prisma.order.findFirst.mockResolvedValue(loadedDetail());
+        await service.getForBuyer('user-1', 'o1');
+        const [detailArgs] = prisma.order.findFirst.mock.calls[0] as [
+          { select: Record<string, unknown> },
+        ];
+        expect(detailArgs.select.buyerNote).toBe(true);
+
+        await service.listForBuyer('user-1', { page: 1, limit: 10 });
+        const [listArgs] = prisma.order.findMany.mock.calls[0] as [
+          { select: Record<string, unknown> },
+        ];
+        expect(listArgs.select).not.toHaveProperty('buyerNote');
+      });
+
+      it('danh sách đơn của buyer không lộ buyerNote kể cả khi dòng đọc về có field đó', async () => {
+        prisma.order.findMany.mockResolvedValue([
+          loadedOrder({ buyerNote: 'không nên xuất hiện ở danh sách' }),
+        ]);
+
+        const [item] = (
+          await service.listForBuyer('user-1', { page: 1, limit: 10 })
+        ).items;
+
+        expect(item).not.toHaveProperty('buyerNote');
+      });
+    });
+  });
+});
+
+function sellerLoaded(overrides: Record<string, unknown> = {}) {
+  const items = [loadedItem(1), loadedItem(2)];
+  return {
+    id: 'o1',
+    status: 'PENDING',
+    createdAt: new Date('2026-10-01T10:00:00.000Z'),
+    totalAmount: D(220_000),
+    recipientName: 'Nguyễn Văn A',
+    shippingProvince: 'Hồ Chí Minh',
+    buyerNote: null,
+    items,
+    _count: { items: items.length },
+    checkoutGroup: { payments: [{ method: 'VNPAY', status: 'SUCCESS' }] },
+    ...overrides,
+  };
+}
+
+describe('OrderQueryService (seller)', () => {
+  let service: OrderQueryService;
+  let prisma: {
+    order: { count: jest.Mock; findMany: jest.Mock; findFirst: jest.Mock };
+  };
+
+  const VISIBLE = [
+    'PENDING',
+    'CONFIRMED',
+    'PACKED',
+    'SHIPPING',
+    'COMPLETED',
+    'CANCELLED',
+    'REFUNDED',
+  ];
+
+  beforeEach(() => {
+    prisma = {
+      order: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+    service = new OrderQueryService(prisma as unknown as PrismaService);
+  });
+
+  describe('listForSeller', () => {
+    const query = { page: 1, limit: 10 };
+
+    it('luôn lọc theo shopId VÀ chỉ trạng thái Seller được thấy — KHÔNG có AWAITING_PAYMENT', async () => {
+      await service.listForSeller('shop-1', query);
+
+      const expected = {
+        shopId: 'shop-1',
+        status: { in: VISIBLE },
+        statusHistory: { some: { toStatus: 'PENDING' } },
+      };
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expected }),
+      );
+      expect(prisma.order.count).toHaveBeenCalledWith({ where: expected });
+      expect(VISIBLE).not.toContain('AWAITING_PAYMENT');
+    });
+
+    it('tab chỉ THU HẸP trong tập được thấy', async () => {
+      await service.listForSeller('shop-1', { ...query, tab: 'processing' });
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            shopId: 'shop-1',
+            status: { in: ['CONFIRMED', 'PACKED'] },
+            statusHistory: { some: { toStatus: 'PENDING' } },
+          },
+        }),
+      );
+    });
+
+    it('tab lọt qua kiểu (ép bằng cast) vẫn không lộ AWAITING_PAYMENT — phòng thủ nhiều lớp', async () => {
+      await service.listForSeller('shop-1', {
+        ...query,
+        tab: 'awaiting-payment' as unknown as 'pending',
+      });
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            shopId: 'shop-1',
+            status: { in: [] },
+            statusHistory: { some: { toStatus: 'PENDING' } },
+          },
+        }),
+      );
+    });
+
+    it('phân trang, thứ tự và map dữ liệu (không có userId/email buyer)', async () => {
+      prisma.order.count.mockResolvedValue(12);
+      prisma.order.findMany.mockResolvedValue([sellerLoaded()]);
+
+      const result = await service.listForSeller('shop-1', {
+        page: 2,
+        limit: 5,
+      });
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: 5,
+          take: 5,
+        }),
+      );
+      expect(result).toMatchObject({ total: 12, page: 2, limit: 5 });
+      expect(result.items[0]).toEqual({
+        id: 'o1',
+        status: 'PENDING',
+        createdAt: '2026-10-01T10:00:00.000Z',
+        totalAmount: '220000',
+        recipientName: 'Nguyễn Văn A',
+        shippingProvince: 'Hồ Chí Minh',
+        buyerNote: null,
+        items: expect.any(Array) as unknown[],
+        itemCount: 2,
+        paymentMethod: 'VNPAY',
+        paymentStatus: 'SUCCESS',
+        canConfirm: true,
+        canPack: false,
+        canShip: false,
+        canReject: false,
+      });
+    });
+
+    it('cờ hành động theo status + phương thức: COD chờ xác nhận được từ chối', async () => {
+      prisma.order.findMany.mockResolvedValue([
+        sellerLoaded({
+          id: 'cod',
+          checkoutGroup: { payments: [{ method: 'COD', status: 'PENDING' }] },
+        }),
+        sellerLoaded({ id: 'online' }),
+        sellerLoaded({ id: 'packed', status: 'PACKED' }),
+      ]);
+
+      const byId = Object.fromEntries(
+        (await service.listForSeller('shop-1', query)).items.map((o) => [
+          o.id,
+          o,
+        ]),
+      );
+
+      expect(byId.cod).toMatchObject({ canConfirm: true, canReject: true });
+      expect(byId.online).toMatchObject({ canConfirm: true, canReject: false });
+      expect(byId.packed).toMatchObject({ canShip: true, canConfirm: false });
+    });
+  });
+
+  describe('getForSeller', () => {
+    it('lọc theo id + shopId + trạng thái được thấy (đơn chưa thanh toán không đọc được)', async () => {
+      prisma.order.findFirst.mockResolvedValue(
+        sellerLoaded({
+          recipientPhone: '0912345678',
+          shippingAddressLine: '12 Nguyễn Huệ',
+          shippingWard: 'Phường Bến Nghé',
+          discountAmount: D(0),
+          shippingFee: D(20_000),
+          carrier: null,
+          trackingCode: null,
+          statusHistory: [],
+        }),
+      );
+
+      await service.getForSeller('shop-1', 'o1');
+
+      expect(prisma.order.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: 'o1',
+            shopId: 'shop-1',
+            status: { in: VISIBLE },
+            statusHistory: { some: { toStatus: 'PENDING' } },
+          },
+        }),
+      );
+    });
+
+    it('đơn không tồn tại / shop khác / chưa thanh toán — cùng 404 ORDER_NOT_FOUND', async () => {
+      prisma.order.findFirst.mockResolvedValue(null);
+
+      await expectAppException(service.getForSeller('shop-1', 'o-khac'), {
+        status: 404,
+        code: 'ORDER_NOT_FOUND',
+        message: 'Order not found',
+      });
+    });
+
+    it('trả người nhận, đủ dòng hàng, tiền, vận chuyển và timeline (không actorId)', async () => {
+      const items = [loadedItem(1, 2, 100_000), loadedItem(2, 1, 50_000)];
+      prisma.order.findFirst.mockResolvedValue(
+        sellerLoaded({
+          items,
+          _count: { items: 2 },
+          recipientPhone: '0912345678',
+          shippingAddressLine: '12 Nguyễn Huệ',
+          shippingWard: 'Phường Bến Nghé',
+          discountAmount: D(10_000),
+          shippingFee: D(20_000),
+          carrier: 'GHN',
+          trackingCode: 'GHN123',
+          statusHistory: [
+            {
+              fromStatus: 'AWAITING_PAYMENT',
+              toStatus: 'PENDING',
+              actorType: 'SYSTEM',
+              actorId: null,
+              note: 'Payment confirmed',
+              createdAt: new Date('2026-10-01T10:05:00.000Z'),
+            },
+          ],
+        }),
+      );
+
+      const order = await service.getForSeller('shop-1', 'o1');
+
+      expect(order).toMatchObject({
+        recipientName: 'Nguyễn Văn A',
+        recipientPhone: '0912345678',
+        shippingAddressLine: '12 Nguyễn Huệ',
+        shippingWard: 'Phường Bến Nghé',
+        subtotal: '250000',
+        discountAmount: '10000',
+        shippingFee: '20000',
+        carrier: 'GHN',
+        trackingCode: 'GHN123',
+      });
+      expect(order.items).toHaveLength(2);
+      expect(order.history).toEqual([
+        {
+          fromStatus: 'AWAITING_PAYMENT',
+          toStatus: 'PENDING',
+          actorType: 'SYSTEM',
+          note: 'Payment confirmed',
+          createdAt: '2026-10-01T10:05:00.000Z',
+        },
+      ]);
+      expect(order).not.toHaveProperty('userId');
+      expect(order.history[0]).not.toHaveProperty('actorId');
+    });
+
+    describe('buyerNote (Week8.md 3B)', () => {
+      it('danh sách và chi tiết trả lời nhắn của đúng đơn, null khi không có', async () => {
+        prisma.order.findMany.mockResolvedValue([
+          sellerLoaded({ id: 'a', buyerNote: 'Gọi trước khi giao' }),
+          sellerLoaded({ id: 'b' }),
+        ]);
+        const byId = Object.fromEntries(
+          (
+            await service.listForSeller('shop-1', { page: 1, limit: 10 })
+          ).items.map((o) => [o.id, o]),
+        );
+        expect(byId.a.buyerNote).toBe('Gọi trước khi giao');
+        expect(byId.b.buyerNote).toBeNull();
+
+        prisma.order.findFirst.mockResolvedValue(
+          sellerLoaded({
+            buyerNote: 'Gói quà',
+            recipientPhone: '0912345678',
+            shippingAddressLine: '12 Nguyễn Huệ',
+            shippingWard: 'Phường Bến Nghé',
+            discountAmount: D(0),
+            shippingFee: D(20_000),
+            carrier: null,
+            trackingCode: null,
+            statusHistory: [],
+          }),
+        );
+        expect((await service.getForSeller('shop-1', 'a')).buyerNote).toBe(
+          'Gói quà',
+        );
+      });
+
+      it('cả danh sách lẫn chi tiết đều select buyerNote (mock không tự kiểm select nên kiểm tường minh)', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          sellerLoaded({
+            recipientPhone: '0912345678',
+            shippingAddressLine: '12 Nguyễn Huệ',
+            shippingWard: 'Phường Bến Nghé',
+            discountAmount: D(0),
+            shippingFee: D(20_000),
+            carrier: null,
+            trackingCode: null,
+            statusHistory: [],
+          }),
+        );
+        await service.listForSeller('shop-1', { page: 1, limit: 10 });
+        await service.getForSeller('shop-1', 'o1');
+
+        const [listArgs] = prisma.order.findMany.mock.calls[0] as [
+          { select: Record<string, unknown> },
+        ];
+        const [detailArgs] = prisma.order.findFirst.mock.calls[0] as [
+          { select: Record<string, unknown> },
+        ];
+        expect(listArgs.select.buyerNote).toBe(true);
+        expect(detailArgs.select.buyerNote).toBe(true);
+      });
+    });
+  });
+});

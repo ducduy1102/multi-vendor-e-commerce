@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
+  ApiBody,
   ApiCookieAuth,
   ApiHeader,
   ApiOperation,
@@ -23,6 +24,10 @@ import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { EmailVerifiedGuard } from '../../shared/guards/email-verified.guard';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { ZodValidationPipe } from '../../shared/pipes/zod-validation.pipe';
+import {
+  errorExample,
+  UNAUTHORIZED_EXAMPLE,
+} from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { CheckoutService } from './checkout.service';
 import {
@@ -168,22 +173,72 @@ export class CheckoutController {
   @ApiCookieAuth('access_token')
   @ApiOperation({
     summary:
-      'Đặt hàng từ giỏ hiện tại — tách N Order theo shop, 1 Payment chung',
+      'Đặt hàng từ giỏ hiện tại — tách N Order theo shop, 1 Payment chung. paymentMethod VNPAY/MOMO: đơn AWAITING_PAYMENT giữ chỗ kho, trả paymentUrl để chuyển sang cổng. paymentMethod COD: đơn vào thẳng PENDING, kho TRỪ NGAY, không có paymentUrl và expiresAt = null (thu tiền khi nhận hàng)',
   })
+  // Tên viết thường khớp tham số @Headers('idempotency-key') mà Swagger tự suy ra — khác chữ hoa
+  // thường thì hiện thành 2 ô header riêng cho cùng 1 header.
   @ApiHeader({
-    name: 'Idempotency-Key',
+    name: 'idempotency-key',
     required: false,
     description:
-      'UUID do FE sinh mỗi phiên đặt hàng; gọi lại cùng key trả đúng nhóm đã tạo thay vì đặt trùng',
+      'UUID do FE sinh mỗi phiên đặt hàng; gọi lại cùng key trả đúng nhóm đã tạo thay vì đặt trùng (kể cả khi body khác — lời nhắn mới không ghi đè lời nhắn của đơn đã tạo)',
+  })
+  @ApiBody({
+    description:
+      '`shopNotes` (tuỳ chọn): lời nhắn cho từng shop, khoá là shopId, tối đa 500 ký tự mỗi lời nhắn, văn bản thuần (trim hai đầu; mục rỗng bị bỏ). shopId không có trong giỏ lúc đặt bị bỏ qua, không báo lỗi. Mỗi shop chỉ thấy lời nhắn của đơn mình.',
+    examples: {
+      withShopNotes: {
+        summary: 'Giỏ 2 shop, mỗi shop một lời nhắn',
+        value: {
+          addressId: 'd1b2c3d4-1234-4a5b-8c9d-abcdef000004',
+          paymentMethod: 'COD',
+          voucherCode: 'GIAM50K',
+          expectedTotal: 320000,
+          shopNotes: {
+            'c1b2c3d4-1234-4a5b-8c9d-abcdef000003':
+              'Giao giờ hành chính, gọi trước khi giao nhé',
+            'c1b2c3d4-1234-4a5b-8c9d-abcdef000009': 'Gói quà giúp mình',
+          },
+        },
+      },
+      withoutShopNotes: {
+        summary: 'Không có lời nhắn',
+        value: {
+          addressId: 'd1b2c3d4-1234-4a5b-8c9d-abcdef000004',
+          paymentMethod: 'VNPAY',
+          expectedTotal: 320000,
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 201,
-    schema: { example: { success: true, data: CHECKOUT_RESULT_EXAMPLE } },
+    examples: {
+      online: {
+        summary: 'VNPAY/MOMO — chờ thanh toán',
+        value: { success: true, data: CHECKOUT_RESULT_EXAMPLE },
+      },
+      cod: {
+        summary: 'COD — không cổng, không hạn thanh toán',
+        value: {
+          success: true,
+          data: {
+            ...CHECKOUT_RESULT_EXAMPLE,
+            orders: [
+              { ...CHECKOUT_RESULT_EXAMPLE.orders[0], status: 'PENDING' },
+            ],
+            paymentMethod: 'COD',
+            expiresAt: null,
+            paymentUrl: null,
+          },
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 400,
     description:
-      'Giỏ rỗng/không còn item khả dụng, hoặc thiếu/sai expectedTotal',
+      'Giỏ rỗng/không còn item khả dụng, thiếu/sai expectedTotal, hoặc lời nhắn cho shop quá 500 ký tự',
     examples: {
       noPurchasableItems: {
         summary: 'NO_PURCHASABLE_ITEMS',
@@ -200,6 +255,16 @@ export class CheckoutController {
           success: false,
           data: null,
           message: 'expectedTotal: checkout.validationExpectedTotalInvalid',
+        },
+      },
+      noteTooLong: {
+        summary:
+          'Lời nhắn cho shop quá 500 ký tự (lỗi validate Zod, không có code)',
+        value: {
+          success: false,
+          data: null,
+          message:
+            'shopNotes.c1b2c3d4-1234-4a5b-8c9d-abcdef000003: checkout.validationNoteTooLong',
         },
       },
     },
@@ -370,7 +435,7 @@ export class CheckoutController {
   @ApiResponse({
     status: 409,
     description:
-      'PAYMENT_RETRY_NOT_ALLOWED (đã trả tiền/đã hết hạn giữ) / PAYMENT_METHOD_UNAVAILABLE',
+      'PAYMENT_RETRY_NOT_ALLOWED (đã trả tiền / đã hết hạn giữ / nhóm COD không có cổng để thử lại) / PAYMENT_METHOD_UNAVAILABLE',
     examples: {
       ALREADY_PAID: {
         summary: 'PAYMENT_RETRY_NOT_ALLOWED — ALREADY_PAID',
@@ -390,6 +455,16 @@ export class CheckoutController {
           message: 'The payment hold for this checkout group has expired',
           code: 'PAYMENT_RETRY_NOT_ALLOWED',
           details: { reason: 'HOLD_EXPIRED' },
+        },
+      },
+      NOT_ONLINE_PAYMENT: {
+        summary: 'PAYMENT_RETRY_NOT_ALLOWED — NOT_ONLINE_PAYMENT (nhóm COD)',
+        value: {
+          success: false,
+          data: null,
+          message: 'Cash on delivery orders have no online payment to retry',
+          code: 'PAYMENT_RETRY_NOT_ALLOWED',
+          details: { reason: 'NOT_ONLINE_PAYMENT' },
         },
       },
       PAYMENT_METHOD_UNAVAILABLE: {
@@ -424,5 +499,60 @@ export class CheckoutController {
       throw new BadRequestException('Idempotency-Key must be a UUID');
     }
     return result.data;
+  }
+  // Buyer hủy cả nhóm CHƯA thanh toán (Week8.md 2.6) — logic hủy do module order làm (reclaimCheckoutGroup
+  // với actor BUYER), route đặt ở checkout như các route nhóm khác. Idempotent: nhóm đã hủy trả lại
+  // trạng thái hiện tại. Trả cùng hình dạng GET /checkout/groups/:groupId.
+  @Post('groups/:groupId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({
+    summary:
+      'Hủy cả nhóm đơn CHƯA thanh toán — nhả giữ chỗ tồn kho và lượt voucher (idempotent)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Trạng thái nhóm sau khi hủy (status CANCELLED)',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          ...CHECKOUT_GROUP_EXAMPLE,
+          status: 'CANCELLED',
+          canRetry: false,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Chưa đăng nhập',
+    schema: { example: UNAUTHORIZED_EXAMPLE },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Nhóm không tồn tại hoặc không phải của bạn',
+    schema: { example: errorExample('Checkout group not found') },
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'ORDER_CANCEL_NOT_ALLOWED (details.reason: PAID_ONLINE = nhóm đã thanh toán); ORDER_INVALID_TRANSITION = nhóm không còn đơn chờ thanh toán',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'This checkout group has already been paid',
+        code: 'ORDER_CANCEL_NOT_ALLOWED',
+        details: { reason: 'PAID_ONLINE' },
+      },
+    },
+  })
+  cancelGroup(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('groupId') groupId: string,
+  ) {
+    return this.checkoutService.cancelCheckoutGroup(user.userId, groupId);
   }
 }

@@ -17,6 +17,13 @@ interface UpdateShopFormProps {
   defaultValues: UpdateShopInput;
   onSubmit: (values: UpdateShopInput) => void | Promise<void>;
   isSubmitting?: boolean;
+  // Khoá toàn bộ form (shop PENDING/SUSPENDED, Week8.md 3C): mọi ô disabled và KHÔNG có nút gửi — không ẩn
+  // form để chủ shop vẫn thấy thông tin hiện tại. Lý do khoá do nơi dùng hiển thị (ShopEditLockedHint).
+  isReadOnly?: boolean;
+  // Id đoạn giải thích vì sao khoá, gắn `aria-describedby` cho từng ô khi isReadOnly.
+  readOnlyHintId?: string;
+  // 'resubmit' (shop bị từ chối): nút chính là "Lưu và gửi duyệt lại"; mặc định 'save' ("Lưu thay đổi").
+  submitVariant?: 'save' | 'resubmit';
 }
 
 // Cùng field với BecomeSellerForm (Bước 3.6) nhưng tất cả optional (schema
@@ -24,7 +31,14 @@ interface UpdateShopFormProps {
 // shop qua `values` (không phải `defaultValues` của react-hook-form) — `values`
 // tự đồng bộ lại form khi prop đổi (vd sau khi useMyShop() refetch xong), phù
 // hợp dữ liệu tới bất đồng bộ hơn `defaultValues` (chỉ áp dụng lúc mount).
-export function UpdateShopForm({ defaultValues, onSubmit, isSubmitting }: UpdateShopFormProps) {
+export function UpdateShopForm({
+  defaultValues,
+  onSubmit,
+  isSubmitting,
+  isReadOnly = false,
+  readOnlyHintId,
+  submitVariant = 'save',
+}: UpdateShopFormProps) {
   const t = useTranslations('shop');
   const tv = useValidationMessage();
   const {
@@ -35,6 +49,7 @@ export function UpdateShopForm({ defaultValues, onSubmit, isSubmitting }: Update
     resolver: zodResolver(updateShopSchema),
     values: defaultValues,
   });
+  const describedBy = isReadOnly ? readOnlyHintId : undefined;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate>
@@ -44,6 +59,8 @@ export function UpdateShopForm({ defaultValues, onSubmit, isSubmitting }: Update
           <Input
             id="update-shop-name"
             type="text"
+            disabled={isReadOnly}
+            aria-describedby={describedBy}
             aria-invalid={!!errors.name}
             {...register('name')}
           />
@@ -56,6 +73,8 @@ export function UpdateShopForm({ defaultValues, onSubmit, isSubmitting }: Update
           </FieldLabel>
           <Textarea
             id="update-shop-description"
+            disabled={isReadOnly}
+            aria-describedby={describedBy}
             aria-invalid={!!errors.description}
             {...register('description')}
           />
@@ -68,6 +87,8 @@ export function UpdateShopForm({ defaultValues, onSubmit, isSubmitting }: Update
             id="update-shop-logo-url"
             type="text"
             placeholder="https://..."
+            disabled={isReadOnly}
+            aria-describedby={describedBy}
             aria-invalid={!!errors.logoUrl}
             {...register('logoUrl')}
           />
@@ -82,15 +103,25 @@ export function UpdateShopForm({ defaultValues, onSubmit, isSubmitting }: Update
             id="update-shop-banner-url"
             type="text"
             placeholder="https://..."
+            disabled={isReadOnly}
+            aria-describedby={describedBy}
             aria-invalid={!!errors.bannerUrl}
             {...register('bannerUrl')}
           />
           {errors.bannerUrl && <FieldError>{tv(errors.bannerUrl.message)}</FieldError>}
         </Field>
 
-        <Button type="submit" disabled={isSubmitting} className="mt-2">
-          {isSubmitting ? t('updateShopSubmitting') : t('updateShopSubmit')}
-        </Button>
+        {isReadOnly ? null : (
+          <Button type="submit" disabled={isSubmitting} className="mt-2">
+            {submitVariant === 'resubmit'
+              ? isSubmitting
+                ? t('resubmitShopSubmitting')
+                : t('resubmitShopSubmit')
+              : isSubmitting
+                ? t('updateShopSubmitting')
+                : t('updateShopSubmit')}
+          </Button>
+        )}
       </FieldGroup>
     </form>
   );

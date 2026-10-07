@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { readSeedAdminConfig, seedAdmin } from './seed-admin';
 
 const prisma = new PrismaClient();
 
@@ -62,6 +63,9 @@ const platformVouchers: PlatformVoucherSeed[] = [
 ];
 
 async function main() {
+  // Đọc cấu hình admin TRƯỚC khi ghi bất kỳ thứ gì: ENV khai sai thì dừng ngay, không seed dở dang.
+  const adminConfig = readSeedAdminConfig(process.env);
+
   // update: {} — chạy lại seed không ghi đè usedCount/isActive đã đổi tay, chỉ
   // tạo thêm mã còn thiếu.
   for (const voucher of platformVouchers) {
@@ -90,6 +94,15 @@ async function main() {
         },
       });
     }
+  }
+
+  if (adminConfig) {
+    const result = await seedAdmin(prisma, adminConfig);
+    console.log(`Seed tài khoản ADMIN (${adminConfig.email}): ${result}.`);
+  } else {
+    console.log(
+      'Bỏ qua seed ADMIN (chưa khai SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD).',
+    );
   }
 }
 

@@ -1,22 +1,22 @@
-"use client";
+'use client';
 
-import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
-import { Button } from "@/shared/components/ui/button";
-import { ApiError } from "@/shared/lib/api-client";
+import { Button } from '@/shared/components/ui/button';
+import { ApiError } from '@/shared/lib/api-client';
 
-import { resendVerification } from "../services/auth.service";
+import { resendVerification } from '../services/auth.service';
 
 interface ResendVerificationButtonProps {
-  size?: "default" | "sm";
+  size?: 'default' | 'sm';
 }
 
 // Dùng lại được ở nhiều chỗ (banner toàn app, trang /verify-email khi hết
 // hạn/không hợp lệ) — chỉ hoạt động khi đã đăng nhập (BE yêu cầu JwtAuthGuard),
 // nơi gọi tự quyết định có hiện component này hay không dựa vào useAuthStore.
-export function ResendVerificationButton({ size = "default" }: ResendVerificationButtonProps) {
-  const t = useTranslations("auth");
+export function ResendVerificationButton({ size = 'default' }: ResendVerificationButtonProps) {
+  const t = useTranslations('auth');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -27,9 +27,7 @@ export function ResendVerificationButton({ size = "default" }: ResendVerificatio
       const result = await resendVerification();
       setFeedback(result.message);
     } catch (err) {
-      setFeedback(
-        err instanceof ApiError ? err.message : t("resendVerificationGenericError"),
-      );
+      setFeedback(err instanceof ApiError ? err.message : t('resendVerificationGenericError'));
     } finally {
       setIsSubmitting(false);
     }
@@ -38,7 +36,7 @@ export function ResendVerificationButton({ size = "default" }: ResendVerificatio
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Button variant="outline" size={size} onClick={handleClick} disabled={isSubmitting}>
-        {isSubmitting ? t("resendVerificationSubmitting") : t("resendVerificationSubmit")}
+        {isSubmitting ? t('resendVerificationSubmitting') : t('resendVerificationSubmit')}
       </Button>
       {feedback && <p className="text-sm">{feedback}</p>}
     </div>

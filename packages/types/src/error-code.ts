@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { paymentMethodSchema, paymentMethodUnavailableReasonSchema } from './payment';
+import { shopStatusSchema } from './shop';
 
 // Mã lỗi máy đọc được (Week7.md 1.16). Response lỗi có dạng
 //   { success: false, data: null, message, code?, details? }
@@ -37,6 +38,19 @@ export const SERVER_ERROR_CODES = [
   'PAYMENT_METHOD_UNAVAILABLE',
   'ADDRESS_LIMIT_REACHED',
   'PAYMENT_RETRY_NOT_ALLOWED',
+  // Đơn hàng
+  'ORDER_NOT_FOUND',
+  'ORDER_INVALID_TRANSITION',
+  'ORDER_CANCEL_NOT_ALLOWED',
+  'ORDER_ALREADY_CHANGED',
+  // Chuyển trạng thái shop (Admin duyệt/từ chối/khoá/mở khoá, chủ shop gửi duyệt lại): shop không còn ở
+  // trạng thái cho phép chuyển (đã có người khác xử lý, hoặc cạnh/actor không có trong
+  // SHOP_STATUS_TRANSITIONS) — gộp "sai trạng thái lúc đọc" và "thua race" làm 1 vì với người dùng cả hai
+  // đều nghĩa là dữ liệu đang xem đã cũ.
+  'SHOP_INVALID_TRANSITION',
+  // Sửa thông tin shop khi trạng thái không cho phép (PENDING đang chờ duyệt, SUSPENDED đang bị khoá) —
+  // details.status cho FE giải thích đúng lý do.
+  'SHOP_EDIT_NOT_ALLOWED',
 ] as const;
 export type ServerErrorCode = (typeof SERVER_ERROR_CODES)[number];
 
@@ -77,9 +91,17 @@ export const errorDetailsSchemas = {
     method: paymentMethodSchema,
     reason: paymentMethodUnavailableReasonSchema,
   }),
+  // NOT_ONLINE_PAYMENT: nhóm COD — không có cổng thanh toán để thử lại.
   PAYMENT_RETRY_NOT_ALLOWED: z.object({
-    reason: z.enum(['ATTEMPT_PENDING', 'HOLD_EXPIRED', 'ALREADY_PAID']),
+    reason: z.enum(['ATTEMPT_PENDING', 'HOLD_EXPIRED', 'ALREADY_PAID', 'NOT_ONLINE_PAYMENT']),
   }),
+  // PAID_ONLINE: đơn đã thanh toán online (hủy + hoàn tiền: Tuần 9); PROCESSING_STARTED: shop đã xác
+  // nhận hoặc đã xử lý tiếp (hủy sau xác nhận: Tuần 9).
+  ORDER_CANCEL_NOT_ALLOWED: z.object({
+    reason: z.enum(['PAID_ONLINE', 'PROCESSING_STARTED']),
+  }),
+  // Trạng thái HIỆN TẠI của shop lúc bị từ chối sửa.
+  SHOP_EDIT_NOT_ALLOWED: z.object({ status: shopStatusSchema }),
 } as const;
 
 // Kiểu `details` theo từng mã: mã KHÔNG có trong map là mã không có details.

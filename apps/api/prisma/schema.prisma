@@ -48,6 +48,15 @@ enum ShopStatus {
   SUSPENDED
 }
 
+// Ai thực hiện 1 lần chuyển trạng thái shop (ShopStatusHistory.actorType). OWNER = chủ shop (nộp lại
+// hồ sơ bị từ chối); SYSTEM = backfill/hệ thống, không có actorId. Không dùng lại OrderActorType (của
+// module khác).
+enum ShopActorType {
+  OWNER
+  ADMIN
+  SYSTEM
+}
+
 enum ProductStatus {
   DRAFT
   PUBLISHED
@@ -65,9 +74,21 @@ enum OrderStatus {
   REFUNDED
 }
 
+// Ai thực hiện 1 lần chuyển trạng thái đơn (OrderStatusHistory.actorType). SYSTEM = job/cổng thanh
+// toán (hết hạn thanh toán, tự hoàn tất đơn, callback VNPay...), không có actorId.
+enum OrderActorType {
+  BUYER
+  SELLER
+  ADMIN
+  SYSTEM
+}
+
 enum PaymentMethod {
   VNPAY
   MOMO
+  // Thanh toán khi nhận hàng (Week8.md 1.6) — không có cổng; Payment COD ở PENDING tới khi đơn
+  // COMPLETED mới chuyển SUCCESS, và không bao giờ hết hạn (expiresAt = null).
+  COD
 }
 
 enum PaymentStatus {
@@ -185,27 +206,59 @@ model Address {
 // khe hở race hiếm gặp (2 request POST /shops gần như đồng thời) để không
 // giả định cứng "sẽ không bao giờ cần multi-shop".
 model Shop {
-  id          String     @id @default(uuid())
-  ownerId     String     @map("owner_id")
-  name        String
-  slug        String     @unique
-  logoUrl     String?    @map("logo_url")
-  bannerUrl   String?    @map("banner_url")
-  description String?
-  status      ShopStatus @default(PENDING)
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+  id              String     @id @default(uuid())
+  ownerId         String     @map("owner_id")
+  name            String
+  slug            String     @unique
+  logoUrl         String?    @map("logo_url")
+  bannerUrl       String?    @map("banner_url")
+  description     String?
+  status          ShopStatus @default(PENDING)
+  // Lý do của trạng thái HIỆN TẠI do Admin nhập (từ chối hoặc khoá); null khi PENDING/APPROVED. Là
+  // bản sao có chủ đích để banner seller và danh sách Admin không phải đọc ShopStatusHistory mỗi lần
+  // render — nguồn audit đầy đủ là ShopStatusHistory (ghi cùng transaction ở ShopStatusService).
+  statusReason    String?    @map("status_reason")
+  // Mốc đổi trạng thái gần nhất (hàng chờ duyệt xếp theo cột này, shop nộp lại xếp theo lúc nộp lại).
+  // KHÔNG dùng updatedAt: updatedAt đổi cả khi chủ shop sửa thông tin. Denormalization có chủ đích
+  // (= ShopStatusHistory.createdAt mới nhất) để khỏi MAX() mỗi lần truy vấn; chỉ ShopStatusService
+  // được ghi cột này.
+  statusChangedAt DateTime   @default(now()) @map("status_changed_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner         User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   addresses     Address[]
   products      Product[]
   variants      ProductVariant[]
   orders        Order[]
   vouchers      Voucher[]
   conversations Conversation[]
+  statusHistory ShopStatusHistory[]
 
   @@index([ownerId])
+  // Hàng chờ duyệt: WHERE status = 'PENDING' ORDER BY status_changed_at (Week8.md 3C).
+  @@index([status, statusChangedAt])
   @@map("shops")
+}
+
+// Lịch sử đổi trạng thái shop (cùng mẫu OrderStatusHistory): audit + nguồn suy ra "lý do từ chối lần
+// trước" và "số lần nộp lại" ở danh sách Admin. fromStatus null = mốc tạo shop. Không có cột `action`
+// — suy ra từ cặp (from -> to). `note` là LÝ DO DO NGƯỜI NHẬP, hiển thị được cho seller; không bao giờ
+// ghi chuỗi hệ thống vào đây (dòng backfill phân biệt bằng actorType = SYSTEM, không bằng note).
+model ShopStatusHistory {
+  id         String        @id @default(uuid())
+  shopId     String        @map("shop_id")
+  fromStatus ShopStatus?   @map("from_status")
+  toStatus   ShopStatus    @map("to_status")
+  actorType  ShopActorType @map("actor_type")
+  actorId    String?       @map("actor_id")
+  note       String?
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, createdAt])
+  @@map("shop_status_histories")
 }
 
 // =========================================================
@@ -461,18 +514,33 @@ model Order {
   shippingWard        String @map("shipping_ward")
   shippingProvince    String @map("shipping_province")
 
+  // Thông tin vận chuyển Seller nhập tay lúc chuyển PACKED -> SHIPPING (Week8.md 1.10) — text tự do,
+  // không bắt buộc, không tích hợp hãng vận chuyển thật.
+  carrier      String?
+  trackingCode String? @map("tracking_code")
+
+  // Lời nhắn của người mua cho ĐÚNG shop của đơn này (Week8.md 3B) — mỗi đơn một lời nhắn riêng nên
+  // shop A không thấy lời nhắn gửi shop B. Văn bản thuần, đã trim, tối đa 500 ký tự
+  // (ORDER_NOTE_MAX_LENGTH), không bao giờ là chuỗi rỗng (rỗng ⇒ NULL), đặt xong không sửa.
+  // Khác OrderStatusHistory.note (lý do đổi trạng thái do shop/hệ thống ghi).
+  buyerNote String? @map("buyer_note") @db.VarChar(500)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user          User          @relation(fields: [userId], references: [id])
-  shop          Shop          @relation(fields: [shopId], references: [id])
-  voucher       Voucher?      @relation(fields: [voucherId], references: [id])
-  checkoutGroup CheckoutGroup @relation(fields: [checkoutGroupId], references: [id])
+  user          User                 @relation(fields: [userId], references: [id])
+  shop          Shop                 @relation(fields: [shopId], references: [id])
+  voucher       Voucher?             @relation(fields: [voucherId], references: [id])
+  checkoutGroup CheckoutGroup        @relation(fields: [checkoutGroupId], references: [id])
   items         OrderItem[]
   reviews       Review[]
+  statusHistory OrderStatusHistory[]
 
-  @@index([userId])
-  @@index([shopId])
+  // Khớp đúng query Tuần 8 (Week8.md 1.11): danh sách đơn của buyer (userId, mới nhất trước) và của
+  // seller (shopId + lọc status, mới nhất trước). Cột đứng đầu đã tự phục vụ mọi query theo
+  // userId/shopId trước đây nên thay thế hẳn index đơn cũ (rules/backend.md mục 4).
+  @@index([userId, createdAt])
+  @@index([shopId, status, createdAt])
   @@index([checkoutGroupId])
   @@index([voucherId])
   @@map("orders")
@@ -500,6 +568,26 @@ model OrderItem {
   @@map("order_items")
 }
 
+// Timeline trạng thái đơn (Week8.md 1.3/1.4) — NGUỒN SỰ THẬT duy nhất cho "đơn đổi trạng thái lúc
+// nào, ai đổi, vì sao" (thời điểm giao/hoàn tất/hủy, lý do hủy ở `note`), không có cột riêng trên
+// Order. Mọi lần đổi Order.status đi qua OrderStatusService và ghi 1 dòng ở đây trong cùng
+// transaction. fromStatus = null là mốc tạo đơn.
+model OrderStatusHistory {
+  id         String         @id @default(uuid())
+  orderId    String         @map("order_id")
+  fromStatus OrderStatus?   @map("from_status")
+  toStatus   OrderStatus    @map("to_status")
+  actorType  OrderActorType @map("actor_type")
+  actorId    String?        @map("actor_id")
+  note       String?
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_status_histories")
+}
+
 // 1 Payment (1 giao dịch VNPay/Momo) có thể trả cho nhiều Order (nhiều shop)
 // cùng lúc, gộp nhóm qua checkoutGroupId — không FK trực tiếp tới Order.
 model Payment {
@@ -515,7 +603,9 @@ model Payment {
   amount          Decimal       @db.Decimal(12, 2)
   payUrl          String?       @map("pay_url")
   paidAt          DateTime?     @map("paid_at")
-  expiresAt       DateTime      @map("expires_at")
+  // null = không hết hạn (chỉ COD, Week8.md 1.6). PaymentExpiryJob lọc `expiresAt < now` nên tự bỏ
+  // qua NULL (so sánh với NULL không bao giờ đúng).
+  expiresAt       DateTime?     @map("expires_at")
   createdAt       DateTime      @default(now()) @map("created_at")
 
   checkoutGroup CheckoutGroup @relation(fields: [checkoutGroupId], references: [id])
