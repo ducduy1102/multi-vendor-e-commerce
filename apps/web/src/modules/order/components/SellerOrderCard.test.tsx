@@ -35,6 +35,7 @@ function order(overrides: Partial<SellerOrderListItem> = {}): SellerOrderListIte
     canPack: false,
     canShip: false,
     canReject: true,
+    canCancel: false,
     buyerNote: null,
     ...overrides,
   };

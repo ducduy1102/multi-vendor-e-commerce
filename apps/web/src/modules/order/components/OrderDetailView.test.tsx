@@ -41,6 +41,8 @@ function order(overrides: Partial<OrderDetail> = {}): OrderDetail {
     paymentMethod: 'COD',
     paymentStatus: 'PENDING',
     canCancel: false,
+    canRequestCancel: false,
+    canRequestReturn: false,
     canConfirmReceived: false,
     canRetryPayment: false,
     recipientName: 'Nguyễn Văn A',

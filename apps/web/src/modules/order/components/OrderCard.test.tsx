@@ -33,6 +33,8 @@ function order(overrides: Partial<OrderListItem> = {}): OrderListItem {
     paymentMethod: 'COD',
     paymentStatus: 'PENDING',
     canCancel: false,
+    canRequestCancel: false,
+    canRequestReturn: false,
     canConfirmReceived: false,
     canRetryPayment: false,
     ...overrides,

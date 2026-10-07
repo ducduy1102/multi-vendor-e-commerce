@@ -45,6 +45,8 @@ const BUYER_LIST_ITEM = {
   paymentMethod: 'COD',
   paymentStatus: 'PENDING',
   canCancel: true,
+  canRequestCancel: false,
+  canRequestReturn: false,
   canConfirmReceived: false,
   canRetryPayment: false,
 };
@@ -81,6 +83,7 @@ const SELLER_LIST_ITEM = {
   canPack: false,
   canShip: false,
   canReject: true,
+  canCancel: false,
 };
 
 const SELLER_DETAIL = {
