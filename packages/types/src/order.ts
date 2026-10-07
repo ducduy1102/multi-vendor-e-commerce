@@ -1,15 +1,11 @@
 import { z } from 'zod';
 import { checkoutOrderItemSchema } from './checkout';
-import { orderStatusSchema, type OrderStatus } from './order-status';
+import { optionalText } from './optional-text';
+import { orderActorTypeSchema, orderStatusSchema, type OrderStatus } from './order-status';
 import { paymentMethodSchema, paymentStatusSchema } from './payment';
 
 // Số tiền VND luôn là chuỗi số nguyên đồng trong RESPONSE (cùng quy ước CartView/CheckoutGroup).
 const moneySchema = z.string();
-
-// Ai thực hiện 1 lần chuyển trạng thái — khớp enum OrderActorType của Prisma. Response KHÔNG trả
-// `actorId` (không lộ định danh người dùng/seller cho phía bên kia).
-export const orderActorTypeSchema = z.enum(['BUYER', 'SELLER', 'ADMIN', 'SYSTEM']);
-export type OrderActorType = z.infer<typeof orderActorTypeSchema>;
 
 // --- Tab trạng thái (Week8.md 1.11) ------------------------------------------------------------
 // Định nghĩa 1 lần ở đây cho cả FE (hiển thị tab) lẫn BE (lọc theo tab). Tab là NHÓM trạng thái,
@@ -180,16 +176,6 @@ export type SellerOrderDetail = z.infer<typeof sellerOrderDetailSchema>;
 
 export const ORDER_REASON_MAX_LENGTH = 500;
 export const ORDER_SHIPPING_FIELD_MAX_LENGTH = 100;
-
-// Input HTML bỏ trống gửi chuỗi rỗng "" — coi như chưa nhập (cùng cách `shop.ts`: `.transform()` ở
-// CUỐI chain, không dùng z.preprocess để giữ input type cho zodResolver).
-const optionalText = (maxLength: number, tooLongMessage: string) =>
-  z
-    .string()
-    .trim()
-    .max(maxLength, tooLongMessage)
-    .optional()
-    .transform((value) => (value === '' ? undefined : value));
 
 // POST /orders/:id/cancel — lý do tuỳ chọn.
 export const cancelOrderSchema = z.object({

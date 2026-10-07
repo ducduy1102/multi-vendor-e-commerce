@@ -13,6 +13,8 @@ export * from './address';
 export * from './payment';
 export * from './order-status';
 export * from './order';
+export * from './refund';
+export * from './review';
 export * from './checkout';
 export * from './safe-next-path';
 export * from './error-code';

@@ -255,6 +255,14 @@ export const productSchema = z.object({
 });
 export type Product = z.infer<typeof productSchema>;
 
+// Điểm đánh giá denormalized (cột Product.avgRating/reviewCount, Week9.md 1.8): 0/0 khi chưa có đánh giá
+// nào, FE chỉ hiện sao khi reviewCount > 0. Chỉ trả ở response PUBLIC (card + chi tiết); các response của
+// seller (create/update/archive, danh sách shop) không cần.
+const ratingShape = {
+  avgRating: z.number().min(0).max(5),
+  reviewCount: z.number().int().nonnegative(),
+};
+
 // Chỉ GET /products/:slug (chi tiết — ProductService.getProduct) trả thêm
 // `shop` — create/update/archive dùng chung productSchema ở trên, không join
 // bảng shops nên không có field này (Week5.md Bước 1.5/2.2-2.3, khớp
@@ -263,6 +271,7 @@ export type Product = z.infer<typeof productSchema>;
 // field này có mặt hay không.
 export const productDetailSchema = productSchema.extend({
   shop: z.object({ name: z.string(), slug: z.string() }),
+  ...ratingShape,
 });
 export type ProductDetail = z.infer<typeof productDetailSchema>;
 
@@ -337,6 +346,7 @@ export const productCardSchema = z.object({
   minPrice: z.string(),
   maxPrice: z.string(),
   imageUrl: z.string().nullable(),
+  ...ratingShape,
 });
 export type ProductCard = z.infer<typeof productCardSchema>;
 

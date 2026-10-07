@@ -43,6 +43,23 @@ export const SERVER_ERROR_CODES = [
   'ORDER_INVALID_TRANSITION',
   'ORDER_CANCEL_NOT_ALLOWED',
   'ORDER_ALREADY_CHANGED',
+  // Yêu cầu hủy/trả hàng của người mua (Week9.md 1.3/1.4). NOT_ALLOWED kèm details.reason; INVALID_TRANSITION
+  // gộp "sai trạng thái lúc đọc" và "thua race" như SHOP_INVALID_TRANSITION; PENDING = seller đóng gói/giao
+  // đơn trong lúc người mua đang xin hủy (phải trả lời yêu cầu trước).
+  'REFUND_REQUEST_NOT_ALLOWED',
+  'REFUND_REQUEST_NOT_FOUND',
+  'REFUND_REQUEST_INVALID_TRANSITION',
+  'REFUND_REQUEST_PENDING',
+  // Hoàn tiền ra khỏi hệ thống (sổ cái PaymentRefund, màn Admin): không có khoản hoàn đó, khoản hoàn không
+  // ở trạng thái thử lại được, thanh toán không còn gì để hoàn.
+  'PAYMENT_REFUND_NOT_FOUND',
+  'PAYMENT_REFUND_NOT_RETRYABLE',
+  'PAYMENT_NOT_REFUNDABLE',
+  // Đánh giá sản phẩm (Week9.md 1.8). EDIT_NOT_ALLOWED = đã sửa một lần rồi (hoặc không phải của mình ở
+  // chỗ không muốn lộ là có đánh giá).
+  'REVIEW_NOT_ALLOWED',
+  'REVIEW_NOT_FOUND',
+  'REVIEW_EDIT_NOT_ALLOWED',
   // Chuyển trạng thái shop (Admin duyệt/từ chối/khoá/mở khoá, chủ shop gửi duyệt lại): shop không còn ở
   // trạng thái cho phép chuyển (đã có người khác xử lý, hoặc cạnh/actor không có trong
   // SHOP_STATUS_TRANSITIONS) — gộp "sai trạng thái lúc đọc" và "thua race" làm 1 vì với người dùng cả hai
@@ -95,10 +112,29 @@ export const errorDetailsSchemas = {
   PAYMENT_RETRY_NOT_ALLOWED: z.object({
     reason: z.enum(['ATTEMPT_PENDING', 'HOLD_EXPIRED', 'ALREADY_PAID', 'NOT_ONLINE_PAYMENT']),
   }),
-  // PAID_ONLINE: đơn đã thanh toán online (hủy + hoàn tiền: Tuần 9); PROCESSING_STARTED: shop đã xác
-  // nhận hoặc đã xử lý tiếp (hủy sau xác nhận: Tuần 9).
+  // PROCESSING_STARTED: shop đã xác nhận/đóng gói — không hủy ngay được, người mua gửi yêu cầu hủy
+  // (Week9.md 1.3); IN_TRANSIT: đơn đã giao cho vận chuyển, không hủy được. PAID_ONLINE (đơn PENDING đã
+  // trả online) sẽ BỊ BỎ khi chính sách hủy mới thay `getCancelBlockReason` (Week9.md 2.3) — đơn đó từ
+  // giờ hủy ngay được kèm hoàn tiền; còn nằm đây chỉ vì BE hiện vẫn trả mã đó.
   ORDER_CANCEL_NOT_ALLOWED: z.object({
-    reason: z.enum(['PAID_ONLINE', 'PROCESSING_STARTED']),
+    reason: z.enum(['PAID_ONLINE', 'PROCESSING_STARTED', 'IN_TRANSIT']),
+  }),
+  // Vì sao không gửi được yêu cầu hủy/trả hàng: NOT_ELIGIBLE_STATUS (đơn không ở CONFIRMED/PACKED/
+  // COMPLETED), WINDOW_EXPIRED (quá cửa sổ trả hàng kể từ lúc COMPLETED), ALREADY_REQUESTED (đã có yêu cầu
+  // cùng loại chưa rút), PAYMENT_NOT_COLLECTED (đơn online chưa có thanh toán thành công để hoàn).
+  REFUND_REQUEST_NOT_ALLOWED: z.object({
+    reason: z.enum([
+      'NOT_ELIGIBLE_STATUS',
+      'WINDOW_EXPIRED',
+      'ALREADY_REQUESTED',
+      'PAYMENT_NOT_COLLECTED',
+    ]),
+  }),
+  // Vì sao không đánh giá được: ORDER_NOT_COMPLETED (đơn chưa COMPLETED), NOT_PURCHASED (đơn không chứa sản
+  // phẩm đó), WINDOW_EXPIRED (quá REVIEW_WINDOW_DAYS kể từ lúc COMPLETED), ALREADY_REVIEWED (đã đánh giá
+  // sản phẩm này trong đơn này).
+  REVIEW_NOT_ALLOWED: z.object({
+    reason: z.enum(['ORDER_NOT_COMPLETED', 'NOT_PURCHASED', 'WINDOW_EXPIRED', 'ALREADY_REVIEWED']),
   }),
   // Trạng thái HIỆN TẠI của shop lúc bị từ chối sửa.
   SHOP_EDIT_NOT_ALLOWED: z.object({ status: shopStatusSchema }),
