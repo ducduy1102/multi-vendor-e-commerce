@@ -1,21 +1,75 @@
 import type { OrderStatus, PaymentMethod } from '@prisma/client';
+import type { RefundRequestKind } from '@ecommerce/types';
 import {
   canRetryOrderPayment,
   getBuyerOrderActions,
   getCancelBlockReason,
   getSellerOrderActions,
+  isWithinRefundWindow,
+  type BuyerOrderActionsInput,
   type RetryPaymentInput,
 } from './order-actions';
 import { ORDER_STATUS_TRANSITIONS } from './checkout-group-status';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const NOW = new Date('2026-10-10T10:00:00.000Z');
+const daysAgo = (days: number) => new Date(NOW.getTime() - days * DAY_MS);
+
+const ALL_STATUSES: readonly OrderStatus[] = [
+  'AWAITING_PAYMENT',
+  'PENDING',
+  'CONFIRMED',
+  'PACKED',
+  'SHIPPING',
+  'COMPLETED',
+  'CANCELLED',
+  'REFUNDED',
+];
+
+describe('isWithinRefundWindow', () => {
+  it('còn trong cửa sổ khi chưa quá hạn', () => {
+    expect(isWithinRefundWindow(daysAgo(3), NOW, 7)).toBe(true);
+  });
+
+  it('đúng thời điểm hết hạn vẫn còn trong cửa sổ (hạn chót bao gồm), sau 1 ms thì hết', () => {
+    const completedAt = daysAgo(7);
+
+    expect(isWithinRefundWindow(completedAt, NOW, 7)).toBe(true);
+    expect(
+      isWithinRefundWindow(completedAt, new Date(NOW.getTime() + 1), 7),
+    ).toBe(false);
+  });
+
+  it('cửa sổ tính theo số ngày cấu hình', () => {
+    expect(isWithinRefundWindow(daysAgo(10), NOW, 7)).toBe(false);
+    expect(isWithinRefundWindow(daysAgo(10), NOW, 15)).toBe(true);
+  });
+});
 
 describe('getBuyerOrderActions', () => {
   const actions = (
     status: OrderStatus,
     paymentMethod: PaymentMethod | null,
     canRetryPayment = false,
-  ) => getBuyerOrderActions({ status, paymentMethod, canRetryPayment });
+    extra: Partial<
+      Pick<
+        BuyerOrderActionsInput,
+        'completedAt' | 'existingRequestKinds' | 'refundWindowDays'
+      >
+    > = {},
+  ) =>
+    getBuyerOrderActions({
+      status,
+      paymentMethod,
+      canRetryPayment,
+      completedAt: null,
+      now: NOW,
+      refundWindowDays: 7,
+      existingRequestKinds: [],
+      ...extra,
+    });
 
-  describe('canCancel — chỉ khi chưa đụng tới tiền thật (Week8.md 1.5)', () => {
+  describe('canCancel — hủy NGAY, chưa đụng tới tiền thật (Week8.md 1.5)', () => {
     it('đơn chưa thanh toán: hủy được (theo cả nhóm thanh toán)', () => {
       expect(actions('AWAITING_PAYMENT', 'VNPAY').canCancel).toBe(true);
     });
@@ -24,8 +78,10 @@ describe('getBuyerOrderActions', () => {
       expect(actions('PENDING', 'COD').canCancel).toBe(true);
     });
 
+    // Chính sách mới (Week9.md 1.3) cho hủy ngay cả đơn đã trả online, nhưng cờ chỉ bật ở 2.6 cùng lúc có
+    // RefundService + route — test này ghim đúng trạng thái trung gian để không bật cờ sớm (nút bấm ra 409).
     it.each(['VNPAY', 'MOMO'] as const)(
-      'đơn đã trả online (%s) chờ xác nhận: CHƯA hủy được (hoàn tiền: Tuần 9)',
+      'đơn đã trả online (%s) chờ xác nhận: cờ canCancel CHƯA bật (mở ở 2.6 cùng RefundService)',
       (method) => {
         expect(actions('PENDING', method).canCancel).toBe(false);
       },
@@ -40,6 +96,114 @@ describe('getBuyerOrderActions', () => {
       'REFUNDED',
     ] as const)('đơn %s không hủy được (kể cả COD)', (status) => {
       expect(actions(status, 'COD').canCancel).toBe(false);
+    });
+  });
+
+  describe('canRequestCancel — gửi yêu cầu hủy khi shop đã xác nhận/đóng gói (Week9.md 1.3)', () => {
+    it.each(['COD', 'VNPAY', 'MOMO'] as const)(
+      'CONFIRMED và PACKED (%s): gửi được yêu cầu hủy',
+      (method) => {
+        expect(actions('CONFIRMED', method).canRequestCancel).toBe(true);
+        expect(actions('PACKED', method).canRequestCancel).toBe(true);
+      },
+    );
+
+    it.each(ALL_STATUSES.filter((s) => s !== 'CONFIRMED' && s !== 'PACKED'))(
+      '%s: không có yêu cầu hủy (chờ xác nhận thì hủy ngay, giao rồi thì không hủy)',
+      (status) => {
+        expect(actions(status, 'COD').canRequestCancel).toBe(false);
+        expect(actions(status, 'VNPAY').canRequestCancel).toBe(false);
+      },
+    );
+
+    it('đã có yêu cầu hủy (chưa rút) thì tắt — mỗi đơn tối đa một yêu cầu mỗi loại', () => {
+      expect(
+        actions('CONFIRMED', 'COD', false, { existingRequestKinds: ['CANCEL'] })
+          .canRequestCancel,
+      ).toBe(false);
+    });
+
+    it('chỉ có yêu cầu TRẢ HÀNG thì không chặn yêu cầu hủy (khác loại)', () => {
+      expect(
+        actions('CONFIRMED', 'COD', false, { existingRequestKinds: ['RETURN'] })
+          .canRequestCancel,
+      ).toBe(true);
+    });
+
+    it('canRequestCancel không bao giờ cùng bật với canCancel (hủy ngay vs xin hủy loại trừ nhau)', () => {
+      for (const status of ALL_STATUSES) {
+        for (const method of ['COD', 'VNPAY', null] as const) {
+          const a = actions(status, method);
+          expect(a.canCancel && a.canRequestCancel).toBe(false);
+        }
+      }
+    });
+  });
+
+  describe('canRequestReturn — yêu cầu trả hàng/hoàn tiền sau khi nhận, trong cửa sổ (Week9.md 1.3)', () => {
+    it('COMPLETED còn trong cửa sổ: gửi được (cả COD và online)', () => {
+      for (const method of ['COD', 'VNPAY'] as const) {
+        expect(
+          actions('COMPLETED', method, false, { completedAt: daysAgo(3) })
+            .canRequestReturn,
+        ).toBe(true);
+      }
+    });
+
+    it('đúng ngày hết hạn vẫn gửi được, quá hạn thì tắt', () => {
+      expect(
+        actions('COMPLETED', 'COD', false, { completedAt: daysAgo(7) })
+          .canRequestReturn,
+      ).toBe(true);
+      expect(
+        actions('COMPLETED', 'COD', false, {
+          completedAt: new Date(daysAgo(7).getTime() - 1),
+        }).canRequestReturn,
+      ).toBe(false);
+    });
+
+    it('cửa sổ lấy từ cấu hình (refundWindowDays)', () => {
+      expect(
+        actions('COMPLETED', 'COD', false, {
+          completedAt: daysAgo(10),
+          refundWindowDays: 15,
+        }).canRequestReturn,
+      ).toBe(true);
+      expect(
+        actions('COMPLETED', 'COD', false, {
+          completedAt: daysAgo(10),
+          refundWindowDays: 7,
+        }).canRequestReturn,
+      ).toBe(false);
+    });
+
+    it('COMPLETED mà không rõ lúc hoàn tất (thiếu dòng lịch sử): không bật — thà khoá còn hơn mở không hạn', () => {
+      expect(
+        actions('COMPLETED', 'COD', false, { completedAt: null })
+          .canRequestReturn,
+      ).toBe(false);
+    });
+
+    it.each(ALL_STATUSES.filter((s) => s !== 'COMPLETED'))(
+      '%s: không trả hàng được dù có completedAt (chưa nhận, hoặc đã hủy/hoàn)',
+      (status) => {
+        expect(
+          actions(status, 'COD', false, { completedAt: daysAgo(1) })
+            .canRequestReturn,
+        ).toBe(false);
+      },
+    );
+
+    it('đã có yêu cầu trả hàng thì tắt; yêu cầu HỦY cũ không chặn (khác loại)', () => {
+      const kinds = (existingRequestKinds: RefundRequestKind[]) =>
+        actions('COMPLETED', 'COD', false, {
+          completedAt: daysAgo(1),
+          existingRequestKinds,
+        }).canRequestReturn;
+
+      expect(kinds(['RETURN'])).toBe(false);
+      expect(kinds(['CANCEL'])).toBe(true);
+      expect(kinds(['CANCEL', 'RETURN'])).toBe(false);
     });
   });
 
@@ -187,8 +351,12 @@ describe('canRetryOrderPayment', () => {
 });
 
 describe('getSellerOrderActions', () => {
-  const actions = (status: OrderStatus, paymentMethod: PaymentMethod | null) =>
-    getSellerOrderActions({ status, paymentMethod });
+  const actions = (
+    status: OrderStatus,
+    paymentMethod: PaymentMethod | null,
+    hasBlockingCancelRequest = false,
+  ) =>
+    getSellerOrderActions({ status, paymentMethod, hasBlockingCancelRequest });
 
   it.each([
     ['PENDING', { canConfirm: true, canPack: false, canShip: false }],
@@ -212,17 +380,18 @@ describe('getSellerOrderActions', () => {
         canPack: false,
         canShip: false,
         canReject: false,
+        canCancel: false,
       });
     },
   );
 
-  describe('canReject — chỉ đơn COD chưa thu tiền (hoàn tiền online: Tuần 9)', () => {
+  describe('canReject — hiện vẫn chỉ đơn COD chưa thu tiền (online: mở ở 2.7 cùng RefundService)', () => {
     it('PENDING + COD: từ chối được', () => {
       expect(actions('PENDING', 'COD').canReject).toBe(true);
     });
 
     it.each(['VNPAY', 'MOMO'] as const)(
-      'PENDING + %s (đã trả online): CHƯA từ chối được',
+      'PENDING + %s (đã trả online): cờ canReject CHƯA bật',
       (method) => {
         expect(actions('PENDING', method).canReject).toBe(false);
       },
@@ -233,11 +402,58 @@ describe('getSellerOrderActions', () => {
     });
 
     it.each(['CONFIRMED', 'PACKED', 'SHIPPING'] as const)(
-      '%s (kể cả COD): không từ chối được sau khi đã xác nhận',
+      '%s (kể cả COD): không từ chối được sau khi đã xác nhận (dùng "hủy đơn" thay thế)',
       (status) => {
         expect(actions(status, 'COD').canReject).toBe(false);
       },
     );
+  });
+
+  describe('canCancel — seller tự hủy đơn đã xác nhận/đóng gói (Week9.md 1.3)', () => {
+    it.each(['COD', 'VNPAY', 'MOMO', null] as const)(
+      'CONFIRMED và PACKED (%s): hủy được',
+      (method) => {
+        expect(actions('CONFIRMED', method).canCancel).toBe(true);
+        expect(actions('PACKED', method).canCancel).toBe(true);
+      },
+    );
+
+    it.each(ALL_STATUSES.filter((s) => s !== 'CONFIRMED' && s !== 'PACKED'))(
+      '%s: không hủy kiểu này (chờ xác nhận thì từ chối; đã giao thì không hủy được)',
+      (status) => {
+        expect(actions(status, 'COD').canCancel).toBe(false);
+      },
+    );
+
+    it('canReject và canCancel không bao giờ cùng bật (mỗi trạng thái đúng một đường)', () => {
+      for (const status of ALL_STATUSES) {
+        for (const method of ['COD', 'VNPAY', null] as const) {
+          const a = actions(status, method);
+          expect(a.canReject && a.canCancel).toBe(false);
+        }
+      }
+    });
+  });
+
+  describe('đang có yêu cầu HỦY của người mua chờ xử lý (Week9.md 1.3)', () => {
+    it('tắt đóng gói và giao hàng — phải phản hồi yêu cầu trước', () => {
+      expect(actions('CONFIRMED', 'COD', true).canPack).toBe(false);
+      expect(actions('PACKED', 'COD', true).canShip).toBe(false);
+    });
+
+    it('KHÔNG chặn tự hủy (hủy chính là cách trả lời) và không đụng tới xác nhận/từ chối', () => {
+      expect(actions('CONFIRMED', 'COD', true).canCancel).toBe(true);
+      expect(actions('PACKED', 'COD', true).canCancel).toBe(true);
+      expect(actions('PENDING', 'COD', true)).toMatchObject({
+        canConfirm: true,
+        canReject: true,
+      });
+    });
+
+    it('không có yêu cầu chờ thì đóng gói/giao như bình thường', () => {
+      expect(actions('CONFIRMED', 'COD', false).canPack).toBe(true);
+      expect(actions('PACKED', 'COD', false).canShip).toBe(true);
+    });
   });
 
   it.each([
@@ -245,6 +461,8 @@ describe('getSellerOrderActions', () => {
     ['canPack', 'CONFIRMED', 'PACKED'],
     ['canShip', 'PACKED', 'SHIPPING'],
     ['canReject', 'PENDING', 'CANCELLED'],
+    ['canCancel', 'CONFIRMED', 'CANCELLED'],
+    ['canCancel', 'PACKED', 'CANCELLED'],
   ] as const)(
     '%s ứng với cạnh hợp lệ %s → %s của ORDER_STATUS_TRANSITIONS',
     (_flag, from, to) => {
@@ -259,19 +477,24 @@ describe('getCancelBlockReason', () => {
   });
 
   it.each(['VNPAY', 'MOMO', null] as const)(
-    'PENDING + %s: PAID_ONLINE (hoàn tiền: Tuần 9; không rõ phương thức thì chặn cho an toàn)',
+    'PENDING + %s: PAID_ONLINE (còn tới 2.6/2.7 khi hủy ngay kèm hoàn tiền; không rõ phương thức thì chặn cho an toàn)',
     (method) => {
       expect(getCancelBlockReason('PENDING', method)).toBe('PAID_ONLINE');
     },
   );
 
-  it.each(['CONFIRMED', 'PACKED', 'SHIPPING'] as const)(
-    '%s: PROCESSING_STARTED (kể cả COD)',
+  it.each(['CONFIRMED', 'PACKED'] as const)(
+    '%s: PROCESSING_STARTED (kể cả COD) — người mua gửi yêu cầu hủy thay vì hủy ngay',
     (status) => {
       expect(getCancelBlockReason(status, 'COD')).toBe('PROCESSING_STARTED');
       expect(getCancelBlockReason(status, 'VNPAY')).toBe('PROCESSING_STARTED');
     },
   );
+
+  it('SHIPPING: IN_TRANSIT (hàng đã giao cho vận chuyển, không hủy được) — tách khỏi PROCESSING_STARTED', () => {
+    expect(getCancelBlockReason('SHIPPING', 'COD')).toBe('IN_TRANSIT');
+    expect(getCancelBlockReason('SHIPPING', 'VNPAY')).toBe('IN_TRANSIT');
+  });
 
   it.each(['AWAITING_PAYMENT', 'COMPLETED', 'CANCELLED', 'REFUNDED'] as const)(
     '%s: không có lý do đặc biệt (nơi gọi báo ORDER_INVALID_TRANSITION / hủy theo nhóm)',

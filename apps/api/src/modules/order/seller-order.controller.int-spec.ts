@@ -629,4 +629,113 @@ describe('SellerOrderController (HTTP thật)', () => {
       );
     });
   });
+
+  // Week9.md 2.3 — cờ của seller khi người mua có yêu cầu HỦY: chặn đóng gói/giao nhưng không chặn tự hủy.
+  // Query thật (relation `refundRequests` lọc status ≠ WITHDRAWN) chạy trên Postgres chứ không phải mock.
+  describe('yêu cầu hủy của người mua (Week9.md 2.3)', () => {
+    const flagsOf = async (orderId: string) => {
+      const res = await sellerA.get(`/api/v1/shops/${shopA}/orders`);
+      expect(res.status).toBe(200);
+      const item = sellerOrderListResponseSchema
+        .parse(body(res))
+        .items.find((o) => o.id === orderId);
+      expect(item).toBeDefined();
+      return item!;
+    };
+
+    const requestFor = (
+      orderId: string,
+      status:
+        'PENDING_SELLER' | 'ESCALATED' | 'REJECTED_BY_SELLER' | 'WITHDRAWN',
+      kind: 'CANCEL' | 'RETURN' = 'CANCEL',
+    ) =>
+      prisma.refundRequest.create({
+        data: {
+          orderId,
+          shopId: shopA,
+          userId: buyerId,
+          kind,
+          status,
+          reasonCode: 'OTHER',
+          reasonNote: 'it',
+          sellerRespondBy: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        },
+        select: { id: true },
+      });
+
+    it('CONFIRMED: đóng gói được và tự hủy được khi chưa có yêu cầu nào', async () => {
+      const id = await seedOrder({
+        buyerId,
+        shopId: shopA,
+        status: 'CONFIRMED',
+        createdAt: new Date('2026-10-01T11:00:00.000Z'),
+      });
+
+      expect(await flagsOf(id)).toMatchObject({
+        canPack: true,
+        canCancel: true,
+        canReject: false,
+      });
+    });
+
+    it('yêu cầu hủy đang chờ seller (PENDING_SELLER) hoặc chờ Admin (ESCALATED) ⇒ tắt đóng gói/giao, vẫn tự hủy được', async () => {
+      const confirmedId = await seedOrder({
+        buyerId,
+        shopId: shopA,
+        status: 'CONFIRMED',
+        createdAt: new Date('2026-10-01T11:01:00.000Z'),
+      });
+      const packedId = await seedOrder({
+        buyerId,
+        shopId: shopA,
+        status: 'PACKED',
+        createdAt: new Date('2026-10-01T11:02:00.000Z'),
+      });
+      await requestFor(confirmedId, 'PENDING_SELLER');
+      await requestFor(packedId, 'ESCALATED');
+
+      expect(await flagsOf(confirmedId)).toMatchObject({
+        canPack: false,
+        canShip: false,
+        canCancel: true,
+      });
+      expect(await flagsOf(packedId)).toMatchObject({
+        canPack: false,
+        canShip: false,
+        canCancel: true,
+      });
+    });
+
+    it('yêu cầu đã bị seller từ chối hoặc người mua đã rút thì không còn chặn', async () => {
+      const rejectedId = await seedOrder({
+        buyerId,
+        shopId: shopA,
+        status: 'CONFIRMED',
+        createdAt: new Date('2026-10-01T11:03:00.000Z'),
+      });
+      const withdrawnId = await seedOrder({
+        buyerId,
+        shopId: shopA,
+        status: 'CONFIRMED',
+        createdAt: new Date('2026-10-01T11:04:00.000Z'),
+      });
+      await requestFor(rejectedId, 'REJECTED_BY_SELLER');
+      await requestFor(withdrawnId, 'WITHDRAWN');
+
+      expect((await flagsOf(rejectedId)).canPack).toBe(true);
+      expect((await flagsOf(withdrawnId)).canPack).toBe(true);
+    });
+
+    it('yêu cầu TRẢ HÀNG không chặn gì ở đơn đang xử lý (loại yêu cầu quyết định)', async () => {
+      const id = await seedOrder({
+        buyerId,
+        shopId: shopA,
+        status: 'CONFIRMED',
+        createdAt: new Date('2026-10-01T11:05:00.000Z'),
+      });
+      await requestFor(id, 'PENDING_SELLER', 'RETURN');
+
+      expect((await flagsOf(id)).canPack).toBe(true);
+    });
+  });
 });

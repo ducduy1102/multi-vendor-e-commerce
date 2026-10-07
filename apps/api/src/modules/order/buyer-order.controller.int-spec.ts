@@ -39,6 +39,9 @@ interface SeedOrder {
   userId: string;
   status: OrderStatus;
   createdAt?: Date;
+  // Lúc đơn chuyển sang `status` (dòng lịch sử `→ status`); mặc định mốc cố định trong quá khứ. Cần đặt
+  // tường minh khi test cửa sổ trả hàng — mốc cố định sẽ hết hạn dần theo thời gian thật.
+  statusAt?: Date;
   itemCount?: number;
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
@@ -125,7 +128,8 @@ describe('BuyerOrderController (HTTP thật)', () => {
                     fromStatus: 'AWAITING_PAYMENT' as const,
                     toStatus: input.status,
                     actorType: 'SYSTEM' as const,
-                    createdAt: new Date('2026-10-01T10:05:00.000Z'),
+                    createdAt:
+                      input.statusAt ?? new Date('2026-10-01T10:05:00.000Z'),
                   },
                 ]
               : []),
@@ -460,6 +464,138 @@ describe('BuyerOrderController (HTTP thật)', () => {
 
       expect(res.status).toBe(404);
       expect(JSON.stringify(res.body)).not.toContain(NOTE_1);
+    });
+  });
+
+  // Week9.md 2.3 — cờ xin hủy / xin trả hàng đọc từ DB thật: yêu cầu chưa rút (relation `refundRequests`
+  // lọc status ≠ WITHDRAWN) và lúc COMPLETED (dòng lịch sử `→ COMPLETED`, lọc ở select của danh sách).
+  describe('yêu cầu hủy/trả hàng (Week9.md 2.3)', () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const daysAgo = (days: number) => new Date(Date.now() - days * DAY_MS);
+
+    const flagsOf = async (orderId: string) => {
+      const list = orderListResponseSchema.parse(
+        ((await getList(a, '?limit=50')).body as { data: unknown }).data,
+      );
+      const item = list.items.find((o) => o.id === orderId);
+      expect(item).toBeDefined();
+      return item!;
+    };
+
+    const requestFor = async (
+      orderId: string,
+      status: 'PENDING_SELLER' | 'WITHDRAWN',
+      kind: 'CANCEL' | 'RETURN',
+    ) => {
+      const order = await prisma.order.findUniqueOrThrow({
+        where: { id: orderId },
+        select: { shopId: true, userId: true },
+      });
+      await prisma.refundRequest.create({
+        data: {
+          orderId,
+          shopId: order.shopId,
+          userId: order.userId,
+          kind,
+          status,
+          reasonCode: 'OTHER',
+          reasonNote: 'it',
+          sellerRespondBy: new Date(Date.now() + 2 * DAY_MS),
+        },
+      });
+    };
+
+    it('shop đã xác nhận/đóng gói: xin hủy được; có yêu cầu hủy chưa rút thì tắt; rút rồi bật lại', async () => {
+      const id = await seedOrder({
+        userId: userAId,
+        status: 'CONFIRMED',
+        paymentStatus: 'SUCCESS',
+      });
+
+      expect(await flagsOf(id)).toMatchObject({
+        canRequestCancel: true,
+        canCancel: false,
+        canRequestReturn: false,
+      });
+
+      await requestFor(id, 'PENDING_SELLER', 'CANCEL');
+      expect((await flagsOf(id)).canRequestCancel).toBe(false);
+
+      await prisma.refundRequest.updateMany({
+        where: { orderId: id },
+        data: { status: 'WITHDRAWN' },
+      });
+      expect((await flagsOf(id)).canRequestCancel).toBe(true);
+    });
+
+    it('yêu cầu TRẢ HÀNG không chặn yêu cầu hủy (khác loại)', async () => {
+      const id = await seedOrder({
+        userId: userAId,
+        status: 'PACKED',
+        paymentStatus: 'SUCCESS',
+      });
+      await requestFor(id, 'PENDING_SELLER', 'RETURN');
+
+      expect((await flagsOf(id)).canRequestCancel).toBe(true);
+    });
+
+    it('đơn COMPLETED: trả hàng được trong cửa sổ 7 ngày kể từ lúc hoàn tất, quá hạn thì tắt (cả danh sách lẫn chi tiết)', async () => {
+      const fresh = await seedOrder({
+        userId: userAId,
+        status: 'COMPLETED',
+        paymentStatus: 'SUCCESS',
+        statusAt: daysAgo(2),
+      });
+      const expired = await seedOrder({
+        userId: userAId,
+        status: 'COMPLETED',
+        paymentStatus: 'SUCCESS',
+        statusAt: daysAgo(8),
+      });
+
+      expect((await flagsOf(fresh)).canRequestReturn).toBe(true);
+      expect((await flagsOf(expired)).canRequestReturn).toBe(false);
+
+      // Chi tiết đọc lúc COMPLETED từ ĐỦ lịch sử (không phải select lọc của danh sách) nhưng cùng kết quả.
+      const detail = orderDetailSchema.parse(
+        ((await a.get(`/api/v1/orders/${fresh}`)).body as { data: unknown })
+          .data,
+      );
+      expect(detail.canRequestReturn).toBe(true);
+      const expiredDetail = orderDetailSchema.parse(
+        ((await a.get(`/api/v1/orders/${expired}`)).body as { data: unknown })
+          .data,
+      );
+      expect(expiredDetail.canRequestReturn).toBe(false);
+    });
+
+    it('đã có yêu cầu trả hàng (chưa rút) thì tắt; yêu cầu hủy cũ không chặn', async () => {
+      const id = await seedOrder({
+        userId: userAId,
+        status: 'COMPLETED',
+        paymentStatus: 'SUCCESS',
+        statusAt: daysAgo(1),
+      });
+      await requestFor(id, 'PENDING_SELLER', 'CANCEL');
+      expect((await flagsOf(id)).canRequestReturn).toBe(true);
+
+      await requestFor(id, 'PENDING_SELLER', 'RETURN');
+      expect((await flagsOf(id)).canRequestReturn).toBe(false);
+    });
+
+    it('người mua khác KHÔNG thấy yêu cầu của đơn này trong cờ của mình (cờ theo đơn của chính mình)', async () => {
+      const id = await seedOrder({
+        userId: userBId,
+        status: 'CONFIRMED',
+        paymentStatus: 'SUCCESS',
+      });
+      await requestFor(id, 'PENDING_SELLER', 'CANCEL');
+
+      const list = orderListResponseSchema.parse(
+        ((await getList(a, '?limit=50')).body as { data: unknown }).data,
+      );
+      expect(list.items.find((o) => o.id === id)).toBeUndefined();
+      expect((await a.get(`/api/v1/orders/${id}`)).status).toBe(404);
     });
   });
 });

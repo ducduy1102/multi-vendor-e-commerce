@@ -37,17 +37,31 @@ describe('ORDER_STATUS_TRANSITIONS / isValidOrderTransition', () => {
     expect(isValidOrderTransition('CANCELLED', 'PENDING')).toBe(false);
   });
 
-  it('bảng chuyển đúng như đã chốt (Week8.md 1.3)', () => {
+  it('bảng chuyển đúng như đã chốt (Week8.md 1.3, thêm 3 cạnh ở Week9.md 1.4)', () => {
     expect(ORDER_STATUS_TRANSITIONS).toEqual({
       AWAITING_PAYMENT: ['PENDING', 'CANCELLED'],
       PENDING: ['CONFIRMED', 'CANCELLED'],
-      CONFIRMED: ['PACKED'],
-      PACKED: ['SHIPPING'],
+      CONFIRMED: ['PACKED', 'CANCELLED'],
+      PACKED: ['SHIPPING', 'CANCELLED'],
       SHIPPING: ['COMPLETED'],
-      COMPLETED: [],
+      COMPLETED: ['REFUNDED'],
       CANCELLED: [],
       REFUNDED: [],
     });
+  });
+
+  it('3 cạnh mới của Tuần 9: hủy sau xác nhận/đóng gói và hoàn trả sau khi hoàn tất', () => {
+    expect(isValidOrderTransition('CONFIRMED', 'CANCELLED')).toBe(true);
+    expect(isValidOrderTransition('PACKED', 'CANCELLED')).toBe(true);
+    expect(isValidOrderTransition('COMPLETED', 'REFUNDED')).toBe(true);
+  });
+
+  it('đang giao (SHIPPING) KHÔNG hủy được; hủy rồi không hoàn trả; đơn chưa hoàn tất không REFUNDED', () => {
+    expect(isValidOrderTransition('SHIPPING', 'CANCELLED')).toBe(false);
+    expect(isValidOrderTransition('CANCELLED', 'REFUNDED')).toBe(false);
+    expect(isValidOrderTransition('SHIPPING', 'REFUNDED')).toBe(false);
+    expect(isValidOrderTransition('PACKED', 'REFUNDED')).toBe(false);
+    expect(isValidOrderTransition('REFUNDED', 'COMPLETED')).toBe(false);
   });
 
   it('luồng chính đi được từng bước tới COMPLETED', () => {
@@ -68,11 +82,12 @@ describe('ORDER_STATUS_TRANSITIONS / isValidOrderTransition', () => {
     expect(isValidOrderTransition('PENDING', 'SHIPPING')).toBe(false);
     expect(isValidOrderTransition('CONFIRMED', 'PENDING')).toBe(false);
     expect(isValidOrderTransition('SHIPPING', 'CONFIRMED')).toBe(false);
-    expect(isValidOrderTransition('PACKED', 'CANCELLED')).toBe(false); // hủy sau xác nhận: Tuần 9
     expect(isValidOrderTransition('SHIPPING', 'CANCELLED')).toBe(false);
-    for (const terminal of ['COMPLETED', 'CANCELLED', 'REFUNDED'] as const) {
+    for (const terminal of ['CANCELLED', 'REFUNDED'] as const) {
       expect(ORDER_STATUS_TRANSITIONS[terminal]).toEqual([]);
     }
+    // COMPLETED không còn là trạng thái cuối: chỉ còn một đường đi tiếp, REFUNDED (trả hàng được duyệt).
+    expect(ORDER_STATUS_TRANSITIONS.COMPLETED).toEqual(['REFUNDED']);
   });
 
   it('không có cạnh nào trỏ vào chính nó', () => {
@@ -239,6 +254,84 @@ describe('deriveCheckoutGroupStatus', () => {
       NOW,
     );
     expect(status).toBe('PAID');
+  });
+
+  // Week9.md 1.2/1.3 — giá trị dẫn xuất phải biết các trạng thái mới (note-nestjs.md BL).
+  describe('sau hoàn tiền / hoàn trả (Week9.md)', () => {
+    it('đã hoàn đủ tiền (Payment REFUNDED), mọi đơn đã CANCELLED/REFUNDED ⇒ CANCELLED, KHÔNG rơi nhầm xuống "lần thử mới nhất" thành PAYMENT_FAILED/EXPIRED', () => {
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('CANCELLED'), order('CANCELLED')],
+          [payment('REFUNDED', PAST)],
+          NOW,
+        ),
+      ).toBe('CANCELLED');
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('REFUNDED'), order('CANCELLED')],
+          [payment('REFUNDED', PAST)],
+          NOW,
+        ),
+      ).toBe('CANCELLED');
+      // Cùng kết quả dù lần thử đã quá hạn từ lâu (bug cũ: PAYMENT_EXPIRED).
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('REFUNDED')],
+          [payment('REFUNDED', PAST)],
+          NOW,
+        ),
+      ).toBe('CANCELLED');
+    });
+
+    it('mọi đơn REFUNDED mà Payment còn SUCCESS (hoàn tiền đang chạy) ⇒ PAID, không phải PAID_AFTER_EXPIRY', () => {
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('REFUNDED')],
+          [payment('SUCCESS', PAST)],
+          NOW,
+        ),
+      ).toBe('PAID');
+    });
+
+    it('hoàn một phần: Payment vẫn SUCCESS, còn đơn COMPLETED ⇒ PAID', () => {
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('REFUNDED'), order('COMPLETED')],
+          [payment('SUCCESS', PAST)],
+          NOW,
+        ),
+      ).toBe('PAID');
+    });
+
+    it('PAID_AFTER_EXPIRY chỉ dành cho đơn CANCELLED (thanh toán đến trễ), không phải REFUNDED', () => {
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('CANCELLED'), order('REFUNDED')],
+          [payment('SUCCESS', PAST)],
+          NOW,
+        ),
+      ).toBe('PAID');
+    });
+
+    it('COD hủy toàn bộ: Payment COD CANCELLED ("không thu") ⇒ CANCELLED', () => {
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('CANCELLED'), order('CANCELLED')],
+          [payment('CANCELLED', null, PAST, 'COD')],
+          NOW,
+        ),
+      ).toBe('CANCELLED');
+    });
+
+    it('nhóm còn đơn đang sống thì REFUNDED/CANCELLED của đơn khác không làm nhóm "kết thúc"', () => {
+      expect(
+        deriveCheckoutGroupStatus(
+          [order('REFUNDED'), order('PENDING')],
+          [payment('PENDING', null, PAST, 'COD')],
+          NOW,
+        ),
+      ).toBe('COD_PLACED');
+    });
   });
 });
 

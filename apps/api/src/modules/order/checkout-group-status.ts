@@ -4,16 +4,18 @@ import type { CheckoutGroupStatus } from '@ecommerce/types';
 // Bảng chuyển trạng thái Order hợp lệ (Week7.md 1.13, mở rộng ở Week8.md 1.3). Chỉ nói cạnh nào hợp lệ
 // về mặt trạng thái; AI được làm cạnh nào (buyer/seller/hệ thống) và điều kiện kèm theo (vd chỉ đơn COD
 // mới hủy được ở PENDING) là luật của service nghiệp vụ. Thực thi thật nằm ở OrderStatusService.transition
-// (UPDATE có điều kiện WHERE status = ...). REFUNDED và hủy sau CONFIRMED: Tuần 9.
+// (UPDATE có điều kiện WHERE status = ...). Tuần 9 (Week9.md 1.3/1.4) thêm 3 cạnh: CONFIRMED/PACKED →
+// CANCELLED (seller tự hủy hoặc duyệt yêu cầu hủy của người mua) và COMPLETED → REFUNDED (duyệt yêu cầu
+// trả hàng sau khi nhận). SHIPPING → CANCELLED vẫn KHÔNG hợp lệ: hàng đã giao cho vận chuyển.
 export const ORDER_STATUS_TRANSITIONS: Readonly<
   Record<OrderStatus, readonly OrderStatus[]>
 > = {
   AWAITING_PAYMENT: ['PENDING', 'CANCELLED'],
   PENDING: ['CONFIRMED', 'CANCELLED'],
-  CONFIRMED: ['PACKED'],
-  PACKED: ['SHIPPING'],
+  CONFIRMED: ['PACKED', 'CANCELLED'],
+  PACKED: ['SHIPPING', 'CANCELLED'],
   SHIPPING: ['COMPLETED'],
-  COMPLETED: [],
+  COMPLETED: ['REFUNDED'],
   CANCELLED: [],
   REFUNDED: [],
 };
@@ -47,12 +49,20 @@ export function deriveCheckoutGroupStatus(
   const hasSuccess = payments.some((p) => p.status === 'SUCCESS');
   const allCancelled =
     orders.length > 0 && orders.every((o) => o.status === 'CANCELLED');
+  // "Đã kết thúc": hủy trước giao (CANCELLED) hoặc hoàn trả sau giao (REFUNDED, Week9.md 1.3). Không
+  // coi REFUNDED là đã kết thúc thì nhóm đã hoàn hết tiền (Payment REFUNDED) rơi xuống nhánh "lần thử
+  // mới nhất" bên dưới và bị báo nhầm PAYMENT_FAILED/PAYMENT_EXPIRED (giá trị dẫn xuất phải tính lại ở
+  // mọi sự kiện làm nó đổi — note-nestjs.md BL).
+  const allEnded =
+    orders.length > 0 &&
+    orders.every((o) => o.status === 'CANCELLED' || o.status === 'REFUNDED');
 
   if (hasSuccess) {
-    // Thanh toán muộn sau khi nhóm đã bị thu hồi (1.4) — mọi đơn CANCELLED dù có tiền vào.
+    // Thanh toán muộn sau khi nhóm đã bị thu hồi (1.4) — mọi đơn CANCELLED dù có tiền vào. Chỉ CANCELLED,
+    // không tính REFUNDED: đơn REFUNDED là đơn đã giao rồi được hoàn, không phải thanh toán đến trễ.
     return allCancelled ? 'PAID_AFTER_EXPIRY' : 'PAID';
   }
-  if (allCancelled) return 'CANCELLED';
+  if (allEnded) return 'CANCELLED';
 
   // Chưa có Payment SUCCESS và đơn chưa bị huỷ hết ⇒ nhìn LẦN THỬ MỚI NHẤT (theo createdAt).
   const latest = [...payments].sort(

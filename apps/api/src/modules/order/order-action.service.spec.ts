@@ -428,7 +428,7 @@ describe('OrderActionService', () => {
       },
     );
 
-    it.each(['CONFIRMED', 'PACKED', 'SHIPPING'] as const)(
+    it.each(['CONFIRMED', 'PACKED'] as const)(
       'đơn %s: 409 ORDER_CANCEL_NOT_ALLOWED / PROCESSING_STARTED',
       async (status) => {
         tx.order.findFirst.mockResolvedValue(loaded(status, 'COD'));
@@ -443,6 +443,21 @@ describe('OrderActionService', () => {
         );
       },
     );
+
+    // Week9.md 1.3: đơn đã giao cho vận chuyển là lý do riêng (IN_TRANSIT), không còn gộp vào
+    // PROCESSING_STARTED — FE phân biệt được "gửi yêu cầu hủy" với "không hủy được nữa".
+    it('đơn SHIPPING: 409 ORDER_CANCEL_NOT_ALLOWED / IN_TRANSIT', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'COD'));
+
+      await expectAppException(
+        service.reject('shop-1', 'seller-1', 'o1', 'x'),
+        {
+          status: 409,
+          code: 'ORDER_CANCEL_NOT_ALLOWED',
+          details: { reason: 'IN_TRANSIT' },
+        },
+      );
+    });
 
     it.each(['AWAITING_PAYMENT', 'COMPLETED', 'CANCELLED'] as const)(
       'đơn %s: 409 ORDER_INVALID_TRANSITION',

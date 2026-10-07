@@ -92,7 +92,12 @@ export const orderListItemSchema = z.object({
   // Thanh toán gắn theo NHÓM (1 Payment cho N đơn) — đây là lần thử mới nhất của nhóm.
   paymentMethod: paymentMethodSchema.nullable(),
   paymentStatus: paymentStatusSchema.nullable(),
+  // Hủy NGAY (không cần ai duyệt): đơn chưa thanh toán, đơn chờ shop xác nhận.
   canCancel: z.boolean(),
+  // Gửi YÊU CẦU hủy (shop đã xác nhận/đóng gói) / yêu cầu trả hàng-hoàn tiền (đã nhận, trong cửa sổ hoàn trả)
+  // — Week9.md 1.3. Đã có yêu cầu cùng loại (chưa rút) thì tắt.
+  canRequestCancel: z.boolean(),
+  canRequestReturn: z.boolean(),
   canConfirmReceived: z.boolean(),
   canRetryPayment: z.boolean(),
 });
@@ -144,9 +149,12 @@ export const sellerOrderListItemSchema = z.object({
   paymentMethod: paymentMethodSchema.nullable(),
   paymentStatus: paymentStatusSchema.nullable(),
   canConfirm: z.boolean(),
+  // Tắt khi buyer đang có yêu cầu HỦY chờ xử lý: phải phản hồi yêu cầu trước (Week9.md 1.3).
   canPack: z.boolean(),
   canShip: z.boolean(),
   canReject: z.boolean(),
+  // Seller tự hủy đơn đã xác nhận/đóng gói (Week9.md 1.3).
+  canCancel: z.boolean(),
 });
 export type SellerOrderListItem = z.infer<typeof sellerOrderListItemSchema>;
 

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  blocksSellerFulfilment,
   ORDER_LIST_PREVIEW_ITEMS,
   ORDER_STATUSES_VISIBLE_TO_SELLER,
   ORDER_TAB_STATUSES,
@@ -13,7 +14,7 @@ import {
   type SellerOrderListQuery,
   type SellerOrderListResponse,
 } from '@ecommerce/types';
-import type { Prisma } from '@prisma/client';
+import type { OrderStatus, Prisma } from '@prisma/client';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { readPaymentMaxHoldMinutes } from '../../shared/payment/payment-config';
 import { PrismaService } from '../../shared/prisma/prisma.service';
@@ -22,6 +23,7 @@ import {
   getBuyerOrderActions,
   getSellerOrderActions,
 } from './order-actions';
+import { readRefundWindowDays } from './refund-config';
 import { sellerVisibleOrderFilter } from './seller-order-visibility';
 
 // Số tiền VND luôn là chuỗi số nguyên đồng trong response (cùng quy ước CartView/CheckoutGroup).
@@ -45,6 +47,23 @@ const paymentSelect = {
   createdAt: true,
 } satisfies Prisma.PaymentSelect;
 
+// Chỉ dòng `→ COMPLETED` mới nhất — đủ tính cửa sổ trả hàng (Week9.md 1.3) cho cờ canRequestReturn ở danh
+// sách mà không kéo cả timeline. Chi tiết ghi đè bằng đủ lịch sử (historyArgs), nên hàm
+// latestCompletedAt phải lọc theo toStatus chứ không giả định mọi dòng đều là COMPLETED.
+const completedAtArgs = {
+  where: { toStatus: 'COMPLETED' },
+  orderBy: { createdAt: 'desc' },
+  take: 1,
+  select: { toStatus: true, createdAt: true },
+} satisfies Prisma.Order$statusHistoryArgs;
+
+// Loại yêu cầu hủy/trả hàng ĐÃ CÓ (chưa rút) của đơn — cho cờ canRequestCancel/canRequestReturn. Mỗi đơn
+// tối đa một yêu cầu mỗi loại nên danh sách này tối đa 2 dòng.
+const refundRequestKindsArgs = {
+  where: { status: { not: 'WITHDRAWN' } },
+  select: { kind: true },
+} satisfies Prisma.Order$refundRequestsArgs;
+
 const listSelect = {
   id: true,
   checkoutGroupId: true,
@@ -64,7 +83,22 @@ const listSelect = {
       payments: { select: paymentSelect, orderBy: { createdAt: 'desc' } },
     },
   },
+  statusHistory: completedAtArgs,
+  refundRequests: refundRequestKindsArgs,
 } satisfies Prisma.OrderSelect;
+
+// Lúc đơn COMPLETED gần nhất trong 1 danh sách dòng lịch sử (rỗng/không có ⇒ null).
+function latestCompletedAt(
+  history: readonly { toStatus: OrderStatus; createdAt: Date }[],
+): Date | null {
+  return history
+    .filter((entry) => entry.toStatus === 'COMPLETED')
+    .reduce<Date | null>(
+      (latest, entry) =>
+        latest === null || entry.createdAt > latest ? entry.createdAt : latest,
+      null,
+    );
+}
 
 // Timeline cũ → mới. KHÔNG select actorId — không bên nào (buyer/seller) cần định danh người thực hiện.
 const historyArgs = {
@@ -120,6 +154,12 @@ const sellerListSelect = {
         take: 1,
       },
     },
+  },
+  // Yêu cầu của người mua để tắt canPack/canShip khi đang có yêu cầu HỦY chờ xử lý (Week9.md 1.3) —
+  // kind + status vừa đủ cho blocksSellerFulfilment; không đọc lý do/ghi chú của người mua ở danh sách.
+  refundRequests: {
+    where: { status: { not: 'WITHDRAWN' } },
+    select: { kind: true, status: true },
   },
 } satisfies Prisma.OrderSelect;
 
@@ -330,6 +370,9 @@ export class OrderQueryService {
       ...getSellerOrderActions({
         status: order.status,
         paymentMethod: latest?.method ?? null,
+        hasBlockingCancelRequest: order.refundRequests.some((request) =>
+          blocksSellerFulfilment(request.kind, request.status),
+        ),
       }),
     };
   }
@@ -363,6 +406,10 @@ export class OrderQueryService {
         now,
         maxHoldMinutes: readPaymentMaxHoldMinutes(),
       }),
+      completedAt: latestCompletedAt(order.statusHistory),
+      now,
+      refundWindowDays: readRefundWindowDays(),
+      existingRequestKinds: order.refundRequests.map((request) => request.kind),
     });
 
     return {
