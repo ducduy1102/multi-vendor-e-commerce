@@ -1116,6 +1116,18 @@ describe('ProductService', () => {
       expect(result.shop).toEqual({ name: 'ABC Shop', slug: 'abc-shop' });
     });
 
+    // Week9.md 1.8/2.2 — điểm đánh giá denormalized phải ra response (z.object phía FE tự strip field
+    // lạ, nhưng ở chiều ngược lại thiếu field thì parse hỏng), và việc tách `shop` ra không được làm rơi
+    // chúng.
+    it('trả avgRating/reviewCount của sản phẩm (cột denormalized), giữ nguyên khi tách shop', async () => {
+      mockDetailRow({ status: 'PUBLISHED', avgRating: 4.5, reviewCount: 12 });
+
+      const result = await service.getProduct('product-1');
+      expect(result.avgRating).toBe(4.5);
+      expect(result.reviewCount).toBe(12);
+      expect(result).not.toHaveProperty('shop.ownerId');
+    });
+
     it('guest/public KHÔNG xem được product DRAFT — 404 (không lộ có tồn tại)', async () => {
       mockDetailRow({ status: 'DRAFT' });
 
@@ -1220,6 +1232,9 @@ describe('ProductService', () => {
           slug: true,
           minPrice: true,
           maxPrice: true,
+          // Điểm đánh giá denormalized (Week9.md 1.8) — card hiện sao khi reviewCount > 0.
+          avgRating: true,
+          reviewCount: true,
           variants: {
             where: { isActive: true },
             orderBy: { createdAt: 'asc' },
@@ -1353,6 +1368,43 @@ describe('ProductService', () => {
       expect(result.total).toBe(2);
       expect(result.page).toBe(1);
       expect(result.limit).toBe(12);
+    });
+
+    // Week9.md 1.8/2.2 — card mang điểm đánh giá denormalized của sản phẩm (không tính lại từ review).
+    it('card trả nguyên avgRating/reviewCount của từng sản phẩm', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'p1',
+          categoryId: 'cat-1',
+          name: 'Áo thun',
+          slug: 'ao-thun',
+          minPrice: '100000',
+          maxPrice: '150000',
+          avgRating: 4.75,
+          reviewCount: 8,
+          variants: [],
+        },
+        {
+          id: 'p2',
+          categoryId: 'cat-1',
+          name: 'Quần jean',
+          slug: 'quan-jean',
+          minPrice: '200000',
+          maxPrice: '200000',
+          avgRating: 0,
+          reviewCount: 0,
+          variants: [],
+        },
+      ]);
+      prisma.product.count.mockResolvedValue(2);
+
+      const result = await service.listPublicProducts(baseQuery);
+
+      expect(result.items[0]).toMatchObject({
+        avgRating: 4.75,
+        reviewCount: 8,
+      });
+      expect(result.items[1]).toMatchObject({ avgRating: 0, reviewCount: 0 });
     });
 
     // Week5.md Bước 1.6-1.9/2.4b/2.5 — search full-text theo q. Việc "có
