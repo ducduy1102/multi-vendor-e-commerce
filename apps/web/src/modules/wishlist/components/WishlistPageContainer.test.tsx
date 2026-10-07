@@ -28,6 +28,8 @@ function makeItem(overrides: Partial<WishlistItem> = {}): WishlistItem {
     minPrice: '100000',
     maxPrice: '150000',
     imageUrl: null,
+    avgRating: 0,
+    reviewCount: 0,
     isAvailable: true,
     ...overrides,
   };

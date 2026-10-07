@@ -48,6 +48,19 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   ORDER_INVALID_TRANSITION: 'order.errorInvalidTransition',
   ORDER_CANCEL_NOT_ALLOWED: 'order.errorCancelNotAllowed',
   ORDER_ALREADY_CHANGED: 'order.errorAlreadyChanged',
+  // Yêu cầu hủy/trả hàng (Week9.md 1.3/1.4)
+  REFUND_REQUEST_NOT_ALLOWED: 'order.errorRefundRequestNotAllowed',
+  REFUND_REQUEST_NOT_FOUND: 'order.errorRefundRequestNotFound',
+  REFUND_REQUEST_INVALID_TRANSITION: 'order.errorRefundRequestInvalidTransition',
+  REFUND_REQUEST_PENDING: 'order.errorRefundRequestPending',
+  // Hoàn tiền ra khỏi hệ thống (chỉ màn Admin gặp)
+  PAYMENT_REFUND_NOT_FOUND: 'admin.errorPaymentRefundNotFound',
+  PAYMENT_REFUND_NOT_RETRYABLE: 'admin.errorPaymentRefundNotRetryable',
+  PAYMENT_NOT_REFUNDABLE: 'admin.errorPaymentNotRefundable',
+  // Đánh giá sản phẩm (Week9.md 1.8)
+  REVIEW_NOT_ALLOWED: 'review.errorNotAllowed',
+  REVIEW_NOT_FOUND: 'review.errorNotFound',
+  REVIEW_EDIT_NOT_ALLOWED: 'review.errorEditNotAllowed',
   // Shop: chuyển trạng thái (Admin duyệt/từ chối/khoá, chủ shop gửi duyệt lại) và sửa thông tin
   SHOP_INVALID_TRANSITION: 'shop.errorInvalidTransition',
   SHOP_EDIT_NOT_ALLOWED: 'shop.errorEditNotAllowed',

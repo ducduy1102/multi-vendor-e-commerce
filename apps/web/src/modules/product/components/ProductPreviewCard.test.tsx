@@ -13,6 +13,8 @@ const product: ProductCard = {
   minPrice: '100000',
   maxPrice: '150000',
   imageUrl: null,
+  avgRating: 0,
+  reviewCount: 0,
 };
 
 describe('ProductPreviewCard', () => {

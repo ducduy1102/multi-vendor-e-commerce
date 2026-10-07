@@ -446,12 +446,20 @@
   "order": {
     "validationReasonRequired": "Vui lòng nhập lý do",
     "validationReasonTooLong": "Lý do tối đa 500 ký tự",
+    "validationRefundReasonRequired": "Vui lòng chọn lý do",
+    "validationRefundReasonInvalid": "Lý do không hợp lệ",
+    "validationRefundNoteRequired": "Vui lòng mô tả chi tiết khi chọn lý do khác",
+    "validationRefundNoteTooLong": "Ghi chú tối đa 500 ký tự",
     "validationCarrierTooLong": "Đơn vị vận chuyển tối đa 100 ký tự",
     "validationTrackingCodeTooLong": "Mã vận đơn tối đa 100 ký tự",
     "errorNotFound": "Không tìm thấy đơn hàng",
     "errorInvalidTransition": "Không thể thực hiện thao tác này ở trạng thái hiện tại của đơn hàng",
     "errorCancelNotAllowed": "Đơn hàng này hiện không thể hủy",
     "errorAlreadyChanged": "Đơn hàng vừa được cập nhật, vui lòng tải lại trang",
+    "errorRefundRequestNotAllowed": "Đơn hàng này hiện không gửi được yêu cầu hủy hoặc hoàn tiền",
+    "errorRefundRequestNotFound": "Không tìm thấy yêu cầu",
+    "errorRefundRequestInvalidTransition": "Yêu cầu vừa được cập nhật, vui lòng tải lại trang",
+    "errorRefundRequestPending": "Người mua đang yêu cầu hủy đơn này, hãy phản hồi yêu cầu trước khi đóng gói hoặc giao hàng",
     "listPageTitle": "Đơn hàng của tôi",
     "listLabel": "Danh sách đơn hàng",
     "tabsLabel": "Lọc đơn hàng theo trạng thái",
@@ -617,6 +625,19 @@
     "columnSuspendedAt": "Khoá lúc",
     "createdAtTooltip": "Shop tạo ngày {date}",
     "rowPreviousRejection": "Lý do từ chối lần trước: {reason}",
-    "rowResubmitted": "Đã gửi lại {count} lần"
+    "rowResubmitted": "Đã gửi lại {count} lần",
+    "errorPaymentRefundNotFound": "Không tìm thấy khoản hoàn tiền",
+    "errorPaymentRefundNotRetryable": "Khoản hoàn tiền này không thử lại được, vì đã hoàn xong hoặc đang được xử lý",
+    "errorPaymentNotRefundable": "Thanh toán này không còn gì để hoàn"
+  },
+  "review": {
+    "validationRatingRequired": "Vui lòng chọn số sao",
+    "validationRatingInvalid": "Số sao phải từ 1 đến 5",
+    "validationCommentTooLong": "Nhận xét tối đa 1000 ký tự",
+    "validationReplyRequired": "Vui lòng nhập nội dung trả lời",
+    "validationReplyTooLong": "Nội dung trả lời tối đa 1000 ký tự",
+    "errorNotAllowed": "Bạn chưa thể đánh giá sản phẩm này",
+    "errorNotFound": "Không tìm thấy đánh giá",
+    "errorEditNotAllowed": "Đánh giá chỉ được sửa một lần và bạn đã sửa rồi"
   }
 }

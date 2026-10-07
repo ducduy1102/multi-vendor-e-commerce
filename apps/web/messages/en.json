@@ -446,12 +446,20 @@
   "order": {
     "validationReasonRequired": "Please enter a reason",
     "validationReasonTooLong": "The reason must be at most 500 characters",
+    "validationRefundReasonRequired": "Please choose a reason",
+    "validationRefundReasonInvalid": "Invalid reason",
+    "validationRefundNoteRequired": "Please add details when you choose another reason",
+    "validationRefundNoteTooLong": "The note must be at most 500 characters",
     "validationCarrierTooLong": "The carrier must be at most 100 characters",
     "validationTrackingCodeTooLong": "The tracking code must be at most 100 characters",
     "errorNotFound": "Order not found",
     "errorInvalidTransition": "This action is not available for the order's current status",
     "errorCancelNotAllowed": "This order cannot be cancelled right now",
     "errorAlreadyChanged": "The order was just updated, please reload the page",
+    "errorRefundRequestNotAllowed": "A cancellation or refund request can't be submitted for this order right now",
+    "errorRefundRequestNotFound": "Request not found",
+    "errorRefundRequestInvalidTransition": "The request was just updated, please reload the page",
+    "errorRefundRequestPending": "The buyer has asked to cancel this order, respond to the request before packing or shipping",
     "listPageTitle": "My orders",
     "listLabel": "Order list",
     "tabsLabel": "Filter orders by status",
@@ -617,6 +625,19 @@
     "columnSuspendedAt": "Suspended",
     "createdAtTooltip": "Shop created on {date}",
     "rowPreviousRejection": "Previous rejection reason: {reason}",
-    "rowResubmitted": "Resubmitted {count, plural, one {# time} other {# times}}"
+    "rowResubmitted": "Resubmitted {count, plural, one {# time} other {# times}}",
+    "errorPaymentRefundNotFound": "Refund not found",
+    "errorPaymentRefundNotRetryable": "This refund can't be retried because it is already completed or still being processed",
+    "errorPaymentNotRefundable": "There is nothing left to refund on this payment"
+  },
+  "review": {
+    "validationRatingRequired": "Please choose a star rating",
+    "validationRatingInvalid": "The rating must be between 1 and 5",
+    "validationCommentTooLong": "The review must be at most 1000 characters",
+    "validationReplyRequired": "Please enter a reply",
+    "validationReplyTooLong": "The reply must be at most 1000 characters",
+    "errorNotAllowed": "You can't review this product yet",
+    "errorNotFound": "Review not found",
+    "errorEditNotAllowed": "A review can only be edited once, and you've already edited it"
   }
 }
