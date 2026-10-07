@@ -4,6 +4,7 @@ const ENV_KEYS = [
   'NODE_ENV',
   'PAYMENT_MOCK_ENABLED',
   'PAYMENT_MOCK_SECRET',
+  'PAYMENT_MOCK_REFUND_FAIL',
   'API_PUBLIC_URL',
 ];
 
@@ -38,6 +39,113 @@ describe('MockPaymentProvider', () => {
     locale: 'vi' as const,
   };
 
+  const refundParams = {
+    refundRef: 'refund-ref-0001',
+    txnRef: params.txnRef,
+    gatewayTransactionId: 'MOCKTXN000001',
+    amountVnd: 150000,
+    paymentAmountVnd: 150000,
+    reason: 'Order cancelled by buyer',
+  };
+
+  describe('refund (Week9.md 1.6)', () => {
+    it('thành công tức thì, mã hoàn xác định theo refundRef', async () => {
+      const result = await provider.refund(refundParams);
+
+      expect(result).toEqual({
+        outcome: 'SUCCESS',
+        gatewayRef: 'MOCK-REFUND-refund-ref-0001',
+        failureReason: null,
+      });
+    });
+
+    it('gọi lại với CÙNG refundRef ra CÙNG mã hoàn (idempotent); refundRef khác ra mã khác', async () => {
+      const first = await provider.refund(refundParams);
+      const again = await provider.refund(refundParams);
+      const other = await provider.refund({
+        ...refundParams,
+        refundRef: 'refund-ref-0002',
+      });
+
+      expect(again.gatewayRef).toBe(first.gatewayRef);
+      expect(other.gatewayRef).not.toBe(first.gatewayRef);
+    });
+
+    it('hoàn một phần (nhóm nhiều đơn hủy 1 đơn) vẫn thành công', async () => {
+      const result = await provider.refund({
+        ...refundParams,
+        amountVnd: 40000,
+        paymentAmountVnd: 150000,
+      });
+
+      expect(result.outcome).toBe('SUCCESS');
+    });
+
+    it.each([0, -1, 1.5, 150001, Number.NaN])(
+      'số tiền hoàn %p không hợp lệ (không nguyên/không dương/vượt số đã thanh toán) ⇒ FAILED kèm lý do, không có mã hoàn',
+      async (amountVnd) => {
+        const result = await provider.refund({ ...refundParams, amountVnd });
+
+        expect(result.outcome).toBe('FAILED');
+        expect(result.gatewayRef).toBeNull();
+        expect(result.failureReason).toContain('out of range');
+      },
+    );
+
+    it.each(['true', 'TRUE', ' True '])(
+      'PAYMENT_MOCK_REFUND_FAIL=%p ép mọi lần hoàn thất bại (để test tay đường lỗi)',
+      async (value) => {
+        setEnv('PAYMENT_MOCK_REFUND_FAIL', value);
+
+        const result = await provider.refund(refundParams);
+
+        expect(result).toEqual({
+          outcome: 'FAILED',
+          gatewayRef: null,
+          failureReason: expect.stringContaining(
+            'PAYMENT_MOCK_REFUND_FAIL',
+          ) as unknown,
+        });
+      },
+    );
+
+    it.each([undefined, '', 'false', '0', 'yes'])(
+      'PAYMENT_MOCK_REFUND_FAIL=%p KHÔNG ép thất bại (chỉ "true" mới ép)',
+      async (value) => {
+        if (value === undefined) delete process.env.PAYMENT_MOCK_REFUND_FAIL;
+        else setEnv('PAYMENT_MOCK_REFUND_FAIL', value);
+
+        expect((await provider.refund(refundParams)).outcome).toBe('SUCCESS');
+      },
+    );
+
+    it('đọc cờ LÚC DÙNG, không lúc khởi tạo provider: đổi ENV giữa 2 lần gọi có hiệu lực ngay', async () => {
+      expect((await provider.refund(refundParams)).outcome).toBe('SUCCESS');
+
+      setEnv('PAYMENT_MOCK_REFUND_FAIL', 'true');
+      expect((await provider.refund(refundParams)).outcome).toBe('FAILED');
+
+      delete process.env.PAYMENT_MOCK_REFUND_FAIL;
+      expect((await provider.refund(refundParams)).outcome).toBe('SUCCESS');
+    });
+
+    it('số tiền sai ưu tiên hơn cờ ép thất bại (lý do thật là số tiền, không bị che bởi cờ test)', async () => {
+      setEnv('PAYMENT_MOCK_REFUND_FAIL', 'true');
+
+      const result = await provider.refund({ ...refundParams, amountVnd: 0 });
+
+      expect(result.failureReason).toContain('out of range');
+    });
+
+    it('mock chưa bật (PAYMENT_MOCK_ENABLED không phải "true") ⇒ từ chối, không âm thầm hoàn', async () => {
+      delete process.env.PAYMENT_MOCK_ENABLED;
+
+      await expect(provider.refund(refundParams)).rejects.toThrow(
+        'Mock payment is disabled',
+      );
+    });
+  });
+
   describe('bị vô hiệu hoá CỨNG ở production (3 lớp), dù cờ ENV bật', () => {
     beforeEach(() => setEnv('NODE_ENV', 'production'));
 
@@ -47,6 +155,17 @@ describe('MockPaymentProvider', () => {
 
     it('createPayment bị từ chối', async () => {
       await expect(provider.createPayment(params)).rejects.toThrow(
+        'Mock payment is disabled',
+      );
+    });
+
+    it('refund cũng bị từ chối, dù ép thất bại hay không (không bao giờ "hoàn" ở production)', async () => {
+      await expect(provider.refund(refundParams)).rejects.toThrow(
+        'Mock payment is disabled',
+      );
+
+      setEnv('PAYMENT_MOCK_REFUND_FAIL', 'true');
+      await expect(provider.refund(refundParams)).rejects.toThrow(
         'Mock payment is disabled',
       );
     });

@@ -442,4 +442,45 @@ describe('VnpayProvider', () => {
       });
     });
   });
+
+  // Week9.md 2.4 — hoàn tiền tự động qua VNPay làm ở 2.12 (có hộp thời gian); tới lúc đó trả FAILED xác
+  // định để Admin dùng đường "ghi nhận đã hoàn thủ công".
+  describe('refund (tạm — Week9.md 2.12)', () => {
+    const refundParams = {
+      refundRef: 'refund-ref-0001',
+      txnRef: 'ABC123',
+      gatewayTransactionId: '14000001',
+      amountVnd: 250000,
+      paymentAmountVnd: 250000,
+      reason: 'Order cancelled by buyer',
+    };
+
+    it('trả FAILED xác định kèm lý do hướng dẫn hoàn thủ công, không có mã hoàn', async () => {
+      const result = await provider.refund();
+
+      expect(result.outcome).toBe('FAILED');
+      expect(result.gatewayRef).toBeNull();
+      expect(result.failureReason).toContain('manually');
+    });
+
+    it('KHÔNG ném lỗi dù chưa cấu hình VNPay (không đọc khoá) — PaymentModule boot được khi thiếu ENV', async () => {
+      for (const key of ENV_KEYS) delete process.env[key];
+
+      await expect(provider.refund()).resolves.toMatchObject({
+        outcome: 'FAILED',
+      });
+    });
+
+    it('lý do không chứa khoá/chữ ký hay dữ liệu của giao dịch', async () => {
+      process.env.VNPAY_TMN_CODE = 'TESTCODE';
+      process.env.VNPAY_HASH_SECRET = SECRET;
+
+      const result = await provider.refund();
+      const text = JSON.stringify(result);
+
+      expect(text).not.toContain(SECRET);
+      expect(text).not.toContain('TESTCODE');
+      expect(text).not.toContain(refundParams.txnRef);
+    });
+  });
 });

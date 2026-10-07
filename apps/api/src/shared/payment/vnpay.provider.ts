@@ -6,6 +6,7 @@ import type {
   PaymentGateway,
   PaymentOutcome,
   RawCallback,
+  RefundResult,
   VerifiedCallback,
 } from './payment-gateway.interface';
 import {
@@ -103,6 +104,19 @@ export class VnpayProvider implements PaymentGateway {
     return {
       payUrl: `${config.payUrl}?${signData}&vnp_SecureHash=${secureHash}`,
     };
+  }
+
+  // CHƯA hỗ trợ hoàn tiền tự động qua VNPay (Week9.md 2.4; adapter `vnp_command=refund` là 2.12, có hộp
+  // thời gian và chỉ giữ nếu chạy được thật trên sandbox). Trả FAILED xác định kèm lý do để Admin dùng
+  // đường "ghi nhận đã hoàn thủ công" (hoàn trên trang merchant VNPay rồi nhập mã tham chiếu). Không đọc
+  // cấu hình nên không bao giờ ném lỗi, kể cả khi chưa có khoá VNPay.
+  refund(): Promise<RefundResult> {
+    return Promise.resolve({
+      outcome: 'FAILED',
+      gatewayRef: null,
+      failureReason:
+        'VNPay automatic refund is not available; refund it manually on the VNPay merchant portal and record the reference',
+    });
   }
 
   // Kiểm chữ ký TRƯỚC mọi thứ khác. Không bao giờ ném lỗi: chữ ký sai/thiếu/dài-ngắn bất thường/giá trị

@@ -174,6 +174,53 @@ describe('PaymentGatewayService', () => {
       });
     });
 
+    // Week9.md 2.4 — RefundService lấy cổng bằng `get(method)` rồi gọi refund(); thiếu cấu hình không được
+    // làm cổng biến mất hay ném lỗi (khoản hoàn rơi về FAILED để Admin ghi nhận thủ công).
+    describe('refund qua get(method) (Week9.md 2.4)', () => {
+      const refundParams = {
+        refundRef: 'refund-ref-0001',
+        txnRef: 'ABC123',
+        gatewayTransactionId: '14000001',
+        amountVnd: 100_000,
+        paymentAmountVnd: 100_000,
+        reason: 'Order cancelled by buyer',
+      };
+
+      it('VNPAY chưa cấu hình: vẫn có cổng, refund trả FAILED có lý do chứ không throw', async () => {
+        const gateway = service.get('VNPAY');
+
+        expect(gateway).not.toBeNull();
+        await expect(gateway!.refund(refundParams)).resolves.toMatchObject({
+          outcome: 'FAILED',
+          gatewayRef: null,
+        });
+      });
+
+      it('mock bật (ngoài production): refund của mọi phương thức online đi qua mock và thành công', async () => {
+        setEnv('PAYMENT_MOCK_ENABLED', 'true');
+
+        for (const method of ['VNPAY', 'MOMO'] as const) {
+          const result = await service.get(method)!.refund(refundParams);
+          expect(result.outcome).toBe('SUCCESS');
+        }
+      });
+
+      it('production + mock bật nhầm: không bao giờ rơi vào mock — VNPAY dùng provider thật (FAILED tạm), MOMO không có cổng', async () => {
+        setEnv('PAYMENT_MOCK_ENABLED', 'true');
+        setEnv('NODE_ENV', 'production');
+
+        expect(service.get('VNPAY')).toBeInstanceOf(VnpayProvider);
+        expect((await service.get('VNPAY')!.refund(refundParams)).outcome).toBe(
+          'FAILED',
+        );
+        expect(service.get('MOMO')).toBeNull();
+      });
+
+      it('COD không có cổng nên RefundService không có gì để gọi (hoàn tiền mặt nằm ngoài hệ thống)', () => {
+        expect(service.get('COD')).toBeNull();
+      });
+    });
+
     it('mock bật: mọi phương thức khả dụng không cần khoá (để chạy Playwright)', () => {
       setEnv('PAYMENT_MOCK_ENABLED', 'true');
 
