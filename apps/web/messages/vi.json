@@ -513,6 +513,7 @@
     "paymentStatusSuccess": "Đã thanh toán",
     "paymentStatusFailed": "Thanh toán thất bại",
     "paymentStatusRefunded": "Đã hoàn tiền",
+    "paymentStatusCancelled": "Không thu",
     "detailAddressTitle": "Địa chỉ nhận hàng",
     "detailShippingTitle": "Vận chuyển",
     "detailCarrierLabel": "Đơn vị vận chuyển",

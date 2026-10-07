@@ -513,6 +513,7 @@
     "paymentStatusSuccess": "Paid",
     "paymentStatusFailed": "Payment failed",
     "paymentStatusRefunded": "Refunded",
+    "paymentStatusCancelled": "Not collected",
     "detailAddressTitle": "Delivery address",
     "detailShippingTitle": "Shipping",
     "detailCarrierLabel": "Carrier",
