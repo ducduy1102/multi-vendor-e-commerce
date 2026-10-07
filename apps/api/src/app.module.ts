@@ -12,6 +12,7 @@ import { VoucherModule } from './modules/voucher/voucher.module';
 import { OrderModule } from './modules/order/order.module';
 import { CheckoutModule } from './modules/checkout/checkout.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { ReviewModule } from './modules/review/review.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AdminModule } from './modules/admin/admin.module';
     OrderModule,
     CheckoutModule,
     AdminModule,
+    ReviewModule,
   ],
   controllers: [AppController],
   providers: [AppService],
