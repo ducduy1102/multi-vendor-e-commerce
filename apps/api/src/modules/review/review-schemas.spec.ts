@@ -2,6 +2,7 @@ import {
   createReviewSchema,
   errorDetailsSchemas,
   listReviewsQuerySchema,
+  orderItemReviewSchema,
   productCardSchema,
   productDetailSchema,
   productReviewsResponseSchema,
@@ -13,6 +14,9 @@ import {
   reviewSchema,
   reviewSummarySchema,
   replyReviewSchema,
+  sellerReviewListQuerySchema,
+  sellerReviewListResponseSchema,
+  sellerReviewSchema,
   updateReviewSchema,
 } from '@ecommerce/types';
 
@@ -290,5 +294,113 @@ describe('điểm đánh giá trên card và chi tiết sản phẩm', () => {
       errorDetailsSchemas.REVIEW_NOT_ALLOWED.safeParse({ reason: 'NOPE' })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('sellerReviewListQuerySchema (Week9.md 2.10)', () => {
+  it('mặc định trang 1, 10 dòng, không lọc', () => {
+    expect(sellerReviewListQuerySchema.parse({})).toEqual({
+      page: 1,
+      limit: 10,
+    });
+  });
+
+  it("replied nhận đúng chuỗi 'true'/'false' như trên URL (không coerce boolean: 'false' không được thành true)", () => {
+    expect(sellerReviewListQuerySchema.parse({ replied: 'true' }).replied).toBe(
+      'true',
+    );
+    expect(
+      sellerReviewListQuerySchema.parse({ replied: 'false' }).replied,
+    ).toBe('false');
+  });
+
+  it.each([
+    { replied: 'maybe' },
+    { replied: '' },
+    { replied: true },
+    { rating: '0' },
+    { rating: '6' },
+    { limit: '51' },
+  ])('query %j ⇒ lỗi', (input) => {
+    expect(sellerReviewListQuerySchema.safeParse(input).success).toBe(false);
+  });
+
+  it('lọc sao + phân trang là chuỗi từ URL', () => {
+    expect(
+      sellerReviewListQuerySchema.parse({
+        rating: '2',
+        page: '3',
+        limit: '25',
+      }),
+    ).toEqual({ rating: 2, page: 3, limit: 25 });
+  });
+});
+
+describe('sellerReviewSchema / sellerReviewListResponseSchema', () => {
+  const review = {
+    id: 'rv-1',
+    rating: 5,
+    comment: null,
+    createdAt: '2026-10-08T10:00:00.000Z',
+    editedAt: null,
+    reviewerName: 'N***',
+    sellerReply: null,
+    sellerRepliedAt: null,
+    product: { id: 'p1', name: 'Áo thun', slug: 'ao-thun' },
+  };
+
+  it('giữ sản phẩm được đánh giá và KHÔNG giữ field thừa (userId/email) lọt từ BE', () => {
+    const parsed = sellerReviewSchema.parse({
+      ...review,
+      userId: 'user-secret',
+      email: 'secret@example.com',
+    });
+
+    expect(parsed.product).toEqual(review.product);
+    expect(parsed).not.toHaveProperty('userId');
+    expect(parsed).not.toHaveProperty('email');
+  });
+
+  it('danh sách parse được', () => {
+    expect(() =>
+      sellerReviewListResponseSchema.parse({
+        items: [review],
+        total: 1,
+        page: 1,
+        limit: 10,
+      }),
+    ).not.toThrow();
+  });
+
+  it('thiếu product ⇒ lỗi', () => {
+    const { product, ...withoutProduct } = review;
+    void product;
+    expect(sellerReviewSchema.safeParse(withoutProduct).success).toBe(false);
+  });
+});
+
+describe('orderItemReviewSchema (đánh giá của chính mình trên dòng hàng)', () => {
+  it('giữ đủ trường FE cần để dựng nút sửa và điền sẵn form', () => {
+    const review = {
+      id: 'rv-1',
+      rating: 4,
+      comment: 'Tốt',
+      editedAt: '2026-10-09T10:00:00.000Z',
+      canEdit: false,
+    };
+
+    expect(orderItemReviewSchema.parse(review)).toEqual(review);
+  });
+
+  it('nhận xét / mốc sửa có thể null', () => {
+    expect(
+      orderItemReviewSchema.parse({
+        id: 'rv-1',
+        rating: 4,
+        comment: null,
+        editedAt: null,
+        canEdit: true,
+      }),
+    ).toMatchObject({ comment: null, editedAt: null });
   });
 });
