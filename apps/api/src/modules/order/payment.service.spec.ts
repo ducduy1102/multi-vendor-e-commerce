@@ -717,6 +717,7 @@ describe('PaymentService', () => {
           payUrl: 'https://pay.example/1',
           expiresAt: new Date('2026-09-27T00:15:00.000Z'),
           createdAt: new Date('2026-09-27T00:00:00.000Z'),
+          refunds: [],
         },
       ],
       ...overrides,
@@ -750,6 +751,63 @@ describe('PaymentService', () => {
       });
     });
 
+    describe('cửa sổ giữa hủy đơn và cổng báo hoàn xong (Week9.md 1.5)', () => {
+      const cancelledPaidGroup = (refunds: { id: string }[]) => {
+        const base = baseGroup();
+        return baseGroup({
+          orders: [{ ...base.orders[0], status: 'CANCELLED' }],
+          payments: [{ ...base.payments[0], refunds }],
+        });
+      };
+
+      it('đơn đã hủy, Payment còn SUCCESS và có khoản hoàn chưa FAILED ⇒ CANCELLED, không báo nhầm PAID_AFTER_EXPIRY', async () => {
+        prisma.checkoutGroup.findFirst.mockResolvedValue(
+          cancelledPaidGroup([{ id: 'refund-1' }]),
+        );
+
+        const result = await service.getCheckoutGroup('user-1', 'g1');
+
+        expect(result.status).toBe('CANCELLED');
+      });
+
+      it('đơn đã hủy, Payment SUCCESS nhưng KHÔNG có khoản hoàn nào ⇒ vẫn PAID_AFTER_EXPIRY (thanh toán đến muộn thật)', async () => {
+        prisma.checkoutGroup.findFirst.mockResolvedValue(
+          cancelledPaidGroup([]),
+        );
+
+        const result = await service.getCheckoutGroup('user-1', 'g1');
+
+        expect(result.status).toBe('PAID_AFTER_EXPIRY');
+      });
+
+      it('truy vấn chỉ hỏi khoản hoàn CHƯA FAILED và chỉ lấy 1 dòng (đủ để biết có hay không)', async () => {
+        prisma.checkoutGroup.findFirst.mockResolvedValue(baseGroup());
+
+        await service.getCheckoutGroup('user-1', 'g1');
+
+        const args = prisma.checkoutGroup.findFirst.mock.calls[0] as [
+          {
+            select: {
+              payments: {
+                select: {
+                  refunds: {
+                    where: unknown;
+                    take: number;
+                    select: unknown;
+                  };
+                };
+              };
+            };
+          },
+        ];
+        expect(args[0].select.payments.select.refunds).toEqual({
+          where: { status: { not: 'FAILED' } },
+          select: { id: true },
+          take: 1,
+        });
+      });
+    });
+
     it('lần thử mới nhất quá expiresAt + ân hạn, chưa có Payment SUCCESS — tự reclaim rồi đọc lại', async () => {
       const lapsedGroup = baseGroup({
         payments: [
@@ -763,6 +821,7 @@ describe('PaymentService', () => {
             // Quá xa trong quá khứ để chắc chắn vượt ân hạn mặc định (5 phút).
             expiresAt: new Date(Date.now() - 60 * 60_000),
             createdAt: new Date(Date.now() - 90 * 60_000),
+            refunds: [],
           },
         ],
       });
@@ -803,6 +862,7 @@ describe('PaymentService', () => {
             payUrl: 'https://pay.example/old',
             expiresAt: new Date(Date.now() + 10 * 60_000),
             createdAt: new Date(),
+            refunds: [],
           },
         ],
         ...overrides,

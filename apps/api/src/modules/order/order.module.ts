@@ -13,6 +13,8 @@ import { OrderStatusService } from './order-status.service';
 import { OrderService } from './order.service';
 import { PaymentExpiryJob } from './payment-expiry.job';
 import { PaymentService } from './payment.service';
+import { RefundRequestService } from './refund-request.service';
+import { RefundService } from './refund.service';
 import { SellerOrderController } from './seller-order.controller';
 
 // Chiều phụ thuộc (Week7.md 1.14): order → { voucher, product, shared/payment }.
@@ -30,6 +32,8 @@ import { SellerOrderController } from './seller-order.controller';
     OrderQueryService,
     OrderStatusService,
     PaymentService,
+    RefundRequestService,
+    RefundService,
     PaymentExpiryJob,
     OrderAutoCompleteJob,
   ],

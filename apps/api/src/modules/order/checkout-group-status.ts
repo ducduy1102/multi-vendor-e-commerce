@@ -41,10 +41,16 @@ export interface CheckoutGroupStatusPayment {
 
 // Hàm THUẦN suy ra trạng thái nhóm thanh toán (Week7.md 1.13) — KHÔNG lưu cột riêng để tránh nguồn sự
 // thật thứ 2 lệch khỏi Order/Payment. Dùng cho GET /checkout/groups/:groupId và trang kết quả FE.
+//
+// `hasActiveRefund` = nhóm có ít nhất một khoản hoàn (PaymentRefund) CHƯA FAILED (đang chờ hoặc đã xong).
+// Cần vì saga hoàn tiền (Week9.md 1.5) hủy đơn TRƯỚC rồi mới hoàn tiền: giữa hai bước đó mọi đơn đã đóng mà
+// Payment còn SUCCESS, trông y hệt "thanh toán đến muộn sau khi nhóm bị thu hồi" — không có cờ này nhóm bị
+// báo nhầm PAID_AFTER_EXPIRY ngay khi người mua vừa hủy.
 export function deriveCheckoutGroupStatus(
   orders: readonly CheckoutGroupStatusOrder[],
   payments: readonly CheckoutGroupStatusPayment[],
   now: Date,
+  hasActiveRefund = false,
 ): CheckoutGroupStatus {
   const hasSuccess = payments.some((p) => p.status === 'SUCCESS');
   const allCancelled =
@@ -58,6 +64,8 @@ export function deriveCheckoutGroupStatus(
     orders.every((o) => o.status === 'CANCELLED' || o.status === 'REFUNDED');
 
   if (hasSuccess) {
+    // Đơn đã đóng hết và tiền đang được hoàn (hoặc đã hoàn một phần): kết thúc bình thường, chỉ chờ cổng.
+    if (allEnded && hasActiveRefund) return 'CANCELLED';
     // Thanh toán muộn sau khi nhóm đã bị thu hồi (1.4) — mọi đơn CANCELLED dù có tiền vào. Chỉ CANCELLED,
     // không tính REFUNDED: đơn REFUNDED là đơn đã giao rồi được hoàn, không phải thanh toán đến trễ.
     return allCancelled ? 'PAID_AFTER_EXPIRY' : 'PAID';

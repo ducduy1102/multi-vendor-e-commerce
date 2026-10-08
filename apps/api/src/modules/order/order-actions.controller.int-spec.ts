@@ -942,7 +942,9 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
         expect((await paymentOf(g.groupId)).status).toBe('PENDING');
       });
 
-      it('hủy HẾT mọi đơn của nhóm (không có đơn COMPLETED) — KHÔNG ghi nhận đã thu tiền', async () => {
+      // Tuần 9 (Week9.md 1.2): trước đây Payment COD của nhóm hủy hết kẹt PENDING mãi; giờ là CANCELLED
+      // ("không thu"). Vẫn KHÔNG ghi nhận đã thu tiền: không có paidAt.
+      it('hủy HẾT mọi đơn của nhóm (không có đơn COMPLETED) — Payment COD → CANCELLED ("không thu"), KHÔNG ghi nhận đã thu tiền', async () => {
         const g = await seedGroup(
           [
             { shopId: shopA, status: 'PENDING' },
@@ -955,7 +957,7 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
         await buyer.post(buyerUrl(g.orderIds[1], 'cancel')).expect(200);
 
         const payment = await paymentOf(g.groupId);
-        expect(payment.status).toBe('PENDING');
+        expect(payment.status).toBe('CANCELLED');
         expect(payment.paidAt).toBeNull();
       });
 

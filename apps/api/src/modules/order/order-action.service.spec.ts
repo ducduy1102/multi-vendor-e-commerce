@@ -2,11 +2,11 @@ import { ORDER_STATUSES_VISIBLE_TO_SELLER } from '@ecommerce/types';
 import type { OrderStatus, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
-import type { InventoryService } from '../product/inventory.service';
 import { OrderActionService } from './order-action.service';
 import type { OrderEmailService } from './order-email.service';
 import type { OrderStatusService } from './order-status.service';
 import type { PaymentService } from './payment.service';
+import type { RefundService } from './refund.service';
 
 function loaded(
   status: OrderStatus,
@@ -38,7 +38,9 @@ describe('OrderActionService', () => {
     order: { findFirst: jest.Mock };
   };
   let orderStatusService: { transition: jest.Mock };
-  let inventoryService: { restock: jest.Mock };
+  // Tác dụng phụ của hủy trước giao (hoàn kho + trả voucher) nằm ở RefundService.applyCancellationEffects —
+  // chi tiết từng dòng hàng được kiểm ở refund.service.spec.ts.
+  let refundService: { applyCancellationEffects: jest.Mock };
   let paymentService: { cancelCheckoutGroup: jest.Mock };
   let orderEmailService: {
     notifyConfirmed: jest.Mock;
@@ -72,7 +74,12 @@ describe('OrderActionService', () => {
         return Promise.resolve(['o1']);
       }),
     };
-    inventoryService = { restock: jest.fn().mockResolvedValue(undefined) };
+    refundService = {
+      applyCancellationEffects: jest.fn().mockImplementation(() => {
+        calls.push('effects');
+        return Promise.resolve();
+      }),
+    };
     paymentService = { cancelCheckoutGroup: jest.fn().mockResolvedValue({}) };
     orderEmailService = {
       notifyConfirmed: jest.fn().mockResolvedValue(undefined),
@@ -82,9 +89,9 @@ describe('OrderActionService', () => {
     service = new OrderActionService(
       prisma as unknown as PrismaService,
       orderStatusService as unknown as OrderStatusService,
-      inventoryService as unknown as InventoryService,
       paymentService as unknown as PaymentService,
       orderEmailService as unknown as OrderEmailService,
+      refundService as unknown as RefundService,
     );
   });
 
@@ -315,7 +322,7 @@ describe('OrderActionService', () => {
   });
 
   describe('reject (seller)', () => {
-    it('đơn COD chờ xác nhận: PENDING → CANCELLED, lý do vào note, CỘNG LẠI kho đúng từng dòng', async () => {
+    it('đơn COD chờ xác nhận: PENDING → CANCELLED, lý do vào note, hoàn kho + trả voucher qua RefundService với đúng dòng hàng của đơn', async () => {
       tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
 
       await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
@@ -328,9 +335,32 @@ describe('OrderActionService', () => {
         SELLER,
         'Hết hàng',
       );
-      expect(inventoryService.restock).toHaveBeenCalledWith(tx, [
-        { productVariantId: 'v1', quantity: 2 },
-        { productVariantId: 'v2', quantity: 1 },
+      expect(refundService.applyCancellationEffects).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({
+          checkoutGroupId: 'g1',
+          items: [
+            { productVariantId: 'v1', quantity: 2 },
+            { productVariantId: 'v2', quantity: 1 },
+          ],
+        }),
+      );
+    });
+
+    it('đơn COD: khoá CẢ NHÓM trước khi chuyển trạng thái, rồi mới hoàn kho/voucher (write skew khi 2 đơn cùng nhóm hủy đồng thời — note-nestjs.md AV)', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
+      tx.order.findMany.mockImplementation(() => {
+        calls.push('settleRead');
+        return Promise.resolve([{ status: 'CANCELLED' }]);
+      });
+
+      await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
+
+      expect(calls).toEqual([
+        'lockGroup',
+        'transition',
+        'effects',
+        'settleRead',
       ]);
     });
 
@@ -365,7 +395,7 @@ describe('OrderActionService', () => {
         expect(tx.payment.updateMany).not.toHaveBeenCalled();
       });
 
-      it('mọi đơn của nhóm đều bị hủy (không có đơn COMPLETED) ⇒ KHÔNG ghi nhận đã thu tiền', async () => {
+      it('mọi đơn của nhóm đều bị hủy (không có đơn COMPLETED) ⇒ Payment COD → CANCELLED ("không thu", Week9.md 1.2), KHÔNG kẹt PENDING và KHÔNG ghi nhận đã thu', async () => {
         tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
         tx.order.findMany.mockResolvedValue([
           { status: 'CANCELLED' },
@@ -374,13 +404,17 @@ describe('OrderActionService', () => {
 
         await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
 
-        expect(tx.payment.updateMany).not.toHaveBeenCalled();
+        expect(tx.payment.updateMany).toHaveBeenCalledTimes(1);
+        expect(tx.payment.updateMany).toHaveBeenCalledWith({
+          where: { checkoutGroupId: 'g1', method: 'COD', status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        });
       });
 
-      it('hoàn kho vẫn xảy ra TRƯỚC khi kiểm thu tiền, cùng transaction', async () => {
+      it('hoàn kho + trả voucher vẫn xảy ra TRƯỚC khi kiểm thu tiền, cùng transaction', async () => {
         const order: string[] = [];
-        inventoryService.restock.mockImplementation(() => {
-          order.push('restock');
+        refundService.applyCancellationEffects.mockImplementation(() => {
+          order.push('effects');
           return Promise.resolve();
         });
         tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
@@ -394,7 +428,7 @@ describe('OrderActionService', () => {
 
         await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
 
-        expect(order).toEqual(['restock', 'settleRead']);
+        expect(order).toEqual(['effects', 'settleRead']);
       });
 
       it('thua race (đơn không bị hủy bởi yêu cầu này) ⇒ không kiểm thu tiền', async () => {
@@ -424,7 +458,7 @@ describe('OrderActionService', () => {
           },
         );
         expect(orderStatusService.transition).not.toHaveBeenCalled();
-        expect(inventoryService.restock).not.toHaveBeenCalled();
+        expect(refundService.applyCancellationEffects).not.toHaveBeenCalled();
       },
     );
 
@@ -479,7 +513,7 @@ describe('OrderActionService', () => {
         service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng'),
         { status: 409, code: 'ORDER_ALREADY_CHANGED' },
       );
-      expect(inventoryService.restock).not.toHaveBeenCalled();
+      expect(refundService.applyCancellationEffects).not.toHaveBeenCalled();
     });
   });
 
@@ -532,7 +566,7 @@ describe('OrderActionService', () => {
         BUYER,
         undefined,
       );
-      expect(inventoryService.restock).toHaveBeenCalledTimes(1);
+      expect(refundService.applyCancellationEffects).toHaveBeenCalledTimes(1);
       expect(paymentService.cancelCheckoutGroup).not.toHaveBeenCalled();
     });
 
@@ -589,7 +623,7 @@ describe('OrderActionService', () => {
         expect(tx.payment.updateMany).not.toHaveBeenCalled();
       });
 
-      it('hủy toàn bộ nhóm (không có đơn COMPLETED) ⇒ không ghi nhận đã thu tiền', async () => {
+      it('hủy toàn bộ nhóm (không có đơn COMPLETED) ⇒ Payment COD → CANCELLED ("không thu"), không ghi nhận đã thu', async () => {
         tx.order.findMany.mockResolvedValue([
           { status: 'CANCELLED' },
           { status: 'CANCELLED' },
@@ -597,7 +631,23 @@ describe('OrderActionService', () => {
 
         await service.cancelByBuyer('buyer-1', 'o1');
 
-        expect(tx.payment.updateMany).not.toHaveBeenCalled();
+        expect(tx.payment.updateMany).toHaveBeenCalledTimes(1);
+        expect(tx.payment.updateMany).toHaveBeenCalledWith({
+          where: { checkoutGroupId: 'g1', method: 'COD', status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        });
+      });
+
+      it('khoá CẢ NHÓM trước khi chuyển trạng thái (đơn COD)', async () => {
+        tx.order.findMany.mockResolvedValue([{ status: 'CANCELLED' }]);
+
+        await service.cancelByBuyer('buyer-1', 'o1');
+
+        expect(calls.slice(0, 3)).toEqual([
+          'lockGroup',
+          'transition',
+          'effects',
+        ]);
       });
 
       it('thua race với seller xác nhận ⇒ không hoàn kho và không kiểm thu tiền', async () => {
@@ -607,7 +657,7 @@ describe('OrderActionService', () => {
           status: 409,
           code: 'ORDER_ALREADY_CHANGED',
         });
-        expect(inventoryService.restock).not.toHaveBeenCalled();
+        expect(refundService.applyCancellationEffects).not.toHaveBeenCalled();
         expect(tx.order.findMany).not.toHaveBeenCalled();
       });
     });
@@ -653,7 +703,7 @@ describe('OrderActionService', () => {
         status: 409,
         code: 'ORDER_ALREADY_CHANGED',
       });
-      expect(inventoryService.restock).not.toHaveBeenCalled();
+      expect(refundService.applyCancellationEffects).not.toHaveBeenCalled();
     });
   });
 

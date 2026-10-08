@@ -4,11 +4,12 @@ import type { ShipOrderInput } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { TxClient } from '../../shared/prisma/tx-client';
-import { InventoryService } from '../product/inventory.service';
+import { lockGroupOrders, settleCodPayment } from './checkout-group-tx';
 import { getCancelBlockReason } from './order-actions';
 import { OrderEmailService } from './order-email.service';
 import { OrderStatusService, type OrderActor } from './order-status.service';
 import { PaymentService } from './payment.service';
+import { RefundService } from './refund.service';
 import { sellerVisibleOrderFilter } from './seller-order-visibility';
 
 // Đơn cần cho 1 hành động: định danh + đủ dữ kiện để kiểm luật và hoàn kho. Đọc 1 lần ở đầu mỗi
@@ -50,6 +51,10 @@ interface ChangeStatusOptions {
   note?: string;
   // Chạy TRƯỚC kiểm "đang đúng trạng thái" — để báo lý do cụ thể hơn ORDER_INVALID_TRANSITION.
   precheck?: (order: LoadedOrder) => void;
+  // Đơn COD: khoá cả nhóm (id tăng dần) TRƯỚC khi chuyển, vì `after` đọc tổng hợp các đơn anh em (chốt Payment
+  // COD, trả lượt voucher) — hai đơn cùng nhóm hủy đồng thời mà không khoá sẽ cùng thấy "đơn kia còn sống"
+  // và không bên nào chốt (write skew, note-nestjs.md AV).
+  lockCodGroup?: boolean;
   // Chạy SAU khi chuyển trạng thái thành công, trong CÙNG transaction (hoàn kho, ghi vận chuyển...).
   after?: (tx: TxClient, order: LoadedOrder) => Promise<void>;
 }
@@ -70,9 +75,9 @@ export class OrderActionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly orderStatusService: OrderStatusService,
-    private readonly inventoryService: InventoryService,
     private readonly paymentService: PaymentService,
     private readonly orderEmailService: OrderEmailService,
+    private readonly refundService: RefundService,
   ) {}
 
   // --- Seller ---------------------------------------------------------------------------------
@@ -147,6 +152,7 @@ export class OrderActionService {
       {
         note: reason,
         precheck: (order) => this.assertCancellable(order),
+        lockCodGroup: true,
         after: (tx, order) => this.afterCodOrderCancelled(tx, order),
       },
     );
@@ -192,6 +198,7 @@ export class OrderActionService {
         // `note` của buyer được hiển thị nguyên văn cho shop và cho chính buyer.
         note: reason,
         precheck: (order) => this.assertCancellable(order),
+        lockCodGroup: true,
         after: (tx, order) => this.afterCodOrderCancelled(tx, order),
       },
     );
@@ -256,7 +263,7 @@ export class OrderActionService {
       if (order.status !== 'SHIPPING') throw this.invalidTransition(order);
 
       const isCod = order.paymentMethod === 'COD';
-      if (isCod) await this.lockGroupOrders(tx, order.checkoutGroupId);
+      if (isCod) await lockGroupOrders(tx, order.checkoutGroupId);
 
       const flipped = await this.orderStatusService.transition(
         tx,
@@ -268,7 +275,7 @@ export class OrderActionService {
       );
       if (flipped.length === 0) throw this.alreadyChanged();
 
-      if (isCod) await this.settleCodPayment(tx, order.checkoutGroupId);
+      if (isCod) await settleCodPayment(tx, order.checkoutGroupId);
     });
   }
 
@@ -286,6 +293,9 @@ export class OrderActionService {
       options.precheck?.(order);
       if (order.status !== from) throw this.invalidTransition(order);
 
+      if (options.lockCodGroup && order.paymentMethod === 'COD') {
+        await lockGroupOrders(tx, order.checkoutGroupId);
+      }
       const flipped = await this.orderStatusService.transition(
         tx,
         [order.id],
@@ -324,58 +334,21 @@ export class OrderActionService {
     }
   }
 
-  // Đơn COD đã chốt kho ngay lúc đặt (Week8.md 1.6) nên hủy phải CỘNG LẠI kho vật lý. Chưa trả lại
-  // lượt voucher: chính sách trả voucher khi hủy là quyết định của Tuần 9 (Week8.md 1.5).
-  private async restockOrder(tx: TxClient, order: LoadedOrder): Promise<void> {
-    await this.inventoryService.restock(
-      tx,
-      order.items.map((item) => ({
-        productVariantId: item.productVariantId,
-        quantity: item.quantity,
-      })),
-    );
-  }
-
-  // Đơn COD bị hủy/từ chối (chỉ còn đường PENDING → CANCELLED): hoàn kho, rồi kiểm lại điều kiện thu tiền
-  // của nhóm. Đơn bị hủy có thể chính là đơn CUỐI CÙNG chưa tới đích — các đơn còn lại đã COMPLETED từ
-  // trước và lúc đó nhóm còn đơn này nên chưa thu tiền; nếu không kiểm lại ở đây, Payment COD kẹt PENDING
-  // mãi dù mọi đơn đã tới đích (phát hiện khi test tay 3.12). Không cần khoá nhóm như lúc hoàn tất:
-  // `transition` ở trên đã giữ khoá dòng của đơn này, còn bên hoàn tất đơn kia khoá cả nhóm theo id tăng
-  // dần nên hai bên xếp hàng nhau và bên commit sau luôn thấy kết quả của bên trước.
+  // Đơn COD bị hủy/từ chối (hiện chỉ còn đường PENDING → CANCELLED): hoàn kho + trả lượt voucher nếu nhóm không
+  // còn đơn nào hưởng giảm giá (RefundService.applyCancellationEffects — một nơi duy nhất cho tác dụng phụ của
+  // hủy trước giao, Week9.md 1.7), rồi kiểm lại điều kiện chốt Payment COD của nhóm. Đơn bị hủy có thể chính là
+  // đơn CUỐI CÙNG chưa tới đích — các đơn còn lại đã COMPLETED từ trước và lúc đó nhóm còn đơn này nên chưa thu
+  // tiền; nếu không kiểm lại ở đây, Payment COD kẹt PENDING mãi dù mọi đơn đã tới đích (phát hiện khi test tay
+  // 3.12). Cả nhóm đã được khoá (lockCodGroup) trước khi chuyển nên hai đơn cùng nhóm hủy/hoàn tất đồng thời xếp
+  // hàng nhau và bên commit sau luôn thấy kết quả của bên trước.
   private async afterCodOrderCancelled(
     tx: TxClient,
     order: LoadedOrder,
   ): Promise<void> {
-    await this.restockOrder(tx, order);
+    await this.refundService.applyCancellationEffects(tx, order);
     if (order.paymentMethod === 'COD') {
-      await this.settleCodPayment(tx, order.checkoutGroupId);
+      await settleCodPayment(tx, order.checkoutGroupId);
     }
-  }
-
-  private async lockGroupOrders(tx: TxClient, checkoutGroupId: string) {
-    await tx.$queryRaw`
-      SELECT id FROM orders WHERE checkout_group_id = ${checkoutGroupId} ORDER BY id FOR UPDATE`;
-  }
-
-  // Nhóm COD chỉ coi là đã thu tiền khi mọi đơn đã đi tới đích (COMPLETED hoặc CANCELLED) và có ít
-  // nhất 1 đơn COMPLETED. Đơn giản hoá có chủ đích: 1 Payment COD cho cả nhóm, không đối soát từng shop.
-  private async settleCodPayment(
-    tx: TxClient,
-    checkoutGroupId: string,
-  ): Promise<void> {
-    const orders = await tx.order.findMany({
-      where: { checkoutGroupId },
-      select: { status: true },
-    });
-    const allSettled = orders.every(
-      (o) => o.status === 'COMPLETED' || o.status === 'CANCELLED',
-    );
-    if (!allSettled || !orders.some((o) => o.status === 'COMPLETED')) return;
-
-    await tx.payment.updateMany({
-      where: { checkoutGroupId, method: 'COD', status: 'PENDING' },
-      data: { status: 'SUCCESS', paidAt: new Date() },
-    });
   }
 
   private invalidTransition(order: LoadedOrder): AppException {

@@ -118,6 +118,12 @@ const groupSelect = {
       payUrl: true,
       expiresAt: true,
       createdAt: true,
+      // Chỉ cần biết CÓ khoản hoàn chưa FAILED hay không (Week9.md 1.5): lọc + take 1 ngay trong select.
+      refunds: {
+        where: { status: { not: 'FAILED' as const } },
+        select: { id: true },
+        take: 1,
+      },
     },
   },
 } satisfies Prisma.CheckoutGroupSelect;
@@ -125,6 +131,11 @@ const groupSelect = {
 type LoadedGroup = Prisma.CheckoutGroupGetPayload<{
   select: typeof groupSelect;
 }>;
+
+// Nhóm có khoản hoàn tiền (PaymentRefund) chưa FAILED — truyền cho deriveCheckoutGroupStatus để cửa sổ giữa
+// "đơn đã hủy" và "cổng báo hoàn xong" không bị báo nhầm là thanh toán đến muộn.
+const hasActiveRefund = (payments: LoadedGroup['payments']): boolean =>
+  payments.some((payment) => payment.refunds.length > 0);
 
 // Sở hữu xác nhận thanh toán, thu hồi giữ chỗ quá hạn, và đọc nhóm thanh toán (Week7.md 1.14, 2.9).
 // Là NGƯỜI ĐIỀU PHỐI: mở transaction rồi gọi InventoryService/VoucherUsageService với `tx`, không tự
@@ -451,7 +462,12 @@ export class PaymentService {
     const group = await this.loadGroupForOwner(userId, groupId);
     const fresh = await this.reclaimIfLapsedThenReload(group);
     const now = new Date();
-    const status = deriveCheckoutGroupStatus(fresh.orders, fresh.payments, now);
+    const status = deriveCheckoutGroupStatus(
+      fresh.orders,
+      fresh.payments,
+      now,
+      hasActiveRefund(fresh.payments),
+    );
 
     if (status === 'PAID' || status === 'PAID_AFTER_EXPIRY') {
       throw new AppException(
@@ -607,7 +623,12 @@ export class PaymentService {
 
   private toView(group: LoadedGroup): CheckoutGroupView {
     const now = new Date();
-    const status = deriveCheckoutGroupStatus(group.orders, group.payments, now);
+    const status = deriveCheckoutGroupStatus(
+      group.orders,
+      group.payments,
+      now,
+      hasActiveRefund(group.payments),
+    );
     const latest = group.payments[0] ?? null;
     const totalAmount = group.orders.reduce(
       (sum, o) => sum + o.totalAmount.toNumber(),

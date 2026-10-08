@@ -332,6 +332,88 @@ describe('deriveCheckoutGroupStatus', () => {
         ),
       ).toBe('COD_PLACED');
     });
+
+    // Cửa sổ giữa Tx1 (hủy đơn) và Tx2 (cổng báo xong) của saga hoàn tiền (Week9.md 1.5): mọi đơn đã đóng,
+    // Payment còn SUCCESS. Có khoản hoàn chưa FAILED ⇒ đây là hủy bình thường chứ không phải thanh toán muộn.
+    describe('cờ hasActiveRefund — cửa sổ giữa hủy đơn và cổng báo hoàn xong', () => {
+      it('mọi đơn CANCELLED + Payment SUCCESS + có khoản hoàn chưa FAILED ⇒ CANCELLED, không báo nhầm PAID_AFTER_EXPIRY', () => {
+        expect(
+          deriveCheckoutGroupStatus(
+            [order('CANCELLED')],
+            [payment('SUCCESS', PAST)],
+            NOW,
+            true,
+          ),
+        ).toBe('CANCELLED');
+      });
+
+      it('KHÔNG có khoản hoàn nào (mặc định) ⇒ vẫn PAID_AFTER_EXPIRY — thanh toán đến muộn thật', () => {
+        expect(
+          deriveCheckoutGroupStatus(
+            [order('CANCELLED')],
+            [payment('SUCCESS', PAST)],
+            NOW,
+          ),
+        ).toBe('PAID_AFTER_EXPIRY');
+        expect(
+          deriveCheckoutGroupStatus(
+            [order('CANCELLED')],
+            [payment('SUCCESS', PAST)],
+            NOW,
+            false,
+          ),
+        ).toBe('PAID_AFTER_EXPIRY');
+      });
+
+      it('đơn REFUNDED (trả hàng) đang chờ cổng hoàn ⇒ CANCELLED, khớp trạng thái cuối khi Payment thành REFUNDED', () => {
+        expect(
+          deriveCheckoutGroupStatus(
+            [order('REFUNDED')],
+            [payment('SUCCESS', PAST)],
+            NOW,
+            true,
+          ),
+        ).toBe('CANCELLED');
+        expect(
+          deriveCheckoutGroupStatus(
+            [order('REFUNDED'), order('CANCELLED')],
+            [payment('SUCCESS', PAST)],
+            NOW,
+            true,
+          ),
+        ).toBe('CANCELLED');
+      });
+
+      it('còn đơn đang sống thì khoản hoàn của đơn khác KHÔNG làm nhóm "kết thúc" — vẫn PAID', () => {
+        expect(
+          deriveCheckoutGroupStatus(
+            [order('CANCELLED'), order('PENDING')],
+            [payment('SUCCESS', PAST)],
+            NOW,
+            true,
+          ),
+        ).toBe('PAID');
+        expect(
+          deriveCheckoutGroupStatus(
+            [order('REFUNDED'), order('COMPLETED')],
+            [payment('SUCCESS', PAST)],
+            NOW,
+            true,
+          ),
+        ).toBe('PAID');
+      });
+
+      it('cờ không ảnh hưởng nhóm chưa có Payment SUCCESS', () => {
+        expect(
+          deriveCheckoutGroupStatus(
+            [order('AWAITING_PAYMENT')],
+            [payment('PENDING', FUTURE)],
+            NOW,
+            true,
+          ),
+        ).toBe('AWAITING_PAYMENT');
+      });
+    });
   });
 });
 
