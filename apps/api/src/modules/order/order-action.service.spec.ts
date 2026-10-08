@@ -32,6 +32,7 @@ describe('OrderActionService', () => {
   let tx: {
     order: { findFirst: jest.Mock; update: jest.Mock; findMany: jest.Mock };
     payment: { updateMany: jest.Mock };
+    refundRequest: { findMany: jest.Mock };
     $queryRaw: jest.Mock;
   };
   let prisma: {
@@ -39,12 +40,9 @@ describe('OrderActionService', () => {
     order: { findFirst: jest.Mock };
   };
   let orderStatusService: { transition: jest.Mock };
-  // Tác dụng phụ của hủy trước giao (hoàn kho + trả voucher) nằm ở RefundService.applyCancellationEffects —
-  // chi tiết từng dòng hàng được kiểm ở refund.service.spec.ts.
-  let refundService: {
-    applyCancellationEffects: jest.Mock;
-    cancelOrderWithRefund: jest.Mock;
-  };
+  // Hủy / từ chối đơn (kho, voucher, hoàn tiền, chốt Payment COD, email) nằm hết ở RefundService — chi tiết
+  // được kiểm ở refund.service.spec.ts + refund.service.int-spec.ts; ở đây chỉ kiểm việc uỷ quyền.
+  let refundService: { cancelOrderWithRefund: jest.Mock };
   let paymentService: { cancelCheckoutGroup: jest.Mock };
   let orderEmailService: {
     notifyConfirmed: jest.Mock;
@@ -63,6 +61,8 @@ describe('OrderActionService', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
       payment: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      // Yêu cầu hủy/trả hàng của đơn — pack/ship kiểm trong transaction (mặc định: không có yêu cầu nào).
+      refundRequest: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn().mockImplementation(() => {
         calls.push('lockGroup');
         return Promise.resolve([]);
@@ -79,10 +79,6 @@ describe('OrderActionService', () => {
       }),
     };
     refundService = {
-      applyCancellationEffects: jest.fn().mockImplementation(() => {
-        calls.push('effects');
-        return Promise.resolve();
-      }),
       cancelOrderWithRefund: jest.fn().mockResolvedValue({ refund: null }),
     };
     paymentService = { cancelCheckoutGroup: jest.fn().mockResolvedValue({}) };
@@ -130,16 +126,14 @@ describe('OrderActionService', () => {
       expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
     });
 
-    it('seller từ chối — gửi email hủy với người hủy SELLER và lý do', async () => {
-      tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
-
+    it('seller từ chối / tự hủy — email do RefundService gửi (kèm đoạn hoàn tiền nếu có), nhánh này KHÔNG gửi thêm', async () => {
+      prisma.order.findFirst.mockResolvedValue({ status: 'PENDING' });
       await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
 
-      expect(orderEmailService.notifyCancelled).toHaveBeenCalledWith(
-        { orderIds: ['o1'] },
-        'SELLER',
-        'Hết hàng',
-      );
+      prisma.order.findFirst.mockResolvedValue({ status: 'CONFIRMED' });
+      await service.cancelBySeller('shop-1', 'seller-1', 'o1', 'Hết hàng');
+
+      expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
     });
 
     it('buyer hủy đơn đang chờ xác nhận — email do RefundService gửi (kèm đoạn hoàn tiền nếu có), nhánh này KHÔNG gửi thêm', async () => {
@@ -170,7 +164,7 @@ describe('OrderActionService', () => {
         service.confirm('shop-1', 'seller-1', 'o1'),
       ).rejects.toBeDefined();
 
-      tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'VNPAY'));
+      prisma.order.findFirst.mockResolvedValue({ status: 'SHIPPING' });
       await expect(
         service.reject('shop-1', 'seller-1', 'o1', 'x'),
       ).rejects.toBeDefined();
@@ -266,6 +260,74 @@ describe('OrderActionService', () => {
     });
   });
 
+  // Week9.md 2.7 — buyer đang xin hủy thì seller phải trả lời yêu cầu trước khi đóng gói/giao. Kiểm TRONG
+  // transaction, SAU khi đã khoá hàng đơn bằng câu UPDATE chuyển trạng thái, ném ⇒ rollback cả việc chuyển.
+  describe('pack / ship khi người mua đang có yêu cầu HỦY chờ xử lý', () => {
+    it.each(['PENDING_SELLER', 'ESCALATED'] as const)(
+      'yêu cầu hủy %s ⇒ 409 REFUND_REQUEST_PENDING, kiểm sau khi chuyển trạng thái để rollback',
+      async (status) => {
+        tx.order.findFirst.mockResolvedValue(loaded('CONFIRMED'));
+        tx.refundRequest.findMany.mockResolvedValue([
+          { kind: 'CANCEL', status },
+        ]);
+
+        await expectAppException(service.pack('shop-1', 'seller-1', 'o1'), {
+          status: 409,
+          code: 'REFUND_REQUEST_PENDING',
+        });
+        expect(tx.refundRequest.findMany).toHaveBeenCalledWith({
+          where: { orderId: 'o1', status: { not: 'WITHDRAWN' } },
+          select: { kind: true, status: true },
+        });
+        expect(orderStatusService.transition).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('ship cũng bị chặn và KHÔNG ghi vận chuyển', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('PACKED'));
+      tx.refundRequest.findMany.mockResolvedValue([
+        { kind: 'CANCEL', status: 'PENDING_SELLER' },
+      ]);
+
+      await expectAppException(
+        service.ship('shop-1', 'seller-1', 'o1', { carrier: 'GHN' }),
+        { status: 409, code: 'REFUND_REQUEST_PENDING' },
+      );
+      expect(tx.order.update).not.toHaveBeenCalled();
+      expect(orderEmailService.notifyShipped).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['seller đã từ chối', { kind: 'CANCEL', status: 'REJECTED_BY_SELLER' }],
+      ['đã duyệt', { kind: 'CANCEL', status: 'APPROVED' }],
+      ['Admin đã từ chối', { kind: 'CANCEL', status: 'REJECTED' }],
+      [
+        'yêu cầu TRẢ HÀNG (không liên quan giao hàng)',
+        { kind: 'RETURN', status: 'PENDING_SELLER' },
+      ],
+    ])('%s ⇒ không chặn đóng gói', async (_name, request) => {
+      tx.order.findFirst.mockResolvedValue(loaded('CONFIRMED'));
+      tx.refundRequest.findMany.mockResolvedValue([request]);
+
+      await service.pack('shop-1', 'seller-1', 'o1');
+
+      expect(orderStatusService.transition).toHaveBeenCalledTimes(1);
+    });
+
+    it('thứ tự: lỗi sai trạng thái đến TRƯỚC (không kiểm yêu cầu khi đơn không đúng trạng thái)', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('PENDING'));
+      tx.refundRequest.findMany.mockResolvedValue([
+        { kind: 'CANCEL', status: 'PENDING_SELLER' },
+      ]);
+
+      await expectAppException(service.pack('shop-1', 'seller-1', 'o1'), {
+        status: 409,
+        code: 'ORDER_INVALID_TRANSITION',
+      });
+      expect(tx.refundRequest.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('ship', () => {
     it('PACKED → SHIPPING và ghi đơn vị vận chuyển + mã vận đơn cùng transaction', async () => {
       tx.order.findFirst.mockResolvedValue(loaded('PACKED'));
@@ -321,151 +383,55 @@ describe('OrderActionService', () => {
     });
   });
 
+  // Từ 2.7 reject / cancelBySeller chỉ kiểm phạm vi + trạng thái rồi uỷ quyền cho RefundService (COD lẫn online):
+  // kho, voucher, hoàn tiền, chốt Payment COD, khoá nhóm, email đều ở refund.service.spec.ts / int-spec.
   describe('reject (seller)', () => {
-    it('đơn COD chờ xác nhận: PENDING → CANCELLED, lý do vào note, hoàn kho + trả voucher qua RefundService với đúng dòng hàng của đơn', async () => {
-      tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
+    const head = (status: string) =>
+      prisma.order.findFirst.mockResolvedValue({ status });
+
+    it('đọc đơn theo ĐÚNG phạm vi shop + chỉ trạng thái Seller được thấy (đơn chưa thanh toán không lộ)', async () => {
+      head('PENDING');
 
       await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
 
-      expect(orderStatusService.transition).toHaveBeenCalledWith(
-        tx,
-        ['o1'],
-        'PENDING',
-        'CANCELLED',
+      expect(prisma.order.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 'o1',
+          shopId: 'shop-1',
+          status: { in: ORDER_STATUSES_VISIBLE_TO_SELLER },
+          statusHistory: { some: { toStatus: 'PENDING' } },
+        },
+        select: { status: true },
+      });
+    });
+
+    it('đơn không thuộc shop / chưa thanh toán / không tồn tại — 404 ORDER_NOT_FOUND, không làm gì', async () => {
+      prisma.order.findFirst.mockResolvedValue(null);
+
+      await expectAppException(
+        service.reject('shop-1', 'seller-1', 'x', 'Hết hàng'),
+        { status: 404, code: 'ORDER_NOT_FOUND' },
+      );
+      expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+    });
+
+    it('đơn chờ xác nhận (mọi phương thức, kể cả đã trả online) — uỷ quyền RefundService với actor SELLER, lý do, chỉ nhận PENDING', async () => {
+      head('PENDING');
+
+      await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
+
+      expect(refundService.cancelOrderWithRefund).toHaveBeenCalledWith(
         SELLER,
-        'Hết hàng',
+        'o1',
+        { reason: 'Hết hàng', onlyFrom: ['PENDING'] },
       );
-      expect(refundService.applyCancellationEffects).toHaveBeenCalledWith(
-        tx,
-        expect.objectContaining({
-          checkoutGroupId: 'g1',
-          items: [
-            { productVariantId: 'v1', quantity: 2 },
-            { productVariantId: 'v2', quantity: 1 },
-          ],
-        }),
-      );
+      expect(orderStatusService.transition).not.toHaveBeenCalled();
     });
 
-    it('đơn COD: khoá CẢ NHÓM trước khi chuyển trạng thái, rồi mới hoàn kho/voucher (write skew khi 2 đơn cùng nhóm hủy đồng thời — note-nestjs.md AV)', async () => {
-      tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
-      tx.order.findMany.mockImplementation(() => {
-        calls.push('settleRead');
-        return Promise.resolve([{ status: 'CANCELLED' }]);
-      });
-
-      await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
-
-      expect(calls).toEqual([
-        'lockGroup',
-        'transition',
-        'effects',
-        'settleRead',
-      ]);
-    });
-
-    describe('COD — hủy/từ chối đơn CUỐI CÙNG chưa tới đích thì nhóm được thu tiền', () => {
-      const SETTLE = {
-        where: { checkoutGroupId: 'g1', method: 'COD', status: 'PENDING' },
-        data: { status: 'SUCCESS', paidAt: expect.any(Date) as Date },
-      };
-
-      it('các đơn còn lại đã COMPLETED, đơn này bị shop từ chối ⇒ Payment COD → SUCCESS', async () => {
-        tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
-        tx.order.findMany.mockResolvedValue([
-          { status: 'COMPLETED' },
-          { status: 'CANCELLED' },
-        ]);
-
-        await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
-
-        expect(tx.payment.updateMany).toHaveBeenCalledWith(SETTLE);
-      });
-
-      it('nhóm còn đơn đang xử lý/giao ⇒ CHƯA thu tiền', async () => {
-        tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
-        tx.order.findMany.mockResolvedValue([
-          { status: 'COMPLETED' },
-          { status: 'SHIPPING' },
-          { status: 'CANCELLED' },
-        ]);
-
-        await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
-
-        expect(tx.payment.updateMany).not.toHaveBeenCalled();
-      });
-
-      it('mọi đơn của nhóm đều bị hủy (không có đơn COMPLETED) ⇒ Payment COD → CANCELLED ("không thu", Week9.md 1.2), KHÔNG kẹt PENDING và KHÔNG ghi nhận đã thu', async () => {
-        tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
-        tx.order.findMany.mockResolvedValue([
-          { status: 'CANCELLED' },
-          { status: 'CANCELLED' },
-        ]);
-
-        await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
-
-        expect(tx.payment.updateMany).toHaveBeenCalledTimes(1);
-        expect(tx.payment.updateMany).toHaveBeenCalledWith({
-          where: { checkoutGroupId: 'g1', method: 'COD', status: 'PENDING' },
-          data: { status: 'CANCELLED' },
-        });
-      });
-
-      it('hoàn kho + trả voucher vẫn xảy ra TRƯỚC khi kiểm thu tiền, cùng transaction', async () => {
-        const order: string[] = [];
-        refundService.applyCancellationEffects.mockImplementation(() => {
-          order.push('effects');
-          return Promise.resolve();
-        });
-        tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
-        tx.order.findMany.mockImplementation(() => {
-          order.push('settleRead');
-          return Promise.resolve([
-            { status: 'COMPLETED' },
-            { status: 'CANCELLED' },
-          ]);
-        });
-
-        await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
-
-        expect(order).toEqual(['effects', 'settleRead']);
-      });
-
-      it('thua race (đơn không bị hủy bởi yêu cầu này) ⇒ không kiểm thu tiền', async () => {
-        tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
-        orderStatusService.transition.mockResolvedValue([]);
-
-        await expectAppException(
-          service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng'),
-          { status: 409, code: 'ORDER_ALREADY_CHANGED' },
-        );
-        expect(tx.order.findMany).not.toHaveBeenCalled();
-        expect(tx.payment.updateMany).not.toHaveBeenCalled();
-      });
-    });
-
-    it.each(['VNPAY', 'MOMO'] as const)(
-      'đơn đã trả online (%s): 409 ORDER_CANCEL_NOT_ALLOWED / PAID_ONLINE, không chuyển, không hoàn kho',
-      async (method) => {
-        tx.order.findFirst.mockResolvedValue(loaded('PENDING', method));
-
-        await expectAppException(
-          service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng'),
-          {
-            status: 409,
-            code: 'ORDER_CANCEL_NOT_ALLOWED',
-            details: { reason: 'PAID_ONLINE' },
-          },
-        );
-        expect(orderStatusService.transition).not.toHaveBeenCalled();
-        expect(refundService.applyCancellationEffects).not.toHaveBeenCalled();
-      },
-    );
-
-    it.each(['CONFIRMED', 'PACKED'] as const)(
-      'đơn %s: 409 ORDER_CANCEL_NOT_ALLOWED / PROCESSING_STARTED',
+    it.each(['CONFIRMED', 'PACKED'])(
+      'đơn %s: 409 ORDER_CANCEL_NOT_ALLOWED / PROCESSING_STARTED (dùng "hủy đơn" thay vì từ chối)',
       async (status) => {
-        tx.order.findFirst.mockResolvedValue(loaded(status, 'COD'));
+        head(status);
 
         await expectAppException(
           service.reject('shop-1', 'seller-1', 'o1', 'x'),
@@ -475,13 +441,12 @@ describe('OrderActionService', () => {
             details: { reason: 'PROCESSING_STARTED' },
           },
         );
+        expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
       },
     );
 
-    // Week9.md 1.3: đơn đã giao cho vận chuyển là lý do riêng (IN_TRANSIT), không còn gộp vào
-    // PROCESSING_STARTED — FE phân biệt được "gửi yêu cầu hủy" với "không hủy được nữa".
     it('đơn SHIPPING: 409 ORDER_CANCEL_NOT_ALLOWED / IN_TRANSIT', async () => {
-      tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'COD'));
+      head('SHIPPING');
 
       await expectAppException(
         service.reject('shop-1', 'seller-1', 'o1', 'x'),
@@ -493,27 +458,113 @@ describe('OrderActionService', () => {
       );
     });
 
-    it.each(['AWAITING_PAYMENT', 'COMPLETED', 'CANCELLED'] as const)(
+    it.each(['AWAITING_PAYMENT', 'COMPLETED', 'CANCELLED'])(
       'đơn %s: 409 ORDER_INVALID_TRANSITION',
       async (status) => {
-        tx.order.findFirst.mockResolvedValue(loaded(status, 'COD'));
+        head(status);
 
         await expectAppException(
           service.reject('shop-1', 'seller-1', 'o1', 'x'),
           { status: 409, code: 'ORDER_INVALID_TRANSITION' },
         );
+        expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
       },
     );
 
-    it('thua race — KHÔNG hoàn kho (đơn không bị hủy bởi yêu cầu này)', async () => {
-      tx.order.findFirst.mockResolvedValue(loaded('PENDING', 'COD'));
-      orderStatusService.transition.mockResolvedValue([]);
+    it('lỗi của RefundService (thua race: buyer/seller vừa đổi đơn) được giữ nguyên', async () => {
+      head('PENDING');
+      refundService.cancelOrderWithRefund.mockRejectedValue(
+        new AppException(409, 'ORDER_ALREADY_CHANGED', 'changed'),
+      );
 
       await expectAppException(
         service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng'),
         { status: 409, code: 'ORDER_ALREADY_CHANGED' },
       );
-      expect(refundService.applyCancellationEffects).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cancelBySeller (Week9.md 2.7)', () => {
+    const head = (status: string) =>
+      prisma.order.findFirst.mockResolvedValue({ status });
+
+    it.each(['CONFIRMED', 'PACKED'])(
+      'đơn %s: uỷ quyền RefundService với actor SELLER, lý do, CHỈ nhận CONFIRMED/PACKED (tự đóng yêu cầu hủy đang mở)',
+      async (status) => {
+        head(status);
+
+        await service.cancelBySeller('shop-1', 'seller-1', 'o1', 'Hết hàng');
+
+        expect(refundService.cancelOrderWithRefund).toHaveBeenCalledWith(
+          SELLER,
+          'o1',
+          { reason: 'Hết hàng', onlyFrom: ['CONFIRMED', 'PACKED'] },
+        );
+      },
+    );
+
+    it('đọc đơn theo ĐÚNG phạm vi shop + trạng thái Seller được thấy; đơn lạ ⇒ 404', async () => {
+      prisma.order.findFirst.mockResolvedValue(null);
+
+      await expectAppException(
+        service.cancelBySeller('shop-1', 'seller-1', 'x', 'r'),
+        { status: 404, code: 'ORDER_NOT_FOUND' },
+      );
+      expect(prisma.order.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: 'x',
+            shopId: 'shop-1',
+          }) as object,
+        }),
+      );
+    });
+
+    it('đơn chờ xác nhận ⇒ 409 ORDER_INVALID_TRANSITION (dùng "từ chối")', async () => {
+      head('PENDING');
+
+      await expectAppException(
+        service.cancelBySeller('shop-1', 'seller-1', 'o1', 'r'),
+        { status: 409, code: 'ORDER_INVALID_TRANSITION' },
+      );
+      expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+    });
+
+    it('đơn SHIPPING ⇒ 409 ORDER_CANCEL_NOT_ALLOWED / IN_TRANSIT', async () => {
+      head('SHIPPING');
+
+      await expectAppException(
+        service.cancelBySeller('shop-1', 'seller-1', 'o1', 'r'),
+        {
+          status: 409,
+          code: 'ORDER_CANCEL_NOT_ALLOWED',
+          details: { reason: 'IN_TRANSIT' },
+        },
+      );
+    });
+
+    it.each(['COMPLETED', 'CANCELLED', 'REFUNDED'])(
+      'đơn %s đã kết thúc ⇒ 409 ORDER_INVALID_TRANSITION',
+      async (status) => {
+        head(status);
+
+        await expectAppException(
+          service.cancelBySeller('shop-1', 'seller-1', 'o1', 'r'),
+          { status: 409, code: 'ORDER_INVALID_TRANSITION' },
+        );
+      },
+    );
+
+    it('lỗi của RefundService được giữ nguyên', async () => {
+      head('CONFIRMED');
+      refundService.cancelOrderWithRefund.mockRejectedValue(
+        new AppException(409, 'ORDER_ALREADY_CHANGED', 'changed'),
+      );
+
+      await expectAppException(
+        service.cancelBySeller('shop-1', 'seller-1', 'o1', 'r'),
+        { status: 409, code: 'ORDER_ALREADY_CHANGED' },
+      );
     });
   });
 

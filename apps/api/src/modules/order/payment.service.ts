@@ -407,7 +407,9 @@ export class PaymentService {
   // Buyer chủ động hủy cả nhóm CHƯA thanh toán (Week8.md 2.6) — dùng lại đúng reclaimCheckoutGroup
   // (idempotent, nhả kho + voucher, ghi history với actor BUYER). Hủy theo NHÓM chứ không lẻ từng đơn
   // vì 1 Payment cho cả nhóm. Chỉ chủ nhóm (người khác ⇒ 404). Gọi lại khi nhóm đã hủy ⇒ trả trạng thái
-  // hiện tại (idempotent); nhóm đã trả tiền hoặc không còn đơn chờ thanh toán ⇒ 409.
+  // hiện tại (idempotent); nhóm không còn đơn chờ thanh toán ⇒ 409. Nhóm vừa được thanh toán giữa lúc người
+  // mua mở trang và lúc bấm hủy (IPN tới trước) ⇒ 409 ORDER_ALREADY_CHANGED: đơn nay đã ở trạng thái chờ shop
+  // xác nhận và hủy từng đơn kèm hoàn tiền, không còn "hủy cả nhóm chưa thanh toán" (Week9.md 2.7).
   async cancelCheckoutGroup(
     userId: string,
     groupId: string,
@@ -427,9 +429,8 @@ export class PaymentService {
     if (view.status === 'PAID' || view.status === 'PAID_AFTER_EXPIRY') {
       throw new AppException(
         409,
-        'ORDER_CANCEL_NOT_ALLOWED',
-        'This checkout group has already been paid',
-        { reason: 'PAID_ONLINE' },
+        'ORDER_ALREADY_CHANGED',
+        'This checkout group has already been paid — cancel the individual orders instead',
       );
     }
     throw new AppException(

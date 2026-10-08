@@ -679,7 +679,7 @@ describe('RefundService (DB thật)', () => {
       }
     });
 
-    it('đường Tuần 8 (OrderActionService.reject): 2 đơn COD cùng nhóm bị shop từ chối ĐỒNG THỜI (5 vòng) — cũng không write skew nhờ khoá cả nhóm', async () => {
+    it('qua OrderActionService.reject (uỷ quyền RefundService): 2 đơn COD cùng nhóm bị shop từ chối ĐỒNG THỜI (5 vòng) — cũng không write skew nhờ khoá cả nhóm', async () => {
       for (let round = 0; round < 5; round++) {
         const g = await setupGroup({
           method: 'COD',

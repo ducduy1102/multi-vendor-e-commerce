@@ -1,13 +1,18 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { CreateRefundRequestInput } from '@ecommerce/types';
+import {
+  ORDER_STATUSES_VISIBLE_TO_SELLER,
+  type CreateRefundRequestInput,
+} from '@ecommerce/types';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
 import { RefundRequestActionService } from './refund-request-action.service';
 import type { RefundRequestService } from './refund-request.service';
+import type { RefundService } from './refund.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BUYER = { type: 'BUYER', id: 'buyer-1' };
+const SELLER = { type: 'SELLER', id: 'seller-1' };
 
 const input = (
   overrides: Partial<CreateRefundRequestInput> = {},
@@ -38,8 +43,13 @@ describe('RefundRequestActionService', () => {
   let prisma: {
     $transaction: jest.Mock;
     order: { findFirst: jest.Mock };
+    refundRequest: { findFirst: jest.Mock };
   };
   let refundRequestService: { transition: jest.Mock; recordCreated: jest.Mock };
+  let refundService: {
+    cancelOrderWithRefund: jest.Mock;
+    refundReturnedOrder: jest.Mock;
+  };
 
   beforeEach(() => {
     tx = {
@@ -55,6 +65,11 @@ describe('RefundRequestActionService', () => {
     prisma = {
       $transaction: jest.fn((fn: (t: unknown) => unknown) => fn(tx)),
       order: { findFirst: jest.fn().mockResolvedValue(orderRow()) },
+      refundRequest: { findFirst: jest.fn() },
+    };
+    refundService = {
+      cancelOrderWithRefund: jest.fn().mockResolvedValue({ refund: null }),
+      refundReturnedOrder: jest.fn().mockResolvedValue({ refund: null }),
     };
     refundRequestService = {
       transition: jest.fn().mockResolvedValue(undefined),
@@ -63,6 +78,7 @@ describe('RefundRequestActionService', () => {
     service = new RefundRequestActionService(
       prisma as unknown as PrismaService,
       refundRequestService as unknown as RefundRequestService,
+      refundService as unknown as RefundService,
     );
   });
 
@@ -516,6 +532,201 @@ describe('RefundRequestActionService', () => {
       await expectAppException(service.escalateForBuyer('buyer-1', 'req-x'), {
         status: 404,
         code: 'REFUND_REQUEST_NOT_FOUND',
+      });
+    });
+  });
+
+  // --- Seller (Week9.md 2.7) --------------------------------------------------------------------
+  describe('seller', () => {
+    const sellerRequest = (overrides: Record<string, unknown> = {}) => ({
+      id: 'req-1',
+      kind: 'CANCEL',
+      status: 'PENDING_SELLER',
+      orderId: 'o1',
+      ...overrides,
+    });
+
+    describe('approveForSeller', () => {
+      it('đọc yêu cầu theo CẢ id, shop, không phải yêu cầu đã rút và đơn Seller được thấy (predicate dùng chung)', async () => {
+        prisma.refundRequest.findFirst.mockResolvedValue(sellerRequest());
+
+        await service.approveForSeller('shop-1', 'seller-1', 'req-1');
+
+        expect(prisma.refundRequest.findFirst).toHaveBeenCalledWith({
+          where: {
+            id: 'req-1',
+            shopId: 'shop-1',
+            status: { not: 'WITHDRAWN' },
+            order: {
+              status: { in: [...ORDER_STATUSES_VISIBLE_TO_SELLER] },
+              statusHistory: { some: { toStatus: 'PENDING' } },
+            },
+          },
+          select: { id: true, kind: true, status: true, orderId: true },
+        });
+      });
+
+      it('yêu cầu của shop khác / đơn bị ẩn / đã rút / không tồn tại ⇒ 404, không hủy gì', async () => {
+        prisma.refundRequest.findFirst.mockResolvedValue(null);
+
+        await expectAppException(
+          service.approveForSeller('shop-1', 'seller-1', 'req-x'),
+          { status: 404, code: 'REFUND_REQUEST_NOT_FOUND' },
+        );
+        expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+        expect(refundService.refundReturnedOrder).not.toHaveBeenCalled();
+      });
+
+      it('yêu cầu HỦY ⇒ hủy đơn qua RefundService, đóng ĐÚNG yêu cầu này (fail-closed), chỉ nhận đơn CONFIRMED/PACKED, kèm ghi chú duyệt', async () => {
+        prisma.refundRequest.findFirst.mockResolvedValue(sellerRequest());
+
+        await service.approveForSeller(
+          'shop-1',
+          'seller-1',
+          'req-1',
+          'Đồng ý hủy',
+        );
+
+        expect(refundService.cancelOrderWithRefund).toHaveBeenCalledWith(
+          SELLER,
+          'o1',
+          {
+            reason: 'Đồng ý hủy',
+            refundRequestId: 'req-1',
+            onlyFrom: ['CONFIRMED', 'PACKED'],
+          },
+        );
+        expect(refundService.refundReturnedOrder).not.toHaveBeenCalled();
+      });
+
+      it('yêu cầu HỦY đã lên sàn (ESCALATED) vẫn duyệt được — seller nhượng bộ', async () => {
+        prisma.refundRequest.findFirst.mockResolvedValue(
+          sellerRequest({ status: 'ESCALATED' }),
+        );
+
+        await service.approveForSeller('shop-1', 'seller-1', 'req-1');
+
+        expect(refundService.cancelOrderWithRefund).toHaveBeenCalledTimes(1);
+      });
+
+      it('yêu cầu TRẢ HÀNG ⇒ COMPLETED → REFUNDED qua RefundService, đóng đúng yêu cầu này', async () => {
+        prisma.refundRequest.findFirst.mockResolvedValue(
+          sellerRequest({ kind: 'RETURN' }),
+        );
+
+        await service.approveForSeller('shop-1', 'seller-1', 'req-1', null);
+
+        expect(refundService.refundReturnedOrder).toHaveBeenCalledWith(
+          SELLER,
+          'o1',
+          { reason: null, refundRequestId: 'req-1' },
+        );
+        expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+      });
+
+      it('yêu cầu TRẢ HÀNG đã lên sàn ⇒ 409 (Admin quyết định), không đụng tới đơn', async () => {
+        prisma.refundRequest.findFirst.mockResolvedValue(
+          sellerRequest({ kind: 'RETURN', status: 'ESCALATED' }),
+        );
+
+        await expectAppException(
+          service.approveForSeller('shop-1', 'seller-1', 'req-1'),
+          { status: 409, code: 'REFUND_REQUEST_INVALID_TRANSITION' },
+        );
+        expect(refundService.refundReturnedOrder).not.toHaveBeenCalled();
+      });
+
+      it.each(['APPROVED', 'REJECTED_BY_SELLER', 'REJECTED'] as const)(
+        'yêu cầu đã %s ⇒ 409 REFUND_REQUEST_INVALID_TRANSITION ngay từ đầu, không lật đơn rồi mới rollback',
+        async (status) => {
+          prisma.refundRequest.findFirst.mockResolvedValue(
+            sellerRequest({ status }),
+          );
+
+          await expectAppException(
+            service.approveForSeller('shop-1', 'seller-1', 'req-1'),
+            { status: 409, code: 'REFUND_REQUEST_INVALID_TRANSITION' },
+          );
+          expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+        },
+      );
+
+      it('lỗi của RefundService (người mua vừa rút, đơn vừa đổi...) được giữ nguyên', async () => {
+        prisma.refundRequest.findFirst.mockResolvedValue(sellerRequest());
+        refundService.cancelOrderWithRefund.mockRejectedValue(
+          Object.assign(new Error('x'), {
+            code: 'REFUND_REQUEST_INVALID_TRANSITION',
+          }),
+        );
+
+        await expect(
+          service.approveForSeller('shop-1', 'seller-1', 'req-1'),
+        ).rejects.toMatchObject({ code: 'REFUND_REQUEST_INVALID_TRANSITION' });
+      });
+    });
+
+    describe('rejectForSeller', () => {
+      it('chuyển từ trạng thái hiện tại → REJECTED_BY_SELLER bởi seller, ghi chú vào lịch sử, KHÔNG đụng tới đơn', async () => {
+        tx.refundRequest.findFirst.mockResolvedValue(sellerRequest());
+
+        await service.rejectForSeller(
+          'shop-1',
+          'seller-1',
+          'req-1',
+          'Hàng đã giao vận chuyển',
+        );
+
+        expect(refundRequestService.transition).toHaveBeenCalledWith(
+          tx,
+          'req-1',
+          'PENDING_SELLER',
+          'REJECTED_BY_SELLER',
+          SELLER,
+          'Hàng đã giao vận chuyển',
+        );
+        expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+        expect(refundService.refundReturnedOrder).not.toHaveBeenCalled();
+      });
+
+      it('đọc yêu cầu TRONG transaction với cùng phạm vi shop + predicate đơn Seller được thấy', async () => {
+        tx.refundRequest.findFirst.mockResolvedValue(sellerRequest());
+
+        await service.rejectForSeller('shop-1', 'seller-1', 'req-1', 'x');
+
+        expect(tx.refundRequest.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({
+              id: 'req-1',
+              shopId: 'shop-1',
+              status: { not: 'WITHDRAWN' },
+            }) as object,
+          }),
+        );
+      });
+
+      it('yêu cầu của shop khác / không tồn tại ⇒ 404, không chuyển', async () => {
+        tx.refundRequest.findFirst.mockResolvedValue(null);
+
+        await expectAppException(
+          service.rejectForSeller('shop-1', 'seller-1', 'req-x', 'x'),
+          { status: 404, code: 'REFUND_REQUEST_NOT_FOUND' },
+        );
+        expect(refundRequestService.transition).not.toHaveBeenCalled();
+      });
+
+      it('bảng chuyển từ chối (đã xử lý / đã lên sàn) ⇒ lỗi 409 của RefundRequestService được giữ nguyên', async () => {
+        tx.refundRequest.findFirst.mockResolvedValue(
+          sellerRequest({ status: 'ESCALATED' }),
+        );
+        refundRequestService.transition.mockRejectedValue(
+          Object.assign(new Error('x'), {
+            code: 'REFUND_REQUEST_INVALID_TRANSITION',
+          }),
+        );
+
+        await expect(
+          service.rejectForSeller('shop-1', 'seller-1', 'req-1', 'x'),
+        ).rejects.toMatchObject({ code: 'REFUND_REQUEST_INVALID_TRANSITION' });
       });
     });
   });

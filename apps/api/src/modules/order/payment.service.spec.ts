@@ -656,15 +656,14 @@ describe('PaymentService', () => {
     });
 
     it.each(['PAID', 'PAID_AFTER_EXPIRY'])(
-      'nhóm đã thanh toán (%s) — 409 ORDER_CANCEL_NOT_ALLOWED / PAID_ONLINE',
+      'nhóm đã thanh toán (%s) — 409 ORDER_ALREADY_CHANGED (vừa được thanh toán — hủy từng đơn kèm hoàn tiền)',
       async (status) => {
         reclaim.mockResolvedValue({ reclaimed: false });
         getGroup.mockResolvedValue(view(status));
 
         await expectAppException(service.cancelCheckoutGroup('user-1', 'g1'), {
           status: 409,
-          code: 'ORDER_CANCEL_NOT_ALLOWED',
-          details: { reason: 'PAID_ONLINE' },
+          code: 'ORDER_ALREADY_CHANGED',
         });
       },
     );

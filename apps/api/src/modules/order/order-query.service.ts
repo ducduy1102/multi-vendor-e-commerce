@@ -15,6 +15,10 @@ import {
   type SellerOrderListItem,
   type SellerOrderListQuery,
   type SellerOrderListResponse,
+  type SellerRefundRequest,
+  type SellerRefundRequestListItem,
+  type SellerRefundRequestListQuery,
+  type SellerRefundRequestListResponse,
 } from '@ecommerce/types';
 import type { OrderStatus, Prisma } from '@prisma/client';
 import { AppException } from '../../shared/exceptions/app.exception';
@@ -25,6 +29,7 @@ import {
   getBuyerOrderActions,
   getBuyerRefundRequestActions,
   getSellerOrderActions,
+  getSellerRefundRequestActions,
 } from './order-actions';
 import { readRefundEscalateDays, readRefundWindowDays } from './refund-config';
 import { sellerVisibleOrderFilter } from './seller-order-visibility';
@@ -60,32 +65,34 @@ const completedAtArgs = {
   select: { toStatus: true, createdAt: true },
 } satisfies Prisma.Order$statusHistoryArgs;
 
-// Yêu cầu hủy/trả hàng CHƯA RÚT của đơn, mới nhất trước (Week9.md 1.4). Mỗi đơn tối đa một yêu cầu mỗi loại
-// nên tối đa 2 dòng: vừa đủ cho cờ canRequestCancel/canRequestReturn (qua `kind`) lẫn hiển thị yêu cầu mới
-// nhất kèm dòng thời gian. KHÔNG select actorId của history — người mua không cần (và không nên) biết định
-// danh seller/Admin đã quyết định.
+// Các cột của một yêu cầu hủy/trả hàng + dòng thời gian cũ → mới, dùng chung cho người mua và seller (Week9.md
+// 1.4). KHÔNG select actorId của history — không bên nào cần (và không nên) biết định danh người đã quyết định.
+const refundRequestFields = {
+  id: true,
+  kind: true,
+  status: true,
+  reasonCode: true,
+  reasonNote: true,
+  sellerRespondBy: true,
+  statusChangedAt: true,
+  createdAt: true,
+  history: {
+    select: {
+      toStatus: true,
+      actorType: true,
+      note: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  },
+} satisfies Prisma.RefundRequestSelect;
+
+// Yêu cầu CHƯA RÚT của đơn, mới nhất trước. Mỗi đơn tối đa một yêu cầu mỗi loại nên tối đa 2 dòng: vừa đủ cho
+// cờ canRequestCancel/canRequestReturn (qua `kind`) lẫn hiển thị yêu cầu mới nhất kèm dòng thời gian.
 const buyerRefundRequestArgs = {
   where: { status: { not: 'WITHDRAWN' } },
   orderBy: { createdAt: 'desc' },
-  select: {
-    id: true,
-    kind: true,
-    status: true,
-    reasonCode: true,
-    reasonNote: true,
-    sellerRespondBy: true,
-    statusChangedAt: true,
-    createdAt: true,
-    history: {
-      select: {
-        toStatus: true,
-        actorType: true,
-        note: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    },
-  },
+  select: refundRequestFields,
 } satisfies Prisma.Order$refundRequestsArgs;
 
 // Khoản hoàn tiền qua cổng của đơn (sổ cái PaymentRefund, orderId unique ⇒ tối đa một). Chỉ trạng thái +
@@ -186,11 +193,13 @@ const sellerListSelect = {
       },
     },
   },
-  // Yêu cầu của người mua để tắt canPack/canShip khi đang có yêu cầu HỦY chờ xử lý (Week9.md 1.3) —
-  // kind + status vừa đủ cho blocksSellerFulfilment; không đọc lý do/ghi chú của người mua ở danh sách.
+  // Yêu cầu của người mua: tắt canPack/canShip khi đang có yêu cầu HỦY chờ xử lý (Week9.md 1.3, qua kind +
+  // status) và hiện huy hiệu tóm tắt ở danh sách (id + hạn phản hồi). Không đọc lý do/ghi chú của người mua ở
+  // danh sách — chỉ ở chi tiết (sellerDetailSelect) và hàng chờ yêu cầu.
   refundRequests: {
     where: { status: { not: 'WITHDRAWN' } },
-    select: { kind: true, status: true },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, kind: true, status: true, sellerRespondBy: true },
   },
 } satisfies Prisma.OrderSelect;
 
@@ -205,7 +214,41 @@ const sellerDetailSelect = {
   carrier: true,
   trackingCode: true,
   statusHistory: historyArgs,
+  // Ghi đè bản tóm tắt: chi tiết trả đủ lý do của người mua + dòng thời gian.
+  refundRequests: {
+    where: { status: { not: 'WITHDRAWN' } },
+    orderBy: { createdAt: 'desc' },
+    select: refundRequestFields,
+  },
 } satisfies Prisma.OrderSelect;
+
+// Hàng chờ yêu cầu của seller: yêu cầu đầy đủ + tóm tắt đơn vừa đủ để quyết định.
+const sellerRefundRequestListSelect = {
+  ...refundRequestFields,
+  order: {
+    select: {
+      id: true,
+      status: true,
+      totalAmount: true,
+      recipientName: true,
+      items: {
+        select: itemSelect,
+        orderBy: { id: 'asc' },
+        take: ORDER_LIST_PREVIEW_ITEMS,
+      },
+      _count: { select: { items: true } },
+      checkoutGroup: {
+        select: {
+          payments: {
+            select: { method: true, status: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.RefundRequestSelect;
 
 type LoadedListOrder = Prisma.OrderGetPayload<{ select: typeof listSelect }>;
 type LoadedDetailOrder = Prisma.OrderGetPayload<{
@@ -216,6 +259,9 @@ type LoadedSellerListOrder = Prisma.OrderGetPayload<{
 }>;
 type LoadedSellerDetailOrder = Prisma.OrderGetPayload<{
   select: typeof sellerDetailSelect;
+}>;
+type LoadedSellerRefundRequest = Prisma.RefundRequestGetPayload<{
+  select: typeof sellerRefundRequestListSelect;
 }>;
 
 const toHistoryEntry = (entry: {
@@ -256,6 +302,29 @@ const toBuyerRefundRequest = (
     statusChangedAt: request.statusChangedAt,
     now,
     escalateDays: readRefundEscalateDays(),
+  }),
+});
+
+const toSellerRefundRequest = (
+  request: LoadedSellerDetailOrder['refundRequests'][number],
+): SellerRefundRequest => ({
+  id: request.id,
+  kind: request.kind,
+  status: request.status,
+  sellerRespondBy: request.sellerRespondBy.toISOString(),
+  reasonCode: request.reasonCode,
+  reasonNote: request.reasonNote,
+  statusChangedAt: request.statusChangedAt.toISOString(),
+  createdAt: request.createdAt.toISOString(),
+  history: request.history.map((entry) => ({
+    toStatus: entry.toStatus,
+    actorType: entry.actorType,
+    note: entry.note,
+    createdAt: entry.createdAt.toISOString(),
+  })),
+  ...getSellerRefundRequestActions({
+    kind: request.kind,
+    status: request.status,
   }),
 });
 
@@ -401,6 +470,87 @@ export class OrderQueryService {
       carrier: order.carrier,
       trackingCode: order.trackingCode,
       history: order.statusHistory.map(toHistoryEntry),
+      refundRequest: order.refundRequests[0]
+        ? toSellerRefundRequest(order.refundRequests[0])
+        : null,
+    };
+  }
+
+  // GET /shops/:shopId/refund-requests — hàng chờ yêu cầu hủy/trả hàng của shop. Dùng lại ĐÚNG predicate
+  // sellerVisibleOrderFilter như danh sách đơn (note-nestjs.md BN): yêu cầu của đơn Seller không được thấy thì
+  // không lộ. Yêu cầu đã rút không bao giờ hiện. Hàng chờ "chờ shop trả lời" xếp CŨ NHẤT TRƯỚC (hạn phản hồi
+  // đến sớm nhất lên đầu, FIFO); các bộ lọc còn lại mới nhất trước.
+  async listRefundRequestsForSeller(
+    shopId: string,
+    query: SellerRefundRequestListQuery,
+  ): Promise<SellerRefundRequestListResponse> {
+    const where: Prisma.RefundRequestWhereInput = {
+      shopId,
+      status: query.status ?? { not: 'WITHDRAWN' },
+      order: sellerVisibleOrderFilter(),
+    };
+    const direction = query.status === 'PENDING_SELLER' ? 'asc' : 'desc';
+
+    const [total, requests] = await Promise.all([
+      this.prisma.refundRequest.count({ where }),
+      this.prisma.refundRequest.findMany({
+        where,
+        select: sellerRefundRequestListSelect,
+        orderBy: [{ createdAt: direction }, { id: direction }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+
+    return {
+      items: requests.map((request) => this.toSellerRefundRequestItem(request)),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
+  }
+
+  // Một yêu cầu của shop (sau khi duyệt/từ chối, để trả lại dòng mới nhất). Yêu cầu của shop khác, của đơn bị
+  // ẩn, đã rút hoặc không tồn tại cùng 404.
+  async getRefundRequestForSeller(
+    shopId: string,
+    requestId: string,
+  ): Promise<SellerRefundRequestListItem> {
+    const request = await this.prisma.refundRequest.findFirst({
+      where: {
+        id: requestId,
+        shopId,
+        status: { not: 'WITHDRAWN' },
+        order: sellerVisibleOrderFilter(),
+      },
+      select: sellerRefundRequestListSelect,
+    });
+    if (!request) {
+      throw new AppException(
+        404,
+        'REFUND_REQUEST_NOT_FOUND',
+        'Refund request not found',
+      );
+    }
+    return this.toSellerRefundRequestItem(request);
+  }
+
+  private toSellerRefundRequestItem(
+    request: LoadedSellerRefundRequest,
+  ): SellerRefundRequestListItem {
+    const latest = request.order.checkoutGroup.payments[0] ?? null;
+    return {
+      ...toSellerRefundRequest(request),
+      order: {
+        id: request.order.id,
+        status: request.order.status,
+        totalAmount: money(request.order.totalAmount),
+        recipientName: request.order.recipientName,
+        items: request.order.items.map((item) => this.toItem(item)),
+        itemCount: request.order._count.items,
+        paymentMethod: latest?.method ?? null,
+        paymentStatus: latest?.status ?? null,
+      },
     };
   }
 
@@ -432,11 +582,20 @@ export class OrderQueryService {
       paymentStatus: latest?.status ?? null,
       ...getSellerOrderActions({
         status: order.status,
-        paymentMethod: latest?.method ?? null,
         hasBlockingCancelRequest: order.refundRequests.some((request) =>
           blocksSellerFulfilment(request.kind, request.status),
         ),
       }),
+      // Yêu cầu mới nhất (mảng đã sắp mới nhất trước), chỉ tóm tắt — lý do của người mua ở chi tiết.
+      refundRequest: order.refundRequests[0]
+        ? {
+            id: order.refundRequests[0].id,
+            kind: order.refundRequests[0].kind,
+            status: order.refundRequests[0].status,
+            sellerRespondBy:
+              order.refundRequests[0].sellerRespondBy.toISOString(),
+          }
+        : null,
     };
   }
 

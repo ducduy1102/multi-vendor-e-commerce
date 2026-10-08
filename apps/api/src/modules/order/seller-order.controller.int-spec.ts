@@ -392,7 +392,7 @@ describe('SellerOrderController (HTTP thật)', () => {
         expect(new Set(all).size).toBe(7);
       });
 
-      it('cờ hành động đúng: COD chờ xác nhận được từ chối, đơn trả online thì không', async () => {
+      it('cờ hành động đúng: đơn chờ xác nhận từ chối được CẢ COD lẫn đã trả online (hoàn tiền tự động)', async () => {
         const data = sellerOrderListResponseSchema.parse(
           body(await sellerA.get(`/api/v1/shops/${shopA}/orders?limit=50`)),
         );
@@ -406,7 +406,7 @@ describe('SellerOrderController (HTTP thật)', () => {
         expect(byId[pendingOnline]).toMatchObject({
           paymentMethod: 'VNPAY',
           canConfirm: true,
-          canReject: false,
+          canReject: true,
         });
         expect(byId[confirmed]).toMatchObject({
           canPack: true,

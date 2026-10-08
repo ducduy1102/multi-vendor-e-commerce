@@ -18,6 +18,7 @@ import { RefundRequestActionService } from './refund-request-action.service';
 import { RefundRequestService } from './refund-request.service';
 import { RefundService } from './refund.service';
 import { SellerOrderController } from './seller-order.controller';
+import { SellerRefundRequestController } from './seller-refund-request.controller';
 
 // Chiều phụ thuộc (Week7.md 1.14): order → { voucher, product, shared/payment }.
 // order KHÔNG được import checkout/cart — checkout gọi OrderService.createOrders(tx, ...) và
@@ -31,6 +32,7 @@ import { SellerOrderController } from './seller-order.controller';
     BuyerOrderController,
     BuyerRefundRequestController,
     SellerOrderController,
+    SellerRefundRequestController,
   ],
   providers: [
     OrderService,

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { OrderStatus, PaymentMethod, Prisma } from '@prisma/client';
-import type { ShipOrderInput } from '@ecommerce/types';
+import { blocksSellerFulfilment, type ShipOrderInput } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { TxClient } from '../../shared/prisma/tx-client';
@@ -12,13 +12,12 @@ import { PaymentService } from './payment.service';
 import { RefundService } from './refund.service';
 import { sellerVisibleOrderFilter } from './seller-order-visibility';
 
-// Đơn cần cho 1 hành động: định danh + đủ dữ kiện để kiểm luật và hoàn kho. Đọc 1 lần ở đầu mỗi
-// transaction (không khoá) — câu UPDATE có điều kiện của OrderStatusService mới là trọng tài.
+// Đơn cần cho 1 hành động: định danh + đủ dữ kiện để kiểm luật. Đọc 1 lần ở đầu mỗi transaction (không
+// khoá) — câu UPDATE có điều kiện của OrderStatusService mới là trọng tài.
 const actionOrderSelect = {
   id: true,
   status: true,
   checkoutGroupId: true,
-  items: { select: { productVariantId: true, quantity: true } },
   checkoutGroup: {
     select: {
       payments: {
@@ -51,11 +50,8 @@ interface ChangeStatusOptions {
   note?: string;
   // Chạy TRƯỚC kiểm "đang đúng trạng thái" — để báo lý do cụ thể hơn ORDER_INVALID_TRANSITION.
   precheck?: (order: LoadedOrder) => void;
-  // Đơn COD: khoá cả nhóm (id tăng dần) TRƯỚC khi chuyển, vì `after` đọc tổng hợp các đơn anh em (chốt Payment
-  // COD, trả lượt voucher) — hai đơn cùng nhóm hủy đồng thời mà không khoá sẽ cùng thấy "đơn kia còn sống"
-  // và không bên nào chốt (write skew, note-nestjs.md AV).
-  lockCodGroup?: boolean;
-  // Chạy SAU khi chuyển trạng thái thành công, trong CÙNG transaction (hoàn kho, ghi vận chuyển...).
+  // Chạy SAU khi chuyển trạng thái thành công, trong CÙNG transaction (ghi vận chuyển, kiểm yêu cầu hủy...);
+  // ném lỗi ở đây ⇒ rollback cả việc chuyển trạng thái.
   after?: (tx: TxClient, order: LoadedOrder) => Promise<void>;
 }
 
@@ -98,15 +94,18 @@ export class OrderActionService {
     await this.orderEmailService.notifyConfirmed(orderId);
   }
 
+  // Đóng gói / giao hàng bị chặn (409 REFUND_REQUEST_PENDING) khi người mua đang có yêu cầu HỦY chờ xử lý:
+  // seller phải phản hồi yêu cầu trước (Week9.md 1.3). Kiểm TRONG transaction, SAU khi đã khoá hàng đơn bằng
+  // câu UPDATE chuyển trạng thái — người mua gửi yêu cầu cũng khoá hàng đơn (FOR UPDATE) nên hai bên xếp hàng:
+  // yêu cầu commit trước thì ở đây thấy và rollback; chuyển trạng thái commit trước thì người mua thấy đơn đã
+  // đổi (ORDER_ALREADY_CHANGED) và không để lại yêu cầu cho đơn đã đóng gói/giao.
   pack(shopId: string, sellerUserId: string, orderId: string): Promise<void> {
     return this.changeStatus(
       sellerScope(shopId, orderId),
       'CONFIRMED',
       'PACKED',
-      {
-        type: 'SELLER',
-        id: sellerUserId,
-      },
+      { type: 'SELLER', id: sellerUserId },
+      { after: (tx, order) => this.assertNoPendingCancelRequest(tx, order.id) },
     );
   }
 
@@ -124,6 +123,7 @@ export class OrderActionService {
       { type: 'SELLER', id: sellerUserId },
       {
         after: async (tx, order) => {
+          await this.assertNoPendingCancelRequest(tx, order.id);
           await tx.order.update({
             where: { id: order.id },
             data: {
@@ -137,29 +137,44 @@ export class OrderActionService {
     await this.orderEmailService.notifyShipped(orderId);
   }
 
-  // Từ chối đơn: chỉ COD chờ xác nhận (chưa thu tiền). Đơn đã trả online từ chối kèm hoàn tiền: Tuần 9.
+  // Từ chối đơn đang chờ xác nhận (PENDING → CANCELLED), mọi phương thức thanh toán (Week9.md 1.3): đơn COD
+  // chỉ hoàn kho + trả voucher, đơn đã trả online còn hoàn tiền tự động. Uỷ quyền cho RefundService (cũng tự
+  // gửi email báo buyer). `onlyFrom: ['PENDING']`: nếu buyer/seller khác vừa đổi trạng thái thì thua race,
+  // không hủy đè lên đơn đã xác nhận.
   async reject(
     shopId: string,
     sellerUserId: string,
     orderId: string,
     reason: string,
   ): Promise<void> {
-    await this.changeStatus(
-      sellerScope(shopId, orderId),
-      'PENDING',
-      'CANCELLED',
+    const order = await this.findSellerOrderHead(shopId, orderId);
+    if (order.status !== 'PENDING') throw this.cancelRefused(order.status);
+
+    await this.refundService.cancelOrderWithRefund(
       { type: 'SELLER', id: sellerUserId },
-      {
-        note: reason,
-        precheck: (order) => this.assertCancellable(order),
-        lockCodGroup: true,
-        after: (tx, order) => this.afterCodOrderCancelled(tx, order),
-      },
+      orderId,
+      { reason, onlyFrom: ['PENDING'] },
     );
-    await this.orderEmailService.notifyCancelled(
-      { orderIds: [orderId] },
-      'SELLER',
-      reason,
+  }
+
+  // Seller tự hủy đơn đã xác nhận/đóng gói (CONFIRMED/PACKED → CANCELLED), lý do bắt buộc, kèm hoàn tiền nếu đã
+  // thu và tự đóng yêu cầu hủy đang mở của người mua (nếu có — hủy chính là cách trả lời). Đơn chờ xác nhận dùng
+  // `reject`; đơn đã giao cho vận chuyển không hủy được.
+  async cancelBySeller(
+    shopId: string,
+    sellerUserId: string,
+    orderId: string,
+    reason: string,
+  ): Promise<void> {
+    const order = await this.findSellerOrderHead(shopId, orderId);
+    if (order.status !== 'CONFIRMED' && order.status !== 'PACKED') {
+      throw this.cancelRefused(order.status);
+    }
+
+    await this.refundService.cancelOrderWithRefund(
+      { type: 'SELLER', id: sellerUserId },
+      orderId,
+      { reason, onlyFrom: ['CONFIRMED', 'PACKED'] },
     );
   }
 
@@ -203,25 +218,12 @@ export class OrderActionService {
       return;
     }
 
-    const blockReason = getCancelBlockReason(head.status, null);
-    if (blockReason) {
-      throw new AppException(
-        409,
-        'ORDER_CANCEL_NOT_ALLOWED',
-        `Order cannot be cancelled: ${blockReason}`,
-        { reason: blockReason },
-      );
-    }
-    throw new AppException(
-      409,
-      'ORDER_INVALID_TRANSITION',
-      `Action is not allowed while the order is ${head.status}`,
-    );
+    throw this.cancelRefused(head.status);
   }
 
   // Buyer xác nhận đã nhận hàng: SHIPPING → COMPLETED. Với COD, đây là lúc thu tiền: khi mọi đơn
   // không bị hủy của nhóm đã COMPLETED ⇒ Payment COD → SUCCESS (Week8.md 1.6). Điều kiện được kiểm lại
-  // cả khi một đơn COD của nhóm bị hủy/từ chối (afterCodOrderCancelled) vì đó có thể là đơn cuối cùng.
+  // cả khi một đơn COD của nhóm bị hủy/từ chối (RefundService.cancelOrderWithRefund) vì đó có thể là đơn cuối cùng.
   async confirmReceived(userId: string, orderId: string): Promise<void> {
     await this.completeShipped(
       { id: orderId, userId },
@@ -302,9 +304,6 @@ export class OrderActionService {
       options.precheck?.(order);
       if (order.status !== from) throw this.invalidTransition(order);
 
-      if (options.lockCodGroup && order.paymentMethod === 'COD') {
-        await lockGroupOrders(tx, order.checkoutGroupId);
-      }
       const flipped = await this.orderStatusService.transition(
         tx,
         [order.id],
@@ -331,32 +330,55 @@ export class OrderActionService {
     };
   }
 
-  private assertCancellable(order: LoadedOrder): void {
-    const reason = getCancelBlockReason(order.status, order.paymentMethod);
+  // Seller đọc đơn theo ĐÚNG phạm vi (shop mình + trạng thái Seller được thấy): đơn chưa thanh toán / thuộc
+  // shop khác / không tồn tại cùng 404.
+  private async findSellerOrderHead(shopId: string, orderId: string) {
+    const order = await this.prisma.order.findFirst({
+      where: sellerScope(shopId, orderId),
+      select: { status: true },
+    });
+    if (!order) throw orderNotFound();
+    return order;
+  }
+
+  // Vì sao đơn ở `status` không hủy/từ chối NGAY được: đã xác nhận/đóng gói (người mua gửi yêu cầu hủy, seller
+  // dùng "hủy đơn"), đã giao cho vận chuyển (ORDER_CANCEL_NOT_ALLOWED), hoặc sai trạng thái / đã kết thúc
+  // (ORDER_INVALID_TRANSITION — kể cả PENDING ở đường seller tự hủy: dùng "từ chối").
+  private cancelRefused(status: OrderStatus): AppException {
+    const reason = getCancelBlockReason(status);
     if (reason) {
-      throw new AppException(
+      return new AppException(
         409,
         'ORDER_CANCEL_NOT_ALLOWED',
         `Order cannot be cancelled: ${reason}`,
         { reason },
       );
     }
+    return new AppException(
+      409,
+      'ORDER_INVALID_TRANSITION',
+      `Action is not allowed while the order is ${status}`,
+    );
   }
 
-  // Đơn COD bị hủy/từ chối (hiện chỉ còn đường PENDING → CANCELLED): hoàn kho + trả lượt voucher nếu nhóm không
-  // còn đơn nào hưởng giảm giá (RefundService.applyCancellationEffects — một nơi duy nhất cho tác dụng phụ của
-  // hủy trước giao, Week9.md 1.7), rồi kiểm lại điều kiện chốt Payment COD của nhóm. Đơn bị hủy có thể chính là
-  // đơn CUỐI CÙNG chưa tới đích — các đơn còn lại đã COMPLETED từ trước và lúc đó nhóm còn đơn này nên chưa thu
-  // tiền; nếu không kiểm lại ở đây, Payment COD kẹt PENDING mãi dù mọi đơn đã tới đích (phát hiện khi test tay
-  // 3.12). Cả nhóm đã được khoá (lockCodGroup) trước khi chuyển nên hai đơn cùng nhóm hủy/hoàn tất đồng thời xếp
-  // hàng nhau và bên commit sau luôn thấy kết quả của bên trước.
-  private async afterCodOrderCancelled(
+  private async assertNoPendingCancelRequest(
     tx: TxClient,
-    order: LoadedOrder,
+    orderId: string,
   ): Promise<void> {
-    await this.refundService.applyCancellationEffects(tx, order);
-    if (order.paymentMethod === 'COD') {
-      await settleCodPayment(tx, order.checkoutGroupId);
+    const requests = await tx.refundRequest.findMany({
+      where: { orderId, status: { not: 'WITHDRAWN' } },
+      select: { kind: true, status: true },
+    });
+    if (
+      requests.some((request) =>
+        blocksSellerFulfilment(request.kind, request.status),
+      )
+    ) {
+      throw new AppException(
+        409,
+        'REFUND_REQUEST_PENDING',
+        'The buyer has asked to cancel this order — respond to the request first',
+      );
     }
   }
 

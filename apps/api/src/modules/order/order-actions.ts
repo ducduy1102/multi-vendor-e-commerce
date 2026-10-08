@@ -128,25 +128,17 @@ export function getBuyerRefundRequestActions(
   };
 }
 
-export type CancelBlockReason =
-  'PAID_ONLINE' | 'PROCESSING_STARTED' | 'IN_TRANSIT';
+export type CancelBlockReason = 'PROCESSING_STARTED' | 'IN_TRANSIT';
 
 // Vì sao 1 đơn ĐANG SỐNG không hủy/từ chối NGAY được — dùng để trả đúng
-// `ORDER_CANCEL_NOT_ALLOWED.details.reason`. null = không có lý do đặc biệt: hoặc hủy được (PENDING +
-// COD), hoặc đơn ở trạng thái mà nơi gọi báo lỗi khác (AWAITING_PAYMENT hủy theo nhóm, đơn đã kết thúc
-// ⇒ ORDER_INVALID_TRANSITION).
+// `ORDER_CANCEL_NOT_ALLOWED.details.reason`. null = không có lý do đặc biệt: hoặc hủy ngay được (PENDING, mọi
+// phương thức — đơn đã trả online thì hoàn tiền tự động), hoặc đơn ở trạng thái mà nơi gọi báo lỗi khác
+// (AWAITING_PAYMENT hủy theo nhóm, đơn đã kết thúc ⇒ ORDER_INVALID_TRANSITION).
 //   - PROCESSING_STARTED (CONFIRMED/PACKED): shop đã xử lý, người mua gửi YÊU CẦU hủy chứ không hủy ngay.
 //   - IN_TRANSIT (SHIPPING): hàng đã giao cho vận chuyển, không hủy được (Week9.md 1.3).
-//   - PAID_ONLINE (PENDING đã trả online): người mua đã hủy ngay được (2.6) nên chỉ còn đường seller từ chối
-//     (`reject`) trả mã này, cho tới khi 2.7 mở nốt đường đó — lúc ấy lý do biến mất khỏi hàm và khỏi
-//     `error-code.ts`.
 export function getCancelBlockReason(
   status: OrderStatus,
-  paymentMethod: PaymentMethod | null,
 ): CancelBlockReason | null {
-  if (status === 'PENDING') {
-    return paymentMethod === 'COD' ? null : 'PAID_ONLINE';
-  }
   if (status === 'CONFIRMED' || status === 'PACKED') {
     return 'PROCESSING_STARTED';
   }
@@ -158,8 +150,6 @@ export function getCancelBlockReason(
 
 export interface SellerOrderActionsInput {
   status: OrderStatus;
-  // Phương thức của lần thử thanh toán mới nhất của nhóm; null nếu nhóm chưa có Payment nào.
-  paymentMethod: PaymentMethod | null;
   // Đơn đang có yêu cầu HỦY của người mua chờ xử lý (blocksSellerFulfilment ở packages/types): seller phải
   // phản hồi yêu cầu trước khi đóng gói/giao, nên 2 cờ đó tắt.
   hasBlockingCancelRequest: boolean;
@@ -185,11 +175,43 @@ export function getSellerOrderActions(
     canConfirm: input.status === 'PENDING',
     canPack: input.status === 'CONFIRMED' && !input.hasBlockingCancelRequest,
     canShip: input.status === 'PACKED' && !input.hasBlockingCancelRequest,
-    // Hiện vẫn chỉ từ chối được đơn COD chưa thu tiền (luật Tuần 8); đơn đã trả online từ chối kèm hoàn
-    // tiền sẽ mở ở 2.7 cùng route — cùng lý do với canCancel của buyer ở trên.
-    canReject: input.status === 'PENDING' && input.paymentMethod === 'COD',
+    // Từ chối đơn chờ xác nhận — mọi phương thức: đơn đã trả online thì hoàn tiền tự động (Week9.md 1.3, mở ở
+    // 2.7 cùng RefundService + route). Trước đó chỉ đơn COD chưa thu tiền.
+    canReject: input.status === 'PENDING',
     // Tự hủy đơn đã xác nhận/đóng gói KHÔNG bị chặn bởi yêu cầu hủy đang chờ: hủy chính là cách trả lời.
     canCancel: input.status === 'CONFIRMED' || input.status === 'PACKED',
+  };
+}
+
+export interface SellerRefundRequestActionsInput {
+  kind: RefundRequestKind;
+  status: RefundRequestStatus;
+}
+
+export interface SellerRefundRequestActions {
+  canApprove: boolean;
+  canReject: boolean;
+}
+
+// Luật "seller làm được gì với YÊU CẦU của người mua" (Week9.md 1.4) — suy từ bảng chuyển có actor ở
+// packages/types (một nguồn duy nhất): duyệt khi đang chờ seller, hoặc khi yêu cầu HỦY đã lên sàn (seller
+// nhượng bộ); từ chối chỉ khi đang chờ seller. FE chỉ đọc các cờ này.
+export function getSellerRefundRequestActions(
+  input: SellerRefundRequestActionsInput,
+): SellerRefundRequestActions {
+  return {
+    canApprove: canActorTransitionRefundRequest(
+      'SELLER',
+      input.kind,
+      input.status,
+      'APPROVED',
+    ),
+    canReject: canActorTransitionRefundRequest(
+      'SELLER',
+      input.kind,
+      input.status,
+      'REJECTED_BY_SELLER',
+    ),
   };
 }
 

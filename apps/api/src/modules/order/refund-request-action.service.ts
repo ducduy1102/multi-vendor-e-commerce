@@ -7,7 +7,11 @@ import {
 } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
-import { isWithinEscalateWindow, isWithinRefundWindow } from './order-actions';
+import {
+  getSellerRefundRequestActions,
+  isWithinEscalateWindow,
+  isWithinRefundWindow,
+} from './order-actions';
 import type { OrderActor } from './order-status.service';
 import {
   readRefundEscalateDays,
@@ -15,6 +19,8 @@ import {
   readRefundWindowDays,
 } from './refund-config';
 import { RefundRequestService } from './refund-request.service';
+import { RefundService } from './refund.service';
+import { sellerVisibleOrderFilter } from './seller-order-visibility';
 
 type NotAllowedReason =
   | 'NOT_ELIGIBLE_STATUS'
@@ -47,15 +53,17 @@ function requestKindFor(status: OrderStatus): RefundRequestKind | null {
   return null;
 }
 
-// Các hành động của NGƯỜI MUA lên yêu cầu hủy/trả hàng: gửi, rút, khiếu nại lên sàn (Week9.md 2.6). Chỉ kiểm
-// quyền sở hữu + điều kiện nghiệp vụ rồi để RefundRequestService.transition (điểm ghi duy nhất, kiểm bảng chuyển
-// có actor) đổi trạng thái. Yêu cầu của người khác / không tồn tại cùng trả 404 (không lộ id nào có thật).
-// Việc DUYỆT / TỪ CHỐI của seller và Admin (2.7/2.9) đi qua RefundService vì duyệt kéo theo hủy đơn + hoàn tiền.
+// Các hành động lên yêu cầu hủy/trả hàng: của NGƯỜI MUA (gửi, rút, khiếu nại lên sàn — Week9.md 2.6) và của
+// SELLER (duyệt, từ chối — 2.7). Chỉ kiểm quyền sở hữu + điều kiện nghiệp vụ rồi để RefundRequestService.transition
+// (điểm ghi duy nhất, kiểm bảng chuyển có actor) đổi trạng thái. Yêu cầu của người khác / không tồn tại cùng
+// trả 404 (không lộ id nào có thật). DUYỆT kéo theo hủy/hoàn đơn nên đi qua RefundService (cùng transaction với
+// việc đóng yêu cầu); Admin quyết định ở 2.9 cũng qua RefundService.
 @Injectable()
 export class RefundRequestActionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly refundRequestService: RefundRequestService,
+    private readonly refundService: RefundService,
   ) {}
 
   // Gửi yêu cầu cho đơn của mình. Loại yêu cầu suy từ trạng thái đơn; điều kiện (cửa sổ trả hàng, đã gửi rồi,
@@ -209,6 +217,92 @@ export class RefundRequestActionService {
       );
       return { orderId: request.orderId };
     });
+  }
+
+  // --- Seller (Week9.md 2.7) --------------------------------------------------------------------
+
+  // Seller DUYỆT yêu cầu: yêu cầu HỦY ⇒ hủy đơn (kho + voucher + hoàn tiền nếu đã thu), yêu cầu TRẢ HÀNG ⇒ đơn
+  // COMPLETED → REFUNDED (không cộng kho, không trả voucher). Cả hai đóng đúng yêu cầu này cùng transaction qua
+  // `refundRequestId` (fail-closed: người mua vừa rút ⇒ 409, đơn không bị hủy oan). Cho phép cả yêu cầu HỦY đã
+  // lên sàn (ESCALATED): seller nhượng bộ. Ghi chú tuỳ chọn, người mua đọc được.
+  async approveForSeller(
+    shopId: string,
+    sellerUserId: string,
+    requestId: string,
+    note?: string | null,
+  ): Promise<void> {
+    const request = await this.findSellerRequest(
+      this.prisma,
+      shopId,
+      requestId,
+    );
+    // Kiểm sớm theo bảng chuyển có actor để báo đúng lỗi, thay vì để RefundService lật đơn rồi mới rollback.
+    if (!getSellerRefundRequestActions(request).canApprove) {
+      throw this.invalidTransition(request.status, 'APPROVED');
+    }
+
+    const actor: OrderActor = { type: 'SELLER', id: sellerUserId };
+    if (request.kind === 'CANCEL') {
+      await this.refundService.cancelOrderWithRefund(actor, request.orderId, {
+        reason: note,
+        refundRequestId: request.id,
+        onlyFrom: ['CONFIRMED', 'PACKED'],
+      });
+    } else {
+      await this.refundService.refundReturnedOrder(actor, request.orderId, {
+        reason: note,
+        refundRequestId: request.id,
+      });
+    }
+  }
+
+  // Seller TỪ CHỐI yêu cầu (chỉ khi đang chờ seller) — ghi chú BẮT BUỘC, ghi vào RefundRequestHistory.note để
+  // người mua đọc. Đơn giữ nguyên trạng thái; người mua có thể khiếu nại lên sàn trong REFUND_ESCALATE_DAYS.
+  async rejectForSeller(
+    shopId: string,
+    sellerUserId: string,
+    requestId: string,
+    note: string,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const request = await this.findSellerRequest(tx, shopId, requestId);
+      await this.refundRequestService.transition(
+        tx,
+        request.id,
+        request.status,
+        'REJECTED_BY_SELLER',
+        { type: 'SELLER', id: sellerUserId },
+        note,
+      );
+    });
+  }
+
+  // Seller chỉ thấy yêu cầu của shop mình VÀ của đơn Seller được thấy (cùng predicate sellerVisibleOrderFilter như
+  // mọi truy vấn đơn của Seller); yêu cầu đã rút coi như không tồn tại.
+  private async findSellerRequest(
+    client: Pick<Prisma.TransactionClient, 'refundRequest'>,
+    shopId: string,
+    requestId: string,
+  ) {
+    const request = await client.refundRequest.findFirst({
+      where: {
+        id: requestId,
+        shopId,
+        status: { not: 'WITHDRAWN' },
+        order: sellerVisibleOrderFilter(),
+      },
+      select: { id: true, kind: true, status: true, orderId: true },
+    });
+    if (!request) throw requestNotFound();
+    return request;
+  }
+
+  private invalidTransition(from: string, to: string): AppException {
+    return new AppException(
+      409,
+      'REFUND_REQUEST_INVALID_TRANSITION',
+      `Cannot change refund request status from ${from} to ${to}`,
+    );
   }
 
   private async findOwned(

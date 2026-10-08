@@ -624,18 +624,49 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       expect((await stockOf(variantId)).stock).toBe(STOCK);
     });
 
-    it('seller KHÔNG từ chối được đơn đã trả online — 409 PAID_ONLINE, không hoàn kho', async () => {
-      const { orderId, variantId } = await seedOne('PENDING', onlinePaid);
+    // Week9.md 2.7 — từ chối đơn đã trả online mở: hoàn tiền tự động (cổng mock). Trước đó test này khẳng định
+    // 409 PAID_ONLINE; mã PAID_ONLINE đã bị bỏ.
+    it('seller từ chối được đơn ĐÃ TRẢ ONLINE — 200, đơn CANCELLED, kho +qty, hoàn tiền SUCCEEDED, Payment REFUNDED, email "bị shop từ chối" kèm đoạn hoàn tiền', async () => {
+      const originalMock = process.env.PAYMENT_MOCK_ENABLED;
+      process.env.PAYMENT_MOCK_ENABLED = 'true';
+      try {
+        const { orderId, variantId, groupId } = await seedOne(
+          'PENDING',
+          onlinePaid,
+        );
+        fakeMail.reset();
 
-      const res = await sellerA
-        .post(sellerUrl(shopA, orderId, 'reject'))
-        .send({ reason: 'Hết hàng' });
+        const res = await sellerA
+          .post(sellerUrl(shopA, orderId, 'reject'))
+          .send({ reason: 'Hết hàng' });
 
-      expect(res.status).toBe(409);
-      expect(code(res)).toBe('ORDER_CANCEL_NOT_ALLOWED');
-      expect(details(res)).toEqual({ reason: 'PAID_ONLINE' });
-      expect(await statusOf(orderId)).toBe('PENDING');
-      expect((await stockOf(variantId)).stock).toBe(STOCK);
+        expect(res.status).toBe(200);
+        expect(sellerOrderDetailSchema.parse(data(res))).toMatchObject({
+          status: 'CANCELLED',
+          canReject: false,
+        });
+        expect(await stockOf(variantId)).toEqual({
+          stock: STOCK + QTY,
+          reservedStock: 0,
+        });
+        const payment = await prisma.payment.findFirstOrThrow({
+          where: { checkoutGroupId: groupId },
+        });
+        expect(payment.status).toBe('REFUNDED');
+        expect(Number(payment.refundedAmount)).toBe(220_000);
+        expect((await historyOf(orderId)).at(-1)).toMatchObject({
+          toStatus: 'CANCELLED',
+          actorType: 'SELLER',
+          note: 'Hết hàng',
+        });
+        expect(fakeMail.sent.map((m) => m.subject)).toEqual([
+          'Đơn hàng của bạn đã bị shop từ chối',
+        ]);
+        expect(fakeMail.sent[0].html).toContain('đang hoàn');
+      } finally {
+        if (originalMock === undefined) delete process.env.PAYMENT_MOCK_ENABLED;
+        else process.env.PAYMENT_MOCK_ENABLED = originalMock;
+      }
     });
 
     it('seller KHÔNG từ chối được đơn đã xác nhận — 409 PROCESSING_STARTED', async () => {
@@ -898,7 +929,7 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       ).toHaveLength(1);
     });
 
-    it('nhóm đã thanh toán — 409 PAID_ONLINE, không đụng gì', async () => {
+    it('nhóm đã thanh toán — 409 ORDER_ALREADY_CHANGED (đơn nay hủy từng đơn kèm hoàn tiền), không đụng gì', async () => {
       const g = await seedGroup(
         [{ shopId: shopA, status: 'PENDING' }],
         onlinePaid,
@@ -909,8 +940,7 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       );
 
       expect(res.status).toBe(409);
-      expect(code(res)).toBe('ORDER_CANCEL_NOT_ALLOWED');
-      expect(details(res)).toEqual({ reason: 'PAID_ONLINE' });
+      expect(code(res)).toBe('ORDER_ALREADY_CHANGED');
       expect(await statusOf(g.orderIds[0])).toBe('PENDING');
     });
 
