@@ -41,6 +41,15 @@ export function readRefundGatewayTimeoutMs(): number {
   );
 }
 
+// Số lần TỐI ĐA hệ thống tự gọi cổng cho MỘT khoản hoàn (tính cả lần gọi ngay trong request tạo ra nó, mỗi
+// lần gọi tăng PaymentRefund.attempts). Hết số lần mà cổng vẫn chưa xác nhận ⇒ RefundJob đánh dấu FAILED để
+// Admin thử lại hoặc ghi nhận đã hoàn thủ công (Week9.md 1.5), không treo PENDING mãi.
+const DEFAULT_REFUND_MAX_ATTEMPTS = 3;
+
+export function readRefundMaxAttempts(): number {
+  return readPositiveInt('REFUND_MAX_ATTEMPTS', DEFAULT_REFUND_MAX_ATTEMPTS);
+}
+
 // Khoản hoàn PENDING lâu hơn mức này (tính từ updatedAt, mỗi lần thử làm mới mốc) mới bị coi là "bị bỏ
 // dở": Admin được thử lại/ghi nhận thủ công và RefundJob quét lại. Không phải ENV — đủ dài để một lần gọi
 // cổng đang chạy (timeout 8s) không bị nhận nhầm là bỏ dở, đủ ngắn để người mua không chờ lâu.

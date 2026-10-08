@@ -1,6 +1,7 @@
 import {
   readRefundEscalateDays,
   readRefundGatewayTimeoutMs,
+  readRefundMaxAttempts,
   readRefundSellerResponseHours,
   readRefundWindowDays,
   REFUND_PENDING_STALE_MS,
@@ -66,6 +67,13 @@ describe.each([
     'readRefundEscalateDays',
     readRefundEscalateDays,
     'REFUND_ESCALATE_DAYS',
+    3,
+    '5',
+  ],
+  [
+    'readRefundMaxAttempts',
+    readRefundMaxAttempts,
+    'REFUND_MAX_ATTEMPTS',
     3,
     '5',
   ],

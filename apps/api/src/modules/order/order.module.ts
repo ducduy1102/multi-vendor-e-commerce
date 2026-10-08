@@ -15,6 +15,7 @@ import { OrderService } from './order.service';
 import { PaymentExpiryJob } from './payment-expiry.job';
 import { PaymentService } from './payment.service';
 import { RefundRequestActionService } from './refund-request-action.service';
+import { RefundJob } from './refund.job';
 import { RefundRequestService } from './refund-request.service';
 import { RefundService } from './refund.service';
 import { SellerOrderController } from './seller-order.controller';
@@ -46,6 +47,7 @@ import { SellerRefundRequestController } from './seller-refund-request.controlle
     RefundService,
     PaymentExpiryJob,
     OrderAutoCompleteJob,
+    RefundJob,
   ],
   exports: [
     OrderService,
