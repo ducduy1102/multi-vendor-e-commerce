@@ -387,6 +387,10 @@ describe('AdminRefundController (HTTP thật)', () => {
     app.useGlobalInterceptors(new TransformResponseInterceptor());
     app.useGlobalFilters(new AllExceptionsFilter());
     await app.init();
+    // Nghe MỘT LẦN trên cổng ngẫu nhiên thay vì để supertest tự listen/close theo từng request: các test race bắn
+    // nhiều request song song, request nào xong trước sẽ đóng server dưới chân các request còn lại ⇒ ECONNRESET
+    // ngẫu nhiên (đã gặp: 1/10 lượt chạy của test 6 người đánh giá đồng thời).
+    await app.listen(0);
 
     const first = await createAdmin('admin1');
     const second = await createAdmin('admin2');
