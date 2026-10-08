@@ -13,6 +13,7 @@ import {
   deriveCheckoutGroupStatus,
   type CheckoutGroupStatusPayment,
 } from './checkout-group-status';
+import { getReviewBlockReason } from '../../shared/review/review-eligibility';
 import { REFUND_PENDING_STALE_MS } from './refund-config';
 
 // Luật "buyer được làm gì với đơn" (Week8.md 1.5, mở rộng ở Week9.md 1.3) — hàm THUẦN để test từng ca, FE
@@ -239,6 +240,23 @@ export function getAdminRefundRequestActions(
       'REJECTED',
     ),
   };
+}
+
+export interface OrderItemReviewInput {
+  orderStatus: OrderStatus;
+  // Lúc đơn COMPLETED gần nhất (OrderStatusHistory); null = không có dấu vết.
+  completedAt: Date | null;
+  now: Date;
+  windowDays: number;
+  // Người mua đã đánh giá sản phẩm của dòng hàng này trong đơn này.
+  alreadyReviewed: boolean;
+}
+
+// Cờ `canReview` của một dòng hàng ở chi tiết đơn của người mua (Week9.md 1.8): đơn COMPLETED, còn trong cửa
+// sổ đánh giá, chưa đánh giá sản phẩm đó. Dòng hàng luôn thuộc đơn nên `containsProduct` là true. Gọi ĐÚNG
+// hàm mà ReviewService dùng để chặn khi viết (shared/review) — nút hiện ra thì bấm được; FE chỉ đọc cờ.
+export function canReviewOrderItem(input: OrderItemReviewInput): boolean {
+  return getReviewBlockReason({ ...input, containsProduct: true }) === null;
 }
 
 export interface AdminRefundActionsInput {

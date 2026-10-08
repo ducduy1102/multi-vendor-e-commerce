@@ -5,6 +5,7 @@ import {
   ORDER_STATUSES_VISIBLE_TO_SELLER,
   ORDER_TAB_STATUSES,
   orderActorTypeSchema,
+  orderDetailItemSchema,
   orderDetailSchema,
   orderListItemSchema,
   orderListQuerySchema,
@@ -200,7 +201,15 @@ describe('response schema', () => {
       createdAt: '2026-10-01T10:00:00.000Z',
       totalAmount: '220000',
       shop: { id: 's1', name: 'Shop A', slug: 'shop-a', logoUrl: null },
-      items: [item],
+      items: [
+        {
+          ...item,
+          productId: 'p1',
+          productSlug: 'ao-thun',
+          canReview: false,
+          review: null,
+        },
+      ],
       itemCount: 1,
       paymentMethod: 'COD',
       paymentStatus: 'PENDING',
@@ -226,9 +235,57 @@ describe('response schema', () => {
     });
 
     expect(parsed.history[0]).not.toHaveProperty('actorId');
+    expect(parsed.items[0]).toMatchObject({
+      productId: 'p1',
+      productSlug: 'ao-thun',
+    });
     expect(parsed.paymentMethod).toBe('COD');
     // z.object tự bỏ field không khai — field phải có trong schema thì FE mới đọc được (general.md mục 4).
     expect(parsed.buyerNote).toBe('Giao giờ hành chính');
+  });
+
+  describe('orderDetailItemSchema (Week9.md 1.8)', () => {
+    const detailItem = {
+      ...item,
+      productId: 'p1',
+      productSlug: 'ao-thun',
+      canReview: true,
+      review: null,
+    };
+
+    it('dòng hàng chưa đánh giá: canReview + review null', () => {
+      expect(orderDetailItemSchema.parse(detailItem)).toMatchObject({
+        productId: 'p1',
+        productSlug: 'ao-thun',
+        canReview: true,
+        review: null,
+      });
+    });
+
+    it('đánh giá của chính mình giữ đủ trường FE cần để dựng nút sửa và điền sẵn form (không rơi mất do z.object strip)', () => {
+      const review = {
+        id: 'rv-1',
+        rating: 4,
+        comment: 'Tốt',
+        editedAt: null,
+        canEdit: true,
+      };
+
+      expect(
+        orderDetailItemSchema.parse({ ...detailItem, canReview: false, review })
+          .review,
+      ).toEqual(review);
+    });
+
+    it.each(['productId', 'productSlug', 'canReview', 'review'])(
+      'thiếu %s ⇒ lỗi (BE phải luôn trả đủ, FE không tự đoán)',
+      (field) => {
+        const incomplete: Record<string, unknown> = { ...detailItem };
+        delete incomplete[field];
+
+        expect(orderDetailItemSchema.safeParse(incomplete).success).toBe(false);
+      },
+    );
   });
 
   describe('refundRequest / refund (Week9.md 2.6)', () => {

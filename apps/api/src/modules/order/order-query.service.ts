@@ -6,6 +6,7 @@ import {
   ORDER_TAB_STATUSES,
   type BuyerRefundRequest,
   type OrderDetail,
+  type OrderDetailItem,
   type OrderHistoryEntry,
   type OrderListItem,
   type OrderListQuery,
@@ -24,7 +25,9 @@ import type { OrderStatus, Prisma } from '@prisma/client';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { readPaymentMaxHoldMinutes } from '../../shared/payment/payment-config';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { readReviewWindowDays } from '../../shared/review/review-eligibility';
 import {
+  canReviewOrderItem,
   canRetryOrderPayment,
   getBuyerOrderActions,
   getBuyerRefundRequestActions,
@@ -151,10 +154,30 @@ const historyArgs = {
   orderBy: { createdAt: 'asc' },
 } satisfies Prisma.Order$statusHistoryArgs;
 
+// Dòng hàng ở chi tiết: thêm định danh sản phẩm (OrderItem không có productId — nối qua variant) để dựng link tới
+// trang sản phẩm và nút đánh giá (Week9.md 1.8).
+const detailItemSelect = {
+  ...itemSelect,
+  productVariant: {
+    select: { productId: true, product: { select: { slug: true } } },
+  },
+} satisfies Prisma.OrderItemSelect;
+
 const detailSelect = {
   ...listSelect,
   // Ghi đè bản xem nhanh: chi tiết trả đủ dòng hàng.
-  items: { select: itemSelect, orderBy: { id: 'asc' } },
+  items: { select: detailItemSelect, orderBy: { id: 'asc' } },
+  // Đánh giá của người mua cho đơn này (chỉ người mua của đơn mới viết được — ReviewService kiểm), đủ để hiện
+  // nút "Đã đánh giá ★n · Sửa" và điền sẵn form sửa mà không gọi thêm route nào.
+  reviews: {
+    select: {
+      id: true,
+      productId: true,
+      rating: true,
+      comment: true,
+      editedAt: true,
+    },
+  },
   recipientName: true,
   recipientPhone: true,
   shippingAddressLine: true,
@@ -387,9 +410,10 @@ export class OrderQueryService {
       (sum, item) => sum + item.priceAtPurchase.toNumber() * item.quantity,
       0,
     );
+    const now = new Date();
     return {
-      ...this.toListItem(order, new Date()),
-      items: order.items.map((item) => this.toItem(item)),
+      ...this.toListItem(order, now),
+      items: this.toDetailItems(order, now),
       recipientName: order.recipientName,
       recipientPhone: order.recipientPhone,
       shippingAddressLine: order.shippingAddressLine,
@@ -611,6 +635,46 @@ export class OrderQueryService {
       quantity: item.quantity,
       priceAtPurchase: money(item.priceAtPurchase),
     };
+  }
+
+  // Dòng hàng của chi tiết đơn + trạng thái đánh giá. Đánh giá theo (người mua, sản phẩm, đơn) nên hai dòng cùng
+  // một sản phẩm (khác biến thể) dùng chung một đánh giá và cùng cờ canReview.
+  private toDetailItems(
+    order: LoadedDetailOrder,
+    now: Date,
+  ): OrderDetailItem[] {
+    const completedAt = latestCompletedAt(order.statusHistory);
+    const windowDays = readReviewWindowDays();
+    const reviewByProduct = new Map(
+      order.reviews.map((review) => [review.productId, review]),
+    );
+
+    return order.items.map((item) => {
+      const productId = item.productVariant.productId;
+      const review = reviewByProduct.get(productId) ?? null;
+      return {
+        ...this.toItem(item),
+        productId,
+        productSlug: item.productVariant.product.slug,
+        canReview: canReviewOrderItem({
+          orderStatus: order.status,
+          completedAt,
+          now,
+          windowDays,
+          alreadyReviewed: review !== null,
+        }),
+        review: review
+          ? {
+              id: review.id,
+              rating: review.rating,
+              comment: review.comment,
+              editedAt: review.editedAt?.toISOString() ?? null,
+              // Sửa được đúng một lần.
+              canEdit: review.editedAt === null,
+            }
+          : null,
+      };
+    });
   }
 
   private toListItem(

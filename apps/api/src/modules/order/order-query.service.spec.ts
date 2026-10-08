@@ -13,6 +13,11 @@ function loadedItem(n: number, quantity = 1, price = 100_000) {
     imageUrl: null,
     quantity,
     priceAtPurchase: D(price),
+    // Chi tiết đơn của buyer select thêm quan hệ này để dựng link sản phẩm và nút đánh giá (Week9.md 2.10).
+    productVariant: {
+      productId: `prod-${n}`,
+      product: { slug: `san-pham-${n}` },
+    },
   };
 }
 
@@ -82,6 +87,8 @@ function loadedDetail(overrides: Record<string, unknown> = {}) {
     carrier: null,
     trackingCode: null,
     buyerNote: null,
+    // Đánh giá của người mua cho đơn này (chi tiết mới select).
+    reviews: [],
     statusHistory: [
       {
         fromStatus: null,
@@ -682,6 +689,265 @@ describe('OrderQueryService (buyer)', () => {
       const order = await service.getForBuyer('user-1', 'o1');
 
       expect(order.history[0]).not.toHaveProperty('actorId');
+    });
+
+    // --- Dòng hàng: định danh sản phẩm + trạng thái đánh giá (Week9.md 1.8, 2.10) ---------------------------
+    describe('dòng hàng và đánh giá', () => {
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const completedHistory = (daysAgo: number) => [
+        {
+          fromStatus: 'SHIPPING',
+          toStatus: 'COMPLETED',
+          actorType: 'BUYER',
+          note: null,
+          createdAt: new Date(Date.now() - daysAgo * DAY_MS),
+        },
+      ];
+      const loadedReview = (overrides: Record<string, unknown> = {}) => ({
+        id: 'rv-1',
+        productId: 'prod-1',
+        rating: 4,
+        comment: 'Tốt',
+        editedAt: null,
+        ...overrides,
+      });
+
+      afterEach(() => {
+        delete process.env.REVIEW_WINDOW_DAYS;
+      });
+
+      it('select kèm quan hệ variant → sản phẩm (productId + slug) và đánh giá của đơn; danh sách thì KHÔNG đọc các cột này', async () => {
+        prisma.order.findFirst.mockResolvedValue(loadedDetail());
+        await service.getForBuyer('user-1', 'o1');
+        const [detailArgs] = prisma.order.findFirst.mock.calls[0] as [
+          {
+            select: {
+              items: { select: Record<string, unknown> };
+              reviews: { select: Record<string, boolean> };
+            };
+          },
+        ];
+        expect(detailArgs.select.items.select.productVariant).toEqual({
+          select: { productId: true, product: { select: { slug: true } } },
+        });
+        expect(detailArgs.select.reviews.select).toEqual({
+          id: true,
+          productId: true,
+          rating: true,
+          comment: true,
+          editedAt: true,
+        });
+
+        await service.listForBuyer('user-1', { page: 1, limit: 10 });
+        const [listArgs] = prisma.order.findMany.mock.calls[0] as [
+          { select: Record<string, unknown> },
+        ];
+        expect(listArgs.select).not.toHaveProperty('reviews');
+      });
+
+      it('mỗi dòng trả productId + productSlug (OrderItem không có productId, nối qua variant)', async () => {
+        prisma.order.findFirst.mockResolvedValue(loadedDetail());
+
+        const order = await service.getForBuyer('user-1', 'o1');
+
+        expect(
+          order.items.map((item) => [item.productId, item.productSlug]),
+        ).toEqual([
+          ['prod-1', 'san-pham-1'],
+          ['prod-2', 'san-pham-2'],
+        ]);
+        // Snapshot cũ của dòng hàng vẫn còn nguyên.
+        expect(order.items[0]).toMatchObject({
+          productName: 'Sản phẩm 1',
+          sku: 'SKU-1',
+          priceAtPurchase: '100000',
+        });
+      });
+
+      it('đơn COMPLETED trong cửa sổ, chưa đánh giá ⇒ canReview true, review null', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          loadedDetail({
+            status: 'COMPLETED',
+            statusHistory: completedHistory(3),
+          }),
+        );
+
+        const order = await service.getForBuyer('user-1', 'o1');
+
+        expect(
+          order.items.map((item) => [item.canReview, item.review]),
+        ).toEqual([
+          [true, null],
+          [true, null],
+        ]);
+      });
+
+      it('đã đánh giá sản phẩm ⇒ canReview false, review đủ rating/nhận xét/cờ sửa (chưa sửa ⇒ canEdit true); dòng sản phẩm khác không ảnh hưởng', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          loadedDetail({
+            status: 'COMPLETED',
+            statusHistory: completedHistory(3),
+            reviews: [loadedReview()],
+          }),
+        );
+
+        const order = await service.getForBuyer('user-1', 'o1');
+
+        expect(order.items[0]).toMatchObject({
+          productId: 'prod-1',
+          canReview: false,
+          review: {
+            id: 'rv-1',
+            rating: 4,
+            comment: 'Tốt',
+            editedAt: null,
+            canEdit: true,
+          },
+        });
+        expect(order.items[1]).toMatchObject({ canReview: true, review: null });
+      });
+
+      it('đã sửa một lần (editedAt có giá trị) ⇒ canEdit false, editedAt dạng ISO', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          loadedDetail({
+            status: 'COMPLETED',
+            statusHistory: completedHistory(3),
+            reviews: [
+              loadedReview({
+                comment: null,
+                editedAt: new Date('2026-10-05T08:00:00.000Z'),
+              }),
+            ],
+          }),
+        );
+
+        const order = await service.getForBuyer('user-1', 'o1');
+
+        expect(order.items[0].review).toEqual({
+          id: 'rv-1',
+          rating: 4,
+          comment: null,
+          editedAt: '2026-10-05T08:00:00.000Z',
+          canEdit: false,
+        });
+      });
+
+      it('hai dòng cùng một sản phẩm (khác biến thể) dùng chung một đánh giá và cùng cờ', async () => {
+        const sameProduct = (n: number) => ({
+          ...loadedItem(n),
+          productVariant: {
+            productId: 'prod-1',
+            product: { slug: 'san-pham-1' },
+          },
+        });
+        prisma.order.findFirst.mockResolvedValue(
+          loadedDetail({
+            status: 'COMPLETED',
+            statusHistory: completedHistory(3),
+            items: [sameProduct(1), sameProduct(2)],
+            reviews: [loadedReview()],
+          }),
+        );
+
+        const order = await service.getForBuyer('user-1', 'o1');
+
+        expect(order.items.map((item) => item.review?.id)).toEqual([
+          'rv-1',
+          'rv-1',
+        ]);
+        expect(order.items.map((item) => item.canReview)).toEqual([
+          false,
+          false,
+        ]);
+      });
+
+      it.each([
+        'AWAITING_PAYMENT',
+        'PENDING',
+        'CONFIRMED',
+        'PACKED',
+        'SHIPPING',
+        'CANCELLED',
+        'REFUNDED',
+      ])(
+        'đơn %s (chưa/không còn COMPLETED) ⇒ canReview false trên mọi dòng',
+        async (status) => {
+          prisma.order.findFirst.mockResolvedValue(
+            loadedDetail({ status, statusHistory: completedHistory(3) }),
+          );
+
+          const order = await service.getForBuyer('user-1', 'o1');
+
+          expect(order.items.every((item) => !item.canReview)).toBe(true);
+        },
+      );
+
+      it('đơn REFUNDED vẫn giữ đánh giá đã viết (hiện review, không cho viết thêm)', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          loadedDetail({
+            status: 'REFUNDED',
+            statusHistory: completedHistory(3),
+            reviews: [loadedReview()],
+          }),
+        );
+
+        const order = await service.getForBuyer('user-1', 'o1');
+
+        expect(order.items[0]).toMatchObject({
+          canReview: false,
+          review: { id: 'rv-1' },
+        });
+      });
+
+      it('quá cửa sổ mặc định 90 ngày ⇒ canReview false; còn trong cửa sổ ⇒ true', async () => {
+        prisma.order.findFirst.mockResolvedValueOnce(
+          loadedDetail({
+            status: 'COMPLETED',
+            statusHistory: completedHistory(91),
+          }),
+        );
+        expect(
+          (await service.getForBuyer('user-1', 'o1')).items[0].canReview,
+        ).toBe(false);
+
+        prisma.order.findFirst.mockResolvedValueOnce(
+          loadedDetail({
+            status: 'COMPLETED',
+            statusHistory: completedHistory(89),
+          }),
+        );
+        expect(
+          (await service.getForBuyer('user-1', 'o1')).items[0].canReview,
+        ).toBe(true);
+      });
+
+      it('REVIEW_WINDOW_DAYS đọc LÚC DÙNG (đổi giữa hai lần gọi có hiệu lực ngay)', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          loadedDetail({
+            status: 'COMPLETED',
+            statusHistory: completedHistory(10),
+          }),
+        );
+        process.env.REVIEW_WINDOW_DAYS = '7';
+        expect(
+          (await service.getForBuyer('user-1', 'o1')).items[0].canReview,
+        ).toBe(false);
+
+        process.env.REVIEW_WINDOW_DAYS = '30';
+        expect(
+          (await service.getForBuyer('user-1', 'o1')).items[0].canReview,
+        ).toBe(true);
+      });
+
+      it('COMPLETED mà không còn dấu vết lúc hoàn tất trong lịch sử ⇒ canReview false (từ chối an toàn)', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          loadedDetail({ status: 'COMPLETED' }),
+        );
+
+        const order = await service.getForBuyer('user-1', 'o1');
+
+        expect(order.items.every((item) => !item.canReview)).toBe(true);
+      });
     });
 
     describe('buyerNote (Week8.md 3B)', () => {

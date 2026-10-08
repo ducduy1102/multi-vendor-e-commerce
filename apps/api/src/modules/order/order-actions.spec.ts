@@ -5,6 +5,7 @@ import type {
 } from '@prisma/client';
 import type { RefundRequestKind, RefundRequestStatus } from '@ecommerce/types';
 import {
+  canReviewOrderItem,
   canRetryOrderPayment,
   getAdminRefundActions,
   getAdminRefundRequestActions,
@@ -603,6 +604,41 @@ describe('getSellerRefundRequestActions (Week9.md 1.4)', () => {
         canReject: false,
       });
     }
+  });
+});
+
+describe('canReviewOrderItem (Week9.md 1.8)', () => {
+  const base = {
+    orderStatus: 'COMPLETED' as OrderStatus,
+    completedAt: daysAgo(2),
+    now: NOW,
+    windowDays: 90,
+    alreadyReviewed: false,
+  };
+
+  it('đơn COMPLETED trong cửa sổ, chưa đánh giá ⇒ được', () => {
+    expect(canReviewOrderItem(base)).toBe(true);
+  });
+
+  it('đã đánh giá ⇒ không', () => {
+    expect(canReviewOrderItem({ ...base, alreadyReviewed: true })).toBe(false);
+  });
+
+  it.each(['PENDING', 'SHIPPING', 'CANCELLED', 'REFUNDED'] as OrderStatus[])(
+    'đơn %s ⇒ không',
+    (orderStatus) => {
+      expect(canReviewOrderItem({ ...base, orderStatus })).toBe(false);
+    },
+  );
+
+  it('quá cửa sổ hoặc không rõ lúc hoàn tất ⇒ không; đúng hạn chót vẫn được', () => {
+    expect(canReviewOrderItem({ ...base, completedAt: daysAgo(91) })).toBe(
+      false,
+    );
+    expect(canReviewOrderItem({ ...base, completedAt: null })).toBe(false);
+    expect(canReviewOrderItem({ ...base, completedAt: daysAgo(90) })).toBe(
+      true,
+    );
   });
 });
 
