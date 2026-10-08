@@ -113,11 +113,10 @@ export const errorDetailsSchemas = {
     reason: z.enum(['ATTEMPT_PENDING', 'HOLD_EXPIRED', 'ALREADY_PAID', 'NOT_ONLINE_PAYMENT']),
   }),
   // PROCESSING_STARTED: shop đã xác nhận/đóng gói — không hủy ngay được, người mua gửi yêu cầu hủy
-  // (Week9.md 1.3); IN_TRANSIT: đơn đã giao cho vận chuyển, không hủy được. PAID_ONLINE (đơn PENDING đã
-  // trả online) sẽ BỊ BỎ khi chính sách hủy mới thay `getCancelBlockReason` (Week9.md 2.3) — đơn đó từ
-  // giờ hủy ngay được kèm hoàn tiền; còn nằm đây chỉ vì BE hiện vẫn trả mã đó.
+  // (Week9.md 1.3); IN_TRANSIT: đơn đã giao cho vận chuyển, không hủy được. Không còn PAID_ONLINE: đơn đã
+  // trả online mà shop chưa xác nhận giờ hủy ngay được kèm hoàn tiền tự động (Week9.md 2.6/2.7).
   ORDER_CANCEL_NOT_ALLOWED: z.object({
-    reason: z.enum(['PAID_ONLINE', 'PROCESSING_STARTED', 'IN_TRANSIT']),
+    reason: z.enum(['PROCESSING_STARTED', 'IN_TRANSIT']),
   }),
   // Vì sao không gửi được yêu cầu hủy/trả hàng: NOT_ELIGIBLE_STATUS (đơn không ở CONFIRMED/PACKED/
   // COMPLETED), WINDOW_EXPIRED (quá cửa sổ trả hàng kể từ lúc COMPLETED), ALREADY_REQUESTED (đã có yêu cầu

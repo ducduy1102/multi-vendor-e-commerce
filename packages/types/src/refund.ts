@@ -259,3 +259,31 @@ export const orderRefundSummarySchema = z.object({
   amount: moneySchema,
 });
 export type OrderRefundSummary = z.infer<typeof orderRefundSummarySchema>;
+
+// --- Phía seller (Week9.md 2.7) --------------------------------------------------------------------
+
+// Tóm tắt yêu cầu ở danh sách đơn của seller: loại + trạng thái + hạn phản hồi đủ để hiện huy hiệu "khách xin
+// hủy — chờ bạn trả lời". KHÔNG kèm lý do/ghi chú của người mua (đọc ở chi tiết đơn / hàng chờ yêu cầu).
+export const sellerRefundRequestSummarySchema = z.object({
+  id: z.string(),
+  kind: refundRequestKindSchema,
+  status: refundRequestStatusSchema,
+  // Hạn seller phản hồi (ISO); quá hạn hệ thống tự duyệt (CANCEL) hoặc chuyển Admin (RETURN).
+  sellerRespondBy: z.string(),
+});
+export type SellerRefundRequestSummary = z.infer<typeof sellerRefundRequestSummarySchema>;
+
+// Yêu cầu đầy đủ nhìn từ phía seller: lý do của người mua + dòng thời gian (không actorId — seller không cần
+// biết định danh Admin/người mua) + cờ hành động do BE tính từ bảng chuyển có actor.
+export const sellerRefundRequestSchema = sellerRefundRequestSummarySchema.extend({
+  reasonCode: z.string(),
+  reasonNote: z.string().nullable(),
+  statusChangedAt: z.string(),
+  createdAt: z.string(),
+  history: z.array(refundRequestHistoryItemSchema),
+  // Duyệt: yêu cầu đang chờ seller; yêu cầu HỦY đã lên sàn cũng duyệt được (seller nhượng bộ). Từ chối chỉ khi
+  // đang chờ seller.
+  canApprove: z.boolean(),
+  canReject: z.boolean(),
+});
+export type SellerRefundRequest = z.infer<typeof sellerRefundRequestSchema>;

@@ -11,10 +11,13 @@ import {
   orderStatusSchema,
   orderTabSchema,
   rejectOrderSchema,
+  sellerCancelOrderSchema,
   sellerOrderDetailSchema,
   sellerOrderListItemSchema,
   sellerOrderListQuerySchema,
   sellerOrderTabSchema,
+  sellerRefundRequestListItemSchema,
+  sellerRefundRequestListQuerySchema,
   shipOrderSchema,
 } from '@ecommerce/types';
 import { OrderActorType } from '@prisma/client';
@@ -332,6 +335,197 @@ describe('response schema', () => {
     });
   });
 
+  describe('seller: refundRequest (Week9.md 2.7)', () => {
+    const base = {
+      id: 'o1',
+      status: 'CONFIRMED',
+      createdAt: '2026-10-01T10:00:00.000Z',
+      totalAmount: '220000',
+      recipientName: 'Nguyễn Văn A',
+      shippingProvince: 'Hồ Chí Minh',
+      buyerNote: null,
+      items: [item],
+      itemCount: 1,
+      paymentMethod: 'VNPAY',
+      paymentStatus: 'SUCCESS',
+      canConfirm: false,
+      canPack: false,
+      canShip: false,
+      canReject: false,
+      canCancel: true,
+    };
+    const summary = {
+      id: 'r1',
+      kind: 'CANCEL',
+      status: 'PENDING_SELLER',
+      sellerRespondBy: '2026-10-03T10:00:00.000Z',
+    };
+    const full = {
+      ...summary,
+      reasonCode: 'CHANGE_OF_MIND',
+      reasonNote: 'Đổi ý',
+      statusChangedAt: '2026-10-01T12:00:00.000Z',
+      createdAt: '2026-10-01T12:00:00.000Z',
+      history: [
+        {
+          toStatus: 'PENDING_SELLER',
+          actorType: 'BUYER',
+          note: null,
+          createdAt: '2026-10-01T12:00:00.000Z',
+          actorId: 'buyer-secret-id',
+        },
+      ],
+      canApprove: true,
+      canReject: true,
+    };
+    const detailRest = {
+      recipientPhone: '0912345678',
+      shippingAddressLine: '12 Nguyễn Huệ',
+      shippingWard: 'Phường Bến Nghé',
+      subtotal: '200000',
+      discountAmount: '0',
+      shippingFee: '20000',
+      carrier: null,
+      trackingCode: null,
+      history,
+    };
+
+    it('danh sách đơn chỉ mang TÓM TẮT (không lý do của người mua) dù BE lỡ trả thừa', () => {
+      const parsed = sellerOrderListItemSchema.parse({
+        ...base,
+        refundRequest: full,
+      });
+
+      expect(parsed.refundRequest).toEqual(summary);
+    });
+
+    it('chi tiết đơn mang yêu cầu đầy đủ: lý do, cờ duyệt/từ chối, timeline KHÔNG có actorId', () => {
+      const parsed = sellerOrderDetailSchema.parse({
+        ...base,
+        ...detailRest,
+        refundRequest: full,
+      });
+
+      expect(parsed.refundRequest).toMatchObject({
+        reasonCode: 'CHANGE_OF_MIND',
+        reasonNote: 'Đổi ý',
+        canApprove: true,
+        canReject: true,
+      });
+      expect(parsed.refundRequest?.history[0]).not.toHaveProperty('actorId');
+    });
+
+    it('thiếu refundRequest bị từ chối ở cả danh sách lẫn chi tiết (BE phải trả null tường minh)', () => {
+      expect(sellerOrderListItemSchema.safeParse(base).success).toBe(false);
+      expect(
+        sellerOrderDetailSchema.safeParse({ ...base, ...detailRest }).success,
+      ).toBe(false);
+      expect(
+        sellerOrderListItemSchema.safeParse({ ...base, refundRequest: null })
+          .success,
+      ).toBe(true);
+    });
+
+    it('chi tiết với tóm tắt (thiếu lý do) bị từ chối — hai hình dạng không lẫn nhau', () => {
+      expect(
+        sellerOrderDetailSchema.safeParse({
+          ...base,
+          ...detailRest,
+          refundRequest: summary,
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe('sellerCancelOrderSchema (Week9.md 2.7)', () => {
+    it('lý do bắt buộc, trim, tối đa 500 ký tự — cùng luật với từ chối đơn', () => {
+      expect(sellerCancelOrderSchema.parse({ reason: '  Hết hàng ' })).toEqual({
+        reason: 'Hết hàng',
+      });
+      expect(sellerCancelOrderSchema.safeParse({}).success).toBe(false);
+      expect(sellerCancelOrderSchema.safeParse({ reason: '   ' }).success).toBe(
+        false,
+      );
+      expect(
+        sellerCancelOrderSchema.safeParse({
+          reason: 'x'.repeat(ORDER_REASON_MAX_LENGTH + 1),
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe('sellerRefundRequestListQuerySchema (Week9.md 2.7)', () => {
+    it('mặc định page 1, limit 10; status tuỳ chọn; coerce từ chuỗi query', () => {
+      expect(sellerRefundRequestListQuerySchema.parse({})).toEqual({
+        page: 1,
+        limit: 10,
+      });
+      expect(
+        sellerRefundRequestListQuerySchema.parse({
+          status: 'PENDING_SELLER',
+          page: '2',
+          limit: '25',
+        }),
+      ).toEqual({ status: 'PENDING_SELLER', page: 2, limit: 25 });
+    });
+
+    it('yêu cầu đã rút (WITHDRAWN) không bao giờ lọc được; limit tối đa 50', () => {
+      expect(
+        sellerRefundRequestListQuerySchema.safeParse({ status: 'WITHDRAWN' })
+          .success,
+      ).toBe(false);
+      expect(
+        sellerRefundRequestListQuerySchema.safeParse({ status: 'WEIRD' })
+          .success,
+      ).toBe(false);
+      expect(
+        sellerRefundRequestListQuerySchema.safeParse({ limit: '51' }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe('sellerRefundRequestListItemSchema (Week9.md 2.7)', () => {
+    it('yêu cầu đầy đủ + tóm tắt đơn (không userId/email của người mua), timeline không actorId', () => {
+      const parsed = sellerRefundRequestListItemSchema.parse({
+        id: 'r1',
+        kind: 'RETURN',
+        status: 'PENDING_SELLER',
+        sellerRespondBy: '2026-10-03T10:00:00.000Z',
+        reasonCode: 'DAMAGED',
+        reasonNote: null,
+        statusChangedAt: '2026-10-01T12:00:00.000Z',
+        createdAt: '2026-10-01T12:00:00.000Z',
+        history: [
+          {
+            toStatus: 'PENDING_SELLER',
+            actorType: 'BUYER',
+            note: null,
+            createdAt: '2026-10-01T12:00:00.000Z',
+            actorId: 'secret',
+          },
+        ],
+        canApprove: true,
+        canReject: true,
+        order: {
+          id: 'o1',
+          status: 'COMPLETED',
+          totalAmount: '220000',
+          recipientName: 'Nguyễn Văn A',
+          items: [item],
+          itemCount: 1,
+          paymentMethod: 'COD',
+          paymentStatus: 'SUCCESS',
+          userId: 'buyer-id',
+          email: 'buyer@example.com',
+        },
+      });
+
+      expect(parsed.history[0]).not.toHaveProperty('actorId');
+      expect(parsed.order).not.toHaveProperty('userId');
+      expect(parsed.order).not.toHaveProperty('email');
+    });
+  });
+
   describe('buyerNote (Week8.md 3B)', () => {
     const sellerDetail = {
       id: 'o1',
@@ -349,6 +543,7 @@ describe('response schema', () => {
       canShip: false,
       canReject: true,
       canCancel: false,
+      refundRequest: null,
       recipientPhone: '0912345678',
       shippingAddressLine: '12 Nguyễn Huệ',
       shippingWard: 'Phường Bến Nghé',
@@ -428,6 +623,7 @@ describe('response schema', () => {
       canShip: false,
       canReject: false,
       canCancel: false,
+      refundRequest: null,
       recipientPhone: '0912345678',
       shippingAddressLine: '12 Nguyễn Huệ',
       shippingWard: 'Phường Bến Nghé',
