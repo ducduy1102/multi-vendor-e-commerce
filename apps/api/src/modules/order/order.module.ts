@@ -14,6 +14,7 @@ import { OrderStatusService } from './order-status.service';
 import { OrderService } from './order.service';
 import { PaymentExpiryJob } from './payment-expiry.job';
 import { PaymentService } from './payment.service';
+import { RefundQueryService } from './refund-query.service';
 import { RefundRequestActionService } from './refund-request-action.service';
 import { RefundJob } from './refund.job';
 import { RefundRequestService } from './refund-request.service';
@@ -42,6 +43,7 @@ import { SellerRefundRequestController } from './seller-refund-request.controlle
     OrderQueryService,
     OrderStatusService,
     PaymentService,
+    RefundQueryService,
     RefundRequestActionService,
     RefundRequestService,
     RefundService,
@@ -49,11 +51,16 @@ import { SellerRefundRequestController } from './seller-refund-request.controlle
     OrderAutoCompleteJob,
     RefundJob,
   ],
+  // Phần khu Admin (module `admin`, Week9.md 2.9) dùng để xử lý tiền hoàn: đọc hàng chờ, quyết định yêu cầu,
+  // thử lại / ghi nhận thủ công / hoàn thanh toán bất thường — chỉ qua các service này, không import file nội bộ.
   exports: [
     OrderService,
     OrderStatusService,
     OrderEmailService,
     PaymentService,
+    RefundQueryService,
+    RefundRequestActionService,
+    RefundService,
   ],
 })
 export class OrderModule {}
