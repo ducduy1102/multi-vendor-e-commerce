@@ -25,6 +25,7 @@ import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../shared/guards/optional-jwt-auth.guard';
 import { ShopOwnerGuard } from '../../shared/guards/shop-owner.guard';
 import { ZodValidationPipe } from '../../shared/pipes/zod-validation.pipe';
+import { errorExample } from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import {
   createProductSchema,
@@ -84,6 +85,8 @@ const PRODUCT_EXAMPLE = {
 const PRODUCT_DETAIL_EXAMPLE = {
   ...PRODUCT_EXAMPLE,
   shop: { name: 'ABC Shop', slug: 'abc-shop' },
+  avgRating: 4.5,
+  reviewCount: 12,
 };
 
 const PRODUCT_LIST_ITEM_EXAMPLE = {
@@ -116,6 +119,8 @@ const PRODUCT_CARD_EXAMPLE = {
   minPrice: PRODUCT_EXAMPLE.minPrice,
   maxPrice: PRODUCT_EXAMPLE.maxPrice,
   imageUrl: null,
+  avgRating: 4.5,
+  reviewCount: 12,
 };
 
 const CATEGORY_EXAMPLE = {
@@ -304,7 +309,9 @@ export class ProductController {
   @ApiQuery({
     name: 'sort',
     required: false,
-    enum: ['newest', 'price-asc', 'price-desc'],
+    enum: ['newest', 'price-asc', 'price-desc', 'rating'],
+    description:
+      'rating = điểm trung bình cao trước, hoà thì nhiều đánh giá hơn trước; sản phẩm chưa có đánh giá xếp cuối',
   })
   @ApiQuery({ name: 'shopId', required: false })
   @ApiQuery({ name: 'categoryId', required: false })
@@ -320,7 +327,7 @@ export class ProductController {
     name: 'q',
     required: false,
     description:
-      'Search full-text theo name+description (Postgres tsvector, không phân biệt dấu). Có q + sort mặc định (newest) sẽ tự đổi sang xếp theo độ liên quan, trừ khi tự chọn price-asc/price-desc',
+      'Search full-text theo name+description (Postgres tsvector, không phân biệt dấu). Có q + sort mặc định (newest) sẽ tự đổi sang xếp theo độ liên quan, trừ khi tự chọn price-asc/price-desc/rating',
     example: 'áo thun',
   })
   @ApiResponse({
@@ -330,6 +337,16 @@ export class ProductController {
         success: true,
         data: { items: [PRODUCT_CARD_EXAMPLE], total: 1, page: 1, limit: 12 },
       },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Query không hợp lệ (sort ngoài newest/price-asc/price-desc/rating, limit > 50, page/limit không phải số nguyên dương, minPrice/maxPrice âm...)',
+    schema: {
+      example: errorExample(
+        "sort: Invalid enum value. Expected 'newest' | 'price-asc' | 'price-desc' | 'rating', received 'best'",
+      ),
     },
   })
   async listPublic(
