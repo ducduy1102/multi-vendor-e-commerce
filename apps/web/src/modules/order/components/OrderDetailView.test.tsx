@@ -43,6 +43,8 @@ function order(overrides: Partial<OrderDetail> = {}): OrderDetail {
     canCancel: false,
     canRequestCancel: false,
     canRequestReturn: false,
+    refundRequest: null,
+    refund: null,
     canConfirmReceived: false,
     canRetryPayment: false,
     recipientName: 'Nguyễn Văn A',

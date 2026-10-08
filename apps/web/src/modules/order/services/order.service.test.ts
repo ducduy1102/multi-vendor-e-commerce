@@ -47,6 +47,8 @@ const BUYER_LIST_ITEM = {
   canCancel: true,
   canRequestCancel: false,
   canRequestReturn: false,
+  refundRequest: null,
+  refund: null,
   canConfirmReceived: false,
   canRetryPayment: false,
 };

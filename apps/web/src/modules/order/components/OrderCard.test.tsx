@@ -35,6 +35,8 @@ function order(overrides: Partial<OrderListItem> = {}): OrderListItem {
     canCancel: false,
     canRequestCancel: false,
     canRequestReturn: false,
+    refundRequest: null,
+    refund: null,
     canConfirmReceived: false,
     canRetryPayment: false,
     ...overrides,
