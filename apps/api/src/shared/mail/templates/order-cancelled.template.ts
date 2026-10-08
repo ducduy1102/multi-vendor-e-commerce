@@ -1,4 +1,4 @@
-import { escapeHtml } from './html';
+import { escapeHtml, formatVnd } from './html';
 import {
   button,
   paragraph,
@@ -24,8 +24,9 @@ const LEADS: Record<OrderCancelledBy, string> = {
     'Đơn hàng chưa được thanh toán trong thời hạn giữ hàng nên đã bị hủy và hàng đã được trả lại kho.',
 };
 
-// Đơn bị hủy (seller từ chối / buyer hủy / hết hạn thanh toán). Chỉ gửi cho các đường hủy KHÔNG có tiền
-// thật (Week8.md 1.5) nên không có đoạn hoàn tiền; hủy kèm hoàn tiền là Tuần 9.
+// Đơn bị hủy (seller từ chối / buyer hủy / hết hạn thanh toán). Từ Tuần 9 đơn đã thanh toán online cũng hủy
+// được: khi đó có thêm đoạn "đang hoàn tiền" (refundAmount). Email gửi ngay sau khi hủy, lúc cổng có thể
+// chưa xác nhận nên chỉ nói "đang hoàn", không khẳng định tiền đã về.
 export function orderCancelledTemplate(data: OrderCancelledEmailData): {
   subject: string;
   html: string;
@@ -35,6 +36,12 @@ export function orderCancelledTemplate(data: OrderCancelledEmailData): {
   const reason = data.reason
     ? `<p style="margin:0 0 12px"><strong>Lý do:</strong> ${escapeHtml(data.reason)}</p>`
     : '';
+  const refund =
+    data.refundAmount && data.refundAmount > 0
+      ? paragraph(
+          `Chúng tôi đang hoàn ${formatVnd(data.refundAmount)} về phương thức thanh toán ban đầu của bạn. Thời gian tiền về tài khoản tuỳ thuộc vào ngân hàng hoặc cổng thanh toán.`,
+        )
+      : '';
 
   const html = renderEmail(
     'Đơn hàng đã bị hủy',
@@ -42,6 +49,7 @@ export function orderCancelledTemplate(data: OrderCancelledEmailData): {
       ${paragraph(`Chào ${data.buyerName},`)}
       ${paragraph(LEADS[data.cancelledBy])}
       ${reason}
+      ${refund}
       ${data.orders.map(renderOrderBlock).join('')}
       ${button(data.ordersUrl, 'Xem đơn hàng')}
     `,

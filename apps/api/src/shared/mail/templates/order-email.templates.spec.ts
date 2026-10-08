@@ -212,6 +212,38 @@ describe('orderCancelledTemplate', () => {
 
     expect(html).toContain('<strong>Lý do:</strong> Hết hàng');
   });
+
+  describe('đoạn hoàn tiền (Week9.md 1.5)', () => {
+    it('có khoản hoàn — nói "ĐANG hoàn" kèm số tiền, không khẳng định đã hoàn xong', () => {
+      const { html } = orderCancelledTemplate({
+        ...BASE,
+        orders: [ORDER],
+        cancelledBy: 'BUYER',
+        reason: null,
+        refundAmount: 410_000,
+      });
+
+      expect(html).toContain(
+        `Chúng tôi đang hoàn ${formatVnd(410_000)} về phương thức thanh toán ban đầu`,
+      );
+      expect(html).not.toContain('đã hoàn');
+    });
+
+    it.each([undefined, null, 0])(
+      'refundAmount %p — không có đoạn hoàn tiền',
+      (refundAmount) => {
+        const { html } = orderCancelledTemplate({
+          ...BASE,
+          orders: [ORDER],
+          cancelledBy: 'SELLER',
+          reason: null,
+          refundAmount,
+        });
+
+        expect(html).not.toContain('đang hoàn');
+      },
+    );
+  });
 });
 
 describe('chống chèn HTML (dữ liệu người dùng/seller nhập)', () => {
