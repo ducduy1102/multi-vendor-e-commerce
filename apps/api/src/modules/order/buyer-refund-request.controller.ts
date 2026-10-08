@@ -21,7 +21,10 @@ import {
 } from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { OrderQueryService } from './order-query.service';
-import { REFUND_REQUEST_EXAMPLE } from './order-swagger-examples';
+import {
+  CONFIRMED_ORDER_DETAIL_EXAMPLE,
+  REFUND_REQUEST_EXAMPLE,
+} from './order-swagger-examples';
 import { RefundRequestActionService } from './refund-request-action.service';
 
 const REFUND_REQUEST_NOT_FOUND_EXAMPLE = errorExample(
@@ -62,7 +65,8 @@ export class BuyerRefundRequestController {
       example: {
         success: true,
         data: {
-          id: 'b1b2c3d4-1234-4a5b-8c9d-abcdef000002',
+          ...CONFIRMED_ORDER_DETAIL_EXAMPLE,
+          canRequestCancel: true,
           refundRequest: null,
         },
       },
@@ -110,7 +114,7 @@ export class BuyerRefundRequestController {
       example: {
         success: true,
         data: {
-          id: 'b1b2c3d4-1234-4a5b-8c9d-abcdef000002',
+          ...CONFIRMED_ORDER_DETAIL_EXAMPLE,
           refundRequest: {
             ...REFUND_REQUEST_EXAMPLE,
             status: 'ESCALATED',

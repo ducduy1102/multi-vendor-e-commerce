@@ -37,69 +37,15 @@ import {
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { OrderActionService } from './order-action.service';
 import {
+  CONFIRMED_ORDER_DETAIL_EXAMPLE,
+  ORDER_DETAIL_EXAMPLE,
+  ORDER_DETAIL_ITEM_EXAMPLE,
+  ORDER_LIST_ITEM_EXAMPLE,
   ORDER_NOT_FOUND_EXAMPLE,
   REFUND_REQUEST_EXAMPLE,
 } from './order-swagger-examples';
 import { OrderQueryService } from './order-query.service';
 import { RefundRequestActionService } from './refund-request-action.service';
-
-const ORDER_ITEM_EXAMPLE = {
-  productName: 'Áo thun cotton',
-  variantLabel: 'Đỏ / M',
-  sku: 'SKU-AO-DO-M',
-  imageUrl: 'https://res.cloudinary.com/demo/image/upload/ao-thun.jpg',
-  quantity: 2,
-  priceAtPurchase: '150000',
-};
-
-const ORDER_LIST_ITEM_EXAMPLE = {
-  id: 'b1b2c3d4-1234-4a5b-8c9d-abcdef000002',
-  checkoutGroupId: 'a1b2c3d4-1234-4a5b-8c9d-abcdef000001',
-  status: 'AWAITING_PAYMENT',
-  createdAt: '2026-10-01T10:00:00.000Z',
-  totalAmount: '320000',
-  shop: {
-    id: 'c1b2c3d4-1234-4a5b-8c9d-abcdef000003',
-    name: 'Shop Áo Xinh',
-    slug: 'shop-ao-xinh',
-    logoUrl: null,
-  },
-  items: [ORDER_ITEM_EXAMPLE],
-  itemCount: 1,
-  paymentMethod: 'VNPAY',
-  paymentStatus: 'PENDING',
-  canCancel: true,
-  canRequestCancel: false,
-  canRequestReturn: false,
-  canConfirmReceived: false,
-  canRetryPayment: true,
-  refundRequest: null,
-  refund: null,
-};
-
-const ORDER_DETAIL_EXAMPLE = {
-  ...ORDER_LIST_ITEM_EXAMPLE,
-  recipientName: 'Nguyễn Văn A',
-  recipientPhone: '0912345678',
-  shippingAddressLine: '12 Nguyễn Huệ',
-  shippingWard: 'Phường Bến Nghé',
-  shippingProvince: 'Hồ Chí Minh',
-  subtotal: '300000',
-  discountAmount: '0',
-  shippingFee: '20000',
-  carrier: null,
-  trackingCode: null,
-  buyerNote: 'Giao giờ hành chính, gọi trước khi giao nhé',
-  history: [
-    {
-      fromStatus: null,
-      toStatus: 'AWAITING_PAYMENT',
-      actorType: 'BUYER',
-      note: null,
-      createdAt: '2026-10-01T10:00:00.000Z',
-    },
-  ],
-};
 
 // Đơn của buyer đang đăng nhập (Week8.md 2.4). Mọi truy vấn lọc theo userId lấy từ token. Hành động: hủy,
 // xác nhận đã nhận (Week8.md 2.6) và gửi yêu cầu hủy/trả hàng (Week9.md 2.6); rút/khiếu nại yêu cầu nằm ở
@@ -173,6 +119,8 @@ export class BuyerOrderController {
   @ApiOperation({
     summary:
       'Chi tiết 1 đơn của tôi — địa chỉ nhận và dòng hàng lúc đặt, lời nhắn tôi đã gửi cho shop (`buyerNote`, null nếu không có), timeline trạng thái',
+    description:
+      'Mỗi dòng hàng kèm `productId`/`productSlug` (dựng link sản phẩm), `canReview` (đơn COMPLETED, còn trong REVIEW_WINDOW_DAYS, chưa đánh giá sản phẩm này trong đơn này, và sản phẩm không thuộc shop của chính tôi) và `review` (đánh giá của chính tôi, null nếu chưa có).',
   })
   @ApiParam({ name: 'id', description: 'ID đơn hàng' })
   @ApiResponse({
@@ -271,9 +219,7 @@ export class BuyerOrderController {
       example: {
         success: true,
         data: {
-          ...ORDER_DETAIL_EXAMPLE,
-          status: 'CONFIRMED',
-          canCancel: false,
+          ...CONFIRMED_ORDER_DETAIL_EXAMPLE,
           canRequestCancel: false,
           refundRequest: REFUND_REQUEST_EXAMPLE,
         },
@@ -340,6 +286,8 @@ export class BuyerOrderController {
           ...ORDER_DETAIL_EXAMPLE,
           status: 'COMPLETED',
           canCancel: false,
+          // Vừa hoàn tất ⇒ còn trong cửa sổ đánh giá.
+          items: [{ ...ORDER_DETAIL_ITEM_EXAMPLE, canReview: true }],
         },
       },
     },
