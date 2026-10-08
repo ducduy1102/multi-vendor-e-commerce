@@ -555,12 +555,19 @@ export class ProductService {
       where.id = { in: [...rankById.keys()] };
     }
 
-    const orderBy: Prisma.ProductOrderByWithRelationInput =
+    // sort=rating (Week9.md 1.8): điểm trung bình cao trước, hoà thì nhiều đánh giá hơn trước, hoà nữa thì theo
+    // `id` để thứ tự (và phân trang) ổn định — nhiều sản phẩm cùng 0 sao/0 đánh giá là chuyện thường. Sản phẩm
+    // chưa có đánh giá (avgRating = 0) tự rơi xuống cuối. Khớp index [status, avgRating].
+    const orderBy:
+      | Prisma.ProductOrderByWithRelationInput
+      | Prisma.ProductOrderByWithRelationInput[] =
       query.sort === 'price-asc'
         ? { minPrice: 'asc' }
         : query.sort === 'price-desc'
           ? { minPrice: 'desc' }
-          : { createdAt: 'desc' };
+          : query.sort === 'rating'
+            ? [{ avgRating: 'desc' }, { reviewCount: 'desc' }, { id: 'asc' }]
+            : { createdAt: 'desc' };
 
     // Có `q` và user KHÔNG tự chọn sort khác (vẫn 'newest' mặc định từ Zod)
     // -> xếp theo độ liên quan (ts_rank) thay vì mới nhất, đúng 1.8. Chọn

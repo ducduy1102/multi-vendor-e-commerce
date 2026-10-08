@@ -1336,6 +1336,41 @@ describe('ProductService', () => {
       );
     });
 
+    // Week9.md 1.8/2.10 — sort theo điểm đánh giá denormalized trên Product.
+    it('sort rating: điểm cao trước, hoà thì nhiều đánh giá hơn trước, hoà nữa thì theo id (ổn định khi phân trang)', async () => {
+      await service.listPublicProducts({
+        ...baseQuery,
+        sort: 'rating',
+        page: 2,
+        limit: 12,
+      });
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [
+            { avgRating: 'desc' },
+            { reviewCount: 'desc' },
+            { id: 'asc' },
+          ],
+          skip: 12,
+          take: 12,
+        }),
+      );
+    });
+
+    it('sort rating vẫn bắt buộc PUBLISHED + shop APPROVED như mọi sort khác', async () => {
+      await service.listPublicProducts({ ...baseQuery, sort: 'rating' });
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: 'PUBLISHED',
+            shop: { status: 'APPROVED' },
+          }) as object,
+        }),
+      );
+    });
+
     it('map đúng imageUrl từ variant active đầu tiên, trả total/page/limit', async () => {
       prisma.product.findMany.mockResolvedValue([
         {
@@ -1529,6 +1564,34 @@ describe('ProductService', () => {
         expect(result).toEqual({ items: [], total: 0, page: 1, limit: 12 });
         expect(prisma.product.findMany).not.toHaveBeenCalled();
         expect(prisma.product.count).not.toHaveBeenCalled();
+      });
+
+      it('có q + user chọn sort rating -> tôn trọng sort rating (Prisma orderBy), không ép rank', async () => {
+        mockRanked([
+          { id: 'p1', rank: 0.9 },
+          { id: 'p2', rank: 0.2 },
+        ]);
+        prisma.product.findMany.mockResolvedValue([
+          cardRow('p1'),
+          cardRow('p2'),
+        ]);
+        prisma.product.count.mockResolvedValue(2);
+
+        await service.listPublicProducts({
+          ...baseQuery,
+          q: 'áo',
+          sort: 'rating',
+        });
+
+        expect(prisma.product.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            orderBy: [
+              { avgRating: 'desc' },
+              { reviewCount: 'desc' },
+              { id: 'asc' },
+            ],
+          }),
+        );
       });
 
       it('có q + user tự chọn sort price-asc -> giữ nguyên price-asc, không ép rank', async () => {
