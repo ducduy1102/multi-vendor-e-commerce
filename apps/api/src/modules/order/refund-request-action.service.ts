@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { OrderStatus, RefundRequestKind } from '@prisma/client';
 import {
+  canActorTransitionRefundRequest,
   isRefundReasonAllowedForKind,
   type CreateRefundRequestInput,
 } from '@ecommerce/types';
@@ -275,6 +276,68 @@ export class RefundRequestActionService {
         note,
       );
     });
+  }
+
+  // --- Admin (Week9.md 2.9) -------------------------------------------------------------------------
+
+  // Admin quyết định MỘT yêu cầu, cả khi đã lên sàn (khiếu nại) lẫn khi còn chờ seller (thay seller vắng mặt).
+  // Không có phạm vi shop: Admin thấy mọi yêu cầu (kể cả đã rút — khi đó bảng chuyển từ chối bằng 409).
+  //  - APPROVE: giống seller duyệt — yêu cầu HỦY ⇒ hủy đơn (kho, voucher, hoàn tiền nếu đã thu), yêu cầu TRẢ HÀNG ⇒
+  //    COMPLETED → REFUNDED (không cộng kho). Đóng ĐÚNG yêu cầu này cùng transaction (`refundRequestId`, fail-closed:
+  //    người mua vừa rút hoặc seller vừa quyết thì cả giao dịch rollback, đơn không bị hủy oan).
+  //  - REJECT: đơn giữ nguyên; ghi chú BẮT BUỘC (người mua và seller đọc được lý do), schema đã kiểm.
+  // Kiểm sớm theo bảng chuyển có actor ADMIN để báo 409 đúng ngay từ đầu thay vì lật đơn rồi mới rollback.
+  async decideForAdmin(
+    adminId: string,
+    requestId: string,
+    decision: 'APPROVE' | 'REJECT',
+    note?: string | null,
+  ): Promise<void> {
+    const request = await this.prisma.refundRequest.findUnique({
+      where: { id: requestId },
+      select: { id: true, kind: true, status: true, orderId: true },
+    });
+    if (!request) throw requestNotFound();
+
+    const to = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+    if (
+      !canActorTransitionRefundRequest(
+        'ADMIN',
+        request.kind,
+        request.status,
+        to,
+      )
+    ) {
+      throw this.invalidTransition(request.status, to);
+    }
+
+    const actor: OrderActor = { type: 'ADMIN', id: adminId };
+    if (decision === 'REJECT') {
+      await this.prisma.$transaction((tx) =>
+        this.refundRequestService.transition(
+          tx,
+          request.id,
+          request.status,
+          'REJECTED',
+          actor,
+          note,
+        ),
+      );
+      return;
+    }
+
+    if (request.kind === 'CANCEL') {
+      await this.refundService.cancelOrderWithRefund(actor, request.orderId, {
+        reason: note,
+        refundRequestId: request.id,
+        onlyFrom: ['CONFIRMED', 'PACKED'],
+      });
+    } else {
+      await this.refundService.refundReturnedOrder(actor, request.orderId, {
+        reason: note,
+        refundRequestId: request.id,
+      });
+    }
   }
 
   // --- Hệ thống (RefundJob, Week9.md 2.8) -----------------------------------------------------------

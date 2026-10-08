@@ -732,6 +732,168 @@ describe('RefundRequestActionService', () => {
     });
   });
 
+  // --- Admin (Week9.md 2.9) -------------------------------------------------------------------------
+  describe('decideForAdmin', () => {
+    const ADMIN = { type: 'ADMIN', id: 'admin-1' };
+    const adminRequest = (overrides: Record<string, unknown> = {}) => ({
+      id: 'req-1',
+      kind: 'CANCEL',
+      status: 'ESCALATED',
+      orderId: 'o1',
+      ...overrides,
+    });
+
+    it('đọc yêu cầu CHỈ theo id (Admin không bị giới hạn theo shop như seller)', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(adminRequest());
+
+      await service.decideForAdmin('admin-1', 'req-1', 'APPROVE');
+
+      expect(prisma.refundRequest.findUnique).toHaveBeenCalledWith({
+        where: { id: 'req-1' },
+        select: { id: true, kind: true, status: true, orderId: true },
+      });
+    });
+
+    it('yêu cầu không tồn tại ⇒ 404, không ghi gì', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(null);
+
+      await expectAppException(
+        service.decideForAdmin('admin-1', 'req-x', 'APPROVE'),
+        { status: 404, code: 'REFUND_REQUEST_NOT_FOUND' },
+      );
+      expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+      expect(refundRequestService.transition).not.toHaveBeenCalled();
+    });
+
+    describe('APPROVE', () => {
+      it.each(['ESCALATED', 'PENDING_SELLER'] as const)(
+        'yêu cầu HỦY đang %s ⇒ hủy đơn qua RefundService bởi ADMIN, đóng ĐÚNG yêu cầu này (fail-closed), chỉ nhận đơn CONFIRMED/PACKED, kèm ghi chú',
+        async (status) => {
+          prisma.refundRequest.findUnique.mockResolvedValue(
+            adminRequest({ status }),
+          );
+
+          await service.decideForAdmin(
+            'admin-1',
+            'req-1',
+            'APPROVE',
+            'Đồng ý hủy',
+          );
+
+          expect(refundService.cancelOrderWithRefund).toHaveBeenCalledWith(
+            ADMIN,
+            'o1',
+            {
+              reason: 'Đồng ý hủy',
+              refundRequestId: 'req-1',
+              onlyFrom: ['CONFIRMED', 'PACKED'],
+            },
+          );
+          expect(refundService.refundReturnedOrder).not.toHaveBeenCalled();
+          expect(refundRequestService.transition).not.toHaveBeenCalled();
+        },
+      );
+
+      it.each(['ESCALATED', 'PENDING_SELLER'] as const)(
+        'yêu cầu TRẢ HÀNG đang %s ⇒ COMPLETED → REFUNDED qua RefundService, không ghi chú thì null',
+        async (status) => {
+          prisma.refundRequest.findUnique.mockResolvedValue(
+            adminRequest({ kind: 'RETURN', status }),
+          );
+
+          await service.decideForAdmin('admin-1', 'req-1', 'APPROVE');
+
+          expect(refundService.refundReturnedOrder).toHaveBeenCalledWith(
+            ADMIN,
+            'o1',
+            { reason: undefined, refundRequestId: 'req-1' },
+          );
+          expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+        },
+      );
+
+      it('lỗi của RefundService (người mua vừa rút, đơn vừa đổi...) được giữ nguyên', async () => {
+        prisma.refundRequest.findUnique.mockResolvedValue(adminRequest());
+        refundService.cancelOrderWithRefund.mockRejectedValue(
+          Object.assign(new Error('x'), {
+            code: 'REFUND_REQUEST_INVALID_TRANSITION',
+          }),
+        );
+
+        await expect(
+          service.decideForAdmin('admin-1', 'req-1', 'APPROVE'),
+        ).rejects.toMatchObject({ code: 'REFUND_REQUEST_INVALID_TRANSITION' });
+      });
+    });
+
+    describe('REJECT', () => {
+      it.each(['ESCALATED', 'PENDING_SELLER'] as const)(
+        'yêu cầu đang %s ⇒ chuyển → REJECTED bởi ADMIN trong một transaction, ghi chú vào lịch sử, KHÔNG đụng tới đơn',
+        async (status) => {
+          prisma.refundRequest.findUnique.mockResolvedValue(
+            adminRequest({ status }),
+          );
+
+          await service.decideForAdmin(
+            'admin-1',
+            'req-1',
+            'REJECT',
+            'Không đủ bằng chứng',
+          );
+
+          expect(refundRequestService.transition).toHaveBeenCalledWith(
+            tx,
+            'req-1',
+            status,
+            'REJECTED',
+            ADMIN,
+            'Không đủ bằng chứng',
+          );
+          expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+          expect(refundService.refundReturnedOrder).not.toHaveBeenCalled();
+        },
+      );
+
+      it('lỗi 409 của RefundRequestService (thua race) được giữ nguyên', async () => {
+        prisma.refundRequest.findUnique.mockResolvedValue(adminRequest());
+        refundRequestService.transition.mockRejectedValue(
+          Object.assign(new Error('x'), {
+            code: 'REFUND_REQUEST_INVALID_TRANSITION',
+          }),
+        );
+
+        await expect(
+          service.decideForAdmin('admin-1', 'req-1', 'REJECT', 'x'),
+        ).rejects.toMatchObject({ code: 'REFUND_REQUEST_INVALID_TRANSITION' });
+      });
+    });
+
+    // Bảng chuyển có actor ADMIN là nguồn duy nhất: ngoài PENDING_SELLER / ESCALATED, Admin không quyết định được.
+    it.each([
+      'REJECTED_BY_SELLER',
+      'APPROVED',
+      'REJECTED',
+      'WITHDRAWN',
+    ] as const)(
+      'yêu cầu đã %s ⇒ 409 REFUND_REQUEST_INVALID_TRANSITION ngay từ đầu (cả duyệt lẫn từ chối), không hủy đơn rồi mới rollback',
+      async (status) => {
+        prisma.refundRequest.findUnique.mockResolvedValue(
+          adminRequest({ status }),
+        );
+
+        for (const decision of ['APPROVE', 'REJECT'] as const) {
+          await expectAppException(
+            service.decideForAdmin('admin-1', 'req-1', decision, 'x'),
+            { status: 409, code: 'REFUND_REQUEST_INVALID_TRANSITION' },
+          );
+        }
+        expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+        expect(refundService.refundReturnedOrder).not.toHaveBeenCalled();
+        expect(refundRequestService.transition).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   // --- Hệ thống: RefundJob (Week9.md 2.8) -----------------------------------------------------------
   describe('resolveOverdueRequest', () => {
     const SYSTEM = { type: 'SYSTEM' };
