@@ -33,6 +33,7 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   // Giỏ hàng
   CART_FULL: 'cart.cartFull',
   CART_ITEM_UNAVAILABLE: 'cart.errorItemUnavailable',
+  CART_OWN_SHOP_ITEM: 'cart.errorOwnShopItem',
   INSUFFICIENT_STOCK: 'cart.errorInsufficientStock',
   // Checkout
   NO_PURCHASABLE_ITEMS: 'checkout.errorNoPurchasableItems',

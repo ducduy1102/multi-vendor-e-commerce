@@ -103,7 +103,10 @@ export function CheckoutSummary({
           <ul className="list-inside list-disc text-muted-foreground">
             {preview.excludedItems.map((item) => (
               <li key={item.cartItemId}>
-                {item.name} — {t('excludedItemReason')}
+                {item.name} —{' '}
+                {item.reason === 'OWN_SHOP'
+                  ? t('excludedItemOwnShopReason')
+                  : t('excludedItemReason')}
               </li>
             ))}
           </ul>

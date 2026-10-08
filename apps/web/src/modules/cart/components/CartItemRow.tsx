@@ -64,7 +64,7 @@ export function CartItemRow({ line, onQuantityChange, onRemove, isBusy }: CartIt
         <p className="text-sm text-foreground">{formatPrice(line.unitPrice)}</p>
         {!line.isAvailable ? (
           <Badge variant="secondary" className="w-fit">
-            {t('unavailableBadge')}
+            {line.unavailableReason === 'OWN_SHOP' ? t('ownShopBadge') : t('unavailableBadge')}
           </Badge>
         ) : null}
         {isOutOfStock ? (

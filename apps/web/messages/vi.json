@@ -297,6 +297,8 @@
     "cartFull": "Giỏ hàng đã đạt tối đa {max} sản phẩm khác nhau, không thể thêm mới",
     "mergeLinesDropped": "{count} sản phẩm từ giỏ trước không được gộp vào vì giỏ đã đạt tối đa {max} sản phẩm khác nhau",
     "errorItemUnavailable": "Sản phẩm này hiện không còn bán",
+    "errorOwnShopItem": "Bạn không thể mua sản phẩm của chính shop mình",
+    "ownShopBadge": "Shop của bạn",
     "errorInsufficientStock": "Số lượng vượt quá tồn kho hiện có (còn {available})",
     "checkout": "Tiến hành thanh toán"
   },
@@ -415,6 +417,7 @@
     "paymentMethodCodHint": "Trả tiền cho nhân viên giao hàng khi nhận hàng.",
     "excludedItemsTitle": "Sản phẩm không thể thanh toán",
     "excludedItemReason": "Sản phẩm đã ngừng bán, vẫn còn trong giỏ hàng của bạn",
+    "excludedItemOwnShopReason": "Sản phẩm của chính shop bạn nên không thể tự mua, vẫn còn trong giỏ hàng của bạn",
     "blockingIssuesTitle": "Một số sản phẩm vượt quá tồn kho",
     "blockingIssuesMessage": "Vui lòng quay lại giỏ hàng để điều chỉnh số lượng trước khi đặt hàng.",
     "backToCartLink": "Quay lại giỏ hàng",
