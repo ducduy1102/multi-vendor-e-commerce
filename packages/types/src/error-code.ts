@@ -28,6 +28,9 @@ export const SERVER_ERROR_CODES = [
   // Giỏ hàng
   'CART_FULL',
   'CART_ITEM_UNAVAILABLE',
+  // Người bán không được mua sản phẩm của CHÍNH shop mình (thêm vào giỏ / sửa dòng giỏ): chặn tự mua rồi tự đánh
+  // giá để nâng điểm. Dòng đã nằm sẵn trong giỏ từ trước thì bị loại khỏi thanh toán như dòng không khả dụng.
+  'CART_OWN_SHOP_ITEM',
   'INSUFFICIENT_STOCK',
   // Checkout
   'NO_PURCHASABLE_ITEMS',
@@ -130,10 +133,17 @@ export const errorDetailsSchemas = {
     ]),
   }),
   // Vì sao không đánh giá được: ORDER_NOT_COMPLETED (đơn chưa COMPLETED), NOT_PURCHASED (đơn không chứa sản
-  // phẩm đó), WINDOW_EXPIRED (quá REVIEW_WINDOW_DAYS kể từ lúc COMPLETED), ALREADY_REVIEWED (đã đánh giá
-  // sản phẩm này trong đơn này).
+  // phẩm đó), OWN_SHOP (sản phẩm của chính shop mình — kể cả đơn tự mua từ trước khi có luật chặn mua),
+  // WINDOW_EXPIRED (quá REVIEW_WINDOW_DAYS kể từ lúc COMPLETED), ALREADY_REVIEWED (đã đánh giá sản phẩm này
+  // trong đơn này).
   REVIEW_NOT_ALLOWED: z.object({
-    reason: z.enum(['ORDER_NOT_COMPLETED', 'NOT_PURCHASED', 'WINDOW_EXPIRED', 'ALREADY_REVIEWED']),
+    reason: z.enum([
+      'ORDER_NOT_COMPLETED',
+      'NOT_PURCHASED',
+      'OWN_SHOP',
+      'WINDOW_EXPIRED',
+      'ALREADY_REVIEWED',
+    ]),
   }),
   // Trạng thái HIỆN TẠI của shop lúc bị từ chối sửa.
   SHOP_EDIT_NOT_ALLOWED: z.object({ status: shopStatusSchema }),
