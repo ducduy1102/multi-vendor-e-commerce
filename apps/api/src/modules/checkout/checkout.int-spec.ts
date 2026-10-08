@@ -904,4 +904,133 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
       expect(remainingCartLines).toBe(CONCURRENT - STOCK);
     });
   });
+
+  // Người bán không được mua sản phẩm của chính shop mình (Week9.md 2.10). Giỏ hàng đã chặn việc THÊM; ở đây là
+  // dòng đã nằm sẵn trong giỏ từ trước khi có luật (dựng thẳng bằng prisma): checkout phải loại nó như dòng không
+  // khả dụng — không giữ chỗ kho, không tạo đơn, dòng ở lại giỏ.
+  describe('người bán không được tự mua (Week9.md 2.10)', () => {
+    // Người mua đồng thời là chủ của một shop (shopOwn); shopOther là shop của người khác.
+    async function setupSellerCart() {
+      const user = await createUser(prisma, TAG);
+      const address = await createAddress(prisma, user.id);
+      const own = await createShopWithProduct(prisma, TAG);
+      await prisma.shop.update({
+        where: { id: own.shopId },
+        data: { ownerId: user.id },
+      });
+      const ownVariant = await createVariant(prisma, own, {
+        stock: 10,
+        price: 100_000,
+      });
+      const other = await createShopWithProduct(prisma, TAG);
+      const otherVariant = await createVariant(prisma, other, {
+        stock: 10,
+        price: 100_000,
+      });
+      await addCartItem(prisma, user.id, ownVariant.id, 2);
+      await addCartItem(prisma, user.id, otherVariant.id, 1);
+      return { user, address, own, ownVariant, other, otherVariant };
+    }
+
+    it('giỏ lẫn hàng shop mình và shop khác: chỉ đơn của shop khác được tạo; dòng shop mình ở lại giỏ và KHÔNG bị giữ chỗ kho', async () => {
+      const { user, address, own, ownVariant, other, otherVariant } =
+        await setupSellerCart();
+      const expectedTotal = 100_000 + shippingFeeFor(500, 1);
+
+      const result = await place(user.id, {
+        addressId: address.id,
+        paymentMethod: 'VNPAY',
+        expectedTotal,
+      });
+
+      expect(result.orders).toHaveLength(1);
+      expect(result.orders[0].shopId).toBe(other.shopId);
+      expect(await prisma.order.count({ where: { shopId: own.shopId } })).toBe(
+        0,
+      );
+      // Hàng của shop mình không bị đụng tới.
+      expect(await stockOf(ownVariant.id)).toEqual({
+        stock: 10,
+        reservedStock: 0,
+      });
+      expect(await stockOf(otherVariant.id)).toEqual({
+        stock: 10,
+        reservedStock: 1,
+      });
+      // Dòng của shop mình ở lại giỏ (người dùng còn xoá được), dòng đã mua thì mất.
+      const remaining = await prisma.cartItem.findMany({
+        where: { cart: { userId: user.id } },
+        select: { productVariantId: true },
+      });
+      expect(remaining.map((r) => r.productVariantId)).toEqual([ownVariant.id]);
+    });
+
+    it('giỏ chỉ có hàng của shop mình ⇒ 400 NO_PURCHASABLE_ITEMS, không tạo nhóm / đơn / giữ chỗ, giỏ nguyên vẹn', async () => {
+      const user = await createUser(prisma, TAG);
+      const address = await createAddress(prisma, user.id);
+      const own = await createShopWithProduct(prisma, TAG);
+      await prisma.shop.update({
+        where: { id: own.shopId },
+        data: { ownerId: user.id },
+      });
+      const variant = await createVariant(prisma, own, {
+        stock: 10,
+        price: 100_000,
+      });
+      await addCartItem(prisma, user.id, variant.id, 1);
+
+      await expect(
+        place(user.id, {
+          addressId: address.id,
+          paymentMethod: 'COD',
+          expectedTotal: 100_000 + shippingFeeFor(500, 1),
+        }),
+      ).rejects.toMatchObject({ code: 'NO_PURCHASABLE_ITEMS' });
+
+      expect(
+        await prisma.checkoutGroup.count({ where: { userId: user.id } }),
+      ).toBe(0);
+      expect(await prisma.order.count({ where: { userId: user.id } })).toBe(0);
+      expect(await stockOf(variant.id)).toEqual({
+        stock: 10,
+        reservedStock: 0,
+      });
+      expect(await cartItemCountOf(user.id)).toBe(1);
+    });
+
+    it('preview: dòng của shop mình vào excludedItems với lý do OWN_SHOP, không nằm trong đơn, không chặn đặt các dòng còn lại', async () => {
+      const { user, ownVariant, other } = await setupSellerCart();
+      const ownCartItem = await prisma.cartItem.findFirstOrThrow({
+        where: { cart: { userId: user.id }, productVariantId: ownVariant.id },
+        select: { id: true },
+      });
+
+      const preview = await checkoutService.preview(user.id, {});
+
+      expect(preview.excludedItems).toEqual([
+        {
+          cartItemId: ownCartItem.id,
+          name: expect.any(String) as string,
+          reason: 'OWN_SHOP',
+        },
+      ]);
+      expect(preview.orders.map((o) => o.shopId)).toEqual([other.shopId]);
+      expect(preview.canPlaceOrder).toBe(true);
+    });
+
+    it('luật chỉ áp lên ĐÚNG chủ shop: người mua khác đặt chính sản phẩm đó bình thường', async () => {
+      const { own, ownVariant } = await setupSellerCart();
+      const buyer = await createUser(prisma, TAG);
+      const address = await createAddress(prisma, buyer.id);
+      await addCartItem(prisma, buyer.id, ownVariant.id, 1);
+
+      const result = await place(buyer.id, {
+        addressId: address.id,
+        paymentMethod: 'VNPAY',
+        expectedTotal: 100_000 + shippingFeeFor(500, 1),
+      });
+
+      expect(result.orders.map((o) => o.shopId)).toEqual([own.shopId]);
+    });
+  });
 });
