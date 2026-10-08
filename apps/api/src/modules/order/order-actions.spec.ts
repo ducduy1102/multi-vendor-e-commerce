@@ -1,7 +1,13 @@
-import type { OrderStatus, PaymentMethod } from '@prisma/client';
+import type {
+  OrderStatus,
+  PaymentMethod,
+  PaymentRefundStatus,
+} from '@prisma/client';
 import type { RefundRequestKind, RefundRequestStatus } from '@ecommerce/types';
 import {
   canRetryOrderPayment,
+  getAdminRefundActions,
+  getAdminRefundRequestActions,
   getBuyerOrderActions,
   getBuyerRefundRequestActions,
   getCancelBlockReason,
@@ -597,6 +603,88 @@ describe('getSellerRefundRequestActions (Week9.md 1.4)', () => {
         canReject: false,
       });
     }
+  });
+});
+
+describe('getAdminRefundRequestActions (Week9.md 1.9)', () => {
+  const STATUSES: readonly RefundRequestStatus[] = [
+    'PENDING_SELLER',
+    'APPROVED',
+    'REJECTED_BY_SELLER',
+    'ESCALATED',
+    'REJECTED',
+    'WITHDRAWN',
+  ];
+
+  // Admin quyết định cả yêu cầu đã lên sàn lẫn yêu cầu còn chờ seller (thay seller vắng mặt), cả hai loại.
+  it.each(['PENDING_SELLER', 'ESCALATED'] as const)(
+    '%s: duyệt và từ chối được, cả hai loại yêu cầu',
+    (status) => {
+      for (const kind of ['CANCEL', 'RETURN'] as const) {
+        expect(getAdminRefundRequestActions({ kind, status })).toEqual({
+          canApprove: true,
+          canReject: true,
+        });
+      }
+    },
+  );
+
+  // REJECTED_BY_SELLER chưa lên sàn: người mua còn quyền khiếu nại, Admin chưa can thiệp.
+  it.each(
+    STATUSES.filter(
+      (status) => status !== 'PENDING_SELLER' && status !== 'ESCALATED',
+    ),
+  )('trạng thái %s: Admin không làm gì thêm', (status) => {
+    for (const kind of ['CANCEL', 'RETURN'] as const) {
+      expect(getAdminRefundRequestActions({ kind, status })).toEqual({
+        canApprove: false,
+        canReject: false,
+      });
+    }
+  });
+});
+
+describe('getAdminRefundActions (Week9.md 1.9)', () => {
+  const MIN_MS = 60 * 1000;
+  const input = (status: PaymentRefundStatus, ageMs: number) => ({
+    status,
+    updatedAt: new Date(NOW.getTime() - ageMs),
+    now: NOW,
+  });
+
+  it.each([0, MIN_MS, 30 * 24 * 60 * MIN_MS])(
+    'FAILED (cũ bao lâu cũng vậy, tuổi %p ms): thử lại và ghi nhận thủ công được',
+    (ageMs) => {
+      expect(getAdminRefundActions(input('FAILED', ageMs))).toEqual({
+        canRetry: true,
+        canMarkCompleted: true,
+      });
+    },
+  );
+
+  it('PENDING mới (dưới 5 phút — lần gọi cổng có thể vẫn đang chạy): chưa làm gì được', () => {
+    expect(getAdminRefundActions(input('PENDING', 5 * MIN_MS - 1))).toEqual({
+      canRetry: false,
+      canMarkCompleted: false,
+    });
+  });
+
+  it('PENDING bỏ dở: đúng 5 phút trở lên là làm được (biên bao gồm)', () => {
+    expect(getAdminRefundActions(input('PENDING', 5 * MIN_MS))).toEqual({
+      canRetry: true,
+      canMarkCompleted: true,
+    });
+    expect(getAdminRefundActions(input('PENDING', 60 * MIN_MS))).toEqual({
+      canRetry: true,
+      canMarkCompleted: true,
+    });
+  });
+
+  it('SUCCEEDED: đã hoàn xong, không còn gì để làm', () => {
+    expect(getAdminRefundActions(input('SUCCEEDED', 60 * MIN_MS))).toEqual({
+      canRetry: false,
+      canMarkCompleted: false,
+    });
   });
 });
 

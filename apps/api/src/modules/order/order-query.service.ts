@@ -37,7 +37,7 @@ import { sellerVisibleOrderFilter } from './seller-order-visibility';
 // Số tiền VND luôn là chuỗi số nguyên đồng trong response (cùng quy ước CartView/CheckoutGroup).
 const money = (value: Prisma.Decimal): string => String(value.toNumber());
 
-const itemSelect = {
+export const itemSelect = {
   productName: true,
   variantLabel: true,
   sku: true,
@@ -67,7 +67,8 @@ const completedAtArgs = {
 
 // Các cột của một yêu cầu hủy/trả hàng + dòng thời gian cũ → mới, dùng chung cho người mua và seller (Week9.md
 // 1.4). KHÔNG select actorId của history — không bên nào cần (và không nên) biết định danh người đã quyết định.
-const refundRequestFields = {
+// Export cho RefundQueryService (phía Admin) dùng lại đúng các cột này.
+export const refundRequestFields = {
   id: true,
   kind: true,
   status: true,

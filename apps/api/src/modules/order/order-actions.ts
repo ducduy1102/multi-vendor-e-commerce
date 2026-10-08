@@ -1,4 +1,8 @@
-import type { OrderStatus, PaymentMethod } from '@prisma/client';
+import type {
+  OrderStatus,
+  PaymentMethod,
+  PaymentRefundStatus,
+} from '@prisma/client';
 import {
   canActorTransitionRefundRequest,
   type RefundRequestKind,
@@ -9,6 +13,7 @@ import {
   deriveCheckoutGroupStatus,
   type CheckoutGroupStatusPayment,
 } from './checkout-group-status';
+import { REFUND_PENDING_STALE_MS } from './refund-config';
 
 // Luật "buyer được làm gì với đơn" (Week8.md 1.5, mở rộng ở Week9.md 1.3) — hàm THUẦN để test từng ca, FE
 // chỉ đọc các cờ BE trả về (orderListItemSchema.can*) chứ không tự suy lại. Đổi chính sách hủy chỉ sửa đây.
@@ -213,6 +218,49 @@ export function getSellerRefundRequestActions(
       'REJECTED_BY_SELLER',
     ),
   };
+}
+
+// Luật "Admin làm được gì với YÊU CẦU" (Week9.md 1.9) — cùng một bảng chuyển có actor, actor ADMIN: duyệt/từ chối
+// cả khi đang chờ seller (thay seller vắng mặt) lẫn khi đã lên sàn. Cùng hình dạng cờ với seller.
+export function getAdminRefundRequestActions(
+  input: SellerRefundRequestActionsInput,
+): SellerRefundRequestActions {
+  return {
+    canApprove: canActorTransitionRefundRequest(
+      'ADMIN',
+      input.kind,
+      input.status,
+      'APPROVED',
+    ),
+    canReject: canActorTransitionRefundRequest(
+      'ADMIN',
+      input.kind,
+      input.status,
+      'REJECTED',
+    ),
+  };
+}
+
+export interface AdminRefundActionsInput {
+  status: PaymentRefundStatus;
+  updatedAt: Date;
+  now: Date;
+}
+
+// Admin thử lại / ghi nhận thủ công một khoản hoàn khi nó đang FAILED, hoặc PENDING mà không ai chạm tới quá
+// REFUND_PENDING_STALE_MS (lần gọi cổng có thể đã chết). PENDING còn mới thì KHÔNG: lần gọi cổng có thể vẫn đang
+// chạy, thử lại lúc đó dễ đua với nó. Cùng điều kiện RefundService.retryRefund/markRefundCompleted kiểm lại
+// khi thực thi — hai cờ luôn bằng nhau nên gộp một hàm.
+export function getAdminRefundActions(input: AdminRefundActionsInput): {
+  canRetry: boolean;
+  canMarkCompleted: boolean;
+} {
+  const resolvable =
+    input.status === 'FAILED' ||
+    (input.status === 'PENDING' &&
+      input.now.getTime() - input.updatedAt.getTime() >=
+        REFUND_PENDING_STALE_MS);
+  return { canRetry: resolvable, canMarkCompleted: resolvable };
 }
 
 export interface RetryPaymentInput {
