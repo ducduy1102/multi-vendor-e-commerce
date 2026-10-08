@@ -16,6 +16,29 @@ function loadedItem(n: number, quantity = 1, price = 100_000) {
   };
 }
 
+// Một yêu cầu hủy/trả hàng như BE đọc về cho người mua (Week9.md 2.6): đủ cột + dòng thời gian, không actorId.
+function loadedRequest(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'req-1',
+    kind: 'CANCEL',
+    status: 'PENDING_SELLER',
+    reasonCode: 'CHANGE_OF_MIND',
+    reasonNote: null,
+    sellerRespondBy: new Date('2026-10-03T10:00:00.000Z'),
+    statusChangedAt: new Date(),
+    createdAt: new Date('2026-10-01T10:00:00.000Z'),
+    history: [
+      {
+        toStatus: 'PENDING_SELLER',
+        actorType: 'BUYER',
+        note: null,
+        createdAt: new Date('2026-10-01T10:00:00.000Z'),
+      },
+    ],
+    ...overrides,
+  };
+}
+
 function loadedOrder(overrides: Record<string, unknown> = {}) {
   const items = [loadedItem(1), loadedItem(2)];
   return {
@@ -42,6 +65,7 @@ function loadedOrder(overrides: Record<string, unknown> = {}) {
     // rút (Week9.md 2.3); chi tiết ghi đè statusHistory bằng đủ lịch sử.
     statusHistory: [],
     refundRequests: [],
+    paymentRefund: null,
     ...overrides,
   };
 }
@@ -207,9 +231,32 @@ describe('OrderQueryService (buyer)', () => {
           take: 1,
           select: { toStatus: true, createdAt: true },
         });
+        // Yêu cầu chưa rút, mới nhất trước; history KHÔNG select actorId (không lộ danh tính seller/Admin).
         expect(arg.select.refundRequests).toEqual({
           where: { status: { not: 'WITHDRAWN' } },
-          select: { kind: true },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            kind: true,
+            status: true,
+            reasonCode: true,
+            reasonNote: true,
+            sellerRespondBy: true,
+            statusChangedAt: true,
+            createdAt: true,
+            history: {
+              select: {
+                toStatus: true,
+                actorType: true,
+                note: true,
+                createdAt: true,
+              },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+        expect(arg.select.paymentRefund).toEqual({
+          select: { status: true, amount: true },
         });
       });
 
@@ -219,12 +266,12 @@ describe('OrderQueryService (buyer)', () => {
           loadedOrder({
             id: 'already',
             status: 'PACKED',
-            refundRequests: [{ kind: 'CANCEL' }],
+            refundRequests: [loadedRequest({ kind: 'CANCEL' })],
           }),
           loadedOrder({
             id: 'return-only',
             status: 'CONFIRMED',
-            refundRequests: [{ kind: 'RETURN' }],
+            refundRequests: [loadedRequest({ kind: 'RETURN' })],
           }),
         ]);
 
@@ -260,7 +307,7 @@ describe('OrderQueryService (buyer)', () => {
             id: 'requested',
             status: 'COMPLETED',
             statusHistory: [completedRow(1)],
-            refundRequests: [{ kind: 'RETURN' }],
+            refundRequests: [loadedRequest({ kind: 'RETURN' })],
           }),
           // Thiếu dòng lịch sử `→ COMPLETED` (không nên xảy ra): khoá cho an toàn.
           loadedOrder({ id: 'no-history', status: 'COMPLETED' }),
@@ -323,6 +370,166 @@ describe('OrderQueryService (buyer)', () => {
       });
     });
 
+    // Week9.md 2.6 — yêu cầu mới nhất + khoản hoàn tiền của đơn trong danh sách / chi tiết.
+    describe('refundRequest / refund', () => {
+      it('đơn chưa có yêu cầu / khoản hoàn: cả hai là null', async () => {
+        prisma.order.findMany.mockResolvedValue([loadedOrder()]);
+
+        const [item] = (await service.listForBuyer('user-1', query)).items;
+
+        expect(item.refundRequest).toBeNull();
+        expect(item.refund).toBeNull();
+      });
+
+      it('map yêu cầu: ngày ISO, dòng thời gian cũ → mới không có actorId, cờ canWithdraw khi seller chưa trả lời', async () => {
+        prisma.order.findMany.mockResolvedValue([
+          loadedOrder({
+            status: 'CONFIRMED',
+            refundRequests: [
+              loadedRequest({
+                reasonCode: 'OTHER',
+                reasonNote: 'Đặt trùng đơn',
+                history: [
+                  {
+                    toStatus: 'PENDING_SELLER',
+                    actorType: 'BUYER',
+                    note: null,
+                    createdAt: new Date('2026-10-01T10:00:00.000Z'),
+                    actorId: 'buyer-secret',
+                  },
+                ],
+              }),
+            ],
+          }),
+        ]);
+
+        const [item] = (await service.listForBuyer('user-1', query)).items;
+
+        expect(item.refundRequest).toEqual({
+          id: 'req-1',
+          kind: 'CANCEL',
+          status: 'PENDING_SELLER',
+          reasonCode: 'OTHER',
+          reasonNote: 'Đặt trùng đơn',
+          sellerRespondBy: '2026-10-03T10:00:00.000Z',
+          statusChangedAt: expect.any(String) as string,
+          createdAt: '2026-10-01T10:00:00.000Z',
+          history: [
+            {
+              toStatus: 'PENDING_SELLER',
+              actorType: 'BUYER',
+              note: null,
+              // Khớp CHÍNH XÁC (toEqual): actorId của dòng history gốc không được lọt ra response.
+              createdAt: '2026-10-01T10:00:00.000Z',
+            },
+          ],
+          canWithdraw: true,
+          canEscalate: false,
+        });
+      });
+
+      it('lấy yêu cầu MỚI NHẤT (BE đã sắp mới nhất trước), các yêu cầu cũ chỉ góp vào cờ canRequest*', async () => {
+        prisma.order.findMany.mockResolvedValue([
+          loadedOrder({
+            status: 'COMPLETED',
+            statusHistory: [{ toStatus: 'COMPLETED', createdAt: new Date() }],
+            refundRequests: [
+              loadedRequest({ id: 'return', kind: 'RETURN' }),
+              loadedRequest({
+                id: 'cancel',
+                kind: 'CANCEL',
+                status: 'REJECTED_BY_SELLER',
+              }),
+            ],
+          }),
+        ]);
+
+        const [item] = (await service.listForBuyer('user-1', query)).items;
+
+        expect(item.refundRequest?.id).toBe('return');
+        // Đã có cả yêu cầu hủy lẫn trả hàng ⇒ không gửi thêm yêu cầu trả hàng nữa.
+        expect(item.canRequestReturn).toBe(false);
+      });
+
+      it('seller đã từ chối, còn trong hạn khiếu nại (REFUND_ESCALATE_DAYS, mặc định 3) ⇒ canEscalate; hết hạn ⇒ tắt', async () => {
+        const day = 24 * 60 * 60 * 1000;
+        prisma.order.findMany.mockResolvedValue([
+          loadedOrder({
+            id: 'fresh',
+            status: 'CONFIRMED',
+            refundRequests: [
+              loadedRequest({
+                status: 'REJECTED_BY_SELLER',
+                statusChangedAt: new Date(Date.now() - day),
+              }),
+            ],
+          }),
+          loadedOrder({
+            id: 'expired',
+            status: 'CONFIRMED',
+            refundRequests: [
+              loadedRequest({
+                status: 'REJECTED_BY_SELLER',
+                statusChangedAt: new Date(Date.now() - 4 * day),
+              }),
+            ],
+          }),
+        ]);
+
+        const byId = Object.fromEntries(
+          (await service.listForBuyer('user-1', query)).items.map((o) => [
+            o.id,
+            o,
+          ]),
+        );
+
+        expect(byId.fresh.refundRequest).toMatchObject({
+          canEscalate: true,
+          canWithdraw: false,
+        });
+        expect(byId.expired.refundRequest).toMatchObject({
+          canEscalate: false,
+          canWithdraw: false,
+        });
+      });
+
+      it('khoản hoàn tiền: chỉ trạng thái + số tiền (chuỗi nguyên), không lộ lý do lỗi/mã cổng', async () => {
+        prisma.order.findMany.mockResolvedValue([
+          loadedOrder({
+            status: 'CANCELLED',
+            paymentRefund: {
+              status: 'PENDING',
+              amount: D(220_000),
+              failureReason: 'bí mật',
+              gatewayRef: 'GW-1',
+            },
+          }),
+        ]);
+
+        const [item] = (await service.listForBuyer('user-1', query)).items;
+
+        expect(item.refund).toEqual({ status: 'PENDING', amount: '220000' });
+      });
+
+      it('chi tiết trả cùng refundRequest / refund như danh sách', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          loadedDetail({
+            status: 'CONFIRMED',
+            refundRequests: [loadedRequest()],
+            paymentRefund: { status: 'SUCCEEDED', amount: D(220_000) },
+          }),
+        );
+
+        const detail = await service.getForBuyer('user-1', 'o1');
+
+        expect(detail.refundRequest?.status).toBe('PENDING_SELLER');
+        expect(detail.refund).toEqual({
+          status: 'SUCCEEDED',
+          amount: '220000',
+        });
+      });
+    });
+
     it('cờ hành động theo status + phương thức', async () => {
       prisma.order.findMany.mockResolvedValue([
         loadedOrder({ id: 'unpaid' }), // AWAITING_PAYMENT + VNPAY đang chờ, còn hạn
@@ -371,8 +578,9 @@ describe('OrderQueryService (buyer)', () => {
         canRetryPayment: true,
         canConfirmReceived: false,
       });
+      // Từ 2.6 đơn đã trả online mà shop chưa xác nhận hủy ngay được (kèm hoàn tiền tự động).
       expect(byId['paid-online']).toMatchObject({
-        canCancel: false,
+        canCancel: true,
         canRetryPayment: false,
         canConfirmReceived: false,
       });

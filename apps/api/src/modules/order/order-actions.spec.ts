@@ -1,10 +1,12 @@
 import type { OrderStatus, PaymentMethod } from '@prisma/client';
-import type { RefundRequestKind } from '@ecommerce/types';
+import type { RefundRequestKind, RefundRequestStatus } from '@ecommerce/types';
 import {
   canRetryOrderPayment,
   getBuyerOrderActions,
+  getBuyerRefundRequestActions,
   getCancelBlockReason,
   getSellerOrderActions,
+  isWithinEscalateWindow,
   isWithinRefundWindow,
   type BuyerOrderActionsInput,
   type RetryPaymentInput,
@@ -46,6 +48,103 @@ describe('isWithinRefundWindow', () => {
   });
 });
 
+describe('isWithinEscalateWindow', () => {
+  it('còn trong hạn khiếu nại; đúng thời điểm hết hạn vẫn còn (bao gồm), sau 1 ms thì hết', () => {
+    const rejectedAt = daysAgo(3);
+
+    expect(isWithinEscalateWindow(daysAgo(1), NOW, 3)).toBe(true);
+    expect(isWithinEscalateWindow(rejectedAt, NOW, 3)).toBe(true);
+    expect(
+      isWithinEscalateWindow(rejectedAt, new Date(NOW.getTime() + 1), 3),
+    ).toBe(false);
+  });
+
+  it('hạn tính theo số ngày cấu hình', () => {
+    expect(isWithinEscalateWindow(daysAgo(5), NOW, 3)).toBe(false);
+    expect(isWithinEscalateWindow(daysAgo(5), NOW, 7)).toBe(true);
+  });
+});
+
+describe('getBuyerRefundRequestActions (Week9.md 1.4)', () => {
+  const STATUSES: readonly RefundRequestStatus[] = [
+    'PENDING_SELLER',
+    'APPROVED',
+    'REJECTED_BY_SELLER',
+    'ESCALATED',
+    'REJECTED',
+    'WITHDRAWN',
+  ];
+  const actions = (
+    status: RefundRequestStatus,
+    kind: RefundRequestKind = 'CANCEL',
+    statusChangedAt: Date = daysAgo(1),
+    escalateDays = 3,
+  ) =>
+    getBuyerRefundRequestActions({
+      kind,
+      status,
+      statusChangedAt,
+      now: NOW,
+      escalateDays,
+    });
+
+  it('chỉ rút được khi seller CHƯA trả lời (PENDING_SELLER), cả hai loại yêu cầu', () => {
+    for (const kind of ['CANCEL', 'RETURN'] as const) {
+      for (const status of STATUSES) {
+        expect(actions(status, kind).canWithdraw).toBe(
+          status === 'PENDING_SELLER',
+        );
+      }
+    }
+  });
+
+  it('chỉ khiếu nại được sau khi seller TỪ CHỐI và còn trong hạn', () => {
+    for (const kind of ['CANCEL', 'RETURN'] as const) {
+      for (const status of STATUSES) {
+        expect(actions(status, kind).canEscalate).toBe(
+          status === 'REJECTED_BY_SELLER',
+        );
+      }
+    }
+  });
+
+  it('hết hạn khiếu nại (tính từ lúc seller từ chối) ⇒ tắt canEscalate, canWithdraw không liên quan', () => {
+    const result = actions('REJECTED_BY_SELLER', 'RETURN', daysAgo(4), 3);
+
+    expect(result).toEqual({ canWithdraw: false, canEscalate: false });
+  });
+
+  it('hạn khiếu nại theo cấu hình: cùng mốc từ chối, REFUND_ESCALATE_DAYS lớn hơn thì còn khiếu nại được', () => {
+    expect(
+      actions('REJECTED_BY_SELLER', 'CANCEL', daysAgo(4), 3).canEscalate,
+    ).toBe(false);
+    expect(
+      actions('REJECTED_BY_SELLER', 'CANCEL', daysAgo(4), 7).canEscalate,
+    ).toBe(true);
+  });
+
+  it('yêu cầu đang chờ seller: rút được, chưa khiếu nại được', () => {
+    expect(actions('PENDING_SELLER')).toEqual({
+      canWithdraw: true,
+      canEscalate: false,
+    });
+  });
+
+  it('yêu cầu đã lên sàn hoặc đã có kết quả cuối: người mua không làm gì thêm', () => {
+    for (const status of [
+      'ESCALATED',
+      'APPROVED',
+      'REJECTED',
+      'WITHDRAWN',
+    ] as const) {
+      expect(actions(status)).toEqual({
+        canWithdraw: false,
+        canEscalate: false,
+      });
+    }
+  });
+});
+
 describe('getBuyerOrderActions', () => {
   const actions = (
     status: OrderStatus,
@@ -78,14 +177,18 @@ describe('getBuyerOrderActions', () => {
       expect(actions('PENDING', 'COD').canCancel).toBe(true);
     });
 
-    // Chính sách mới (Week9.md 1.3) cho hủy ngay cả đơn đã trả online, nhưng cờ chỉ bật ở 2.6 cùng lúc có
-    // RefundService + route — test này ghim đúng trạng thái trung gian để không bật cờ sớm (nút bấm ra 409).
+    // Chính sách Week9.md 1.3, bật ở 2.6 cùng lúc có RefundService + route hủy: đơn đã trả online mà shop
+    // chưa xác nhận hủy NGAY được, kèm hoàn tiền tự động. Trước 2.6 test này khẳng định ngược lại (false).
     it.each(['VNPAY', 'MOMO'] as const)(
-      'đơn đã trả online (%s) chờ xác nhận: cờ canCancel CHƯA bật (mở ở 2.6 cùng RefundService)',
+      'đơn đã trả online (%s) chờ xác nhận: hủy được (kèm hoàn tiền)',
       (method) => {
-        expect(actions('PENDING', method).canCancel).toBe(false);
+        expect(actions('PENDING', method).canCancel).toBe(true);
       },
     );
+
+    it('không rõ phương thức thanh toán (nhóm chưa có Payment): đơn chờ xác nhận vẫn hủy được', () => {
+      expect(actions('PENDING', null).canCancel).toBe(true);
+    });
 
     it.each([
       'CONFIRMED',

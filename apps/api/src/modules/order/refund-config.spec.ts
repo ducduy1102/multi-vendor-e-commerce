@@ -1,5 +1,7 @@
 import {
+  readRefundEscalateDays,
   readRefundGatewayTimeoutMs,
+  readRefundSellerResponseHours,
   readRefundWindowDays,
   REFUND_PENDING_STALE_MS,
 } from './refund-config';
@@ -48,6 +50,44 @@ describe('readRefundGatewayTimeoutMs', () => {
     (value) => {
       process.env.REFUND_GATEWAY_TIMEOUT_MS = value;
       expect(readRefundGatewayTimeoutMs()).toBe(8000);
+    },
+  );
+});
+
+describe.each([
+  [
+    'readRefundSellerResponseHours',
+    readRefundSellerResponseHours,
+    'REFUND_SELLER_RESPONSE_HOURS',
+    48,
+    '12',
+  ],
+  [
+    'readRefundEscalateDays',
+    readRefundEscalateDays,
+    'REFUND_ESCALATE_DAYS',
+    3,
+    '5',
+  ],
+])('%s', (_name, read, envName, fallback, custom) => {
+  afterEach(() => {
+    delete process.env[envName];
+  });
+
+  it(`mặc định ${fallback} khi không cấu hình`, () => {
+    expect(read()).toBe(fallback);
+  });
+
+  it(`lấy từ ${envName}, đọc LÚC DÙNG`, () => {
+    process.env[envName] = custom;
+    expect(read()).toBe(Number(custom));
+  });
+
+  it.each(['', '0', '-1', 'abc', '1.5'])(
+    'giá trị %p — về mặc định, không ném lỗi',
+    (value) => {
+      process.env[envName] = value;
+      expect(read()).toBe(fallback);
     },
   );
 });

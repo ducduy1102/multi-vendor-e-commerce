@@ -239,3 +239,28 @@ describe('RefundRequestService.transition', () => {
     });
   });
 });
+
+describe('RefundRequestService.recordCreated', () => {
+  it('ghi mốc tạo: fromStatus null → PENDING_SELLER, actor người mua, note null, đúng giờ tạo yêu cầu', async () => {
+    const create = jest.fn().mockResolvedValue({});
+    const createdAt = new Date('2026-10-08T10:00:00.000Z');
+
+    await new RefundRequestService().recordCreated(
+      { refundRequestHistory: { create } } as unknown as TxClient,
+      { id: 'r1', createdAt },
+      BUYER,
+    );
+
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        refundRequestId: 'r1',
+        fromStatus: null,
+        toStatus: 'PENDING_SELLER',
+        actorType: 'BUYER',
+        actorId: 'buyer-1',
+        note: null,
+        createdAt,
+      },
+    });
+  });
+});

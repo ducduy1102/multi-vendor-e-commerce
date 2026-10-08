@@ -52,6 +52,12 @@ export interface RefundOrderOptions {
   // (vd người mua vừa rút yêu cầu) — đơn không bị hủy oan. Bỏ trống ⇒ tự đóng yêu cầu cùng loại đang mở của đơn
   // (nếu có), dùng cho seller tự hủy đơn trực tiếp.
   refundRequestId?: string;
+  // Thu hẹp các trạng thái đơn được phép đi so với mặc định của loại thao tác (hủy: PENDING/CONFIRMED/PACKED).
+  // RefundService không biết người gọi là ai nên KHÔNG tự phân biệt "hủy ngay" với "seller tự hủy": người gọi
+  // phải nói rõ. Hủy ngay của buyer / seller từ chối chỉ được khi shop CHƯA xác nhận (['PENDING']) — nếu không,
+  // đơn vừa được shop xác nhận giữa lúc kiểm và lúc hủy vẫn bị hủy mà không cần shop đồng ý (đáng ra buyer phải
+  // gửi yêu cầu hủy). Trạng thái lệch lúc đọc ⇒ ORDER_INVALID_TRANSITION, lệch lúc đã khoá ⇒ ORDER_ALREADY_CHANGED.
+  onlyFrom?: readonly OrderStatus[];
 }
 
 export interface OrderRefundResult {
@@ -276,7 +282,10 @@ export class RefundService {
       select: refundOrderSelect,
     });
     if (!order) throw orderNotFound();
-    if (!plan.from.includes(order.status)) {
+    const allowedFrom = options.onlyFrom
+      ? plan.from.filter((status) => options.onlyFrom?.includes(status))
+      : plan.from;
+    if (!allowedFrom.includes(order.status)) {
       throw orderInvalidTransition(order.status);
     }
     const target = this.resolveTarget(order);
@@ -292,8 +301,10 @@ export class RefundService {
       const group = await lockGroupOrders(tx, order.checkoutGroupId);
       const current = group.find((o) => o.id === order.id);
       if (!current) throw orderNotFound();
-      if (!plan.from.includes(current.status)) {
-        throw orderInvalidTransition(current.status);
+      // Lúc đọc trước khoá đơn còn ở trạng thái hợp lệ nhưng giờ đã khác ⇒ thua race (ORDER_ALREADY_CHANGED, khác
+      // ORDER_INVALID_TRANSITION của lần kiểm đầu: người dùng cần tải lại trang).
+      if (!allowedFrom.includes(current.status)) {
+        throw orderAlreadyChanged();
       }
 
       const flipped = await this.orderStatusService.transition(

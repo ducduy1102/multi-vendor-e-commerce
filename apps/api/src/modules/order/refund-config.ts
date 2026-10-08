@@ -11,6 +11,24 @@ export function readRefundWindowDays(): number {
   return readPositiveInt('REFUND_WINDOW_DAYS', DEFAULT_REFUND_WINDOW_DAYS);
 }
 
+// Số giờ seller có để phản hồi một yêu cầu hủy/trả hàng (Week9.md 1.3): tính từ lúc người mua gửi, ghi vào
+// RefundRequest.sellerRespondBy. Quá hạn RefundJob tự duyệt yêu cầu HỦY, còn yêu cầu TRẢ HÀNG chuyển Admin.
+const DEFAULT_REFUND_SELLER_RESPONSE_HOURS = 48;
+
+export function readRefundSellerResponseHours(): number {
+  return readPositiveInt(
+    'REFUND_SELLER_RESPONSE_HOURS',
+    DEFAULT_REFUND_SELLER_RESPONSE_HOURS,
+  );
+}
+
+// Số ngày người mua còn khiếu nại lên sàn sau khi seller từ chối, tính từ RefundRequest.statusChangedAt.
+const DEFAULT_REFUND_ESCALATE_DAYS = 3;
+
+export function readRefundEscalateDays(): number {
+  return readPositiveInt('REFUND_ESCALATE_DAYS', DEFAULT_REFUND_ESCALATE_DAYS);
+}
+
 // Thời gian tối đa chờ cổng trả lời MỘT lần gọi hoàn tiền (ms). Hết hạn ⇒ coi khoản hoàn là PENDING (chưa
 // biết cổng đã nhận hay chưa) và để RefundJob / Admin thử lại bằng cùng mã tham chiếu — không giữ request
 // của người dùng chờ cổng chậm.

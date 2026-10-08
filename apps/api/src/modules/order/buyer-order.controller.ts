@@ -20,9 +20,11 @@ import {
 } from '@nestjs/swagger';
 import {
   cancelOrderSchema,
+  createRefundRequestSchema,
   orderListQuerySchema,
   orderTabSchema,
   type CancelOrderInput,
+  type CreateRefundRequestInput,
   type OrderListQuery,
 } from '@ecommerce/types';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
@@ -34,8 +36,12 @@ import {
 } from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { OrderActionService } from './order-action.service';
-import { ORDER_NOT_FOUND_EXAMPLE } from './order-swagger-examples';
+import {
+  ORDER_NOT_FOUND_EXAMPLE,
+  REFUND_REQUEST_EXAMPLE,
+} from './order-swagger-examples';
 import { OrderQueryService } from './order-query.service';
+import { RefundRequestActionService } from './refund-request-action.service';
 
 const ORDER_ITEM_EXAMPLE = {
   productName: 'Áo thun cotton',
@@ -63,8 +69,12 @@ const ORDER_LIST_ITEM_EXAMPLE = {
   paymentMethod: 'VNPAY',
   paymentStatus: 'PENDING',
   canCancel: true,
+  canRequestCancel: false,
+  canRequestReturn: false,
   canConfirmReceived: false,
   canRetryPayment: true,
+  refundRequest: null,
+  refund: null,
 };
 
 const ORDER_DETAIL_EXAMPLE = {
@@ -91,9 +101,10 @@ const ORDER_DETAIL_EXAMPLE = {
   ],
 };
 
-// Đơn của buyer đang đăng nhập (Week8.md 2.4). Mọi truy vấn lọc theo userId lấy từ token. Hành động
-// (hủy, xác nhận đã nhận) ở 2.6. Route thanh toán của cổng nằm ở `OrderController`
-// (`/payments/...`), không liên quan.
+// Đơn của buyer đang đăng nhập (Week8.md 2.4). Mọi truy vấn lọc theo userId lấy từ token. Hành động: hủy,
+// xác nhận đã nhận (Week8.md 2.6) và gửi yêu cầu hủy/trả hàng (Week9.md 2.6); rút/khiếu nại yêu cầu nằm ở
+// `BuyerRefundRequestController`. Route thanh toán của cổng nằm ở `OrderController` (`/payments/...`),
+// không liên quan.
 @ApiTags('orders')
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -107,6 +118,7 @@ export class BuyerOrderController {
   constructor(
     private readonly orderQueryService: OrderQueryService,
     private readonly orderActionService: OrderActionService,
+    private readonly refundRequestActionService: RefundRequestActionService,
   ) {}
 
   @Get()
@@ -181,7 +193,7 @@ export class BuyerOrderController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Hủy đơn của tôi — đơn chưa thanh toán (hủy CẢ NHÓM thanh toán chứa đơn này) hoặc đơn COD chờ shop xác nhận',
+      'Hủy đơn của tôi — đơn chưa thanh toán (hủy CẢ NHÓM thanh toán chứa đơn này) hoặc đơn đang chờ shop xác nhận (đã trả online ⇒ hoàn tiền tự động về nguồn thanh toán; chi tiết đơn trả `refund` cho biết đang hoàn hay đã hoàn)',
   })
   @ApiParam({ name: 'id', description: 'ID đơn hàng' })
   @ApiBody({
@@ -215,14 +227,14 @@ export class BuyerOrderController {
   @ApiResponse({
     status: 409,
     description:
-      'ORDER_CANCEL_NOT_ALLOWED (details.reason: PAID_ONLINE = đã thanh toán online, PROCESSING_STARTED = shop đã xác nhận trở đi); ORDER_INVALID_TRANSITION = đơn đã kết thúc; ORDER_ALREADY_CHANGED = vừa bị đổi bởi yêu cầu khác (vd shop vừa xác nhận)',
+      'ORDER_CANCEL_NOT_ALLOWED (details.reason: PROCESSING_STARTED = shop đã xác nhận/đóng gói ⇒ gửi YÊU CẦU hủy thay vì hủy ngay; IN_TRANSIT = đã giao cho vận chuyển); ORDER_INVALID_TRANSITION = đơn đã kết thúc; ORDER_ALREADY_CHANGED = vừa bị đổi bởi yêu cầu khác (vd shop vừa xác nhận)',
     schema: {
       example: {
         success: false,
         data: null,
-        message: 'Order cannot be cancelled: PAID_ONLINE',
+        message: 'Order cannot be cancelled: PROCESSING_STARTED',
         code: 'ORDER_CANCEL_NOT_ALLOWED',
-        details: { reason: 'PAID_ONLINE' },
+        details: { reason: 'PROCESSING_STARTED' },
       },
     },
   })
@@ -234,6 +246,80 @@ export class BuyerOrderController {
     body: CancelOrderInput,
   ) {
     await this.orderActionService.cancelByBuyer(user.userId, id, body.reason);
+    return this.orderQueryService.getForBuyer(user.userId, id);
+  }
+
+  @Post(':id/refund-requests')
+  @ApiOperation({
+    summary:
+      'Gửi yêu cầu hủy / trả hàng-hoàn tiền cho đơn của tôi. Loại yêu cầu do BE suy từ trạng thái đơn: shop đã xác nhận/đóng gói ⇒ yêu cầu HỦY (seller duyệt; quá hạn phản hồi hệ thống tự duyệt); đã nhận hàng, trong cửa sổ hoàn trả ⇒ yêu cầu TRẢ HÀNG (seller duyệt; từ chối thì khiếu nại lên sàn; quá hạn chuyển Admin)',
+  })
+  @ApiParam({ name: 'id', description: 'ID đơn hàng' })
+  @ApiBody({
+    schema: {
+      example: {
+        reasonCode: 'CHANGE_OF_MIND',
+        reasonNote: 'Đổi ý, không cần nữa',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Chi tiết đơn sau khi gửi — `refundRequest` là yêu cầu vừa tạo (PENDING_SELLER)',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          ...ORDER_DETAIL_EXAMPLE,
+          status: 'CONFIRMED',
+          canCancel: false,
+          canRequestCancel: false,
+          refundRequest: REFUND_REQUEST_EXAMPLE,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Thiếu/sai lý do, lý do không thuộc loại yêu cầu của đơn, chọn OTHER mà không ghi chú, ghi chú quá dài (tối đa 500 ký tự)',
+    schema: {
+      example: errorExample('reasonCode: order.validationRefundReasonInvalid'),
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Đơn không tồn tại hoặc không phải của bạn',
+    schema: { example: ORDER_NOT_FOUND_EXAMPLE },
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'REFUND_REQUEST_NOT_ALLOWED (details.reason: NOT_ELIGIBLE_STATUS = đơn không ở CONFIRMED/PACKED/COMPLETED; WINDOW_EXPIRED = quá cửa sổ trả hàng; ALREADY_REQUESTED = đã có yêu cầu cùng loại chưa rút; PAYMENT_NOT_COLLECTED = đơn online chưa có thanh toán thành công); ORDER_ALREADY_CHANGED = đơn vừa đổi trạng thái',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'Refund request is not allowed: ALREADY_REQUESTED',
+        code: 'REFUND_REQUEST_NOT_ALLOWED',
+        details: { reason: 'ALREADY_REQUESTED' },
+      },
+    },
+  })
+  async requestRefund(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    // Express 5: không gửi body ⇒ req.body là undefined — default {} để lỗi báo theo field reasonCode
+    // (giống gửi `{}`) thay vì "value: Required".
+    @Body(
+      new ZodValidationPipe(
+        createRefundRequestSchema.default({} as CreateRefundRequestInput),
+      ),
+    )
+    body: CreateRefundRequestInput,
+  ) {
+    await this.refundRequestActionService.createForBuyer(user.userId, id, body);
     return this.orderQueryService.getForBuyer(user.userId, id);
   }
 

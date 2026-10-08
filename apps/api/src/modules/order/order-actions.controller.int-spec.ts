@@ -315,7 +315,7 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
 
       await sellerA.post(sellerUrl(shopA, orderId, 'pack')).expect(409);
       await sellerC.post(sellerUrl(shopA, orderId, 'confirm')).expect(403);
-      await buyer.post(buyerUrl(orderId, 'cancel')).expect(409);
+      await otherBuyer.post(buyerUrl(orderId, 'cancel')).expect(404);
 
       expect(fakeMail.sent).toHaveLength(0);
     });
@@ -693,19 +693,128 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       });
     });
 
-    it('buyer KHÔNG hủy được đơn đã trả online — 409 PAID_ONLINE; đơn đã xác nhận — PROCESSING_STARTED', async () => {
-      const online = await seedOne('PENDING', onlinePaid);
+    it('buyer KHÔNG hủy ngay được đơn đã xác nhận/đã giao — 409 PROCESSING_STARTED / IN_TRANSIT (gửi yêu cầu hủy thay vì hủy ngay)', async () => {
       const confirmedCod = await seedOne('CONFIRMED', cod);
+      const shippingOnline = await seedOne('SHIPPING', onlinePaid);
 
-      const r1 = await buyer.post(buyerUrl(online.orderId, 'cancel'));
-      const r2 = await buyer.post(buyerUrl(confirmedCod.orderId, 'cancel'));
+      const r1 = await buyer.post(buyerUrl(confirmedCod.orderId, 'cancel'));
+      const r2 = await buyer.post(buyerUrl(shippingOnline.orderId, 'cancel'));
 
       expect(r1.status).toBe(409);
-      expect(details(r1)).toEqual({ reason: 'PAID_ONLINE' });
+      expect(details(r1)).toEqual({ reason: 'PROCESSING_STARTED' });
       expect(r2.status).toBe(409);
-      expect(details(r2)).toEqual({ reason: 'PROCESSING_STARTED' });
-      expect(await statusOf(online.orderId)).toBe('PENDING');
+      expect(details(r2)).toEqual({ reason: 'IN_TRANSIT' });
       expect(await statusOf(confirmedCod.orderId)).toBe('CONFIRMED');
+      expect(await statusOf(shippingOnline.orderId)).toBe('SHIPPING');
+    });
+
+    // Week9.md 2.6 — đơn đã trả online mà shop CHƯA xác nhận hủy NGAY được, kèm hoàn tiền tự động (cổng mock).
+    describe('hủy ngay đơn đã trả online (kèm hoàn tiền)', () => {
+      const originalMock = process.env.PAYMENT_MOCK_ENABLED;
+      beforeAll(() => {
+        process.env.PAYMENT_MOCK_ENABLED = 'true';
+      });
+      afterAll(() => {
+        if (originalMock === undefined) delete process.env.PAYMENT_MOCK_ENABLED;
+        else process.env.PAYMENT_MOCK_ENABLED = originalMock;
+      });
+
+      it('200, đơn CANCELLED, kho cộng lại, chi tiết trả refund SUCCEEDED + Payment REFUNDED, timeline ghi người mua và lý do', async () => {
+        const { orderId, variantId, groupId } = await seedOne(
+          'PENDING',
+          onlinePaid,
+        );
+
+        const res = await buyer
+          .post(buyerUrl(orderId, 'cancel'))
+          .send({ reason: 'Đặt nhầm' });
+
+        expect(res.status).toBe(200);
+        const detail = orderDetailSchema.parse(data(res));
+        expect(detail).toMatchObject({
+          status: 'CANCELLED',
+          canCancel: false,
+          refund: { status: 'SUCCEEDED', amount: '220000' },
+        });
+        expect(await stockOf(variantId)).toEqual({
+          stock: STOCK + QTY,
+          reservedStock: 0,
+        });
+        const payment = await prisma.payment.findFirstOrThrow({
+          where: { checkoutGroupId: groupId },
+        });
+        expect(payment.status).toBe('REFUNDED');
+        expect(Number(payment.refundedAmount)).toBe(220_000);
+        expect((await historyOf(orderId)).at(-1)).toMatchObject({
+          toStatus: 'CANCELLED',
+          actorType: 'BUYER',
+          actorId: buyerId,
+          note: 'Đặt nhầm',
+        });
+      });
+
+      it('email báo "đang hoàn" kèm số tiền; seller của đơn đọc được đơn đã CANCELLED', async () => {
+        const { orderId } = await seedOne('PENDING', onlinePaid);
+        fakeMail.reset();
+
+        await buyer.post(buyerUrl(orderId, 'cancel')).expect(200);
+
+        expect(fakeMail.sent).toHaveLength(1);
+        expect(fakeMail.sent[0].subject).toBe('Bạn đã hủy đơn hàng');
+        expect(fakeMail.sent[0].html).toContain('đang hoàn');
+        const seller = await sellerA.get(
+          `/api/v1/shops/${shopA}/orders/${orderId}`,
+        );
+        expect(sellerOrderDetailSchema.parse(data(seller)).status).toBe(
+          'CANCELLED',
+        );
+      });
+
+      it('hủy lần 2 — 409 (đơn đã hủy), không hoàn thêm', async () => {
+        const { orderId, groupId } = await seedOne('PENDING', onlinePaid);
+        await buyer.post(buyerUrl(orderId, 'cancel')).expect(200);
+
+        const second = await buyer.post(buyerUrl(orderId, 'cancel'));
+
+        expect(second.status).toBe(409);
+        expect(code(second)).toBe('ORDER_INVALID_TRANSITION');
+        expect(
+          await prisma.paymentRefund.count({
+            where: { payment: { checkoutGroupId: groupId } },
+          }),
+        ).toBe(1);
+      });
+
+      it('RACE: buyer hủy vs seller xác nhận cùng 1 đơn ĐÃ TRẢ ONLINE — đúng 1 bên thắng, hoàn tiền chỉ khi bị hủy, kho nhất quán', async () => {
+        const LOSER_CODES = [
+          'ORDER_ALREADY_CHANGED',
+          'ORDER_INVALID_TRANSITION',
+          'ORDER_CANCEL_NOT_ALLOWED',
+        ];
+        for (let round = 0; round < 6; round++) {
+          const { orderId, variantId, groupId } = await seedOne(
+            'PENDING',
+            onlinePaid,
+          );
+
+          const [cancel, confirm] = await Promise.all([
+            buyer.post(buyerUrl(orderId, 'cancel')),
+            sellerA.post(sellerUrl(shopA, orderId, 'confirm')),
+          ]);
+
+          expect([cancel.status, confirm.status].sort()).toEqual([200, 409]);
+          const loser = cancel.status === 409 ? cancel : confirm;
+          expect(LOSER_CODES).toContain(code(loser));
+          const final = await statusOf(orderId);
+          const refunds = await prisma.paymentRefund.count({
+            where: { payment: { checkoutGroupId: groupId } },
+          });
+          expect(refunds).toBe(final === 'CANCELLED' ? 1 : 0);
+          expect((await stockOf(variantId)).stock).toBe(
+            final === 'CANCELLED' ? STOCK + QTY : STOCK,
+          );
+        }
+      });
     });
   });
 

@@ -1,5 +1,9 @@
 import type { OrderStatus, PaymentMethod } from '@prisma/client';
-import type { RefundRequestKind } from '@ecommerce/types';
+import {
+  canActorTransitionRefundRequest,
+  type RefundRequestKind,
+  type RefundRequestStatus,
+} from '@ecommerce/types';
 import {
   canRetryFromStatus,
   deriveCheckoutGroupStatus,
@@ -50,13 +54,11 @@ export function getBuyerOrderActions(
   input: BuyerOrderActionsInput,
 ): BuyerOrderActions {
   return {
-    // `canCancel` = HỦY NGAY, không cần ai duyệt. Hiện (Week9.md 2.3) vẫn giữ luật Tuần 8: đơn chưa thanh
-    // toán (hủy theo cả nhóm thanh toán) và đơn COD chờ shop xác nhận. Đơn đã trả ONLINE chờ xác nhận sẽ
-    // hủy ngay được kèm hoàn tiền ở 2.6 — cờ chỉ bật cùng lúc có RefundService và route hủy, để không có
-    // nút bấm ra 409.
+    // `canCancel` = HỦY NGAY, không cần ai duyệt (Week9.md 1.3): đơn chưa thanh toán (hủy theo cả nhóm thanh
+    // toán) và đơn đang chờ shop xác nhận — kể cả đơn đã trả online, khi đó hủy kèm hoàn tiền tự động
+    // (RefundService). Từ CONFIRMED trở đi người mua chỉ gửi YÊU CẦU hủy (canRequestCancel).
     canCancel:
-      input.status === 'AWAITING_PAYMENT' ||
-      (input.status === 'PENDING' && input.paymentMethod === 'COD'),
+      input.status === 'AWAITING_PAYMENT' || input.status === 'PENDING',
     canRequestCancel:
       (input.status === 'CONFIRMED' || input.status === 'PACKED') &&
       !input.existingRequestKinds.includes('CANCEL'),
@@ -74,6 +76,58 @@ export function getBuyerOrderActions(
   };
 }
 
+// Hạn khiếu nại lên sàn: còn CHO PHÉP đến hết đúng thời điểm statusChangedAt + escalateDays (bao gồm biên),
+// cùng quy ước isWithinRefundWindow để cờ canEscalate và route khiếu nại không lệch nhau một biên.
+export function isWithinEscalateWindow(
+  statusChangedAt: Date,
+  now: Date,
+  escalateDays: number,
+): boolean {
+  return now.getTime() <= statusChangedAt.getTime() + escalateDays * DAY_MS;
+}
+
+export interface BuyerRefundRequestActionsInput {
+  kind: RefundRequestKind;
+  status: RefundRequestStatus;
+  // Lần đổi trạng thái gần nhất — với REJECTED_BY_SELLER đây là lúc seller từ chối, mốc mở cửa sổ khiếu nại.
+  statusChangedAt: Date;
+  now: Date;
+  escalateDays: number;
+}
+
+export interface BuyerRefundRequestActions {
+  canWithdraw: boolean;
+  canEscalate: boolean;
+}
+
+// Luật "người mua làm được gì với YÊU CẦU của mình" (Week9.md 1.4): suy từ bảng chuyển có actor ở
+// packages/types (một nguồn duy nhất — rút chỉ khi seller chưa trả lời, khiếu nại chỉ sau khi seller từ chối)
+// cộng cửa sổ khiếu nại. FE chỉ đọc các cờ này.
+export function getBuyerRefundRequestActions(
+  input: BuyerRefundRequestActionsInput,
+): BuyerRefundRequestActions {
+  return {
+    canWithdraw: canActorTransitionRefundRequest(
+      'BUYER',
+      input.kind,
+      input.status,
+      'WITHDRAWN',
+    ),
+    canEscalate:
+      canActorTransitionRefundRequest(
+        'BUYER',
+        input.kind,
+        input.status,
+        'ESCALATED',
+      ) &&
+      isWithinEscalateWindow(
+        input.statusChangedAt,
+        input.now,
+        input.escalateDays,
+      ),
+  };
+}
+
 export type CancelBlockReason =
   'PAID_ONLINE' | 'PROCESSING_STARTED' | 'IN_TRANSIT';
 
@@ -83,8 +137,9 @@ export type CancelBlockReason =
 // ⇒ ORDER_INVALID_TRANSITION).
 //   - PROCESSING_STARTED (CONFIRMED/PACKED): shop đã xử lý, người mua gửi YÊU CẦU hủy chứ không hủy ngay.
 //   - IN_TRANSIT (SHIPPING): hàng đã giao cho vận chuyển, không hủy được (Week9.md 1.3).
-//   - PAID_ONLINE (PENDING đã trả online): còn tới 2.6/2.7, khi đơn đó hủy ngay được kèm hoàn tiền thì
-//     lý do này biến mất khỏi hàm và khỏi `error-code.ts`.
+//   - PAID_ONLINE (PENDING đã trả online): người mua đã hủy ngay được (2.6) nên chỉ còn đường seller từ chối
+//     (`reject`) trả mã này, cho tới khi 2.7 mở nốt đường đó — lúc ấy lý do biến mất khỏi hàm và khỏi
+//     `error-code.ts`.
 export function getCancelBlockReason(
   status: OrderStatus,
   paymentMethod: PaymentMethod | null,

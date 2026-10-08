@@ -165,9 +165,11 @@ export class OrderActionService {
 
   // --- Buyer ----------------------------------------------------------------------------------
 
-  // Hủy đơn của mình. Đơn chưa thanh toán ⇒ hủy cả NHÓM thanh toán (1 Payment cho cả nhóm); đơn COD
-  // chờ xác nhận ⇒ hủy đơn đó và hoàn kho. Đơn đã trả online / đã xác nhận trở đi ⇒ 409
-  // ORDER_CANCEL_NOT_ALLOWED (hủy kèm hoàn tiền: Tuần 9).
+  // Hủy NGAY đơn của mình (Week9.md 1.3). Đơn chưa thanh toán ⇒ hủy cả NHÓM thanh toán (1 Payment cho cả
+  // nhóm). Đơn đang chờ shop xác nhận (PENDING) ⇒ uỷ quyền cho RefundService: đơn COD chỉ đổi trạng thái + kho
+  // + voucher, đơn đã trả online còn hoàn tiền tự động về nguồn thanh toán; RefundService cũng tự gửi email.
+  // Từ CONFIRMED trở đi không hủy ngay được: 409 ORDER_CANCEL_NOT_ALLOWED (người mua gửi YÊU CẦU hủy ở
+  // POST /orders/:id/refund-requests thay vì gọi route này).
   async cancelByBuyer(
     userId: string,
     orderId: string,
@@ -188,25 +190,32 @@ export class OrderActionService {
       return;
     }
 
-    await this.changeStatus(
-      { id: orderId, userId },
-      'PENDING',
-      'CANCELLED',
-      { type: 'BUYER', id: userId },
-      {
-        // Chỉ lý do do chính buyer nhập; không có thì để trống (null) — KHÔNG ghi chuỗi mặc định, vì
-        // `note` của buyer được hiển thị nguyên văn cho shop và cho chính buyer.
-        note: reason,
-        precheck: (order) => this.assertCancellable(order),
-        lockCodGroup: true,
-        after: (tx, order) => this.afterCodOrderCancelled(tx, order),
-      },
-    );
-    // Nhóm chưa thanh toán đã được báo ở reclaimCheckoutGroup (nhánh trên); đây là đơn COD hủy lẻ.
-    await this.orderEmailService.notifyCancelled(
-      { orderIds: [orderId] },
-      'BUYER',
-      reason ?? null,
+    if (head.status === 'PENDING') {
+      // Chỉ lý do do chính buyer nhập; không có thì để trống (null) — KHÔNG ghi chuỗi mặc định, vì `note` của
+      // buyer được hiển thị nguyên văn cho shop và cho chính buyer.
+      await this.refundService.cancelOrderWithRefund(
+        { type: 'BUYER', id: userId },
+        orderId,
+        // Hủy NGAY chỉ khi shop chưa xác nhận: nếu shop vừa xác nhận giữa lúc kiểm và lúc hủy thì thua race
+        // (409 ORDER_ALREADY_CHANGED), người mua phải gửi yêu cầu hủy thay vì hủy đè lên shop.
+        { reason, onlyFrom: ['PENDING'] },
+      );
+      return;
+    }
+
+    const blockReason = getCancelBlockReason(head.status, null);
+    if (blockReason) {
+      throw new AppException(
+        409,
+        'ORDER_CANCEL_NOT_ALLOWED',
+        `Order cannot be cancelled: ${blockReason}`,
+        { reason: blockReason },
+      );
+    }
+    throw new AppException(
+      409,
+      'ORDER_INVALID_TRANSITION',
+      `Action is not allowed while the order is ${head.status}`,
     );
   }
 

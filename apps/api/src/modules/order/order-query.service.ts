@@ -4,11 +4,13 @@ import {
   ORDER_LIST_PREVIEW_ITEMS,
   ORDER_STATUSES_VISIBLE_TO_SELLER,
   ORDER_TAB_STATUSES,
+  type BuyerRefundRequest,
   type OrderDetail,
   type OrderHistoryEntry,
   type OrderListItem,
   type OrderListQuery,
   type OrderListResponse,
+  type OrderRefundSummary,
   type SellerOrderDetail,
   type SellerOrderListItem,
   type SellerOrderListQuery,
@@ -21,9 +23,10 @@ import { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   canRetryOrderPayment,
   getBuyerOrderActions,
+  getBuyerRefundRequestActions,
   getSellerOrderActions,
 } from './order-actions';
-import { readRefundWindowDays } from './refund-config';
+import { readRefundEscalateDays, readRefundWindowDays } from './refund-config';
 import { sellerVisibleOrderFilter } from './seller-order-visibility';
 
 // Số tiền VND luôn là chuỗi số nguyên đồng trong response (cùng quy ước CartView/CheckoutGroup).
@@ -57,12 +60,39 @@ const completedAtArgs = {
   select: { toStatus: true, createdAt: true },
 } satisfies Prisma.Order$statusHistoryArgs;
 
-// Loại yêu cầu hủy/trả hàng ĐÃ CÓ (chưa rút) của đơn — cho cờ canRequestCancel/canRequestReturn. Mỗi đơn
-// tối đa một yêu cầu mỗi loại nên danh sách này tối đa 2 dòng.
-const refundRequestKindsArgs = {
+// Yêu cầu hủy/trả hàng CHƯA RÚT của đơn, mới nhất trước (Week9.md 1.4). Mỗi đơn tối đa một yêu cầu mỗi loại
+// nên tối đa 2 dòng: vừa đủ cho cờ canRequestCancel/canRequestReturn (qua `kind`) lẫn hiển thị yêu cầu mới
+// nhất kèm dòng thời gian. KHÔNG select actorId của history — người mua không cần (và không nên) biết định
+// danh seller/Admin đã quyết định.
+const buyerRefundRequestArgs = {
   where: { status: { not: 'WITHDRAWN' } },
-  select: { kind: true },
+  orderBy: { createdAt: 'desc' },
+  select: {
+    id: true,
+    kind: true,
+    status: true,
+    reasonCode: true,
+    reasonNote: true,
+    sellerRespondBy: true,
+    statusChangedAt: true,
+    createdAt: true,
+    history: {
+      select: {
+        toStatus: true,
+        actorType: true,
+        note: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    },
+  },
 } satisfies Prisma.Order$refundRequestsArgs;
+
+// Khoản hoàn tiền qua cổng của đơn (sổ cái PaymentRefund, orderId unique ⇒ tối đa một). Chỉ trạng thái +
+// số tiền: lý do lỗi/mã cổng là thông tin nội bộ cho Admin.
+const paymentRefundArgs = {
+  select: { status: true, amount: true },
+} satisfies Prisma.Order$paymentRefundArgs;
 
 const listSelect = {
   id: true,
@@ -84,7 +114,8 @@ const listSelect = {
     },
   },
   statusHistory: completedAtArgs,
-  refundRequests: refundRequestKindsArgs,
+  refundRequests: buyerRefundRequestArgs,
+  paymentRefund: paymentRefundArgs,
 } satisfies Prisma.OrderSelect;
 
 // Lúc đơn COMPLETED gần nhất trong 1 danh sách dòng lịch sử (rỗng/không có ⇒ null).
@@ -200,6 +231,38 @@ const toHistoryEntry = (entry: {
   note: entry.note,
   createdAt: entry.createdAt.toISOString(),
 });
+
+const toBuyerRefundRequest = (
+  request: LoadedListOrder['refundRequests'][number],
+  now: Date,
+): BuyerRefundRequest => ({
+  id: request.id,
+  kind: request.kind,
+  status: request.status,
+  reasonCode: request.reasonCode,
+  reasonNote: request.reasonNote,
+  sellerRespondBy: request.sellerRespondBy.toISOString(),
+  statusChangedAt: request.statusChangedAt.toISOString(),
+  createdAt: request.createdAt.toISOString(),
+  history: request.history.map((entry) => ({
+    toStatus: entry.toStatus,
+    actorType: entry.actorType,
+    note: entry.note,
+    createdAt: entry.createdAt.toISOString(),
+  })),
+  ...getBuyerRefundRequestActions({
+    kind: request.kind,
+    status: request.status,
+    statusChangedAt: request.statusChangedAt,
+    now,
+    escalateDays: readRefundEscalateDays(),
+  }),
+});
+
+const toRefundSummary = (
+  refund: LoadedListOrder['paymentRefund'],
+): OrderRefundSummary | null =>
+  refund ? { status: refund.status, amount: money(refund.amount) } : null;
 
 // Phần ĐỌC của module order (buyer ở 2.4; seller thêm ở 2.5). Ghi/chuyển trạng thái nằm ở
 // OrderStatusService + các service hành động.
@@ -426,6 +489,11 @@ export class OrderQueryService {
       paymentMethod: latest?.method ?? null,
       paymentStatus: latest?.status ?? null,
       ...actions,
+      // Yêu cầu MỚI NHẤT (mảng đã sắp mới nhất trước); null = người mua chưa gửi hoặc đã rút hết.
+      refundRequest: order.refundRequests[0]
+        ? toBuyerRefundRequest(order.refundRequests[0], now)
+        : null,
+      refund: toRefundSummary(order.paymentRefund),
     };
   }
 }

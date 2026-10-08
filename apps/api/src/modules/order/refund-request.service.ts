@@ -80,6 +80,27 @@ export class RefundRequestService {
     });
   }
 
+  // Mốc tạo yêu cầu (fromStatus = null) — gọi ngay sau khi tạo yêu cầu, trong cùng transaction. createdAt lấy đúng
+  // `request.createdAt` (cùng mốc mặc định của statusChangedAt: hai cột cùng DEFAULT now() nên bằng nhau trong
+  // một transaction), để dòng đầu của dòng thời gian khớp thời điểm tạo.
+  async recordCreated(
+    tx: TxClient,
+    request: { id: string; createdAt: Date },
+    actor: OrderActor,
+  ): Promise<void> {
+    await tx.refundRequestHistory.create({
+      data: {
+        refundRequestId: request.id,
+        fromStatus: null,
+        toStatus: 'PENDING_SELLER',
+        actorType: actor.type,
+        actorId: actor.type === 'SYSTEM' ? null : actor.id,
+        note: null,
+        createdAt: request.createdAt,
+      },
+    });
+  }
+
   private invalidTransition(
     from: RefundRequestStatus,
     to: RefundRequestStatus,

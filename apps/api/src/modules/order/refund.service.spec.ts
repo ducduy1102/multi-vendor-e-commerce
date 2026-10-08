@@ -543,12 +543,67 @@ describe('RefundService', () => {
         expect(orderStatusService.transition).not.toHaveBeenCalled();
       });
 
-      it('đơn đã đổi trạng thái giữa lúc đọc và lúc khoá ⇒ 409 ORDER_INVALID_TRANSITION, chưa lật gì', async () => {
+      describe('onlyFrom — người gọi thu hẹp trạng thái được phép (hủy NGAY của buyer chỉ khi shop chưa xác nhận)', () => {
+        it('đơn CONFIRMED mà người gọi chỉ cho PENDING ⇒ 409 ORDER_INVALID_TRANSITION, không khoá/ghi gì', async () => {
+          prisma.order.findUnique.mockResolvedValue(
+            orderRow({ status: 'CONFIRMED' }),
+          );
+
+          await expectAppException(
+            service.cancelOrderWithRefund(BUYER, 'o1', {
+              onlyFrom: ['PENDING'],
+            }),
+            { status: 409, code: 'ORDER_INVALID_TRANSITION' },
+          );
+          expect(prisma.$transaction).not.toHaveBeenCalled();
+        });
+
+        it('shop vừa xác nhận SAU lúc đọc (khoá thấy CONFIRMED) ⇒ 409 ORDER_ALREADY_CHANGED, đơn KHÔNG bị hủy đè lên shop', async () => {
+          groupRows = [{ id: 'o1', status: 'CONFIRMED' }];
+
+          await expectAppException(
+            service.cancelOrderWithRefund(BUYER, 'o1', {
+              onlyFrom: ['PENDING'],
+            }),
+            { status: 409, code: 'ORDER_ALREADY_CHANGED' },
+          );
+          expect(orderStatusService.transition).not.toHaveBeenCalled();
+          expect(inventoryService.restock).not.toHaveBeenCalled();
+          expect(tx.paymentRefund.create).not.toHaveBeenCalled();
+        });
+
+        it('đơn PENDING vẫn hủy được; không truyền onlyFrom thì CONFIRMED/PACKED vẫn hủy được (seller tự hủy)', async () => {
+          await service.cancelOrderWithRefund(BUYER, 'o1', {
+            onlyFrom: ['PENDING'],
+          });
+          expect(orderStatusService.transition).toHaveBeenCalledTimes(1);
+
+          prisma.order.findUnique.mockResolvedValue(
+            orderRow({ status: 'PACKED' }),
+          );
+          groupRows = [{ id: 'o1', status: 'PACKED' }];
+          await service.cancelOrderWithRefund(SELLER, 'o1');
+          expect(orderStatusService.transition).toHaveBeenCalledTimes(2);
+        });
+
+        it('onlyFrom không mở rộng vượt luật của loại thao tác: trả hàng vẫn chỉ nhận COMPLETED', async () => {
+          prisma.order.findUnique.mockResolvedValue(
+            orderRow({ status: 'PENDING' }),
+          );
+
+          await expectAppException(
+            service.refundReturnedOrder(ADMIN, 'o1', { onlyFrom: ['PENDING'] }),
+            { status: 409, code: 'ORDER_INVALID_TRANSITION' },
+          );
+        });
+      });
+
+      it('đơn đã đổi trạng thái giữa lúc đọc và lúc khoá ⇒ 409 ORDER_ALREADY_CHANGED, chưa lật gì', async () => {
         groupRows = [{ id: 'o1', status: 'SHIPPING' }];
 
         await expectAppException(service.cancelOrderWithRefund(BUYER, 'o1'), {
           status: 409,
-          code: 'ORDER_INVALID_TRANSITION',
+          code: 'ORDER_ALREADY_CHANGED',
         });
         expect(orderStatusService.transition).not.toHaveBeenCalled();
       });

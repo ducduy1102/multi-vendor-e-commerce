@@ -350,7 +350,7 @@ describe('BuyerOrderController (HTTP thật)', () => {
       expect(byId[aPendingOnline]).toMatchObject({
         paymentMethod: 'VNPAY',
         paymentStatus: 'SUCCESS',
-        canCancel: false, // đã trả online — hủy kèm hoàn tiền: Tuần 9
+        canCancel: true, // đã trả online nhưng shop chưa xác nhận — hủy ngay kèm hoàn tiền (Week9.md 2.6)
         canRetryPayment: false,
       });
       expect(byId[aPendingCod]).toMatchObject({
