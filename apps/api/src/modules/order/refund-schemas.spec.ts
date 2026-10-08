@@ -93,6 +93,8 @@ const EXPECTED_EDGES: Edge[] = [
   ...bothKinds('ADMIN', 'PENDING_SELLER', 'REJECTED'),
   ...bothKinds('ADMIN', 'ESCALATED', 'APPROVED'),
   ...bothKinds('ADMIN', 'ESCALATED', 'REJECTED'),
+  // Seller nhượng bộ: tự hủy đơn trực tiếp khi người mua đã khiếu nại (chỉ kind CANCEL, Week9.md 2.5).
+  ['SELLER', 'CANCEL', 'ESCALATED', 'APPROVED'],
   ...bothKinds('BUYER', 'PENDING_SELLER', 'WITHDRAWN'),
   ...bothKinds('BUYER', 'REJECTED_BY_SELLER', 'ESCALATED'),
   // Hệ thống chỉ hành động theo HẠN và đúng một hướng cho mỗi loại.
@@ -120,7 +122,34 @@ describe('REFUND_REQUEST_TRANSITIONS + canActorTransitionRefundRequest', () => {
     expect(allowed.map(edgeKey).sort()).toEqual(
       EXPECTED_EDGES.map(edgeKey).sort(),
     );
-    expect(allowed).toHaveLength(18);
+    expect(allowed).toHaveLength(19);
+  });
+
+  it('khi yêu cầu đã lên sàn (ESCALATED): seller chỉ "nhượng bộ" được ở kind CANCEL; không tự duyệt trả hàng hay từ chối', () => {
+    expect(
+      canActorTransitionRefundRequest(
+        'SELLER',
+        'CANCEL',
+        'ESCALATED',
+        'APPROVED',
+      ),
+    ).toBe(true);
+    expect(
+      canActorTransitionRefundRequest(
+        'SELLER',
+        'RETURN',
+        'ESCALATED',
+        'APPROVED',
+      ),
+    ).toBe(false);
+    expect(
+      canActorTransitionRefundRequest(
+        'SELLER',
+        'CANCEL',
+        'ESCALATED',
+        'REJECTED',
+      ),
+    ).toBe(false);
   });
 
   it('mọi cạnh trong bảng dùng đúng giá trị enum hợp lệ', () => {
@@ -253,6 +282,13 @@ describe('refundRequestTargets', () => {
     expect(
       refundRequestTargets('SELLER', 'RETURN', 'REJECTED_BY_SELLER'),
     ).toEqual([]);
+  });
+
+  it('seller khi yêu cầu đã ESCALATED: chỉ kind CANCEL mới có đích (APPROVED)', () => {
+    expect(refundRequestTargets('SELLER', 'CANCEL', 'ESCALATED')).toEqual([
+      'APPROVED',
+    ]);
+    expect(refundRequestTargets('SELLER', 'RETURN', 'ESCALATED')).toEqual([]);
   });
 
   it('hệ thống: đích phụ thuộc loại yêu cầu', () => {

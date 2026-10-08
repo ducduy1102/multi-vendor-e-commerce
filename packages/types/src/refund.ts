@@ -34,7 +34,8 @@ export type PaymentRefundStatus = z.infer<typeof paymentRefundStatusSchema>;
 //   PENDING_SELLER     → REJECTED            ADMIN
 //   PENDING_SELLER     → WITHDRAWN           BUYER
 //   REJECTED_BY_SELLER → ESCALATED           BUYER (trong cửa sổ khiếu nại; kiểm ở service)
-//   ESCALATED          → APPROVED            ADMIN
+//   ESCALATED          → APPROVED            ADMIN | SELLER (SELLER chỉ kind CANCEL: tự hủy đơn trực tiếp
+//                                            khi người mua đã khiếu nại — seller "nhượng bộ", Week9.md 2.5)
 //   ESCALATED          → REJECTED            ADMIN (bắt buộc lý do)
 // Chỉ nói cạnh nào hợp lệ + ai làm được; thực thi thật nằm ở RefundRequestService.transition (UPDATE có
 // điều kiện WHERE status = <cũ> + ghi RefundRequestHistory cùng transaction). Cố ý KHÔNG có hàm "cạnh
@@ -56,6 +57,7 @@ export const REFUND_REQUEST_TRANSITIONS: readonly RefundRequestTransition[] = [
   { from: 'PENDING_SELLER', to: 'WITHDRAWN', actor: 'BUYER' },
   { from: 'REJECTED_BY_SELLER', to: 'ESCALATED', actor: 'BUYER' },
   { from: 'ESCALATED', to: 'APPROVED', actor: 'ADMIN' },
+  { from: 'ESCALATED', to: 'APPROVED', actor: 'SELLER' },
   { from: 'ESCALATED', to: 'REJECTED', actor: 'ADMIN' },
 ];
 
@@ -75,6 +77,12 @@ export function canActorTransitionRefundRequest(
     return (
       (to === 'APPROVED' && kind === 'CANCEL') || (to === 'ESCALATED' && kind === 'RETURN')
     );
+  }
+  // Yêu cầu đã lên sàn thì Admin quyết định; ngoại lệ duy nhất của seller là hủy đơn trực tiếp (kind CANCEL)
+  // — hủy chính là điều người mua xin nên yêu cầu đóng luôn. Seller không được tự "duyệt trả hàng" khi Admin
+  // đang xử lý khiếu nại.
+  if (actor === 'SELLER' && from === 'ESCALATED') {
+    return kind === 'CANCEL';
   }
   return true;
 }
