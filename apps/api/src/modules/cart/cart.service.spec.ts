@@ -12,10 +12,14 @@ function variantRow(overrides: Record<string, unknown> = {}) {
     reservedStock: 0,
     isActive: true,
     product: { status: 'PUBLISHED' },
-    shop: { status: 'APPROVED' },
+    shop: { status: 'APPROVED', ownerId: 'owner-1' },
     ...overrides,
   };
 }
+
+// Variant thuộc shop do chính `userId` làm chủ.
+const ownShopVariantRow = (userId: string, overrides = {}) =>
+  variantRow({ shop: { status: 'APPROVED', ownerId: userId }, ...overrides });
 
 describe('CartService', () => {
   let service: CartService;
@@ -100,7 +104,13 @@ describe('CartService', () => {
         stock: 10,
         isActive: true,
         product: { id: `p-${id}`, name: id, slug: id, status: 'PUBLISHED' },
-        shop: { id: shopId, name: shopId, slug: shopId, status: 'APPROVED' },
+        shop: {
+          id: shopId,
+          name: shopId,
+          slug: shopId,
+          status: 'APPROVED',
+          ownerId: `owner-${shopId}`,
+        },
         images: [],
         attributeValues: [],
       };
@@ -202,6 +212,54 @@ describe('CartService', () => {
       ).rejects.toBe(error);
     });
 
+    describe('dòng thuộc shop của chính người xem (Week9.md 2.10)', () => {
+      const lines = [
+        { id: 'i1', productVariantId: 'v1', quantity: 1 },
+        { id: 'i2', productVariantId: 'v2', quantity: 2 },
+      ];
+
+      beforeEach(() => {
+        prisma.cart.findUnique.mockResolvedValue({ items: lines });
+        prisma.productVariant.findMany.mockResolvedValue([
+          fullVariant('v1', 's1'),
+          fullVariant('v2', 's2'),
+        ]);
+      });
+
+      it('getCart: dòng của shop mình bị loại khỏi mua, mang lý do OWN_SHOP, không cộng vào tổng; dòng shop khác bình thường', async () => {
+        // fullVariant('v1','s1') thuộc về user 'owner-s1'.
+        const view = await service.getCart('owner-s1');
+
+        const own = view.shops.find((shop) => shop.shopId === 's1')?.items[0];
+        const other = view.shops.find((shop) => shop.shopId === 's2')?.items[0];
+        expect(own).toMatchObject({
+          isAvailable: false,
+          unavailableReason: 'OWN_SHOP',
+        });
+        expect(other?.isAvailable).toBe(true);
+        expect(view.subtotal).toBe('200000'); // chỉ v2 × 2
+      });
+
+      it('getCart của người khác: không dòng nào bị loại', async () => {
+        const view = await service.getCart('user-1');
+
+        expect(
+          view.shops.flatMap((shop) => shop.items).every((i) => i.isAvailable),
+        ).toBe(true);
+        expect(view.subtotal).toBe('300000');
+      });
+
+      it('quote có userId (đã đăng nhập) áp luật; guest không có userId thì không áp', async () => {
+        const items = [{ productVariantId: 'v1', quantity: 1 }];
+
+        const asOwner = await service.quote(items, undefined, 'owner-s1');
+        const asGuest = await service.quote(items);
+
+        expect(asOwner.shops[0].items[0].isAvailable).toBe(false);
+        expect(asGuest.shops[0].items[0].isAvailable).toBe(true);
+      });
+    });
+
     it('getCart — dựng từ CartItem của user, giữ id và thứ tự, nhóm theo shop', async () => {
       prisma.cart.findUnique.mockResolvedValue({
         items: [
@@ -242,6 +300,43 @@ describe('CartService', () => {
         }),
       );
       expect(result.quantity).toBe(2);
+    });
+
+    describe('shop của chính người mua (Week9.md 2.10)', () => {
+      it('variant thuộc shop do chính user làm chủ ⇒ 409 CART_OWN_SHOP_ITEM, không tạo giỏ, không ghi gì', async () => {
+        prisma.productVariant.findUnique.mockResolvedValue(
+          ownShopVariantRow('user-1'),
+        );
+
+        await expectAppException(service.addItem('user-1', 'variant-1', 1), {
+          status: 409,
+          code: 'CART_OWN_SHOP_ITEM',
+          message: 'You cannot buy products from your own shop',
+        });
+        expect(prisma.cart.upsert).not.toHaveBeenCalled();
+        expect(prisma.cartItem.upsert).not.toHaveBeenCalled();
+      });
+
+      it('chủ shop vẫn thêm được sản phẩm của shop KHÁC', async () => {
+        prisma.productVariant.findUnique.mockResolvedValue(
+          ownShopVariantRow('someone-else'),
+        );
+
+        await expect(
+          service.addItem('user-1', 'variant-1', 1),
+        ).resolves.toMatchObject({ quantity: 1 });
+      });
+
+      it('sản phẩm đã ngừng bán thì báo "không khả dụng" như mọi người, không phải lý do shop của mình', async () => {
+        prisma.productVariant.findUnique.mockResolvedValue(
+          ownShopVariantRow('user-1', { isActive: false }),
+        );
+
+        await expectAppException(service.addItem('user-1', 'variant-1', 1), {
+          status: 409,
+          code: 'CART_ITEM_UNAVAILABLE',
+        });
+      });
     });
 
     it('variant đã có trong giỏ — cộng dồn quantity', async () => {
@@ -410,6 +505,18 @@ describe('CartService', () => {
       expect(prisma.cartItem.update).not.toHaveBeenCalled();
     });
 
+    it('dòng của shop do chính user làm chủ (nằm sẵn trong giỏ từ trước khi có luật chặn) ⇒ 409 CART_OWN_SHOP_ITEM, không sửa', async () => {
+      prisma.cartItem.findFirst.mockResolvedValue({
+        productVariant: ownShopVariantRow('user-1'),
+      });
+
+      await expectAppException(
+        service.updateItemQuantity('user-1', 'item-1', 1),
+        { status: 409, code: 'CART_OWN_SHOP_ITEM' },
+      );
+      expect(prisma.cartItem.update).not.toHaveBeenCalled();
+    });
+
     it('variant không còn khả dụng — 409', async () => {
       prisma.cartItem.findFirst.mockResolvedValue({
         productVariant: variantRow({ isActive: false }),
@@ -542,6 +649,22 @@ describe('CartService', () => {
       ]);
 
       expect(quantitiesWritten()).toEqual({ ok: 1 });
+    });
+
+    it('bỏ qua thầm lặng variant thuộc shop do chính user làm chủ, vẫn merge phần còn lại (Week9.md 2.10)', async () => {
+      prisma.productVariant.findMany.mockResolvedValue([
+        ownShopVariantRow('user-1', { id: 'mine' }),
+        variantRow({ id: 'ok' }),
+      ]);
+
+      const result = await service.mergeGuestCart('user-1', [
+        { productVariantId: 'mine', quantity: 1 },
+        { productVariantId: 'ok', quantity: 1 },
+      ]);
+
+      expect(quantitiesWritten()).toEqual({ ok: 1 });
+      // Không phải "dòng bị bỏ vì đầy giỏ" nên không tính vào droppedLineCount.
+      expect(result.droppedLineCount).toBe(0);
     });
 
     it('clamp theo available (stock - reservedStock)', async () => {

@@ -156,7 +156,7 @@ const VOUCHER_NOT_FOUND_EXAMPLE = {
   code: 'VOUCHER_NOT_FOUND',
 };
 
-// Dùng chung cho POST /cart/items và PATCH /cart/items/:itemId — cùng 3 lý do
+// Dùng chung cho POST /cart/items và PATCH /cart/items/:itemId — cùng 4 lý do
 // 409 (CartService.assertWithinStock/addItem/updateItemQuantity).
 const CART_STOCK_409_EXAMPLES = {
   INSUFFICIENT_STOCK: {
@@ -188,6 +188,15 @@ const CART_STOCK_409_EXAMPLES = {
       code: 'CART_ITEM_UNAVAILABLE',
     },
   },
+  CART_OWN_SHOP_ITEM: {
+    summary: 'CART_OWN_SHOP_ITEM',
+    value: {
+      success: false,
+      data: null,
+      message: 'You cannot buy products from your own shop',
+      code: 'CART_OWN_SHOP_ITEM',
+    },
+  },
 };
 
 // Giỏ hàng của user đã đăng nhập lưu ở DB, guest lưu localStorage và gọi
@@ -203,6 +212,9 @@ export class CartController {
   @ApiOperation({
     summary:
       'Giỏ hàng của tôi — nhóm theo shop, giá/tồn kho luôn lấy live; kèm ?voucherCode để xem trước số tiền giảm',
+    description:
+      'Dòng thuộc shop do chính người xem làm chủ (người bán không được tự mua) có isAvailable=false và unavailableReason="OWN_SHOP": ' +
+      'vẫn hiện trong giỏ để xoá được nhưng không vào tổng tiền và bị loại khỏi thanh toán.',
   })
   @ApiQuery(VOUCHER_CODE_QUERY)
   @ApiResponse({
@@ -253,7 +265,7 @@ export class CartController {
   @ApiResponse({
     status: 409,
     description:
-      'INSUFFICIENT_STOCK (vượt số lượng còn đặt được), CART_FULL (giỏ đã đủ 50 dòng), CART_ITEM_UNAVAILABLE (sản phẩm/shop không còn bán) — xem code',
+      'INSUFFICIENT_STOCK (vượt số lượng còn đặt được), CART_FULL (giỏ đã đủ 50 dòng), CART_ITEM_UNAVAILABLE (sản phẩm/shop không còn bán), CART_OWN_SHOP_ITEM (sản phẩm của chính shop mình — người bán không được tự mua) — xem code',
     examples: CART_STOCK_409_EXAMPLES,
   })
   async addItem(
@@ -293,7 +305,7 @@ export class CartController {
   @ApiResponse({
     status: 409,
     description:
-      'INSUFFICIENT_STOCK (vượt số lượng còn đặt được), CART_FULL (giỏ đã đủ 50 dòng), CART_ITEM_UNAVAILABLE (sản phẩm/shop không còn bán) — xem code',
+      'INSUFFICIENT_STOCK (vượt số lượng còn đặt được), CART_FULL (giỏ đã đủ 50 dòng), CART_ITEM_UNAVAILABLE (sản phẩm/shop không còn bán), CART_OWN_SHOP_ITEM (sản phẩm của chính shop mình — người bán không được tự mua) — xem code',
     examples: CART_STOCK_409_EXAMPLES,
   })
   async updateItem(
@@ -338,7 +350,7 @@ export class CartController {
   @ApiCookieAuth('access_token')
   @ApiOperation({
     summary:
-      'Gộp giỏ guest (localStorage) vào giỏ DB sau khi đăng nhập — cộng dồn, giới hạn theo tồn kho, bỏ qua variant không còn; trả giỏ mới',
+      'Gộp giỏ guest (localStorage) vào giỏ DB sau khi đăng nhập — cộng dồn, giới hạn theo tồn kho, bỏ qua variant không còn hoặc thuộc shop của chính mình; trả giỏ mới',
   })
   @ApiBody({
     schema: {

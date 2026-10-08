@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import {
+  isOwnShopVariant,
   isVariantAvailable,
   variantAvailabilitySelect,
 } from './cart-availability';
@@ -25,6 +26,16 @@ const cartItemSelect = {
   quantity: true,
 } as const;
 
+// Người bán không được mua sản phẩm của shop mình (Week9.md 2.10). 409 như các lý do "dòng này không mua được"
+// khác của giỏ (CART_ITEM_UNAVAILABLE), không phải 403: không liên quan quyền truy cập, FE không được hiểu
+// nhầm thành phiên hết hạn.
+const ownShopItem = () =>
+  new AppException(
+    409,
+    'CART_OWN_SHOP_ITEM',
+    'You cannot buy products from your own shop',
+  );
+
 @Injectable()
 export class CartService {
   constructor(
@@ -46,7 +57,10 @@ export class CartService {
 
   // Giỏ của user đã đăng nhập, cùng shape CartView với guest (Week6.md 1.7).
   async getCart(userId: string, voucherCode?: string): Promise<CartView> {
-    const view = await this.buildCartView(await this.getCartItems(userId));
+    const view = await this.buildCartView(
+      await this.getCartItems(userId),
+      userId,
+    );
     return this.withVoucher(view, voucherCode, userId);
   }
 
@@ -64,7 +78,7 @@ export class CartService {
         quantity,
       }),
     );
-    const view = await this.buildCartView(lines);
+    const view = await this.buildCartView(lines, userId);
     return this.withVoucher(view, voucherCode, userId);
   }
 
@@ -88,9 +102,10 @@ export class CartService {
 
   // Join dữ liệu variant/product/shop rồi giao cho composeCartView (hàm thuần).
   // Variant không còn trong DB (guest giữ id cũ) bị bỏ qua thầm lặng, giống
-  // mergeGuestCart.
+  // mergeGuestCart. `viewerUserId` (nếu có) để loại các dòng thuộc shop của chính người xem.
   async buildCartView(
     items: Array<CartItemInput & { id: string | null }>,
+    viewerUserId?: string,
   ): Promise<CartView> {
     if (items.length === 0) {
       return composeCartView([]);
@@ -104,7 +119,7 @@ export class CartService {
       const variant = variantById.get(item.productVariantId);
       return variant ? [{ ...item, variant }] : [];
     });
-    return composeCartView(lines);
+    return composeCartView(lines, viewerUserId);
   }
 
   // Cộng dồn nếu variant đã có trong giỏ, chặn mềm theo số lượng còn đặt được
@@ -118,6 +133,9 @@ export class CartService {
     quantity: number,
   ): Promise<CartItemRow> {
     const variant = await this.findAvailableVariant(productVariantId);
+    if (isOwnShopVariant(variant, userId)) {
+      throw ownShopItem();
+    }
     const cartId = await this.getOrCreateCartId(userId);
 
     const existing = await this.prisma.cartItem.findUnique({
@@ -163,6 +181,10 @@ export class CartService {
         'CART_ITEM_UNAVAILABLE',
         'This product is no longer available',
       );
+    }
+    // Dòng của shop mình có thể đã nằm trong giỏ từ trước khi có luật chặn — không cho sửa số lượng (chỉ xoá).
+    if (isOwnShopVariant(item.productVariant, userId)) {
+      throw ownShopItem();
     }
     this.assertWithinStock(quantity, availableStock(item.productVariant));
 
@@ -219,7 +241,9 @@ export class CartService {
     let freeSlots = MAX_CART_LINES - (await this.countCartLines(cartId));
     let droppedLineCount = 0;
     const writes = orderedVariants.flatMap((variant) => {
-      if (!isVariantAvailable(variant)) {
+      // Bỏ qua thầm lặng như variant không khả dụng: guest không biết mình là chủ shop nên có thể đã bỏ sản phẩm
+      // của shop mình vào giỏ trước khi đăng nhập.
+      if (!isVariantAvailable(variant) || isOwnShopVariant(variant, userId)) {
         return [];
       }
       const isNewLine = !existingByVariant.has(variant.id);
