@@ -26,6 +26,7 @@ import {
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../shared/guards/optional-jwt-auth.guard';
 import { ZodValidationPipe } from '../../shared/pipes/zod-validation.pipe';
+import { errorExample } from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { CartService } from './cart.service';
 import {
@@ -224,8 +225,16 @@ export class CartController {
   @ApiResponse({
     status: 400,
     description:
-      'Mã voucher không áp dụng được (hết hạn, hết lượt, dưới mức tối thiểu...) — xem code',
-    examples: VOUCHER_APPLY_400_EXAMPLES,
+      'Query không hợp lệ (voucherCode quá 32 ký tự) hoặc mã voucher không áp dụng được (hết hạn, hết lượt, dưới mức tối thiểu...) — xem code',
+    examples: {
+      ...VOUCHER_APPLY_400_EXAMPLES,
+      validationError: {
+        summary: 'Query không hợp lệ (lỗi validate Zod, không có code)',
+        value: errorExample(
+          'voucherCode: String must contain at most 32 character(s)',
+        ),
+      },
+    },
   })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
@@ -259,6 +268,12 @@ export class CartController {
   @ApiResponse({
     status: 201,
     schema: { example: { success: true, data: { item: CART_ITEM_EXAMPLE } } },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Body không hợp lệ (thiếu productVariantId, quantity < 1 hoặc không phải số nguyên)',
+    schema: { example: errorExample('quantity: cart.validationQuantityMin') },
   })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 404, description: 'Variant không tồn tại' })
@@ -296,6 +311,12 @@ export class CartController {
         data: { item: { ...CART_ITEM_EXAMPLE, quantity: 3 } },
       },
     },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Body không hợp lệ (quantity < 1 hoặc không phải số nguyên — muốn bỏ dòng thì dùng DELETE)',
+    schema: { example: errorExample('quantity: cart.validationQuantityMin') },
   })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
@@ -351,6 +372,8 @@ export class CartController {
   @ApiOperation({
     summary:
       'Gộp giỏ guest (localStorage) vào giỏ DB sau khi đăng nhập — cộng dồn, giới hạn theo tồn kho, bỏ qua variant không còn hoặc thuộc shop của chính mình; trả giỏ mới',
+    description:
+      'Giỏ trả về cùng shape GET /cart: dòng cũ thuộc shop của chính người dùng (nếu còn) có isAvailable=false và unavailableReason="OWN_SHOP".',
   })
   @ApiBody({
     schema: {
@@ -370,6 +393,14 @@ export class CartController {
         success: true,
         data: { cart: CART_VIEW_EXAMPLE, droppedLineCount: 0 },
       },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Body không hợp lệ (thiếu items, quá 100 dòng, quantity < 1 hoặc không phải số nguyên)',
+    schema: {
+      example: errorExample('items.0.quantity: cart.validationQuantityMin'),
     },
   })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
@@ -395,6 +426,8 @@ export class CartController {
   @ApiOperation({
     summary:
       'Tính giỏ cho guest từ items[] (không cần đăng nhập), kèm voucherCode tuỳ chọn để xem trước số tiền giảm',
+    description:
+      'Khi gọi kèm đăng nhập, dòng thuộc shop của chính người xem có isAvailable=false và unavailableReason="OWN_SHOP" (người bán không được tự mua); guest không bao giờ có field này.',
   })
   @ApiBody({
     schema: {
@@ -413,8 +446,14 @@ export class CartController {
   @ApiResponse({
     status: 400,
     description:
-      'Mã voucher không áp dụng được (hết hạn, hết lượt, dưới mức tối thiểu...) — xem code',
-    examples: VOUCHER_APPLY_400_EXAMPLES,
+      'Body không hợp lệ (quantity < 1, quá 100 dòng, voucherCode quá 32 ký tự) hoặc mã voucher không áp dụng được (hết hạn, hết lượt, dưới mức tối thiểu...) — xem code',
+    examples: {
+      ...VOUCHER_APPLY_400_EXAMPLES,
+      validationError: {
+        summary: 'Body không hợp lệ (lỗi validate Zod, không có code)',
+        value: errorExample('items.0.quantity: cart.validationQuantityMin'),
+      },
+    },
   })
   @ApiResponse({
     status: 404,
