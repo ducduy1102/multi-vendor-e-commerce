@@ -397,6 +397,34 @@ describe('Review (HTTP thật)', () => {
         await expectRejected(orderId, fresh.productId, 'ORDER_NOT_COMPLETED');
       });
 
+      it('chủ shop mua hàng của CHÍNH shop mình (đơn có từ trước khi có luật chặn mua) ⇒ OWN_SHOP dù đơn COMPLETED; chi tiết đơn báo canReview false và không lộ ownerId của shop', async () => {
+        // `seller` là chủ của mọi shop tạo bằng createShopFor(seller.userId).
+        const mine = await createShopFor(seller.userId);
+        const { orderId } = await orderFor(seller, mine);
+
+        const res = await createReview(
+          seller,
+          validBody(orderId, mine.productId),
+        );
+
+        expect(res.status).toBe(409);
+        expect(code(res)).toBe('REVIEW_NOT_ALLOWED');
+        expect(details(res)).toEqual({ reason: 'OWN_SHOP' });
+        expect(await reviewsOf(mine.productId)).toHaveLength(0);
+        expect((await productRow(mine.productId)).reviewCount).toBe(0);
+
+        const detailRes = await seller.agent
+          .get(`/api/v1/orders/${orderId}`)
+          .expect(200);
+        const detail = orderDetailSchema.parse(data(detailRes));
+        expect(detail.items[0].canReview).toBe(false);
+        // Select có ownerId của shop để so sánh, nhưng response chỉ có đúng 4 field công khai.
+        expect((data(detailRes) as { shop: object }).shop).not.toHaveProperty(
+          'ownerId',
+        );
+        expect(JSON.stringify(detailRes.body)).not.toContain(seller.userId);
+      });
+
       it('sản phẩm không có trong đơn ⇒ NOT_PURCHASED', async () => {
         const mine = await createShopFor(seller.userId);
         const other = await createShopFor(otherSeller.userId);
