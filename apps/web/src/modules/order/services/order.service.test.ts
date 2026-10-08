@@ -53,8 +53,19 @@ const BUYER_LIST_ITEM = {
   canRetryPayment: false,
 };
 
+// Dòng hàng ở CHI TIẾT đơn của buyer có thêm định danh sản phẩm + trạng thái đánh giá (Week9.md 2.10);
+// danh sách đơn và đơn phía seller vẫn dùng ITEM cơ sở.
+const DETAIL_ITEM = {
+  ...ITEM,
+  productId: 'product-1',
+  productSlug: 'ao-thun',
+  canReview: false,
+  review: null,
+};
+
 const BUYER_DETAIL = {
   ...BUYER_LIST_ITEM,
+  items: [DETAIL_ITEM],
   recipientName: 'Nguyễn Văn A',
   recipientPhone: '0901234567',
   shippingAddressLine: '1 Lê Lợi',

@@ -8,7 +8,7 @@ import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
 import { cn } from '@/shared/lib/utils';
 
 import { PAYMENT_METHOD_LABEL_KEYS, PAYMENT_STATUS_LABEL_KEYS } from '../order-status-display';
-import type { OrderDetail } from '../types';
+import type { OrderDetail, OrderListItem } from '../types';
 import {
   ORDER_CARD_CLASS,
   ORDER_DETAIL_SECTION_BODY_CLASS,
@@ -61,7 +61,7 @@ function SummaryRow({
   );
 }
 
-export function OrderItemsSection({ items }: { items: OrderDetail['items'] }) {
+export function OrderItemsSection({ items }: { items: OrderListItem['items'] }) {
   const t = useTranslations('order');
 
   return (
