@@ -92,6 +92,10 @@ const OPEN_REQUEST_STATUSES: readonly RefundRequestStatus[] = [
 
 const REFUND_REASON_MAX_LENGTH = 500;
 
+// Lý do ghi vào PaymentRefund.failureReason khi RefundJob bỏ cuộc (Admin đọc ở màn hoàn tiền lỗi).
+const EXHAUSTED_ATTEMPTS_REASON =
+  'Automatic retries exhausted: the payment gateway never confirmed this refund';
+
 const refundOrderSelect = {
   id: true,
   status: true,
@@ -742,6 +746,37 @@ export class RefundService {
     if (affected !== 1) {
       throw paymentNotRefundable('Refund exceeds the amount paid');
     }
+  }
+
+  // --- RefundJob: hết lượt thử tự động ---------------------------------------------------------
+
+  // Khoản hoàn PENDING bị bỏ dở mà ĐÃ dùng hết `maxAttempts` lần gọi cổng ⇒ FAILED kèm lý do để Admin thử lại
+  // hoặc ghi nhận đã hoàn thủ công (Week9.md 1.5) — không treo PENDING mãi. KHÔNG hoàn tác việc hủy (như mọi
+  // FAILED khác). Trả true khi lần này thật sự đánh dấu.
+  //
+  // MỘT câu UPDATE có điều kiện thay vì đọc-rồi-ghi, và điều kiện lặp lại cả `attempts` lẫn "bị bỏ dở" (updatedAt
+  // đủ cũ): nếu Admin vừa thử lại (executeRefund tăng attempts và làm mới updatedAt TRƯỚC khi gọi cổng) thì lần
+  // gọi đó coi như đang chạy, không bị đánh FAILED giữa chừng — nếu không cổng hoàn thật nhưng sổ cái ghi FAILED.
+  // Không khoá Payment: câu lệnh chỉ chạm đúng một dòng payment_refunds nên không thể vòng chờ với đường khác.
+  async failExhaustedRefund(
+    refundId: string,
+    maxAttempts: number,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.paymentRefund.updateMany({
+      where: {
+        id: refundId,
+        status: 'PENDING',
+        attempts: { gte: maxAttempts },
+        updatedAt: { lt: new Date(Date.now() - REFUND_PENDING_STALE_MS) },
+      },
+      data: { status: 'FAILED', failureReason: EXHAUSTED_ATTEMPTS_REASON },
+    });
+    if (count === 0) return false;
+
+    this.logger.error(
+      `Refund ${refundId} is still unconfirmed after ${maxAttempts} automatic attempt(s) — admin must retry or complete it manually`,
+    );
+    return true;
   }
 
   // --- Admin: thử lại / ghi nhận thủ công ------------------------------------------------------

@@ -1244,6 +1244,70 @@ describe('RefundService', () => {
     });
   });
 
+  // --- failExhaustedRefund (RefundJob, Week9.md 2.8) -------------------------------------------------
+
+  describe('failExhaustedRefund', () => {
+    it('MỘT câu UPDATE có điều kiện: còn PENDING, đã dùng hết lượt thử VÀ bị bỏ dở đủ lâu (updatedAt cũ hơn 5 phút) ⇒ FAILED kèm lý do', async () => {
+      const before = Date.now();
+
+      await expect(service.failExhaustedRefund('r1', 3)).resolves.toBe(true);
+
+      expect(prisma.paymentRefund.updateMany).toHaveBeenCalledTimes(1);
+      const [args] = prisma.paymentRefund.updateMany.mock.calls[0] as [
+        {
+          where: {
+            id: string;
+            status: string;
+            attempts: { gte: number };
+            updatedAt: { lt: Date };
+          };
+          data: { status: string; failureReason: string };
+        },
+      ];
+      expect(args.where).toMatchObject({
+        id: 'r1',
+        status: 'PENDING',
+        attempts: { gte: 3 },
+      });
+      const cutoff = args.where.updatedAt.lt.getTime();
+      expect(before - cutoff).toBeGreaterThanOrEqual(
+        REFUND_PENDING_STALE_MS - 1000,
+      );
+      expect(before - cutoff).toBeLessThan(REFUND_PENDING_STALE_MS + 5000);
+      expect(args.data.status).toBe('FAILED');
+      expect(args.data.failureReason).toMatch(/retries exhausted/i);
+      expect(args.data.failureReason.length).toBeLessThanOrEqual(500);
+    });
+
+    it('số lần tối đa lấy từ tham số (không cố định 3)', async () => {
+      await service.failExhaustedRefund('r1', 5);
+
+      const [args] = prisma.paymentRefund.updateMany.mock.calls[0] as [
+        { where: { attempts: { gte: number } } },
+      ];
+      expect(args.where.attempts).toEqual({ gte: 5 });
+    });
+
+    it('0 dòng (đã chốt nơi khác / Admin vừa thử lại làm mới updatedAt / chưa đủ lượt) ⇒ false, không gọi cổng, không chạm Payment', async () => {
+      prisma.paymentRefund.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.failExhaustedRefund('r1', 3)).resolves.toBe(false);
+
+      expect(gateway.refund).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(tx.$executeRaw).not.toHaveBeenCalled();
+    });
+
+    it('KHÔNG hoàn tác việc hủy: không đụng tới đơn, kho, voucher hay Payment', async () => {
+      await service.failExhaustedRefund('r1', 3);
+
+      expect(orderStatusService.transition).not.toHaveBeenCalled();
+      expect(inventoryService.restock).not.toHaveBeenCalled();
+      expect(voucherUsageService.release).not.toHaveBeenCalled();
+      expect(tx.$executeRaw).not.toHaveBeenCalled();
+    });
+  });
+
   // --- retryRefund / markRefundCompleted (Admin) ---------------------------------------------------
 
   describe('retryRefund', () => {
