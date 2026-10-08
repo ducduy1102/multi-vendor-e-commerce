@@ -14,6 +14,7 @@ const eligible = (
   overrides: Partial<ReviewEligibilityInput> = {},
 ): ReviewEligibilityInput => ({
   containsProduct: true,
+  isOwnShop: false,
   orderStatus: 'COMPLETED',
   completedAt: daysAgo(1),
   now: NOW,
@@ -69,6 +70,13 @@ describe('isWithinReviewWindow', () => {
 describe('getReviewBlockReason (Week9.md 1.8) — ma trận điều kiện', () => {
   it('đơn COMPLETED chứa sản phẩm, còn trong cửa sổ, chưa đánh giá ⇒ được', () => {
     expect(getReviewBlockReason(eligible())).toBeNull();
+  });
+
+  // Giỏ hàng / checkout chặn người bán tự mua, nhưng đơn tự mua có từ trước khi có luật vẫn nằm trong DB.
+  it('sản phẩm của CHÍNH shop mình ⇒ OWN_SHOP, dù mọi điều kiện còn lại đều thoả (đơn COMPLETED, trong cửa sổ, chưa đánh giá)', () => {
+    expect(getReviewBlockReason(eligible({ isOwnShop: true }))).toBe(
+      'OWN_SHOP',
+    );
   });
 
   it('đơn COMPLETED vừa hoàn tất đúng lúc hết hạn vẫn được (biên bao gồm)', () => {
@@ -130,6 +138,24 @@ describe('getReviewBlockReason (Week9.md 1.8) — ma trận điều kiện', () 
           }),
         ),
       ).toBe('NOT_PURCHASED');
+    });
+
+    it('OWN_SHOP đứng sau NOT_PURCHASED nhưng trước mọi điều kiện tạm thời (trạng thái đơn, cửa sổ, đã đánh giá) — nó là điều kiện vĩnh viễn', () => {
+      expect(
+        getReviewBlockReason(
+          eligible({ containsProduct: false, isOwnShop: true }),
+        ),
+      ).toBe('NOT_PURCHASED');
+      expect(
+        getReviewBlockReason(
+          eligible({
+            isOwnShop: true,
+            orderStatus: 'PENDING',
+            completedAt: daysAgo(200),
+            alreadyReviewed: true,
+          }),
+        ),
+      ).toBe('OWN_SHOP');
     });
 
     it('ORDER_NOT_COMPLETED đứng trước WINDOW_EXPIRED và ALREADY_REVIEWED', () => {

@@ -167,6 +167,11 @@ const detailSelect = {
   ...listSelect,
   // Ghi đè bản xem nhanh: chi tiết trả đủ dòng hàng.
   items: { select: detailItemSelect, orderBy: { id: 'asc' } },
+  // Thêm ownerId chỉ để biết người xem có phải chủ shop không (cờ canReview) — toListItem map tường minh nên
+  // field này không ra response.
+  shop: {
+    select: { id: true, name: true, slug: true, logoUrl: true, ownerId: true },
+  },
   // Đánh giá của người mua cho đơn này (chỉ người mua của đơn mới viết được — ReviewService kiểm), đủ để hiện
   // nút "Đã đánh giá ★n · Sửa" và điền sẵn form sửa mà không gọi thêm route nào.
   reviews: {
@@ -413,7 +418,7 @@ export class OrderQueryService {
     const now = new Date();
     return {
       ...this.toListItem(order, now),
-      items: this.toDetailItems(order, now),
+      items: this.toDetailItems(order, now, userId),
       recipientName: order.recipientName,
       recipientPhone: order.recipientPhone,
       shippingAddressLine: order.shippingAddressLine,
@@ -642,9 +647,11 @@ export class OrderQueryService {
   private toDetailItems(
     order: LoadedDetailOrder,
     now: Date,
+    viewerUserId: string,
   ): OrderDetailItem[] {
     const completedAt = latestCompletedAt(order.statusHistory);
     const windowDays = readReviewWindowDays();
+    const isOwnShop = order.shop.ownerId === viewerUserId;
     const reviewByProduct = new Map(
       order.reviews.map((review) => [review.productId, review]),
     );
@@ -657,6 +664,7 @@ export class OrderQueryService {
         productId,
         productSlug: item.productVariant.product.slug,
         canReview: canReviewOrderItem({
+          isOwnShop,
           orderStatus: order.status,
           completedAt,
           now,
@@ -705,7 +713,13 @@ export class OrderQueryService {
       status: order.status,
       createdAt: order.createdAt.toISOString(),
       totalAmount: money(order.totalAmount),
-      shop: order.shop,
+      // Map tường minh (không đưa nguyên object): bản chi tiết select thêm ownerId của shop, không được lộ ra.
+      shop: {
+        id: order.shop.id,
+        name: order.shop.name,
+        slug: order.shop.slug,
+        logoUrl: order.shop.logoUrl,
+      },
       items: order.items
         .slice(0, ORDER_LIST_PREVIEW_ITEMS)
         .map((item) => this.toItem(item)),

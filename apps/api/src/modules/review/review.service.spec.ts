@@ -23,6 +23,8 @@ const uniqueViolation = () =>
 function loadedOrder(overrides: Record<string, unknown> = {}) {
   return {
     status: 'COMPLETED',
+    // Shop bán đơn này do 'seller-1' làm chủ — người mua trong các test ('user-1') KHÔNG phải chủ shop.
+    shop: { ownerId: 'seller-1' },
     statusHistory: [{ createdAt: daysAgo(1) }],
     items: [
       { productVariant: { productId: 'p1' } },
@@ -144,6 +146,29 @@ describe('ReviewService', () => {
     });
 
     describe('ma trận điều kiện (BE là nơi quyết định, FE chỉ đọc cờ canReview)', () => {
+      it('chủ shop mua hàng của CHÍNH shop mình (đơn có từ trước khi có luật chặn mua) ⇒ 409 OWN_SHOP, không mở transaction', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          loadedOrder({ shop: { ownerId: 'user-1' } }),
+        );
+
+        await expectAppException(service.create('user-1', input), {
+          status: 409,
+          code: 'REVIEW_NOT_ALLOWED',
+          details: { reason: 'OWN_SHOP' },
+        });
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(productRating.updateRating).not.toHaveBeenCalled();
+      });
+
+      it('đọc chủ của shop bán đơn để so với người đánh giá', async () => {
+        await service.create('user-1', input);
+
+        const [args] = prisma.order.findFirst.mock.calls[0] as [
+          { select: { shop: unknown } },
+        ];
+        expect(args.select.shop).toEqual({ select: { ownerId: true } });
+      });
+
       it('sản phẩm không có trong đơn ⇒ 409 NOT_PURCHASED', async () => {
         await expectAppException(
           service.create('user-1', { ...input, productId: 'p-khac' }),
@@ -235,13 +260,14 @@ describe('ReviewService', () => {
         await expect(service.create('user-1', input)).resolves.toBeDefined();
       });
 
-      it('chỉ đọc đánh giá của CHÍNH người mua và đúng các cột cần (id/status/lịch sử COMPLETED/variant → sản phẩm)', async () => {
+      it('chỉ đọc đánh giá của CHÍNH người mua và đúng các cột cần (status/chủ shop/lịch sử COMPLETED/variant → sản phẩm)', async () => {
         await service.create('user-1', input);
 
         expect(prisma.order.findFirst).toHaveBeenCalledWith({
           where: { id: 'o1', userId: 'user-1' },
           select: {
             status: true,
+            shop: { select: { ownerId: true } },
             statusHistory: {
               where: { toStatus: 'COMPLETED' },
               orderBy: { createdAt: 'desc' },

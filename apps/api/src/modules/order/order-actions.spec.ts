@@ -609,6 +609,7 @@ describe('getSellerRefundRequestActions (Week9.md 1.4)', () => {
 
 describe('canReviewOrderItem (Week9.md 1.8)', () => {
   const base = {
+    isOwnShop: false,
     orderStatus: 'COMPLETED' as OrderStatus,
     completedAt: daysAgo(2),
     now: NOW,
@@ -622,6 +623,10 @@ describe('canReviewOrderItem (Week9.md 1.8)', () => {
 
   it('đã đánh giá ⇒ không', () => {
     expect(canReviewOrderItem({ ...base, alreadyReviewed: true })).toBe(false);
+  });
+
+  it('đơn của chính shop mình (tự mua từ trước khi có luật chặn mua) ⇒ không, dù đơn COMPLETED trong cửa sổ', () => {
+    expect(canReviewOrderItem({ ...base, isOwnShop: true })).toBe(false);
   });
 
   it.each(['PENDING', 'SHIPPING', 'CANCELLED', 'REFUNDED'] as OrderStatus[])(

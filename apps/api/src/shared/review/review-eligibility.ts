@@ -28,6 +28,7 @@ export function isWithinReviewWindow(
 // Khớp `details.reason` của mã lỗi REVIEW_NOT_ALLOWED (packages/types/src/error-code.ts).
 export type ReviewBlockReason =
   | 'NOT_PURCHASED'
+  | 'OWN_SHOP'
   | 'ORDER_NOT_COMPLETED'
   | 'WINDOW_EXPIRED'
   | 'ALREADY_REVIEWED';
@@ -35,6 +36,9 @@ export type ReviewBlockReason =
 export interface ReviewEligibilityInput {
   // Đơn có chứa sản phẩm đó không (qua OrderItem.productVariantId → ProductVariant.productId).
   containsProduct: boolean;
+  // Người đánh giá là chủ của shop bán sản phẩm đó. Giỏ hàng / checkout đã chặn người bán tự mua, nhưng đơn tự mua
+  // có từ TRƯỚC khi có luật chặn vẫn còn trong DB — chặn cả ở đây để không thể tự đánh giá hàng của mình.
+  isOwnShop: boolean;
   orderStatus: OrderStatus;
   // Lúc đơn COMPLETED gần nhất (từ OrderStatusHistory); null = không có dấu vết.
   completedAt: Date | null;
@@ -45,13 +49,15 @@ export interface ReviewEligibilityInput {
 }
 
 // Lý do KHÔNG đánh giá được, hoặc null = được. Thứ tự kiểm đi từ điều kiện "nền" tới điều kiện "thời điểm":
-// sản phẩm không thuộc đơn thì trạng thái đơn không còn ý nghĩa; chỉ đơn COMPLETED mới đánh giá (REFUNDED sau
-// khi trả hàng thì không); không rõ lúc hoàn tất ⇒ coi như hết hạn (từ chối an toàn); đã đánh giá thì báo
-// cuối cùng để người dùng thấy lý do cơ bản trước.
+// sản phẩm không thuộc đơn thì trạng thái đơn không còn ý nghĩa; hàng của chính shop mình là điều kiện vĩnh viễn
+// (không đợi thời gian hay trạng thái nào thay đổi được) nên báo trước mọi điều kiện tạm thời; chỉ đơn COMPLETED
+// mới đánh giá (REFUNDED sau khi trả hàng thì không); không rõ lúc hoàn tất ⇒ coi như hết hạn (từ chối an toàn);
+// đã đánh giá thì báo cuối cùng để người dùng thấy lý do cơ bản trước.
 export function getReviewBlockReason(
   input: ReviewEligibilityInput,
 ): ReviewBlockReason | null {
   if (!input.containsProduct) return 'NOT_PURCHASED';
+  if (input.isOwnShop) return 'OWN_SHOP';
   if (input.orderStatus !== 'COMPLETED') return 'ORDER_NOT_COMPLETED';
   if (
     !input.completedAt ||

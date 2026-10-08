@@ -243,6 +243,8 @@ export function getAdminRefundRequestActions(
 }
 
 export interface OrderItemReviewInput {
+  // Người xem là chủ của shop bán đơn này (đơn tự mua từ trước khi có luật chặn mua) — không đánh giá được.
+  isOwnShop: boolean;
   orderStatus: OrderStatus;
   // Lúc đơn COMPLETED gần nhất (OrderStatusHistory); null = không có dấu vết.
   completedAt: Date | null;

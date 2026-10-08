@@ -89,6 +89,15 @@ function loadedDetail(overrides: Record<string, unknown> = {}) {
     buyerNote: null,
     // Đánh giá của người mua cho đơn này (chi tiết mới select).
     reviews: [],
+    // Chi tiết select thêm ownerId của shop (chỉ để tính cờ canReview) — shop này do 'seller-1' làm chủ,
+    // người mua trong các test ('user-1') không phải chủ shop.
+    shop: {
+      id: 's1',
+      name: 'Shop A',
+      slug: 'shop-a',
+      logoUrl: null,
+      ownerId: 'seller-1',
+    },
     statusHistory: [
       {
         fromStatus: null,
@@ -937,6 +946,44 @@ describe('OrderQueryService (buyer)', () => {
         expect(
           (await service.getForBuyer('user-1', 'o1')).items[0].canReview,
         ).toBe(true);
+      });
+
+      it('đơn của CHÍNH shop mình (chủ shop xem đơn tự mua từ trước khi có luật chặn mua) ⇒ canReview false trên mọi dòng, dù COMPLETED trong cửa sổ', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          loadedDetail({
+            status: 'COMPLETED',
+            statusHistory: completedHistory(3),
+            shop: {
+              id: 's1',
+              name: 'Shop A',
+              slug: 'shop-a',
+              logoUrl: null,
+              ownerId: 'user-1',
+            },
+          }),
+        );
+
+        const order = await service.getForBuyer('user-1', 'o1');
+
+        expect(order.items.every((item) => !item.canReview)).toBe(true);
+      });
+
+      it('select kèm ownerId của shop, nhưng response KHÔNG lộ ownerId (định danh chủ shop)', async () => {
+        prisma.order.findFirst.mockResolvedValue(loadedDetail());
+
+        const order = await service.getForBuyer('user-1', 'o1');
+
+        const [args] = prisma.order.findFirst.mock.calls[0] as [
+          { select: { shop: { select: Record<string, boolean> } } },
+        ];
+        expect(args.select.shop.select.ownerId).toBe(true);
+        expect(order.shop).toEqual({
+          id: 's1',
+          name: 'Shop A',
+          slug: 'shop-a',
+          logoUrl: null,
+        });
+        expect(JSON.stringify(order)).not.toContain('seller-1');
       });
 
       it('COMPLETED mà không còn dấu vết lúc hoàn tất trong lịch sử ⇒ canReview false (từ chối an toàn)', async () => {

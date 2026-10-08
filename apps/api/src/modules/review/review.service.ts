@@ -114,6 +114,8 @@ export class ReviewService {
       where: { id: input.orderId, userId },
       select: {
         status: true,
+        // Chủ shop không được đánh giá hàng của chính shop mình (đơn tự mua có từ trước khi chặn mua).
+        shop: { select: { ownerId: true } },
         // Thời điểm COMPLETED đọc từ lịch sử (không có cột completedAt) — cùng cách cửa sổ trả hàng.
         statusHistory: {
           where: { toStatus: 'COMPLETED' },
@@ -132,6 +134,7 @@ export class ReviewService {
       containsProduct: order.items.some(
         (item) => item.productVariant.productId === input.productId,
       ),
+      isOwnShop: order.shop.ownerId === userId,
       orderStatus: order.status,
       completedAt: order.statusHistory[0]?.createdAt ?? null,
       now: new Date(),
