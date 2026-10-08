@@ -28,6 +28,8 @@ const WISHLIST_ITEM_EXAMPLE = {
   minPrice: '150000',
   maxPrice: '150000',
   imageUrl: null,
+  avgRating: 4.5,
+  reviewCount: 12,
   isAvailable: true,
 };
 
