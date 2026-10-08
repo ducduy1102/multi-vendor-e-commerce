@@ -313,7 +313,7 @@ export type ProductListItem = z.infer<typeof productListItemSchema>;
 export const listProductsQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(50).default(12),
-  sort: z.enum(['newest', 'price-asc', 'price-desc']).default('newest'),
+  sort: z.enum(['newest', 'price-asc', 'price-desc', 'rating']).default('newest'),
   shopId: z.string().trim().optional(),
   categoryId: z.string().trim().optional(),
   minPrice: z.coerce.number().nonnegative().optional(),

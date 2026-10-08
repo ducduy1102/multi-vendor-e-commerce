@@ -10,6 +10,7 @@ import {
   sellerRefundRequestSchema,
   sellerRefundRequestSummarySchema,
 } from './refund';
+import { orderItemReviewSchema } from './review';
 
 // Số tiền VND luôn là chuỗi số nguyên đồng trong RESPONSE (cùng quy ước CartView/CheckoutGroup).
 const moneySchema = z.string();
@@ -124,9 +125,22 @@ export const orderListResponseSchema = z.object({
 });
 export type OrderListResponse = z.infer<typeof orderListResponseSchema>;
 
+// Dòng hàng ở CHI TIẾT đơn của người mua: snapshot lúc đặt + định danh sản phẩm để dựng link và nút đánh giá
+// (Week9.md 1.8). OrderItem không có productId — BE nối qua productVariantId → ProductVariant.productId.
+// `canReview` do BE tính (đơn COMPLETED, trong REVIEW_WINDOW_DAYS, chưa đánh giá sản phẩm này trong đơn này);
+// `review` là đánh giá của chính người mua (null = chưa có). Hai dòng cùng một sản phẩm (khác biến thể) dùng
+// chung một đánh giá — mỗi (người mua, sản phẩm, đơn) chỉ đánh giá một lần.
+export const orderDetailItemSchema = checkoutOrderItemSchema.extend({
+  productId: z.string(),
+  productSlug: z.string(),
+  canReview: z.boolean(),
+  review: orderItemReviewSchema.nullable(),
+});
+export type OrderDetailItem = z.infer<typeof orderDetailItemSchema>;
+
 // Chi tiết: snapshot địa chỉ + dòng hàng LÚC ĐẶT (không đổi khi Seller/user sửa sau đó) và timeline.
 export const orderDetailSchema = orderListItemSchema.extend({
-  items: z.array(checkoutOrderItemSchema),
+  items: z.array(orderDetailItemSchema),
   recipientName: z.string(),
   recipientPhone: z.string(),
   shippingAddressLine: z.string(),
@@ -262,6 +276,4 @@ export const sellerRefundRequestListResponseSchema = z.object({
   page: z.number().int(),
   limit: z.number().int(),
 });
-export type SellerRefundRequestListResponse = z.infer<
-  typeof sellerRefundRequestListResponseSchema
->;
+export type SellerRefundRequestListResponse = z.infer<typeof sellerRefundRequestListResponseSchema>;

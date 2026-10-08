@@ -106,3 +106,46 @@ export const productReviewsResponseSchema = z.object({
   limit: z.number().int(),
 });
 export type ProductReviewsResponse = z.infer<typeof productReviewsResponseSchema>;
+
+// --- Phía người mua: đánh giá của chính mình trên dòng hàng của đơn (GET /orders/:id) -----------------
+// Đủ để FE dựng nút "Đã đánh giá ★n · Sửa" và điền sẵn form sửa (dữ liệu tới bất đồng bộ nên cần `comment`
+// ngay trong chi tiết đơn, không gọi thêm route nào). `canEdit` do BE tính (sửa được đúng một lần).
+export const orderItemReviewSchema = z.object({
+  id: z.string(),
+  rating: z.number().int(),
+  comment: z.string().nullable(),
+  editedAt: z.string().nullable(),
+  canEdit: z.boolean(),
+});
+export type OrderItemReview = z.infer<typeof orderItemReviewSchema>;
+
+// --- Phía seller: GET /shops/:shopId/reviews, PUT /shops/:shopId/reviews/:id/reply ----------------------
+
+// `replied` là chuỗi 'true'/'false' đúng như trên URL, KHÔNG chuyển thành boolean trong schema: z.coerce.boolean coi
+// mọi chuỗi không rỗng — kể cả 'false' — là true, còn .transform làm input ≠ output nên ZodValidationPipe (cần
+// input === output) không nhận; service tự so với 'true'. Bỏ trống = cả hai. Seller xem đánh giá của MỌI sản phẩm
+// của shop mình, kể cả sản phẩm đã lưu trữ và khi shop đang bị khoá tạm (vẫn xử lý được đơn/đánh giá đã có).
+export const sellerReviewListQuerySchema = z.object({
+  replied: z.enum(['true', 'false']).optional(),
+  rating: listReviewsQuerySchema.shape.rating,
+  ...paginationShape,
+});
+export type SellerReviewListQuery = z.infer<typeof sellerReviewListQuerySchema>;
+
+// Đánh giá kèm sản phẩm được đánh giá; tên người mua vẫn bị che (seller không cần biết danh tính).
+export const sellerReviewSchema = reviewSchema.extend({
+  product: z.object({
+    id: z.string(),
+    name: z.string(),
+    slug: z.string(),
+  }),
+});
+export type SellerReview = z.infer<typeof sellerReviewSchema>;
+
+export const sellerReviewListResponseSchema = z.object({
+  items: z.array(sellerReviewSchema),
+  total: countSchema,
+  page: z.number().int(),
+  limit: z.number().int(),
+});
+export type SellerReviewListResponse = z.infer<typeof sellerReviewListResponseSchema>;
