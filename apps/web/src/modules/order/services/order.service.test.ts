@@ -86,6 +86,7 @@ const SELLER_LIST_ITEM = {
   canShip: false,
   canReject: true,
   canCancel: false,
+  refundRequest: null,
 };
 
 const SELLER_DETAIL = {
@@ -225,9 +226,9 @@ describe('order.service — buyer', () => {
       {
         success: false,
         data: null,
-        message: 'Paid orders cannot be cancelled yet',
+        message: 'Order cannot be cancelled: PROCESSING_STARTED',
         code: 'ORDER_CANCEL_NOT_ALLOWED',
-        details: { reason: 'PAID_ONLINE' },
+        details: { reason: 'PROCESSING_STARTED' },
       },
       409,
     );
@@ -235,7 +236,7 @@ describe('order.service — buyer', () => {
     await expect(cancelOrder('order-1')).rejects.toMatchObject({
       status: 409,
       code: 'ORDER_CANCEL_NOT_ALLOWED',
-      details: { reason: 'PAID_ONLINE' },
+      details: { reason: 'PROCESSING_STARTED' },
     });
   });
 
@@ -442,14 +443,14 @@ describe('order.service — seller', () => {
     expect(JSON.parse(init.body as string)).toEqual({ reason: 'Hết hàng' });
   });
 
-  it('rejectOrder — 409 ORDER_CANCEL_NOT_ALLOWED (đơn đã trả online) giữ nguyên details', async () => {
+  it('rejectOrder — 409 ORDER_CANCEL_NOT_ALLOWED (đơn đã xác nhận) giữ nguyên details', async () => {
     mockFetchOnce(
       {
         success: false,
         data: null,
-        message: 'Paid orders cannot be rejected yet',
+        message: 'Order cannot be cancelled: PROCESSING_STARTED',
         code: 'ORDER_CANCEL_NOT_ALLOWED',
-        details: { reason: 'PAID_ONLINE' },
+        details: { reason: 'PROCESSING_STARTED' },
       },
       409,
     );
@@ -457,7 +458,7 @@ describe('order.service — seller', () => {
     await expect(rejectOrder('shop-1', 'order-1', { reason: 'x' })).rejects.toMatchObject({
       status: 409,
       code: 'ORDER_CANCEL_NOT_ALLOWED',
-      details: { reason: 'PAID_ONLINE' },
+      details: { reason: 'PROCESSING_STARTED' },
     });
   });
 });

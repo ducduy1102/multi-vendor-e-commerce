@@ -36,6 +36,7 @@ function order(overrides: Partial<SellerOrderDetail> = {}): SellerOrderDetail {
     canShip: false,
     canReject: true,
     canCancel: false,
+    refundRequest: null,
     recipientPhone: '0901234567',
     shippingAddressLine: '1 Lê Lợi',
     shippingWard: 'Bến Nghé',
