@@ -277,6 +277,74 @@ export class RefundRequestActionService {
     });
   }
 
+  // --- Hệ thống (RefundJob, Week9.md 2.8) -----------------------------------------------------------
+
+  // Xử lý MỘT yêu cầu mà seller đã im lặng quá `sellerRespondBy` (actor SYSTEM, Week9.md 1.3/1.5):
+  //  - yêu cầu HỦY ⇒ tự duyệt (hủy đơn + kho + voucher + hoàn tiền nếu đã thu, cùng đường với seller bấm duyệt) —
+  //    người mua xin hủy trước giao, để seller im lặng giữ đơn mãi là bất lợi cho người mua;
+  //  - yêu cầu TRẢ HÀNG ⇒ chuyển Admin (ESCALATED), KHÔNG tự duyệt — hàng có thể chưa trả về shop.
+  // Trả kết quả đã làm; null = không cần làm gì (đã có người xử lý trước / chưa quá hạn / thua race với seller,
+  // buyer hoặc Admin) — là chuyện bình thường của job chạy song song, không phải lỗi. Lỗi thật (vd lỗi DB, đơn ở
+  // trạng thái không hủy được) vẫn ném cho job log.
+  async resolveOverdueRequest(
+    requestId: string,
+    now: Date = new Date(),
+  ): Promise<'APPROVED' | 'ESCALATED' | null> {
+    const request = await this.prisma.refundRequest.findUnique({
+      where: { id: requestId },
+      select: {
+        id: true,
+        kind: true,
+        status: true,
+        orderId: true,
+        sellerRespondBy: true,
+      },
+    });
+    if (
+      !request ||
+      request.status !== 'PENDING_SELLER' ||
+      request.sellerRespondBy.getTime() >= now.getTime()
+    ) {
+      return null;
+    }
+
+    const actor: OrderActor = { type: 'SYSTEM' };
+    try {
+      if (request.kind === 'CANCEL') {
+        // `refundRequestId` ⇒ fail-closed: người mua vừa rút / seller vừa quyết thì cả giao dịch rollback, đơn
+        // không bị hủy oan. `onlyFrom` khớp luật yêu cầu hủy: chỉ đơn shop ĐÃ xác nhận mới có yêu cầu hủy.
+        await this.refundService.cancelOrderWithRefund(actor, request.orderId, {
+          refundRequestId: request.id,
+          onlyFrom: ['CONFIRMED', 'PACKED'],
+        });
+        return 'APPROVED';
+      }
+      await this.prisma.$transaction((tx) =>
+        this.refundRequestService.transition(
+          tx,
+          request.id,
+          'PENDING_SELLER',
+          'ESCALATED',
+          actor,
+        ),
+      );
+      return 'ESCALATED';
+    } catch (error) {
+      if (this.isLostRace(error)) return null;
+      throw error;
+    }
+  }
+
+  // Thua race với người khác xử lý cùng yêu cầu/đơn: yêu cầu không còn ở PENDING_SELLER (seller duyệt/từ chối,
+  // người mua rút) hoặc đơn vừa đổi trạng thái giữa lúc kiểm và lúc khoá (seller tự hủy đồng thời).
+  private isLostRace(error: unknown): boolean {
+    return (
+      error instanceof AppException &&
+      (error.code === 'REFUND_REQUEST_INVALID_TRANSITION' ||
+        error.code === 'ORDER_ALREADY_CHANGED')
+    );
+  }
+
   // Seller chỉ thấy yêu cầu của shop mình VÀ của đơn Seller được thấy (cùng predicate sellerVisibleOrderFilter như
   // mọi truy vấn đơn của Seller); yêu cầu đã rút coi như không tồn tại.
   private async findSellerRequest(

@@ -4,6 +4,7 @@ import {
   ORDER_STATUSES_VISIBLE_TO_SELLER,
   type CreateRefundRequestInput,
 } from '@ecommerce/types';
+import { AppException } from '../../shared/exceptions/app.exception';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
 import { RefundRequestActionService } from './refund-request-action.service';
@@ -43,7 +44,7 @@ describe('RefundRequestActionService', () => {
   let prisma: {
     $transaction: jest.Mock;
     order: { findFirst: jest.Mock };
-    refundRequest: { findFirst: jest.Mock };
+    refundRequest: { findFirst: jest.Mock; findUnique: jest.Mock };
   };
   let refundRequestService: { transition: jest.Mock; recordCreated: jest.Mock };
   let refundService: {
@@ -65,7 +66,7 @@ describe('RefundRequestActionService', () => {
     prisma = {
       $transaction: jest.fn((fn: (t: unknown) => unknown) => fn(tx)),
       order: { findFirst: jest.fn().mockResolvedValue(orderRow()) },
-      refundRequest: { findFirst: jest.fn() },
+      refundRequest: { findFirst: jest.fn(), findUnique: jest.fn() },
     };
     refundService = {
       cancelOrderWithRefund: jest.fn().mockResolvedValue({ refund: null }),
@@ -728,6 +729,163 @@ describe('RefundRequestActionService', () => {
           service.rejectForSeller('shop-1', 'seller-1', 'req-1', 'x'),
         ).rejects.toMatchObject({ code: 'REFUND_REQUEST_INVALID_TRANSITION' });
       });
+    });
+  });
+
+  // --- Hệ thống: RefundJob (Week9.md 2.8) -----------------------------------------------------------
+  describe('resolveOverdueRequest', () => {
+    const SYSTEM = { type: 'SYSTEM' };
+    const NOW = new Date('2026-10-10T12:00:00.000Z');
+    const overdueRequest = (overrides: Record<string, unknown> = {}) => ({
+      id: 'req-1',
+      kind: 'CANCEL',
+      status: 'PENDING_SELLER',
+      orderId: 'o1',
+      sellerRespondBy: new Date('2026-10-10T11:59:59.000Z'),
+      ...overrides,
+    });
+    const raceError = (code: string) =>
+      new AppException(
+        409,
+        code as 'REFUND_REQUEST_INVALID_TRANSITION',
+        'race',
+      );
+
+    it('yêu cầu HỦY quá hạn ⇒ tự duyệt bằng actor SYSTEM, đóng ĐÚNG yêu cầu này (fail-closed), chỉ đơn CONFIRMED/PACKED, không ghi chú', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(overdueRequest());
+
+      await expect(service.resolveOverdueRequest('req-1', NOW)).resolves.toBe(
+        'APPROVED',
+      );
+
+      expect(refundService.cancelOrderWithRefund).toHaveBeenCalledWith(
+        SYSTEM,
+        'o1',
+        { refundRequestId: 'req-1', onlyFrom: ['CONFIRMED', 'PACKED'] },
+      );
+      expect(refundRequestService.transition).not.toHaveBeenCalled();
+    });
+
+    it('yêu cầu TRẢ HÀNG quá hạn ⇒ chuyển Admin (ESCALATED) bằng actor SYSTEM, KHÔNG duyệt, không đụng tới đơn', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(
+        overdueRequest({ kind: 'RETURN' }),
+      );
+
+      await expect(service.resolveOverdueRequest('req-1', NOW)).resolves.toBe(
+        'ESCALATED',
+      );
+
+      expect(refundRequestService.transition).toHaveBeenCalledWith(
+        tx,
+        'req-1',
+        'PENDING_SELLER',
+        'ESCALATED',
+        SYSTEM,
+      );
+      expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+      expect(refundService.refundReturnedOrder).not.toHaveBeenCalled();
+    });
+
+    it('đọc yêu cầu theo id (kiểm lại trạng thái + hạn lúc xử lý, không tin danh sách ứng viên đã cũ)', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(overdueRequest());
+
+      await service.resolveOverdueRequest('req-1', NOW);
+
+      expect(prisma.refundRequest.findUnique).toHaveBeenCalledWith({
+        where: { id: 'req-1' },
+        select: {
+          id: true,
+          kind: true,
+          status: true,
+          orderId: true,
+          sellerRespondBy: true,
+        },
+      });
+    });
+
+    it.each(['REJECTED_BY_SELLER', 'ESCALATED', 'APPROVED', 'WITHDRAWN'])(
+      'yêu cầu đã sang %s (không còn chờ seller) ⇒ null, không làm gì',
+      async (status) => {
+        prisma.refundRequest.findUnique.mockResolvedValue(
+          overdueRequest({ status }),
+        );
+
+        await expect(
+          service.resolveOverdueRequest('req-1', NOW),
+        ).resolves.toBeNull();
+        expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+        expect(refundRequestService.transition).not.toHaveBeenCalled();
+      },
+    );
+
+    it('chưa quá hạn (hạn đúng bằng "bây giờ" vẫn chưa tính là quá) ⇒ null, không làm gì', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(
+        overdueRequest({ sellerRespondBy: NOW }),
+      );
+
+      await expect(
+        service.resolveOverdueRequest('req-1', NOW),
+      ).resolves.toBeNull();
+      expect(refundService.cancelOrderWithRefund).not.toHaveBeenCalled();
+    });
+
+    it('yêu cầu không tồn tại ⇒ null', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.resolveOverdueRequest('req-x', NOW),
+      ).resolves.toBeNull();
+    });
+
+    it.each(['REFUND_REQUEST_INVALID_TRANSITION', 'ORDER_ALREADY_CHANGED'])(
+      'HỦY: thua race (%s — seller/buyer/Admin xử lý trước) ⇒ null, không ném',
+      async (code) => {
+        prisma.refundRequest.findUnique.mockResolvedValue(overdueRequest());
+        refundService.cancelOrderWithRefund.mockRejectedValue(raceError(code));
+
+        await expect(
+          service.resolveOverdueRequest('req-1', NOW),
+        ).resolves.toBeNull();
+      },
+    );
+
+    it('TRẢ HÀNG: seller/Admin xử lý trước (bảng chuyển từ chối) ⇒ null, không ném', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(
+        overdueRequest({ kind: 'RETURN' }),
+      );
+      refundRequestService.transition.mockRejectedValue(
+        raceError('REFUND_REQUEST_INVALID_TRANSITION'),
+      );
+
+      await expect(
+        service.resolveOverdueRequest('req-1', NOW),
+      ).resolves.toBeNull();
+    });
+
+    it('lỗi KHÔNG phải thua race (đơn ở trạng thái không hủy được, DB lỗi) vẫn được ném để job log', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(overdueRequest());
+      refundService.cancelOrderWithRefund.mockRejectedValue(
+        raceError('ORDER_INVALID_TRANSITION'),
+      );
+
+      await expect(
+        service.resolveOverdueRequest('req-1', NOW),
+      ).rejects.toMatchObject({ code: 'ORDER_INVALID_TRANSITION' });
+
+      refundService.cancelOrderWithRefund.mockRejectedValue(new Error('db'));
+      await expect(service.resolveOverdueRequest('req-1', NOW)).rejects.toThrow(
+        'db',
+      );
+    });
+
+    it('mặc định dùng giờ hiện tại khi không truyền mốc', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(
+        overdueRequest({ sellerRespondBy: new Date(Date.now() - 1000) }),
+      );
+
+      await expect(service.resolveOverdueRequest('req-1')).resolves.toBe(
+        'APPROVED',
+      );
     });
   });
 });
