@@ -3,6 +3,7 @@ import { checkoutOrderItemSchema } from './checkout';
 import { optionalText } from './optional-text';
 import { orderActorTypeSchema, orderStatusSchema, type OrderStatus } from './order-status';
 import { paymentMethodSchema, paymentStatusSchema } from './payment';
+import { buyerRefundRequestSchema, orderRefundSummarySchema } from './refund';
 
 // Số tiền VND luôn là chuỗi số nguyên đồng trong RESPONSE (cùng quy ước CartView/CheckoutGroup).
 const moneySchema = z.string();
@@ -100,6 +101,12 @@ export const orderListItemSchema = z.object({
   canRequestReturn: z.boolean(),
   canConfirmReceived: z.boolean(),
   canRetryPayment: z.boolean(),
+  // Yêu cầu hủy/trả hàng MỚI NHẤT chưa rút của đơn (kèm dòng thời gian, không có actorId); null = chưa có.
+  // Các cờ canWithdraw/canEscalate do BE tính (Week9.md 1.3/1.4).
+  refundRequest: buyerRefundRequestSchema.nullable(),
+  // Khoản hoàn tiền qua cổng của đơn (từ sổ cái); null = chưa có (đơn COD không bao giờ có: hoàn tiền mặt
+  // ngoài hệ thống).
+  refund: orderRefundSummarySchema.nullable(),
 });
 export type OrderListItem = z.infer<typeof orderListItemSchema>;
 

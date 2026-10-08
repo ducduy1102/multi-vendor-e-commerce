@@ -206,6 +206,8 @@ describe('response schema', () => {
       canRequestReturn: false,
       canConfirmReceived: false,
       canRetryPayment: false,
+      refundRequest: null,
+      refund: null,
       recipientName: 'Nguyễn Văn A',
       recipientPhone: '0912345678',
       shippingAddressLine: '12 Nguyễn Huệ',
@@ -224,6 +226,110 @@ describe('response schema', () => {
     expect(parsed.paymentMethod).toBe('COD');
     // z.object tự bỏ field không khai — field phải có trong schema thì FE mới đọc được (general.md mục 4).
     expect(parsed.buyerNote).toBe('Giao giờ hành chính');
+  });
+
+  describe('refundRequest / refund (Week9.md 2.6)', () => {
+    const base = {
+      id: 'o1',
+      checkoutGroupId: 'g1',
+      status: 'CONFIRMED',
+      createdAt: '2026-10-01T10:00:00.000Z',
+      totalAmount: '220000',
+      shop: { id: 's1', name: 'Shop A', slug: 'shop-a', logoUrl: null },
+      items: [item],
+      itemCount: 1,
+      paymentMethod: 'VNPAY',
+      paymentStatus: 'SUCCESS',
+      canCancel: false,
+      canRequestCancel: false,
+      canRequestReturn: false,
+      canConfirmReceived: false,
+      canRetryPayment: false,
+    };
+    const request = {
+      id: 'r1',
+      kind: 'CANCEL',
+      status: 'REJECTED_BY_SELLER',
+      reasonCode: 'CHANGE_OF_MIND',
+      reasonNote: null,
+      sellerRespondBy: '2026-10-03T10:00:00.000Z',
+      statusChangedAt: '2026-10-02T10:00:00.000Z',
+      createdAt: '2026-10-01T10:00:00.000Z',
+      history: [
+        {
+          toStatus: 'PENDING_SELLER',
+          actorType: 'BUYER',
+          note: null,
+          createdAt: '2026-10-01T10:00:00.000Z',
+          actorId: 'secret-buyer-id',
+          fromStatus: null,
+        },
+        {
+          toStatus: 'REJECTED_BY_SELLER',
+          actorType: 'SELLER',
+          note: 'Đã đóng gói',
+          createdAt: '2026-10-02T10:00:00.000Z',
+          actorId: 'secret-seller-id',
+        },
+      ],
+      canWithdraw: false,
+      canEscalate: true,
+    };
+
+    it('danh sách và chi tiết đều mang refundRequest (hoặc null) và refund (hoặc null)', () => {
+      const parsed = orderListItemSchema.parse({
+        ...base,
+        refundRequest: request,
+        refund: { status: 'PENDING', amount: '220000' },
+      });
+
+      expect(parsed.refundRequest).toMatchObject({
+        id: 'r1',
+        status: 'REJECTED_BY_SELLER',
+        canEscalate: true,
+      });
+      expect(parsed.refund).toEqual({ status: 'PENDING', amount: '220000' });
+      expect(
+        orderListItemSchema.parse({
+          ...base,
+          refundRequest: null,
+          refund: null,
+        }).refundRequest,
+      ).toBeNull();
+    });
+
+    it('dòng thời gian của yêu cầu KHÔNG lộ actorId (danh tính seller/Admin) dù BE lỡ trả thừa', () => {
+      const parsed = orderListItemSchema.parse({
+        ...base,
+        refundRequest: request,
+        refund: null,
+      });
+
+      for (const entry of parsed.refundRequest?.history ?? []) {
+        expect(entry).not.toHaveProperty('actorId');
+        expect(entry).not.toHaveProperty('fromStatus');
+      }
+      expect(parsed.refundRequest?.history[1].note).toBe('Đã đóng gói');
+    });
+
+    it('thiếu refundRequest hoặc refund bị từ chối (BE phải trả null tường minh, không để undefined)', () => {
+      expect(
+        orderListItemSchema.safeParse({ ...base, refund: null }).success,
+      ).toBe(false);
+      expect(
+        orderListItemSchema.safeParse({ ...base, refundRequest: null }).success,
+      ).toBe(false);
+    });
+
+    it('trạng thái hoàn tiền lạ bị từ chối', () => {
+      expect(
+        orderListItemSchema.safeParse({
+          ...base,
+          refundRequest: null,
+          refund: { status: 'WEIRD', amount: '1' },
+        }).success,
+      ).toBe(false);
+    });
   });
 
   describe('buyerNote (Week8.md 3B)', () => {
@@ -297,6 +403,8 @@ describe('response schema', () => {
         canRequestReturn: false,
         canConfirmReceived: false,
         canRetryPayment: false,
+        refundRequest: null,
+        refund: null,
         buyerNote: 'không nên lộ ở danh sách',
       });
       expect(parsed).not.toHaveProperty('buyerNote');
