@@ -83,6 +83,7 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
   const tShop = useTranslations('shop');
   const tVoucher = useTranslations('voucher');
   const tOrder = useTranslations('order');
+  const tReview = useTranslations('review');
   const tCommon = useTranslations('common');
   const myProductsQuery = useMyProducts(shopId);
   const archiveProductMutation = useUpdateProductStatus('ARCHIVED');
@@ -145,6 +146,20 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
             className="shrink-0 text-sm font-medium text-foreground hover:underline"
           >
             {tOrder('sellerOrdersLink')}
+          </Link>
+          {/* Cũng chỉ là link tới route /seller/refund-requests và /seller/reviews (mượn chuỗi dịch của
+              namespace order / review), không import gì từ hai module đó. */}
+          <Link
+            href="/seller/refund-requests"
+            className="shrink-0 text-sm font-medium text-foreground hover:underline"
+          >
+            {tOrder('sellerRefundRequestsLink')}
+          </Link>
+          <Link
+            href="/seller/reviews"
+            className="shrink-0 text-sm font-medium text-foreground hover:underline"
+          >
+            {tReview('sellerReviewsLink')}
           </Link>
           <Link
             href="/seller/vouchers"
