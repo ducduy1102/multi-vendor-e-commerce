@@ -127,10 +127,7 @@ export function SellerReasonDialog({
 }: SellerReasonDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      {/* `grid-cols-1` CHỦ ĐÍCH: AlertDialogContent là lưới có cột ngầm định `auto` lấy min-content của
-          phần tử con — ô nhập `field-sizing: content` chứa lý do dài không dấu cách làm cả hộp thoại rộng
-          bằng chuỗi (đã gặp ở hộp thoại hủy/yêu cầu của người mua, ~4385px ở 390px). */}
-      <AlertDialogContent className="grid-cols-1">
+      <AlertDialogContent>
         <SellerReasonForm variant={variant} isPending={isPending} onConfirm={onConfirm} />
       </AlertDialogContent>
     </AlertDialog>

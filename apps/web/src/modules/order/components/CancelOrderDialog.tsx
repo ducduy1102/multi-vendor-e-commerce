@@ -114,10 +114,7 @@ export function CancelOrderDialog({
 }: CancelOrderDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      {/* `grid-cols-1` (= minmax(0, 1fr)): hộp thoại là `grid` nên cột ngầm định `auto` lấy min-content của
-          `<textarea>` (field-sizing: content) — 500 ký tự liền không dấu cách làm nội dung rộng ~4400px,
-          tràn khỏi hộp thoại ở 390px (rules/frontend.md mục 5). jsdom không có layout nên chỉ giữ được lớp class. */}
-      <AlertDialogContent className="grid-cols-1">
+      <AlertDialogContent>
         <CancelOrderForm
           isGroupCancel={isGroupCancel}
           isPaidOnline={isPaidOnline}
