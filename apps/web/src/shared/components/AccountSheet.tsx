@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, Package, ShieldCheck, User } from 'lucide-react';
+import { LogOut, Package, ShieldCheck, Undo2, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
@@ -135,6 +135,13 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
                   <Link href="/admin/shops" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
                     <ShieldCheck className="size-4" aria-hidden="true" />
                     {t('adminLink')}
+                  </Link>
+                )}
+                {/* "Hoàn tiền" (Week9.md 3.7), cùng điều kiện và thứ tự với dropdown desktop của Header. */}
+                {user.role === 'ADMIN' && (
+                  <Link href="/admin/refunds" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
+                    <Undo2 className="size-4" aria-hidden="true" />
+                    {t('adminRefundsLink')}
                   </Link>
                 )}
               </div>

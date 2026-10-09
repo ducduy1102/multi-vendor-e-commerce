@@ -134,6 +134,36 @@ describe('AccountSheet — mục "Đơn hàng của tôi"', () => {
       expect(admin.parentElement).toBe(shop.parentElement);
     });
 
+    it('ADMIN -> có link "Hoàn tiền" trỏ /admin/refunds, ngay sau "Quản trị", cùng khối (Week9.md 3.7)', () => {
+      auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
+      openSheet();
+
+      const refunds = screen.getByRole('link', { name: 'Hoàn tiền' });
+      const admin = screen.getByRole('link', { name: 'Quản trị' });
+      expect(refunds).toHaveAttribute('href', '/admin/refunds');
+      expect(
+        admin.compareDocumentPosition(refunds) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(refunds.parentElement).toBe(admin.parentElement);
+    });
+
+    it('bấm "Hoàn tiền" -> đóng Sheet', async () => {
+      const user = userEvent.setup();
+      auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
+      openSheet();
+
+      await user.click(screen.getByRole('link', { name: 'Hoàn tiền' }));
+
+      expect(useUIStore.getState().isAccountSheetOpen).toBe(false);
+    });
+
+    it('USER thường / khách -> KHÔNG có "Hoàn tiền" của Admin', () => {
+      auth.user = { name: 'Nguyễn Văn A', role: 'USER' };
+      openSheet();
+
+      expect(screen.queryByRole('link', { name: 'Hoàn tiền' })).not.toBeInTheDocument();
+    });
+
     it('bấm "Quản trị" -> đóng Sheet', async () => {
       const user = userEvent.setup();
       auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };

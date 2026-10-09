@@ -120,7 +120,31 @@ describe('Header — menu tài khoản (desktop)', () => {
       const labels = Array.from(menu.querySelectorAll('[role="menuitem"], button')).map((el) =>
         el.textContent?.trim(),
       );
-      expect(labels).toEqual(['Đơn hàng của tôi', 'Sản phẩm của tôi', 'Quản trị', 'Đăng xuất']);
+      expect(labels).toEqual([
+        'Đơn hàng của tôi',
+        'Sản phẩm của tôi',
+        'Quản trị',
+        'Hoàn tiền',
+        'Đăng xuất',
+      ]);
+    });
+
+    it('ADMIN -> có "Hoàn tiền" trỏ /admin/refunds, ngay sau "Quản trị" (Week9.md 3.7)', async () => {
+      auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
+      await openAccountMenu();
+
+      const refunds = screen.getByRole('menuitem', { name: 'Hoàn tiền' });
+      const admin = screen.getByRole('menuitem', { name: 'Quản trị' });
+      expect(refunds).toHaveAttribute('href', '/admin/refunds');
+      expect(
+        admin.compareDocumentPosition(refunds) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('người dùng thường (USER) và khách -> KHÔNG có "Hoàn tiền" của Admin', async () => {
+      auth.user = { name: 'Nguyễn Văn A', role: 'USER' };
+      await openAccountMenu();
+      expect(screen.queryByRole('menuitem', { name: 'Hoàn tiền' })).not.toBeInTheDocument();
     });
 
     it('ADMIN nhưng chưa kịp biết shop (shopLink null) -> vẫn có "Quản trị"', async () => {

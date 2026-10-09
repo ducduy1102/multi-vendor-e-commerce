@@ -32,7 +32,8 @@
     "searchClearLabel": "Clear search",
     "searchSubmitLabel": "Search",
     "cartLink": "Cart",
-    "adminLink": "Admin"
+    "adminLink": "Admin",
+    "adminRefundsLink": "Refunds"
   },
   "home": {
     "bannerHeading": "Shop from many stores, check out fast",
