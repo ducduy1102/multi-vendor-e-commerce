@@ -1,10 +1,27 @@
 // Type request/response cho module admin, dùng chung qua @ecommerce/types —
 // không định nghĩa lại (rules/general.md mục 4).
 export type {
+  AbnormalPaymentKind,
+  AdminDecideRefundRequestInput,
+  AdminMarkRefundCompletedInput,
+  AdminRefund,
+  AdminRefundListFilter,
+  AdminRefundListQuery,
+  AdminRefundListResponse,
+  AdminRefundPaymentInput,
+  AdminRefundRequest,
+  AdminRefundRequestListQuery,
+  AdminRefundRequestListResponse,
+  AdminRefundablePayment,
+  AdminRefundablePaymentListQuery,
+  AdminRefundablePaymentListResponse,
   AdminShop,
   AdminShopListQuery,
   AdminShopListResponse,
   AdminShopTargetStatus,
   AdminUpdateShopStatusInput,
+  PaymentRefundStatus,
+  RefundRequestKind,
+  RefundRequestStatus,
   ShopStatus,
 } from '@ecommerce/types';
