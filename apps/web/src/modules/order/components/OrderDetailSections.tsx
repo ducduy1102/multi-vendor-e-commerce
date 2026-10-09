@@ -8,6 +8,7 @@ import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
 import { cn } from '@/shared/lib/utils';
 
 import { PAYMENT_METHOD_LABEL_KEYS, PAYMENT_STATUS_LABEL_KEYS } from '../order-status-display';
+import { describeOrderRefund } from '../refund-request-display';
 import type { OrderDetail, OrderListItem } from '../types';
 import {
   ORDER_CARD_CLASS,
@@ -89,10 +90,18 @@ type PaymentFields = Pick<
   'subtotal' | 'discountAmount' | 'shippingFee' | 'totalAmount' | 'paymentMethod' | 'paymentStatus'
 >;
 
-export function OrderPaymentSection({ order }: { order: PaymentFields }) {
+// `refund` chỉ có ở chi tiết đơn của NGƯỜI MUA (khoản hoàn qua cổng của đơn); Seller không truyền, dòng ẩn.
+export function OrderPaymentSection({
+  order,
+  refund = null,
+}: {
+  order: PaymentFields;
+  refund?: OrderDetail['refund'];
+}) {
   const t = useTranslations('order');
   const tDynamic = t as unknown as LooseTranslator;
   const hasDiscount = Number(order.discountAmount) > 0;
+  const refundDescription = refund ? describeOrderRefund(refund) : null;
 
   return (
     <DetailSection title={t('detailSummaryTitle')}>
@@ -124,6 +133,14 @@ export function OrderPaymentSection({ order }: { order: PaymentFields }) {
           {order.paymentStatus ? (
             <SummaryRow label={t('detailPaymentStatusLabel')}>
               {tDynamic(PAYMENT_STATUS_LABEL_KEYS[order.paymentStatus])}
+            </SummaryRow>
+          ) : null}
+          {refundDescription ? (
+            <SummaryRow label={t('detailRefundLabel')}>
+              {tDynamic(refundDescription.labelKey, {
+                amount:
+                  refundDescription.amount === null ? '' : formatPrice(refundDescription.amount),
+              })}
             </SummaryRow>
           ) : null}
         </dl>

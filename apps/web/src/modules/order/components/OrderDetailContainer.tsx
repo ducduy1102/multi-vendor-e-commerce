@@ -17,6 +17,7 @@ import { OrderActions } from './OrderActions';
 import { OrderDetailSkeleton } from './OrderDetailSkeleton';
 import { OrderDetailView } from './OrderDetailView';
 import { OrderItemReviewAction } from './OrderItemReviewAction';
+import { RefundRequestCard } from './RefundRequestCard';
 
 interface OrderDetailContainerProps {
   // null khi URL không phải id hợp lệ — page.tsx (Server Component) đã kiểm UUID trước khi truyền
@@ -90,9 +91,26 @@ function OrderDetailLoader({ orderId }: { orderId: string }) {
             isDisabled={flow.isActionPending}
             cancelBlockedKey={getCancelBlockedReasonKey(order)}
             onCancel={() => flow.openCancelDialog(order)}
+            onRequestCancel={() => flow.openRequestRefundDialog(order, 'CANCEL')}
+            onRequestReturn={() => flow.openRequestRefundDialog(order, 'RETURN')}
             onConfirmReceived={() => flow.openConfirmReceivedDialog(order)}
             onRetryPayment={() => void flow.retryPayment(order)}
           />
+        }
+        // Thẻ yêu cầu hủy/trả hàng (nếu có): trạng thái, dòng thời gian, rút/khiếu nại theo cờ của BE.
+        refundRequestSection={
+          order.refundRequest ? (
+            <RefundRequestCard
+              request={order.refundRequest}
+              isDisabled={flow.isActionPending}
+              onWithdraw={() =>
+                order.refundRequest && flow.openWithdrawRefundDialog(order, order.refundRequest.id)
+              }
+              onEscalate={() =>
+                order.refundRequest && flow.openEscalateRefundDialog(order, order.refundRequest.id)
+              }
+            />
+          ) : null
         }
         // Cờ canReview/review do BE tính theo từng dòng; dải chỉ hiện khi được phép (đơn COMPLETED...).
         renderItemFooter={(item) => (

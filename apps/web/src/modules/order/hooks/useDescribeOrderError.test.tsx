@@ -59,3 +59,42 @@ describe('useDescribeOrderError', () => {
     expect(message).not.toMatch(/boom|Forbidden/);
   });
 });
+
+describe('useDescribeOrderError — REFUND_REQUEST_NOT_ALLOWED theo details.reason', () => {
+  const notAllowed = (details: unknown) =>
+    new ApiError('English detail', 409, 'REFUND_REQUEST_NOT_ALLOWED', details);
+
+  it.each([
+    ['WINDOW_EXPIRED', 'Đã quá thời hạn để thực hiện thao tác này'],
+    ['ALREADY_REQUESTED', 'Đơn hàng này đã có yêu cầu đang được xử lý'],
+    ['NOT_ELIGIBLE_STATUS', 'Đơn hàng hiện không ở trạng thái gửi được yêu cầu này'],
+    [
+      'PAYMENT_NOT_COLLECTED',
+      'Đơn hàng này chưa ghi nhận thanh toán thành công nên chưa gửi được yêu cầu',
+    ],
+  ])('lý do %s -> câu riêng, không lộ message tiếng Anh của BE', (reason, expected) => {
+    const message = describeWith(notAllowed({ reason }));
+
+    expect(message).toBe(expected);
+    expect(message).not.toContain('English detail');
+  });
+
+  it.each([
+    ['không có details', undefined],
+    ['details sai hình dạng', { foo: 'bar' }],
+    ['lý do BE thêm sau mà FE chưa biết', { reason: 'SOMETHING_NEW' }],
+    ['details không phải object', 'oops'],
+  ])('%s -> rơi về câu chung của mã lỗi, không ném lỗi', (_label, details) => {
+    expect(describeWith(notAllowed(details))).toBe(
+      'Đơn hàng này hiện không gửi được yêu cầu hủy hoặc hoàn tiền',
+    );
+  });
+
+  it('mã lỗi khác có details (ORDER_CANCEL_NOT_ALLOWED) vẫn dùng câu theo mã như cũ', () => {
+    expect(
+      describeWith(
+        new ApiError('x', 409, 'ORDER_CANCEL_NOT_ALLOWED', { reason: 'PROCESSING_STARTED' }),
+      ),
+    ).toBe('Đơn hàng này hiện không thể hủy');
+  });
+});

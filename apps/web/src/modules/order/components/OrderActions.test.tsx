@@ -8,15 +8,23 @@ import { OrderActions } from './OrderActions';
 
 type Flags = Parameters<typeof OrderActions>[0]['order'];
 
-const NO_FLAGS: Flags = { canCancel: false, canConfirmReceived: false, canRetryPayment: false };
+const NO_FLAGS: Flags = {
+  canCancel: false,
+  canRequestCancel: false,
+  canRequestReturn: false,
+  canConfirmReceived: false,
+  canRetryPayment: false,
+};
 
 function setup(
   flags: Partial<Flags> = {},
   isDisabled = false,
-  cancelBlockedKey?: 'cancelBlockedPaidOnline' | 'cancelBlockedProcessing' | null,
+  cancelBlockedKey?: 'cancelBlockedProcessing' | null,
 ) {
   const handlers = {
     onCancel: vi.fn(),
+    onRequestCancel: vi.fn(),
+    onRequestReturn: vi.fn(),
     onConfirmReceived: vi.fn(),
     onRetryPayment: vi.fn(),
   };
@@ -62,6 +70,74 @@ describe('OrderActions', () => {
     expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 
+  describe('yêu cầu hủy / trả hàng (Tuần 9)', () => {
+    it('canRequestCancel -> chỉ nút "Yêu cầu hủy" (shop đã xác nhận/đóng gói), bấm gọi onRequestCancel', async () => {
+      const user = userEvent.setup();
+      const { onRequestCancel, onRequestReturn, onCancel } = setup({ canRequestCancel: true });
+
+      expect(screen.getAllByRole('button')).toHaveLength(1);
+      await user.click(screen.getByRole('button', { name: 'Yêu cầu hủy' }));
+
+      expect(onRequestCancel).toHaveBeenCalledTimes(1);
+      expect(onRequestReturn).not.toHaveBeenCalled();
+      expect(onCancel).not.toHaveBeenCalled();
+    });
+
+    it('canRequestReturn -> chỉ nút "Yêu cầu trả hàng/hoàn tiền" (đã nhận hàng, trong cửa sổ), bấm gọi onRequestReturn', async () => {
+      const user = userEvent.setup();
+      const { onRequestReturn, onRequestCancel } = setup({ canRequestReturn: true });
+
+      expect(screen.getAllByRole('button')).toHaveLength(1);
+      await user.click(screen.getByRole('button', { name: 'Yêu cầu trả hàng/hoàn tiền' }));
+
+      expect(onRequestReturn).toHaveBeenCalledTimes(1);
+      expect(onRequestCancel).not.toHaveBeenCalled();
+    });
+
+    it('"Hủy đơn" (hủy ngay) và "Yêu cầu hủy" là hai nút khác nhau theo hai cờ khác nhau', () => {
+      const { unmount } = setup({ canCancel: true });
+      expect(screen.getByRole('button', { name: 'Hủy đơn' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Yêu cầu hủy' })).not.toBeInTheDocument();
+      unmount();
+
+      setup({ canRequestCancel: true });
+      expect(screen.getByRole('button', { name: 'Yêu cầu hủy' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Hủy đơn' })).not.toBeInTheDocument();
+    });
+
+    it('đơn đã nhận hàng: "Đã nhận hàng" không cùng lúc "Yêu cầu trả hàng" khi BE chỉ bật một cờ; bật cả hai thì hiện cả hai', () => {
+      const { unmount } = setup({ canConfirmReceived: true });
+      expect(screen.queryByRole('button', { name: /Yêu cầu trả hàng/ })).not.toBeInTheDocument();
+      unmount();
+
+      setup({ canConfirmReceived: true, canRequestReturn: true });
+      expect(screen.getAllByRole('button')).toHaveLength(2);
+    });
+
+    it('isDisabled khoá cả hai nút yêu cầu', async () => {
+      const user = userEvent.setup();
+      const { onRequestCancel, onRequestReturn } = setup(
+        { canRequestCancel: true, canRequestReturn: true },
+        true,
+      );
+
+      for (const button of screen.getAllByRole('button')) {
+        expect(button).toBeDisabled();
+        await user.click(button);
+      }
+
+      expect(onRequestCancel).not.toHaveBeenCalled();
+      expect(onRequestReturn).not.toHaveBeenCalled();
+    });
+
+    it('có thể gửi yêu cầu hủy thì KHÔNG hiện nút Hủy bị khoá dù có truyền lý do (cờ BE luôn thắng)', () => {
+      setup({ canRequestCancel: true }, false, 'cancelBlockedProcessing');
+
+      expect(screen.getAllByRole('button')).toHaveLength(1);
+      expect(screen.queryByText(/chưa gửi được yêu cầu hủy/)).not.toBeInTheDocument();
+    });
+  });
+
   it('bấm từng nút gọi đúng callback của nó', async () => {
     const user = userEvent.setup();
     const { onCancel, onConfirmReceived, onRetryPayment } = setup({
@@ -99,13 +175,11 @@ describe('OrderActions', () => {
   describe('nút Hủy bị khoá kèm lý do (trang chi tiết)', () => {
     it('BE không cho hủy + có lý do -> nút Hủy bị khoá, câu giải thích hiện ngay bên dưới, không gọi callback', async () => {
       const user = userEvent.setup();
-      const { onCancel } = setup({}, false, 'cancelBlockedPaidOnline');
+      const { onCancel } = setup({}, false, 'cancelBlockedProcessing');
 
       const cancel = screen.getByRole('button', { name: 'Hủy đơn' });
       expect(cancel).toHaveAttribute('aria-disabled', 'true');
-      expect(
-        screen.getByText(/đã thanh toán trực tuyến nên chưa thể hủy lúc này/),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/hiện chưa gửi được yêu cầu hủy/)).toBeInTheDocument();
       await user.click(cancel);
 
       expect(onCancel).not.toHaveBeenCalled();
@@ -120,23 +194,23 @@ describe('OrderActions', () => {
       const cancel = screen.getByRole('button', { name: 'Hủy đơn' });
       expect(cancel).toHaveFocus();
       expect(cancel).toHaveAccessibleDescription(
-        'Shop đã bắt đầu xử lý đơn hàng này nên không thể hủy.',
+        'Shop đã bắt đầu xử lý đơn hàng này, hiện chưa gửi được yêu cầu hủy.',
       );
     });
 
     it('có lý do nhưng BE lại cho hủy (canCancel) -> hiện nút Hủy bình thường, KHÔNG hiện bản khoá/lý do', async () => {
       const user = userEvent.setup();
-      const { onCancel } = setup({ canCancel: true }, false, 'cancelBlockedPaidOnline');
+      const { onCancel } = setup({ canCancel: true }, false, 'cancelBlockedProcessing');
 
       expect(screen.getAllByRole('button', { name: 'Hủy đơn' })).toHaveLength(1);
-      expect(screen.queryByText(/chưa thể hủy lúc này/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/hiện chưa gửi được yêu cầu hủy/)).not.toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'Hủy đơn' }));
 
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it('chỉ có nút khoá (không cờ nào bật) vẫn render — đơn đã trả online chờ xác nhận chẳng có hành động nào khác', () => {
-      const { container } = setup({}, false, 'cancelBlockedPaidOnline');
+    it('chỉ có nút khoá (không cờ nào bật) vẫn render — đơn đã xác nhận chẳng có hành động nào khác', () => {
+      const { container } = setup({}, false, 'cancelBlockedProcessing');
 
       expect(container).not.toBeEmptyDOMElement();
       expect(screen.getAllByRole('button')).toHaveLength(1);

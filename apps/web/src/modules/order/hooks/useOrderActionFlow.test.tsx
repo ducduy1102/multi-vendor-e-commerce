@@ -14,16 +14,34 @@ vi.mock('../services/order.service', () => ({
   cancelOrder: vi.fn(),
   confirmReceived: vi.fn(),
   retryPayment: vi.fn(),
+  requestRefund: vi.fn(),
+  withdrawRefundRequest: vi.fn(),
+  escalateRefundRequest: vi.fn(),
 }));
 vi.mock('../redirect-to-payment-gateway', () => ({
   redirectToPaymentGateway: vi.fn(),
 }));
 
-const ORDER: OrderActionTarget = { id: 'order-1', checkoutGroupId: 'group-1', status: 'PENDING' };
+const ORDER: OrderActionTarget = {
+  id: 'order-1',
+  checkoutGroupId: 'group-1',
+  status: 'PENDING',
+  paymentMethod: 'COD',
+  paymentStatus: 'PENDING',
+};
 const UNPAID: OrderActionTarget = {
   id: 'order-2',
   checkoutGroupId: 'group-2',
   status: 'AWAITING_PAYMENT',
+  paymentMethod: 'VNPAY',
+  paymentStatus: 'PENDING',
+};
+const CONFIRMED: OrderActionTarget = {
+  id: 'order-3',
+  checkoutGroupId: 'group-3',
+  status: 'CONFIRMED',
+  paymentMethod: 'VNPAY',
+  paymentStatus: 'SUCCESS',
 };
 
 function setup() {
@@ -40,6 +58,9 @@ describe('useOrderActionFlow', () => {
     vi.mocked(orderService.cancelOrder).mockReset();
     vi.mocked(orderService.confirmReceived).mockReset();
     vi.mocked(orderService.retryPayment).mockReset();
+    vi.mocked(orderService.requestRefund).mockReset();
+    vi.mocked(orderService.withdrawRefundRequest).mockReset();
+    vi.mocked(orderService.escalateRefundRequest).mockReset();
     vi.mocked(redirect.redirectToPaymentGateway).mockReset();
   });
 
@@ -169,6 +190,168 @@ describe('useOrderActionFlow', () => {
         ),
       );
       expect(result.current.dialogs.isOpen).toBe(false);
+    });
+  });
+
+  describe('yêu cầu hủy / trả hàng', () => {
+    it('mở hộp thoại gửi yêu cầu kèm loại (CANCEL = yêu cầu hủy, RETURN = trả hàng/hoàn tiền)', () => {
+      const { result } = setup();
+
+      act(() => result.current.openRequestRefundDialog(CONFIRMED, 'CANCEL'));
+      expect(result.current.dialogs.isOpen).toBe(true);
+      expect(result.current.dialogs.dialog).toEqual({
+        kind: 'requestRefund',
+        order: CONFIRMED,
+        refundKind: 'CANCEL',
+      });
+
+      act(() => result.current.dialogs.onOpenChange(false));
+      act(() => result.current.openRequestRefundDialog(CONFIRMED, 'RETURN'));
+      expect(result.current.dialogs.dialog?.refundKind).toBe('RETURN');
+    });
+
+    it('gửi yêu cầu -> gọi service đúng đơn + lý do/mô tả (KHÔNG gửi loại yêu cầu — BE tự suy), rồi đóng hộp thoại', async () => {
+      vi.mocked(orderService.requestRefund).mockResolvedValue({} as never);
+      const { result } = setup();
+      act(() => result.current.openRequestRefundDialog(CONFIRMED, 'CANCEL'));
+
+      act(() =>
+        result.current.dialogs.onRequestRefund({
+          reasonCode: 'CHANGE_OF_MIND',
+          reasonNote: 'Đổi ý',
+        }),
+      );
+
+      await waitFor(() => expect(result.current.dialogs.isOpen).toBe(false));
+      expect(orderService.requestRefund).toHaveBeenCalledWith('order-3', {
+        reasonCode: 'CHANGE_OF_MIND',
+        reasonNote: 'Đổi ý',
+      });
+      expect(result.current.actionError).toBeNull();
+    });
+
+    it('409 REFUND_REQUEST_NOT_ALLOWED: câu lỗi THEO details.reason (quá hạn / đã có yêu cầu / sai trạng thái / chưa thu tiền)', async () => {
+      const cases = [
+        ['WINDOW_EXPIRED', 'Đã quá thời hạn để thực hiện thao tác này'],
+        ['ALREADY_REQUESTED', 'Đơn hàng này đã có yêu cầu đang được xử lý'],
+        ['NOT_ELIGIBLE_STATUS', 'Đơn hàng hiện không ở trạng thái gửi được yêu cầu này'],
+        [
+          'PAYMENT_NOT_COLLECTED',
+          'Đơn hàng này chưa ghi nhận thanh toán thành công nên chưa gửi được yêu cầu',
+        ],
+      ] as const;
+      for (const [reason, expected] of cases) {
+        vi.mocked(orderService.requestRefund).mockRejectedValueOnce(
+          new ApiError('x', 409, 'REFUND_REQUEST_NOT_ALLOWED', { reason }),
+        );
+        const { result } = setup();
+        act(() => result.current.openRequestRefundDialog(CONFIRMED, 'RETURN'));
+
+        act(() => result.current.dialogs.onRequestRefund({ reasonCode: 'DAMAGED' }));
+
+        await waitFor(() => expect(result.current.actionError).toBe(expected));
+        expect(result.current.dialogs.isOpen).toBe(false);
+      }
+    });
+
+    it('REFUND_REQUEST_NOT_ALLOWED thiếu/sai details -> câu chung của mã, không vỡ', async () => {
+      vi.mocked(orderService.requestRefund).mockRejectedValueOnce(
+        new ApiError('x', 409, 'REFUND_REQUEST_NOT_ALLOWED', { reason: 'SOMETHING_NEW' }),
+      );
+      const { result } = setup();
+      act(() => result.current.openRequestRefundDialog(CONFIRMED, 'CANCEL'));
+      act(() => result.current.dialogs.onRequestRefund({ reasonCode: 'OTHER', reasonNote: 'x' }));
+
+      await waitFor(() =>
+        expect(result.current.actionError).toBe(
+          'Đơn hàng này hiện không gửi được yêu cầu hủy hoặc hoàn tiền',
+        ),
+      );
+    });
+
+    it('rút yêu cầu: mở hộp thoại với requestId, xác nhận gọi service đúng yêu cầu rồi đóng', async () => {
+      vi.mocked(orderService.withdrawRefundRequest).mockResolvedValue({} as never);
+      const { result } = setup();
+      act(() => result.current.openWithdrawRefundDialog(CONFIRMED, 'request-1'));
+      expect(result.current.dialogs.dialog).toEqual({
+        kind: 'withdrawRefund',
+        order: CONFIRMED,
+        requestId: 'request-1',
+      });
+
+      act(() => result.current.dialogs.onWithdrawRefund());
+
+      await waitFor(() => expect(result.current.dialogs.isOpen).toBe(false));
+      expect(orderService.withdrawRefundRequest).toHaveBeenCalledWith('request-1');
+    });
+
+    it('rút khi seller vừa trả lời (409 REFUND_REQUEST_INVALID_TRANSITION) -> hiện lỗi đã dịch và đóng hộp thoại', async () => {
+      vi.mocked(orderService.withdrawRefundRequest).mockRejectedValue(
+        apiError(409, 'REFUND_REQUEST_INVALID_TRANSITION'),
+      );
+      const { result } = setup();
+      act(() => result.current.openWithdrawRefundDialog(CONFIRMED, 'request-1'));
+
+      act(() => result.current.dialogs.onWithdrawRefund());
+
+      await waitFor(() =>
+        expect(result.current.actionError).toBe(
+          'Yêu cầu vừa được cập nhật, vui lòng tải lại trang',
+        ),
+      );
+      expect(result.current.dialogs.isOpen).toBe(false);
+    });
+
+    it('khiếu nại: xác nhận gọi service đúng yêu cầu; quá hạn (WINDOW_EXPIRED) -> câu "đã quá thời hạn"', async () => {
+      vi.mocked(orderService.escalateRefundRequest).mockResolvedValueOnce({} as never);
+      const { result } = setup();
+      act(() => result.current.openEscalateRefundDialog(CONFIRMED, 'request-9'));
+      expect(result.current.dialogs.dialog?.kind).toBe('escalateRefund');
+
+      act(() => result.current.dialogs.onEscalateRefund());
+      await waitFor(() => expect(result.current.dialogs.isOpen).toBe(false));
+      expect(orderService.escalateRefundRequest).toHaveBeenCalledWith('request-9');
+
+      vi.mocked(orderService.escalateRefundRequest).mockRejectedValueOnce(
+        new ApiError('x', 409, 'REFUND_REQUEST_NOT_ALLOWED', { reason: 'WINDOW_EXPIRED' }),
+      );
+      act(() => result.current.openEscalateRefundDialog(CONFIRMED, 'request-9'));
+      act(() => result.current.dialogs.onEscalateRefund());
+      await waitFor(() =>
+        expect(result.current.actionError).toBe('Đã quá thời hạn để thực hiện thao tác này'),
+      );
+    });
+
+    it('rút/khiếu nại mà hộp thoại không mang requestId -> không gọi API', () => {
+      const { result } = setup();
+      act(() => result.current.openCancelDialog(ORDER));
+
+      act(() => result.current.dialogs.onWithdrawRefund());
+      act(() => result.current.dialogs.onEscalateRefund());
+
+      expect(orderService.withdrawRefundRequest).not.toHaveBeenCalled();
+      expect(orderService.escalateRefundRequest).not.toHaveBeenCalled();
+    });
+
+    it('đang gửi yêu cầu: khoá mọi hành động, không đóng được hộp thoại, cờ pending riêng bật', async () => {
+      let resolveRequest: (value: never) => void = () => undefined;
+      vi.mocked(orderService.requestRefund).mockReturnValue(
+        new Promise((resolve) => {
+          resolveRequest = resolve as (value: never) => void;
+        }),
+      );
+      const { result } = setup();
+      act(() => result.current.openRequestRefundDialog(CONFIRMED, 'CANCEL'));
+      act(() => result.current.dialogs.onRequestRefund({ reasonCode: 'CHANGE_OF_MIND' }));
+      await waitFor(() => expect(result.current.isActionPending).toBe(true));
+
+      act(() => result.current.dialogs.onOpenChange(false));
+      expect(result.current.dialogs.isOpen).toBe(true);
+      expect(result.current.dialogs.isRequestRefundPending).toBe(true);
+      expect(result.current.dialogs.isWithdrawRefundPending).toBe(false);
+
+      await act(async () => resolveRequest({} as never));
+      await waitFor(() => expect(result.current.dialogs.isOpen).toBe(false));
     });
   });
 

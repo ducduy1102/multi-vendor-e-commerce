@@ -85,6 +85,76 @@ function renderView(overrides: Partial<OrderDetail> = {}, actions?: React.ReactN
 
 const section = (name: string) => within(screen.getByRole('region', { name }));
 
+describe('OrderDetailView — hoàn tiền và yêu cầu hủy/trả hàng', () => {
+  it('chưa có khoản hoàn (refund = null) -> không có dòng "Hoàn tiền"', () => {
+    renderView({ refund: null });
+
+    expect(section('Thanh toán').queryByText('Hoàn tiền')).not.toBeInTheDocument();
+  });
+
+  it('khoản hoàn ĐÃ HOÀN -> "Đã hoàn {số tiền}" với số tiền BE trả', () => {
+    renderView({
+      paymentMethod: 'VNPAY',
+      paymentStatus: 'REFUNDED',
+      refund: { status: 'SUCCEEDED', amount: '320000' },
+    });
+
+    const row = section('Thanh toán').getByText('Hoàn tiền').nextSibling;
+    expect(row).toHaveTextContent(`Đã hoàn ${price('320000')}`);
+  });
+
+  it('khoản hoàn ĐANG HOÀN -> "Đang hoàn {số tiền}"', () => {
+    renderView({
+      paymentMethod: 'VNPAY',
+      paymentStatus: 'SUCCESS',
+      refund: { status: 'PENDING', amount: '320000' },
+    });
+
+    const row = section('Thanh toán').getByText('Hoàn tiền').nextSibling;
+    expect(row).toHaveTextContent(`Đang hoàn ${price('320000')}`);
+  });
+
+  it('khoản hoàn GẶP SỰ CỐ -> câu "shop/sàn đang xử lý", KHÔNG hứa số tiền hay thời hạn, không lộ lý do lỗi của cổng', () => {
+    renderView({
+      paymentMethod: 'VNPAY',
+      paymentStatus: 'SUCCESS',
+      refund: { status: 'FAILED', amount: '320000' },
+    });
+
+    const row = section('Thanh toán').getByText('Hoàn tiền').nextSibling;
+    expect(row).toHaveTextContent('Hoàn tiền gặp sự cố, shop/sàn đang xử lý');
+    expect(row).not.toHaveTextContent(price('320000'));
+  });
+
+  it('nhóm COD bị hủy hết -> trạng thái thanh toán hiện "Không thu"', () => {
+    renderView({ paymentMethod: 'COD', paymentStatus: 'CANCELLED', refund: null });
+
+    const row = section('Thanh toán').getByText('Trạng thái thanh toán').nextSibling;
+    expect(row).toHaveTextContent('Không thu');
+  });
+
+  it('refundRequestSection được đặt NGAY TRÊN danh sách dòng hàng (thứ người mua cần xem đầu tiên)', () => {
+    render(
+      withIntl(
+        <OrderDetailView
+          order={order()}
+          refundRequestSection={<section aria-label="Thẻ yêu cầu">nội dung yêu cầu</section>}
+        />,
+      ),
+    );
+
+    const card = screen.getByRole('region', { name: 'Thẻ yêu cầu' });
+    const items = screen.getByRole('region', { name: 'Sản phẩm' });
+    expect(card.compareDocumentPosition(items) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('không truyền refundRequestSection -> không có khối nào thêm', () => {
+    const { container } = renderView();
+
+    expect(container.querySelector('[aria-label="Thẻ yêu cầu"]')).toBeNull();
+  });
+});
+
 describe('OrderDetailView — liên kết sản phẩm và dải đánh giá', () => {
   it('mỗi tên hàng là liên kết tới trang sản phẩm bằng productSlug của CHÍNH dòng đó', () => {
     renderView();

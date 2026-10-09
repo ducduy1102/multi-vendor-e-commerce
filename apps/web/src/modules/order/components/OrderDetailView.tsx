@@ -32,6 +32,9 @@ interface OrderDetailViewProps {
   // Dải bên dưới từng dòng hàng (nút "Viết đánh giá"/"Sửa" do Container nối) — view không biết hộp thoại nào.
   // Không truyền thì dòng hàng không có dải.
   renderItemFooter?: (item: OrderDetailItem) => ReactNode;
+  // Thẻ yêu cầu hủy/trả hàng (RefundRequestCard) do Container dựng khi đơn có yêu cầu — đặt NGAY TRÊN danh
+  // sách dòng hàng vì là thứ người mua cần xem đầu tiên khi có yêu cầu đang chạy.
+  refundRequestSection?: ReactNode;
 }
 
 // Chi tiết 1 đơn của người mua — component THUẦN từ `OrderDetail`: mọi số tiền/địa chỉ/dòng hàng là
@@ -39,7 +42,12 @@ interface OrderDetailViewProps {
 // Mobile 1 cột (trạng thái → dòng hàng → lịch sử → thanh toán → địa chỉ), từ lg thêm cột phụ.
 // Các khối dòng hàng/thanh toán/địa chỉ/vận chuyển dùng chung với trang chi tiết của Seller
 // (OrderDetailSections).
-export function OrderDetailView({ order, actions, renderItemFooter }: OrderDetailViewProps) {
+export function OrderDetailView({
+  order,
+  actions,
+  renderItemFooter,
+  refundRequestSection,
+}: OrderDetailViewProps) {
   const t = useTranslations('order');
   const formatDate = useFormatOrderDate();
 
@@ -62,6 +70,8 @@ export function OrderDetailView({ order, actions, renderItemFooter }: OrderDetai
 
       <div className={ORDER_DETAIL_GRID_CLASS}>
         <div className={ORDER_DETAIL_COLUMN_CLASS}>
+          {refundRequestSection}
+
           {/* Tên hàng là liên kết tới trang sản phẩm bằng `productSlug` BE trả sẵn trong từng dòng. */}
           <OrderItemsSection
             items={order.items}
@@ -77,7 +87,7 @@ export function OrderDetailView({ order, actions, renderItemFooter }: OrderDetai
         </div>
 
         <div className={ORDER_DETAIL_COLUMN_CLASS}>
-          <OrderPaymentSection order={order} />
+          <OrderPaymentSection order={order} refund={order.refund} />
           <OrderAddressSection order={order} />
           <OrderBuyerNoteSection note={order.buyerNote} viewer="buyer" />
           <OrderShippingSection order={order} />
