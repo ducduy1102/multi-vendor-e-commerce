@@ -14,7 +14,7 @@ import {
   ORDER_DETAIL_SECTION_BODY_CLASS,
   ORDER_DETAIL_SECTION_TITLE_CLASS,
 } from './order-card.constants';
-import { OrderItemRow } from './OrderItemRow';
+import { OrderItemRow, type OrderItemRowProps } from './OrderItemRow';
 
 // Các khối trình bày dùng chung giữa trang chi tiết của NGƯỜI MUA (OrderDetailView) và của SELLER
 // (SellerOrderDetailView): hai bên nhận cùng các trường (dòng hàng, tiền, địa chỉ nhận, vận
@@ -61,14 +61,23 @@ function SummaryRow({
   );
 }
 
-export function OrderItemsSection({ items }: { items: OrderListItem['items'] }) {
+// Dòng hàng của người mua và của Seller dùng chung khối này. Phần dành riêng cho người mua (liên kết sản phẩm, nút
+// đánh giá) đi qua `getItemProps` — nhận đúng loại dòng hàng của nơi gọi (generic) nên chi tiết đơn của người mua
+// đọc được `productSlug`/`canReview`/`review` mà Seller không phải khai gì.
+export function OrderItemsSection<TItem extends OrderListItem['items'][number]>({
+  items,
+  getItemProps,
+}: {
+  items: TItem[];
+  getItemProps?: (item: TItem) => Pick<OrderItemRowProps, 'productSlug' | 'footer'>;
+}) {
   const t = useTranslations('order');
 
   return (
     <DetailSection title={t('detailItemsTitle')} isPadded={false}>
       <ul className="divide-y divide-border">
         {items.map((item) => (
-          <OrderItemRow key={item.sku} item={item} />
+          <OrderItemRow key={item.sku} item={item} {...getItemProps?.(item)} />
         ))}
       </ul>
     </DetailSection>

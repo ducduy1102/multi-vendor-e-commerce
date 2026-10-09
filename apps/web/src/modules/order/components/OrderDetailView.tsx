@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 import { cn } from '@/shared/lib/utils';
 
 import { useFormatOrderDate } from '../hooks/useFormatOrderDate';
-import type { OrderDetail } from '../types';
+import type { OrderDetail, OrderDetailItem } from '../types';
 import {
   ORDER_CARD_CLASS,
   ORDER_CARD_FOOTER_CLASS,
@@ -29,6 +29,9 @@ interface OrderDetailViewProps {
   order: OrderDetail;
   // Nút hành động (OrderActions) do Container truyền vào — view không biết mutation/hộp thoại nào.
   actions?: ReactNode;
+  // Dải bên dưới từng dòng hàng (nút "Viết đánh giá"/"Sửa" do Container nối) — view không biết hộp thoại nào.
+  // Không truyền thì dòng hàng không có dải.
+  renderItemFooter?: (item: OrderDetailItem) => ReactNode;
 }
 
 // Chi tiết 1 đơn của người mua — component THUẦN từ `OrderDetail`: mọi số tiền/địa chỉ/dòng hàng là
@@ -36,7 +39,7 @@ interface OrderDetailViewProps {
 // Mobile 1 cột (trạng thái → dòng hàng → lịch sử → thanh toán → địa chỉ), từ lg thêm cột phụ.
 // Các khối dòng hàng/thanh toán/địa chỉ/vận chuyển dùng chung với trang chi tiết của Seller
 // (OrderDetailSections).
-export function OrderDetailView({ order, actions }: OrderDetailViewProps) {
+export function OrderDetailView({ order, actions, renderItemFooter }: OrderDetailViewProps) {
   const t = useTranslations('order');
   const formatDate = useFormatOrderDate();
 
@@ -59,7 +62,14 @@ export function OrderDetailView({ order, actions }: OrderDetailViewProps) {
 
       <div className={ORDER_DETAIL_GRID_CLASS}>
         <div className={ORDER_DETAIL_COLUMN_CLASS}>
-          <OrderItemsSection items={order.items} />
+          {/* Tên hàng là liên kết tới trang sản phẩm bằng `productSlug` BE trả sẵn trong từng dòng. */}
+          <OrderItemsSection
+            items={order.items}
+            getItemProps={(item) => ({
+              productSlug: item.productSlug,
+              footer: renderItemFooter?.(item),
+            })}
+          />
 
           <DetailSection title={t('timelineTitle')}>
             <OrderTimeline history={order.history} />

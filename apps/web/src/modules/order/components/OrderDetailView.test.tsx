@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { formatPrice } from '@/modules/product';
 import { withIntl } from '@/shared/lib/test-i18n';
@@ -84,6 +84,41 @@ function renderView(overrides: Partial<OrderDetail> = {}, actions?: React.ReactN
 }
 
 const section = (name: string) => within(screen.getByRole('region', { name }));
+
+describe('OrderDetailView — liên kết sản phẩm và dải đánh giá', () => {
+  it('mỗi tên hàng là liên kết tới trang sản phẩm bằng productSlug của CHÍNH dòng đó', () => {
+    renderView();
+
+    const items = section('Sản phẩm');
+    expect(items.getByRole('link', { name: 'Áo thun nam' })).toHaveAttribute(
+      'href',
+      '/products/ao-thun-nam',
+    );
+    // Dòng thứ 2 trong fixture có slug riêng — không dùng chung slug của dòng đầu.
+    expect(items.getByRole('link', { name: 'Quần jean' })).toHaveAttribute(
+      'href',
+      '/products/quan-jean',
+    );
+  });
+
+  it('renderItemFooter được gọi với TỪNG dòng hàng và kết quả hiện đúng dưới dòng đó', () => {
+    const renderItemFooter = vi.fn((item: OrderDetail['items'][number]) => (
+      <span>{'Hành động của ' + item.productId}</span>
+    ));
+    render(withIntl(<OrderDetailView order={order()} renderItemFooter={renderItemFooter} />));
+
+    expect(renderItemFooter).toHaveBeenCalledTimes(2);
+    const rows = section('Sản phẩm').getAllByRole('listitem');
+    expect(within(rows[0]).getByText('Hành động của product-1')).toBeInTheDocument();
+    expect(within(rows[1]).getByText(/Hành động của product-2/)).toBeInTheDocument();
+  });
+
+  it('không truyền renderItemFooter -> dòng hàng không có dải nào', () => {
+    const { container } = renderView();
+
+    expect(container.querySelector('.basis-full')).toBeNull();
+  });
+});
 
 describe('OrderDetailView', () => {
   it('đầu trang: tên shop, trạng thái, mã đơn đầy đủ và ngày đặt', () => {
