@@ -1,8 +1,11 @@
-// Barrel export cho module review — export những gì app/ và module khác (product, order) cần: hook,
-// service (Server Component gọi thẳng `reviewService.listProductReviews`), schema form, type. Component
-// được thêm và export ở 3.2–3.6. Module này không được import product/order/cart/checkout/voucher —
-// product và order import ngược lại barrel này để hiện đánh giá, nên cấm chiều kia để đồ thị không có vòng
-// (shared/lib/module-boundaries.test.ts kiểm điều này).
+// Barrel export cho module review — export những gì app/ và module khác (product, order) cần: component,
+// hook, service (Server Component gọi thẳng `reviewService.listProductReviews`), schema form, type. Module
+// này không được import product/order/cart/checkout/voucher — product và order import ngược lại barrel này để
+// hiện đánh giá, nên cấm chiều kia để đồ thị không có vòng (shared/lib/module-boundaries.test.ts kiểm điều
+// này).
+export { ProductReviewList } from './components/ProductReviewList';
+export { ReviewListSkeleton } from './components/ReviewListSkeleton';
+export { buildReviewHref, parseReviewPageQuery, type ReviewPageQuery } from './review-page-query';
 export {
   sellerReviewListQueryKey,
   sellerReviewListsQueryKey,
