@@ -1,4 +1,4 @@
-import type { OrderListQuery, SellerOrderListQuery } from '../types';
+import type { OrderListQuery, SellerOrderListQuery, SellerRefundRequestListQuery } from '../types';
 
 // Mọi query key của module order khai ở ĐÂY (1 chỗ duy nhất, như myShopQueryKey) — hook đọc và hook
 // mutation dùng chung, tránh gõ tay 2 nơi rồi lệch nhau. Buyer và seller tách nhánh để làm mới
@@ -42,4 +42,18 @@ export function sellerOrderListQueryKey(shopId: string, query: Partial<SellerOrd
 
 export function sellerOrderQueryKey(shopId: string, orderId: string) {
   return ['orders', 'seller', shopId, 'detail', orderId] as const;
+}
+
+// Hàng chờ yêu cầu hủy/trả hàng của shop nằm TRONG nhánh seller của đơn (không tách nhánh riêng): duyệt một
+// yêu cầu làm đơn bị hủy/hoàn, còn đơn bị hủy/đóng gói/giao cũng đổi cờ của yêu cầu — nên khi một hành động
+// thất bại vì dữ liệu đã cũ và làm mới cả `sellerOrdersQueryKey(shopId)` thì hàng chờ cũng được làm mới.
+export function sellerRefundRequestListsQueryKey(shopId: string) {
+  return ['orders', 'seller', shopId, 'refund-requests'] as const;
+}
+
+export function sellerRefundRequestListQueryKey(
+  shopId: string,
+  query: Partial<SellerRefundRequestListQuery>,
+) {
+  return [...sellerRefundRequestListsQueryKey(shopId), query] as const;
 }
