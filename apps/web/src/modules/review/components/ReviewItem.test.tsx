@@ -91,4 +91,35 @@ describe('ReviewItem', () => {
     // Tên người đánh giá nằm trong hàng flex nên cần min-w-0 để co lại được.
     expect(screen.getByText('N***')).toHaveClass('min-w-0', 'break-words');
   });
+
+  describe('khe header/footer cho phía seller', () => {
+    it('không truyền -> trang sản phẩm công khai không có phần tử thừa nào (chỉ sao/tên/ngày/nội dung)', () => {
+      renderItem();
+
+      expect(screen.getByRole('listitem').children).toHaveLength(2);
+    });
+
+    it('header đứng TRƯỚC hàng sao, footer đứng SAU khối trả lời (thứ tự DOM)', () => {
+      render(
+        withIntl(
+          <ul>
+            <ReviewItem
+              review={{ ...REVIEW, sellerReply: 'Cảm ơn!', sellerRepliedAt: REVIEW.createdAt }}
+              header={<span>Tên sản phẩm</span>}
+              footer={<button type="button">Sửa câu trả lời</button>}
+            />
+          </ul>,
+        ),
+      );
+
+      const header = screen.getByText('Tên sản phẩm');
+      const stars = screen.getByRole('img', { name: '4 trên 5 sao' });
+      const reply = screen.getByText('Cảm ơn!');
+      const footer = screen.getByRole('button', { name: 'Sửa câu trả lời' });
+      const before = (a: Node, b: Node) =>
+        a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+      expect(before(header, stars)).toBeTruthy();
+      expect(before(reply, footer)).toBeTruthy();
+    });
+  });
 });

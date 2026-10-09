@@ -7,7 +7,10 @@ export { ProductReviewList } from './components/ProductReviewList';
 export { ReviewForm } from './components/ReviewForm';
 export { ReviewFormSheet, type ReviewFormSheetProps } from './components/ReviewFormSheet';
 export { ReviewListSkeleton } from './components/ReviewListSkeleton';
+export { SellerReviewsContainer } from './components/SellerReviewsContainer';
+export { SellerReviewsSkeleton } from './components/SellerReviewsSkeleton';
 export { buildReviewHref, parseReviewPageQuery, type ReviewPageQuery } from './review-page-query';
+export { parseSellerReviewsPageQuery, type SellerReviewsPageQuery } from './seller-reviews-query';
 export {
   sellerReviewListQueryKey,
   sellerReviewListsQueryKey,

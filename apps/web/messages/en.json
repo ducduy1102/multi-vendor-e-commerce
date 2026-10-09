@@ -797,6 +797,27 @@
     "formSubmitEdit": "Save changes",
     "formSubmitting": "Sending...",
     "submitSuccessCreate": "Thanks for reviewing this product!",
-    "submitSuccessEdit": "Your review has been updated"
+    "submitSuccessEdit": "Your review has been updated",
+    "sellerReviewsLink": "Reviews",
+    "sellerPageTitle": "Customer reviews",
+    "sellerBackToProducts": "Back to products",
+    "sellerFilterNavLabel": "Filter reviews by reply status",
+    "sellerFilterAll": "All",
+    "sellerFilterUnreplied": "Not replied",
+    "sellerFilterReplied": "Replied",
+    "sellerRatingAll": "All ratings",
+    "sellerListLabel": "Shop reviews",
+    "sellerEmptyState": "Your shop has no reviews yet.",
+    "sellerEmptyFiltered": "No reviews match these filters.",
+    "sellerLoadError": "Couldn't load your shop's reviews, please try again.",
+    "sellerRetry": "Try again",
+    "replyButton": "Reply",
+    "replyEditButton": "Edit reply",
+    "replyFormLabel": "Your reply",
+    "replyFormHint": "Your reply is shown publicly on the product page. You can edit it later but can't delete it.",
+    "replySubmitCreate": "Send reply",
+    "replySubmitEdit": "Save changes",
+    "replySuccessCreate": "Your reply was sent",
+    "replySuccessEdit": "Your reply was updated"
   }
 }

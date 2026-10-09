@@ -797,6 +797,27 @@
     "formSubmitEdit": "Lưu thay đổi",
     "formSubmitting": "Đang gửi...",
     "submitSuccessCreate": "Cảm ơn bạn đã đánh giá sản phẩm!",
-    "submitSuccessEdit": "Đã cập nhật đánh giá của bạn"
+    "submitSuccessEdit": "Đã cập nhật đánh giá của bạn",
+    "sellerReviewsLink": "Đánh giá",
+    "sellerPageTitle": "Đánh giá của khách hàng",
+    "sellerBackToProducts": "Quay lại sản phẩm",
+    "sellerFilterNavLabel": "Lọc đánh giá theo trạng thái trả lời",
+    "sellerFilterAll": "Tất cả",
+    "sellerFilterUnreplied": "Chưa trả lời",
+    "sellerFilterReplied": "Đã trả lời",
+    "sellerRatingAll": "Mọi số sao",
+    "sellerListLabel": "Danh sách đánh giá của shop",
+    "sellerEmptyState": "Shop chưa có đánh giá nào.",
+    "sellerEmptyFiltered": "Không có đánh giá nào khớp bộ lọc.",
+    "sellerLoadError": "Không tải được đánh giá của shop, vui lòng thử lại.",
+    "sellerRetry": "Thử lại",
+    "replyButton": "Trả lời",
+    "replyEditButton": "Sửa câu trả lời",
+    "replyFormLabel": "Câu trả lời của shop",
+    "replyFormHint": "Câu trả lời hiển thị công khai trên trang sản phẩm. Bạn có thể sửa lại sau nhưng không xóa được.",
+    "replySubmitCreate": "Gửi trả lời",
+    "replySubmitEdit": "Lưu thay đổi",
+    "replySuccessCreate": "Đã gửi câu trả lời",
+    "replySuccessEdit": "Đã cập nhật câu trả lời"
   }
 }
