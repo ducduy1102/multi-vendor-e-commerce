@@ -8,7 +8,9 @@
     "toggleTheme": "Toggle light/dark theme",
     "cancel": "Cancel",
     "errorNetwork": "You appear to be offline, please check your connection and try again",
-    "errorInvalidResponse": "Didn't get a valid response from the server, please try again"
+    "errorInvalidResponse": "Didn't get a valid response from the server, please try again",
+    "starRatingLabel": "{rating} out of {max} stars",
+    "starRatingOption": "{count, plural, one {# star} other {# stars}}"
   },
   "error": {
     "title": "Something went wrong",

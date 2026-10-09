@@ -8,7 +8,9 @@
     "toggleTheme": "Chuyển đổi giao diện sáng/tối",
     "cancel": "Huỷ",
     "errorNetwork": "Mất kết nối mạng, vui lòng kiểm tra và thử lại",
-    "errorInvalidResponse": "Không nhận được phản hồi hợp lệ từ máy chủ, vui lòng thử lại"
+    "errorInvalidResponse": "Không nhận được phản hồi hợp lệ từ máy chủ, vui lòng thử lại",
+    "starRatingLabel": "{rating} trên {max} sao",
+    "starRatingOption": "{count} sao"
   },
   "error": {
     "title": "Đã có lỗi xảy ra",
