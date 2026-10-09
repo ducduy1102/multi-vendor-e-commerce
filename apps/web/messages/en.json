@@ -643,6 +643,7 @@
     "validationReplyTooLong": "The reply must be at most 1000 characters",
     "errorNotAllowed": "You can't review this product yet",
     "errorNotFound": "Review not found",
-    "errorEditNotAllowed": "A review can only be edited once, and you've already edited it"
+    "errorEditNotAllowed": "A review can only be edited once, and you've already edited it",
+    "actionError": "The action could not be completed, please try again"
   }
 }

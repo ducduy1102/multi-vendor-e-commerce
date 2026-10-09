@@ -1,5 +1,39 @@
-// Barrel export cho module review (Week9.md Bước 3). Hiện rỗng: component/hook/service được thêm và export
-// ở 3.1–3.6. Module này không được import product/order/cart/checkout/voucher — product và order sẽ import
-// ngược lại barrel này để hiện đánh giá, nên cấm chiều kia để đồ thị không có vòng
+// Barrel export cho module review — export những gì app/ và module khác (product, order) cần: hook,
+// service (Server Component gọi thẳng `reviewService.listProductReviews`), schema form, type. Component
+// được thêm và export ở 3.2–3.6. Module này không được import product/order/cart/checkout/voucher —
+// product và order import ngược lại barrel này để hiện đánh giá, nên cấm chiều kia để đồ thị không có vòng
 // (shared/lib/module-boundaries.test.ts kiểm điều này).
-export {};
+export {
+  sellerReviewListQueryKey,
+  sellerReviewListsQueryKey,
+  sellerReviewsQueryKey,
+} from './hooks/review-query-keys';
+export { useCreateReview, type ReviewWriteOptions } from './hooks/useCreateReview';
+export { useDescribeReviewError } from './hooks/useDescribeReviewError';
+export { useReplyToReview } from './hooks/useReplyToReview';
+export { useSellerReviews } from './hooks/useSellerReviews';
+export { useUpdateReview } from './hooks/useUpdateReview';
+export {
+  REVIEW_COMMENT_MAX_LENGTH,
+  REVIEW_RATING_MAX,
+  REVIEW_RATING_MIN,
+  REVIEW_REPLY_MAX_LENGTH,
+  replyReviewSchema,
+  reviewFormSchema,
+} from './schemas/review.schema';
+export * as reviewService from './services/review.service';
+export type {
+  CreateReviewInput,
+  ListReviewsQuery,
+  OrderItemReview,
+  ProductReviewsResponse,
+  ReplyReviewInput,
+  Review,
+  ReviewDistribution,
+  ReviewFormInput,
+  ReviewSummary,
+  SellerReview,
+  SellerReviewListQuery,
+  SellerReviewListResponse,
+  UpdateReviewInput,
+} from './types';

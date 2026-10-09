@@ -643,6 +643,7 @@
     "validationReplyTooLong": "Nội dung trả lời tối đa 1000 ký tự",
     "errorNotAllowed": "Bạn chưa thể đánh giá sản phẩm này",
     "errorNotFound": "Không tìm thấy đánh giá",
-    "errorEditNotAllowed": "Đánh giá chỉ được sửa một lần và bạn đã sửa rồi"
+    "errorEditNotAllowed": "Đánh giá chỉ được sửa một lần và bạn đã sửa rồi",
+    "actionError": "Không thực hiện được thao tác, vui lòng thử lại"
   }
 }
