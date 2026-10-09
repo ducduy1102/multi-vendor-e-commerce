@@ -181,6 +181,7 @@ describe('PaymentGatewayService', () => {
         refundRef: 'refund-ref-0001',
         txnRef: 'ABC123',
         gatewayTransactionId: '14000001',
+        gatewayPaidAt: null,
         amountVnd: 100_000,
         paymentAmountVnd: 100_000,
         reason: 'Order cancelled by buyer',
@@ -205,7 +206,7 @@ describe('PaymentGatewayService', () => {
         }
       });
 
-      it('production + mock bật nhầm: không bao giờ rơi vào mock — VNPAY dùng provider thật (FAILED tạm), MOMO không có cổng', async () => {
+      it('production + mock bật nhầm: không bao giờ rơi vào mock — VNPAY dùng provider thật (chưa cấu hình ⇒ FAILED), MOMO không có cổng', async () => {
         setEnv('PAYMENT_MOCK_ENABLED', 'true');
         setEnv('NODE_ENV', 'production');
 

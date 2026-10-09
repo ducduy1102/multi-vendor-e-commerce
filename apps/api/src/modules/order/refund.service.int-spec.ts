@@ -33,6 +33,9 @@ import { RefundService } from './refund.service';
 // Chạy: `pnpm test:int`.
 const TAG = 'it-refund-';
 
+// Mốc cổng ghi nhận khoản thanh toán gốc (payments.gateway_paid_at) của mọi nhóm thanh toán online trong file này.
+const GATEWAY_PAID_AT = new Date('2026-10-08T03:00:00.000Z');
+
 const BUYER = (id: string): OrderActor => ({ type: 'BUYER', id });
 const SELLER: OrderActor = { type: 'SELLER', id: 'seller-it' };
 const ADMIN: OrderActor = { type: 'ADMIN', id: 'admin-it' };
@@ -211,6 +214,7 @@ describe('RefundService (DB thật)', () => {
           `${TAG.toUpperCase()}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.toUpperCase(),
         transactionId: isCod ? null : 'GW-TXN-1',
         paidAt: isCod ? null : new Date(Date.now() - 60_000),
+        gatewayPaidAt: isCod ? null : GATEWAY_PAID_AT,
         expiresAt: null,
       },
       select: { id: true },
@@ -522,6 +526,34 @@ describe('RefundService (DB thật)', () => {
       expect(Number((await paymentOf(g.paymentId)).refundedAmount)).toBe(
         g.amount,
       );
+    });
+
+    it('cổng nhận ĐÚNG dữ liệu của khoản thanh toán gốc đọc từ DB: mã tham chiếu, mã giao dịch của cổng và mốc gateway_paid_at (Week9.md 2.12)', async () => {
+      const g = await setupGroup({
+        method: 'VNPAY',
+        orders: [{ status: 'PENDING', quantity: 1, stock: 8 }],
+      });
+      const refundSpy = jest.spyOn(mockProvider, 'refund');
+
+      const { refund } = await service.cancelOrderWithRefund(
+        BUYER(g.userId),
+        g.orders[0].id,
+      );
+
+      expect(refund?.status).toBe('SUCCEEDED');
+      expect(refundSpy).toHaveBeenCalledTimes(1);
+      const [params] = refundSpy.mock.calls[0];
+      const payment = await prisma.payment.findUniqueOrThrow({
+        where: { id: g.paymentId },
+        select: { txnRef: true },
+      });
+      expect(params.txnRef).toBe(payment.txnRef);
+      expect(params.gatewayTransactionId).toBe('GW-TXN-1');
+      expect(params.gatewayPaidAt?.toISOString()).toBe(
+        GATEWAY_PAID_AT.toISOString(),
+      );
+      expect(params.amountVnd).toBe(g.amount);
+      expect(params.paymentAmountVnd).toBe(g.amount);
     });
 
     it('finaliseRefund SUCCESS gọi ĐỒNG THỜI nhiều lần ⇒ chỉ cộng tiền vào Payment đúng 1 lần (idempotent)', async () => {

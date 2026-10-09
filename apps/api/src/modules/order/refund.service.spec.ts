@@ -15,6 +15,9 @@ import { RefundService } from './refund.service';
 
 const D = (value: number) => new Prisma.Decimal(value);
 
+// Mốc cổng ghi nhận khoản thanh toán gốc (Payment.gatewayPaidAt) — RefundService chỉ chuyển tiếp cho cổng.
+const GATEWAY_PAID_AT = new Date('2026-10-08T03:00:00Z');
+
 const BUYER: OrderActor = { type: 'BUYER', id: 'buyer-1' };
 const SELLER: OrderActor = { type: 'SELLER', id: 'seller-1' };
 const ADMIN: OrderActor = { type: 'ADMIN', id: 'admin-1' };
@@ -171,6 +174,7 @@ describe('RefundService', () => {
               method: 'VNPAY',
               txnRef: 'TXN-1',
               transactionId: 'GW-TXN-1',
+              gatewayPaidAt: GATEWAY_PAID_AT,
               amount: D(410_000),
             },
           }),
@@ -283,7 +287,7 @@ describe('RefundService', () => {
       });
     });
 
-    it('gọi cổng với mã tham chiếu ỔN ĐỊNH suy từ id khoản hoàn, số tiền nguyên VND và mã giao dịch gốc; tăng attempts trước khi gọi', async () => {
+    it('gọi cổng với mã tham chiếu ỔN ĐỊNH suy từ id khoản hoàn, số tiền nguyên VND, mã giao dịch gốc và mốc cổng ghi nhận; tăng attempts trước khi gọi', async () => {
       await service.cancelOrderWithRefund(BUYER, 'o1');
 
       expect(prisma.paymentRefund.updateMany).toHaveBeenCalledWith({
@@ -295,6 +299,7 @@ describe('RefundService', () => {
         refundRef: 'r1',
         txnRef: 'TXN-1',
         gatewayTransactionId: 'GW-TXN-1',
+        gatewayPaidAt: GATEWAY_PAID_AT,
         amountVnd: 410_000,
         paymentAmountVnd: 410_000,
         reason: 'Order refund',
@@ -1148,6 +1153,7 @@ describe('RefundService', () => {
           method: 'VNPAY',
           txnRef: 'TXN-1',
           transactionId: null,
+          gatewayPaidAt: null,
           amount: D(410_000),
         },
       });
@@ -1156,11 +1162,18 @@ describe('RefundService', () => {
 
       const params = (
         gateway.refund.mock.calls as [
-          { refundRef: string; gatewayTransactionId: string | null },
+          {
+            refundRef: string;
+            gatewayTransactionId: string | null;
+            gatewayPaidAt: Date | null;
+          },
         ][]
       )[0][0];
       expect(params.refundRef).toBe('3f2b8c1e9a4d4c7e8b1f0a2d5e6f7c89');
       expect(params.gatewayTransactionId).toBeNull();
+      // Thanh toán cũ chưa có mốc cổng ghi nhận ⇒ chuyển nguyên null cho cổng (VNPay sẽ từ chối xác định, Admin
+      // hoàn thủ công) — RefundService không tự đoán mốc.
+      expect(params.gatewayPaidAt).toBeNull();
     });
   });
 

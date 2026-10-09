@@ -33,6 +33,10 @@ export interface VerifiedCallback {
   // Số tiền cổng báo, đã đổi về VND; null nếu thiếu/không hợp lệ. Người gọi phải so với Payment.amount.
   amountVnd: number | null;
   gatewayTransactionId: string | null;
+  // Thời điểm CỔNG ghi nhận giao dịch (VNPay: vnp_PayDate) — khác Payment.paidAt là giờ server lúc nhận callback.
+  // Cổng cần lại mốc này khi hoàn tiền (VNPay: vnp_TransactionDate). Cổng không báo (hoặc không đọc được) thì
+  // bỏ trống/null; tuỳ chọn để cổng không có khái niệm này (mock) không phải khai.
+  gatewayPaidAt?: Date | null;
   outcome: PaymentOutcome;
 }
 
@@ -59,6 +63,10 @@ export interface RefundParams {
   // trả về (Payment.transactionId, vd vnp_TransactionNo; null nếu cổng chưa từng báo).
   txnRef: string;
   gatewayTransactionId: string | null;
+  // Mốc cổng ghi nhận khoản thanh toán gốc (Payment.gatewayPaidAt; VNPay bắt buộc làm vnp_TransactionDate).
+  // null với thanh toán thành công TRƯỚC khi cột này được ghi — cổng cần mốc này thì trả FAILED xác định và
+  // Admin hoàn thủ công, không đoán mốc.
+  gatewayPaidAt: Date | null;
   // Số tiền hoàn và tổng số tiền của khoản thanh toán gốc (VND nguyên). Cổng phân biệt hoàn toàn bộ với
   // hoàn một phần bằng cặp số này; hoàn quá số đã thanh toán bị từ chối.
   amountVnd: number;

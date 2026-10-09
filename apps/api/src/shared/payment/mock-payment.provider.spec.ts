@@ -43,6 +43,7 @@ describe('MockPaymentProvider', () => {
     refundRef: 'refund-ref-0001',
     txnRef: params.txnRef,
     gatewayTransactionId: 'MOCKTXN000001',
+    gatewayPaidAt: null,
     amountVnd: 150000,
     paymentAmountVnd: 150000,
     reason: 'Order cancelled by buyer',

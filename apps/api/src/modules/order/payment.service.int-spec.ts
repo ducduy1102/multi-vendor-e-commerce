@@ -167,6 +167,57 @@ describe('PaymentService (DB thật)', () => {
       });
       expect(payment.status).toBe('SUCCESS');
       expect(payment.transactionId).toBe('GW-TEST');
+      // Cổng không báo mốc ghi nhận ⇒ null (cột nullable), khác paidAt là giờ server.
+      expect(payment.gatewayPaidAt).toBeNull();
+      expect(payment.paidAt).not.toBeNull();
+    });
+
+    it('ghi mốc cổng ghi nhận (vnp_PayDate) vào payments.gateway_paid_at — nền tảng để VNPay hoàn tiền tự động (Week9.md 2.12)', async () => {
+      const { txnRef, amount } = await setupGroup([
+        { stock: 10, price: 100_000, quantity: 1 },
+      ]);
+      const gatewayPaidAt = new Date('2026-09-27T03:30:25.000Z');
+
+      await service.confirmPayment(
+        { ...successCallback(txnRef, amount), gatewayPaidAt },
+        'RETURN',
+      );
+
+      const payment = await prisma.payment.findUniqueOrThrow({
+        where: { txnRef },
+      });
+      expect(payment.gatewayPaidAt?.toISOString()).toBe(
+        gatewayPaidAt.toISOString(),
+      );
+      // Hai mốc khác nhau: paidAt = lúc server nhận callback, gatewayPaidAt = lúc cổng ghi nhận.
+      expect(payment.paidAt?.toISOString()).not.toBe(
+        gatewayPaidAt.toISOString(),
+      );
+    });
+
+    it('xác nhận lần hai (IPN sau return) không ghi đè mốc đã lưu', async () => {
+      const { txnRef, amount } = await setupGroup([
+        { stock: 10, price: 100_000, quantity: 1 },
+      ]);
+      const first = new Date('2026-09-27T03:30:25.000Z');
+
+      await service.confirmPayment(
+        { ...successCallback(txnRef, amount), gatewayPaidAt: first },
+        'RETURN',
+      );
+      const second = await service.confirmPayment(
+        {
+          ...successCallback(txnRef, amount),
+          gatewayPaidAt: new Date('2026-09-27T09:00:00.000Z'),
+        },
+        'IPN',
+      );
+
+      expect(second.outcome).toBe('ALREADY_CONFIRMED');
+      const payment = await prisma.payment.findUniqueOrThrow({
+        where: { txnRef },
+      });
+      expect(payment.gatewayPaidAt?.toISOString()).toBe(first.toISOString());
     });
 
     it('2 lệnh xác nhận ĐỒNG THỜI cùng txnRef (IPN + return) — chỉ chốt kho ĐÚNG 1 lần', async () => {

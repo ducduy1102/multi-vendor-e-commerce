@@ -226,12 +226,38 @@ describe('PaymentService', () => {
           status: 'SUCCESS',
           transactionId: 'GW1',
           paidAt: expect.any(Date) as Date,
+          // Cổng không báo mốc ghi nhận ⇒ null (hoàn tiền sau này đi đường thủ công).
+          gatewayPaidAt: null,
         },
       });
       expect(inventoryService.commit).toHaveBeenCalledWith(tx, [
         { productVariantId: 'v1', quantity: 2 },
         { productVariantId: 'v2', quantity: 1 },
       ]);
+    });
+
+    it('lưu mốc cổng ghi nhận (vnp_PayDate) vào gatewayPaidAt — VNPay đòi lại khi hoàn tiền, khác paidAt là giờ server', async () => {
+      tx.$queryRaw
+        .mockResolvedValueOnce([{ status: 'PENDING' }])
+        .mockResolvedValueOnce([{ id: 'o1', status: 'AWAITING_PAYMENT' }]);
+      orderStatusService.transition.mockResolvedValue(['o1']);
+      tx.orderItem.findMany.mockResolvedValue([
+        { productVariantId: 'v1', quantity: 1 },
+      ]);
+      const gatewayPaidAt = new Date('2026-09-27T03:30:25Z');
+
+      await service.confirmPayment(
+        { ...SUCCESS_CALLBACK, gatewayPaidAt },
+        'RETURN',
+      );
+
+      expect(tx.payment.update).toHaveBeenCalledWith({
+        where: { id: 'p1' },
+        data: expect.objectContaining({
+          status: 'SUCCESS',
+          gatewayPaidAt,
+        }) as object,
+      });
     });
 
     describe('email "thanh toán thành công" (Week8.md 2.8)', () => {

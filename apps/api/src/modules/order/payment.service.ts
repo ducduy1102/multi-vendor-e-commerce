@@ -249,6 +249,8 @@ export class PaymentService {
           status: 'SUCCESS',
           transactionId: callback.gatewayTransactionId,
           paidAt: new Date(),
+          // Mốc do CỔNG báo (VNPay: vnp_PayDate); cổng không báo thì null ⇒ hoàn tiền đi đường thủ công.
+          gatewayPaidAt: callback.gatewayPaidAt ?? null,
         },
       });
 
