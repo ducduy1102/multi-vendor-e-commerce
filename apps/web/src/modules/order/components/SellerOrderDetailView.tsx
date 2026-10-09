@@ -29,6 +29,9 @@ interface SellerOrderDetailViewProps {
   order: SellerOrderDetail;
   // Nút hành động (SellerOrderActions) do Container truyền vào — view không biết mutation nào.
   actions?: ReactNode;
+  // Thẻ yêu cầu hủy/trả hàng của người mua (SellerRefundRequestCard) do Container dựng khi đơn có yêu cầu —
+  // đặt NGAY TRÊN danh sách dòng hàng vì là thứ shop cần xem đầu tiên khi có yêu cầu đang chờ mình.
+  refundRequestSection?: ReactNode;
 }
 
 // Chi tiết 1 đơn của shop — component THUẦN từ `SellerOrderDetail`. Seller cần đủ thông tin để đóng
@@ -36,7 +39,11 @@ interface SellerOrderDetailViewProps {
 // toán (đơn COD còn phải thu tiền khi giao), lời nhắn của người mua cho shop này (nếu có), vận chuyển
 // và lịch sử. KHÔNG có định danh tài khoản người mua (BE không trả userId/email).
 // Cùng bố cục với trang chi tiết của người mua, chung các khối ở OrderDetailSections.
-export function SellerOrderDetailView({ order, actions }: SellerOrderDetailViewProps) {
+export function SellerOrderDetailView({
+  order,
+  actions,
+  refundRequestSection,
+}: SellerOrderDetailViewProps) {
   const t = useTranslations('order');
   const formatDate = useFormatOrderDate();
 
@@ -59,6 +66,8 @@ export function SellerOrderDetailView({ order, actions }: SellerOrderDetailViewP
 
       <div className={ORDER_DETAIL_GRID_CLASS}>
         <div className={ORDER_DETAIL_COLUMN_CLASS}>
+          {refundRequestSection}
+
           <OrderItemsSection items={order.items} />
 
           <DetailSection title={t('timelineTitle')}>

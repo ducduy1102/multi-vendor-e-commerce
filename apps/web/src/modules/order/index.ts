@@ -1,5 +1,5 @@
 // Barrel export cho module order — export những gì app/ cần (trang /orders,
-// /orders/[id], /seller/orders). Không export sâu file nội bộ, và module này
+// /orders/[id], /seller/orders, /seller/refund-requests). Không export sâu file nội bộ, và module này
 // không được import modules/checkout hay modules/cart (shared/lib/
 // module-boundaries.test.ts kiểm điều này).
 export { OrderDetailContainer } from './components/OrderDetailContainer';
@@ -8,7 +8,10 @@ export { OrdersContainer } from './components/OrdersContainer';
 export { SellerOrderDetailContainer } from './components/SellerOrderDetailContainer';
 export { SellerOrderListSkeleton } from './components/SellerOrderListSkeleton';
 export { SellerOrdersContainer } from './components/SellerOrdersContainer';
+export { SellerRefundRequestsContainer } from './components/SellerRefundRequestsContainer';
+export { SellerRefundRequestsSkeleton } from './components/SellerRefundRequestsSkeleton';
 export { parseOrdersPageQuery, parseSellerOrdersPageQuery } from './orders-page-query';
+export { parseSellerRefundRequestsPageQuery } from './refund-requests-href';
 export {
   orderListQueryKey,
   orderQueryKey,

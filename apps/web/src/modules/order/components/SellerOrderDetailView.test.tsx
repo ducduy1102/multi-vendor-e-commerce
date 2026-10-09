@@ -267,6 +267,27 @@ describe('SellerOrderDetailView', () => {
     expect(container.textContent).not.toContain('buyer@example.com');
   });
 
+  it('khe refundRequestSection: hiện NGAY TRÊN danh sách dòng hàng (thứ shop cần xem đầu tiên khi có yêu cầu); không truyền thì không có', () => {
+    const { rerender } = render(
+      withIntl(
+        <SellerOrderDetailView
+          order={order()}
+          refundRequestSection={<section aria-label="Thẻ yêu cầu">yêu cầu của người mua</section>}
+        />,
+      ),
+    );
+
+    const section = screen.getByRole('region', { name: 'Thẻ yêu cầu' });
+    const itemsHeading = screen.getByRole('heading', { name: /Sản phẩm/ });
+    // Thẻ yêu cầu đứng trước khối dòng hàng trong thứ tự DOM.
+    expect(
+      section.compareDocumentPosition(itemsHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    rerender(withIntl(<SellerOrderDetailView order={order()} />));
+    expect(screen.queryByRole('region', { name: 'Thẻ yêu cầu' })).not.toBeInTheDocument();
+  });
+
   it('có actions -> hiện ở đầu trang; không có -> ẩn cả dải hành động (empty:hidden)', () => {
     const { container, rerender } = render(
       withIntl(

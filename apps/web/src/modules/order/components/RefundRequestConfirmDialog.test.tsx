@@ -56,9 +56,41 @@ describe('RefundRequestConfirmDialog', () => {
     expect(screen.getByRole('button', { name: 'Quay lại' })).toBeInTheDocument();
   });
 
+  it('chấp thuận yêu cầu HỦY: nói rõ đơn bị hủy, hàng về kho, tiền (nếu có) được hoàn; nút "Chấp thuận" và "Quay lại"', () => {
+    setup({ variant: 'approveCancel' });
+
+    expect(screen.getByText('Chấp thuận yêu cầu hủy đơn?')).toBeInTheDocument();
+    expect(screen.getByText(/trả lại kho/)).toBeInTheDocument();
+    expect(screen.getByText(/hoàn về phương thức ban đầu/)).toBeInTheDocument();
+    expect(screen.getByText(/Không thể khôi phục/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Chấp thuận' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quay lại' })).toBeInTheDocument();
+  });
+
+  it('chấp thuận yêu cầu TRẢ HÀNG: NHẮC hàng trả về KHÔNG tự cộng vào kho (shop tự cập nhật tồn kho)', () => {
+    setup({ variant: 'approveReturn' });
+
+    expect(screen.getByText('Chấp thuận yêu cầu trả hàng/hoàn tiền?')).toBeInTheDocument();
+    expect(screen.getByText(/KHÔNG tự động được cộng lại vào kho/)).toBeInTheDocument();
+    expect(screen.getByText(/tự cập nhật tồn kho/)).toBeInTheDocument();
+    expect(screen.getByText(/đơn COD/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Chấp thuận' })).toBeInTheDocument();
+  });
+
+  it('hai biến thể chấp thuận khác nhau ở hệ quả kho: hủy KHÔNG có câu nhắc kho thủ công, trả hàng KHÔNG hứa "trả lại kho"', () => {
+    const { unmount } = setup({ variant: 'approveCancel' });
+    expect(screen.queryByText(/KHÔNG tự động/)).not.toBeInTheDocument();
+    unmount();
+
+    setup({ variant: 'approveReturn' });
+    expect(screen.queryByText(/được trả lại kho/)).not.toBeInTheDocument();
+  });
+
   it.each([
     ['withdraw', 'Rút yêu cầu'],
     ['escalate', 'Gửi khiếu nại'],
+    ['approveCancel', 'Chấp thuận'],
+    ['approveReturn', 'Chấp thuận'],
   ] as const)('%s: bấm nút xác nhận gọi onConfirm đúng một lần', async (variant, name) => {
     const user = userEvent.setup();
     const { onConfirm } = setup({ variant });

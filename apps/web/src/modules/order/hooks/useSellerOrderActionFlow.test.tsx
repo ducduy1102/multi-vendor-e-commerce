@@ -14,7 +14,13 @@ vi.mock('../services/order.service', () => ({
   packOrder: vi.fn(),
   shipOrder: vi.fn(),
   rejectOrder: vi.fn(),
+  cancelSellerOrder: vi.fn(),
+  approveRefundRequest: vi.fn(),
+  rejectRefundRequest: vi.fn(),
 }));
+
+const { toastSuccess } = vi.hoisted(() => ({ toastSuccess: vi.fn() }));
+vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn() } }));
 
 const ORDER: SellerOrderActionTarget = { id: 'order-1' };
 const SHOP = 'shop-1';
@@ -34,6 +40,10 @@ describe('useSellerOrderActionFlow', () => {
     vi.mocked(orderService.packOrder).mockReset();
     vi.mocked(orderService.shipOrder).mockReset();
     vi.mocked(orderService.rejectOrder).mockReset();
+    vi.mocked(orderService.cancelSellerOrder).mockReset();
+    vi.mocked(orderService.approveRefundRequest).mockReset();
+    vi.mocked(orderService.rejectRefundRequest).mockReset();
+    toastSuccess.mockReset();
   });
 
   it('ban đầu: không hộp thoại nào mở, không lỗi, không hành động nào đang chạy', () => {
@@ -223,6 +233,166 @@ describe('useSellerOrderActionFlow', () => {
       act(() => result.current.dialogs.onReject('x'));
 
       expect(orderService.rejectOrder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('hủy đơn đã xác nhận/đóng gói', () => {
+    it('mở hộp thoại hủy cho đúng đơn', () => {
+      const { result } = setup();
+
+      act(() => result.current.openCancelDialog(ORDER));
+
+      expect(result.current.dialogs.isOpen).toBe(true);
+      expect(result.current.dialogs.dialog).toEqual({ kind: 'cancel', order: ORDER });
+    });
+
+    it('xác nhận kèm lý do -> gọi service đúng shop + đơn + lý do, báo thành công bằng toast, đóng hộp thoại', async () => {
+      vi.mocked(orderService.cancelSellerOrder).mockResolvedValue({} as never);
+      const { result } = setup();
+      act(() => result.current.openCancelDialog(ORDER));
+
+      act(() => result.current.dialogs.onCancel('Hết hàng'));
+
+      await waitFor(() => expect(result.current.dialogs.isOpen).toBe(false));
+      expect(orderService.cancelSellerOrder).toHaveBeenCalledWith(SHOP, 'order-1', {
+        reason: 'Hết hàng',
+      });
+      expect(toastSuccess).toHaveBeenCalledWith('Đã hủy đơn hàng');
+      expect(result.current.actionError).toBeNull();
+    });
+
+    it('lỗi -> đóng hộp thoại, hiện lỗi đã dịch theo mã và KHÔNG báo thành công', async () => {
+      vi.mocked(orderService.cancelSellerOrder).mockRejectedValue(
+        apiError(409, 'ORDER_ALREADY_CHANGED'),
+      );
+      const { result } = setup();
+      act(() => result.current.openCancelDialog(ORDER));
+
+      act(() => result.current.dialogs.onCancel('x'));
+
+      await waitFor(() =>
+        expect(result.current.actionError).toBe(
+          'Đơn hàng vừa được cập nhật, vui lòng tải lại trang',
+        ),
+      );
+      expect(result.current.dialogs.isOpen).toBe(false);
+      expect(toastSuccess).not.toHaveBeenCalled();
+    });
+
+    it('chưa mở hộp thoại nào, hoặc đang mở hộp thoại KHÁC loại -> onCancel không gọi API', () => {
+      const { result } = setup();
+
+      act(() => result.current.dialogs.onCancel('x'));
+      expect(orderService.cancelSellerOrder).not.toHaveBeenCalled();
+
+      act(() => result.current.openApproveRefundDialog({ id: 'request-1', kind: 'CANCEL' }));
+      act(() => result.current.dialogs.onCancel('x'));
+      expect(orderService.cancelSellerOrder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('duyệt / từ chối yêu cầu hủy-trả hàng của người mua', () => {
+    const REQUEST = { id: 'request-1', kind: 'RETURN' } as const;
+
+    it('mở hộp thoại duyệt/từ chối giữ đúng yêu cầu (id + loại) để hộp thoại chọn câu theo loại', () => {
+      const { result } = setup();
+
+      act(() => result.current.openApproveRefundDialog(REQUEST));
+      expect(result.current.dialogs.dialog).toEqual({ kind: 'approveRefund', request: REQUEST });
+
+      act(() => result.current.openRejectRefundDialog(REQUEST));
+      expect(result.current.dialogs.dialog).toEqual({ kind: 'rejectRefund', request: REQUEST });
+    });
+
+    it('duyệt -> gọi service theo shop + id yêu cầu (không ghi chú), toast thành công, đóng hộp thoại', async () => {
+      vi.mocked(orderService.approveRefundRequest).mockResolvedValue({} as never);
+      const { result } = setup();
+      act(() => result.current.openApproveRefundDialog(REQUEST));
+
+      act(() => result.current.dialogs.onApproveRefund());
+
+      await waitFor(() => expect(result.current.dialogs.isOpen).toBe(false));
+      expect(orderService.approveRefundRequest).toHaveBeenCalledWith(SHOP, 'request-1', {
+        note: undefined,
+      });
+      expect(toastSuccess).toHaveBeenCalledWith('Đã chấp thuận yêu cầu');
+      expect(result.current.actionError).toBeNull();
+    });
+
+    it('từ chối kèm ghi chú -> gọi service đúng yêu cầu + ghi chú, toast thành công, đóng hộp thoại', async () => {
+      vi.mocked(orderService.rejectRefundRequest).mockResolvedValue({} as never);
+      const { result } = setup();
+      act(() => result.current.openRejectRefundDialog(REQUEST));
+
+      act(() => result.current.dialogs.onRejectRefund('Hàng đã giao đúng mẫu'));
+
+      await waitFor(() => expect(result.current.dialogs.isOpen).toBe(false));
+      expect(orderService.rejectRefundRequest).toHaveBeenCalledWith(SHOP, 'request-1', {
+        note: 'Hàng đã giao đúng mẫu',
+      });
+      expect(toastSuccess).toHaveBeenCalledWith('Đã từ chối yêu cầu');
+    });
+
+    it('409 người mua vừa rút / yêu cầu vừa đổi -> đóng hộp thoại, lỗi đã dịch, KHÔNG toast thành công', async () => {
+      vi.mocked(orderService.approveRefundRequest).mockRejectedValue(
+        apiError(409, 'REFUND_REQUEST_INVALID_TRANSITION'),
+      );
+      const { result } = setup();
+      act(() => result.current.openApproveRefundDialog(REQUEST));
+
+      act(() => result.current.dialogs.onApproveRefund());
+
+      await waitFor(() =>
+        expect(result.current.actionError).toBe(
+          'Yêu cầu vừa được cập nhật, vui lòng tải lại trang',
+        ),
+      );
+      expect(result.current.dialogs.isOpen).toBe(false);
+      expect(toastSuccess).not.toHaveBeenCalled();
+    });
+
+    it('hộp thoại của ĐƠN đang mở (không phải của yêu cầu) -> onApproveRefund/onRejectRefund không gọi API', () => {
+      const { result } = setup();
+      act(() => result.current.openCancelDialog(ORDER));
+
+      act(() => result.current.dialogs.onApproveRefund());
+      act(() => result.current.dialogs.onRejectRefund('x'));
+
+      expect(orderService.approveRefundRequest).not.toHaveBeenCalled();
+      expect(orderService.rejectRefundRequest).not.toHaveBeenCalled();
+    });
+
+    it('hộp thoại của YÊU CẦU đang mở -> onShip/onReject (của đơn) không gọi API', () => {
+      const { result } = setup();
+      act(() => result.current.openApproveRefundDialog(REQUEST));
+
+      act(() => result.current.dialogs.onShip({ carrier: 'x', trackingCode: 'y' }));
+      act(() => result.current.dialogs.onReject('x'));
+
+      expect(orderService.shipOrder).not.toHaveBeenCalled();
+      expect(orderService.rejectOrder).not.toHaveBeenCalled();
+    });
+
+    it('khoá chéo: duyệt yêu cầu đang chạy thì mọi hành động khác (cả hủy đơn) cũng bị khoá, tránh đụng nhau ở BE', async () => {
+      let resolveApprove: (value: never) => void = () => undefined;
+      vi.mocked(orderService.approveRefundRequest).mockReturnValue(
+        new Promise((resolve) => {
+          resolveApprove = resolve as (value: never) => void;
+        }),
+      );
+      const { result } = setup();
+      act(() => result.current.openApproveRefundDialog(REQUEST));
+      act(() => result.current.dialogs.onApproveRefund());
+      await waitFor(() => expect(result.current.isActionPending).toBe(true));
+      expect(result.current.dialogs.isApproveRefundPending).toBe(true);
+      expect(result.current.dialogs.isCancelPending).toBe(false);
+
+      act(() => result.current.dialogs.onOpenChange(false));
+      expect(result.current.dialogs.isOpen).toBe(true);
+
+      await act(async () => resolveApprove({} as never));
+      await waitFor(() => expect(result.current.dialogs.isOpen).toBe(false));
+      expect(result.current.isActionPending).toBe(false);
     });
   });
 

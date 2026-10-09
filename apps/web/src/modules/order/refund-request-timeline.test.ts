@@ -85,6 +85,93 @@ describe('describeRefundRequestEntry — ghi chú', () => {
   });
 });
 
+describe('describeRefundRequestEntry — góc nhìn của shop (viewer "seller")', () => {
+  it.each([
+    [entry('PENDING_SELLER', 'BUYER'), 'refundSellerTimelineCreated'],
+    [entry('APPROVED', 'SELLER'), 'refundSellerTimelineApprovedBySeller'],
+    [entry('APPROVED', 'SYSTEM'), 'refundSellerTimelineApprovedBySystem'],
+    [entry('REJECTED_BY_SELLER', 'SELLER'), 'refundSellerTimelineRejectedBySeller'],
+    [entry('ESCALATED', 'BUYER'), 'refundSellerTimelineEscalatedByBuyer'],
+    [entry('ESCALATED', 'SYSTEM'), 'refundSellerTimelineEscalatedBySystem'],
+    [entry('WITHDRAWN', 'BUYER'), 'refundSellerTimelineWithdrawn'],
+  ])(
+    '%j -> %s (chủ ngữ là người mua hoặc "bạn", không phải "Bạn đã gửi" của người mua)',
+    (item, labelKey) => {
+      expect(describeRefundRequestEntry(item, 'seller').labelKey).toBe(labelKey);
+    },
+  );
+
+  it('câu của sàn đúng với cả hai phía nên dùng chung key, không viết hai bản', () => {
+    expect(describeRefundRequestEntry(entry('APPROVED', 'ADMIN'), 'seller').labelKey).toBe(
+      describeRefundRequestEntry(entry('APPROVED', 'ADMIN'), 'buyer').labelKey,
+    );
+    expect(describeRefundRequestEntry(entry('REJECTED', 'ADMIN'), 'seller').labelKey).toBe(
+      describeRefundRequestEntry(entry('REJECTED', 'ADMIN'), 'buyer').labelKey,
+    );
+  });
+
+  it('mặc định (không truyền viewer) vẫn là góc nhìn người mua — không đổi hành vi cũ', () => {
+    const item = entry('PENDING_SELLER', 'BUYER');
+
+    expect(describeRefundRequestEntry(item)).toEqual(describeRefundRequestEntry(item, 'buyer'));
+    expect(describeRefundRequestEntry(item).labelKey).toBe('refundTimelineCreated');
+  });
+
+  it('ghi chú của chính shop đọc là "Lý do của bạn", của sàn vẫn là "Lý do của sàn"', () => {
+    expect(
+      describeRefundRequestEntry(entry('REJECTED_BY_SELLER', 'SELLER', 'Hàng đã gửi'), 'seller'),
+    ).toMatchObject({ showNote: true, noteKey: 'refundNoteSeller' });
+    expect(
+      describeRefundRequestEntry(entry('REJECTED', 'ADMIN', 'Thiếu bằng chứng'), 'seller'),
+    ).toMatchObject({ showNote: true, noteKey: 'refundNoteAdmin' });
+  });
+
+  it('quy tắc hiện ghi chú không đổi theo góc nhìn: hệ thống và người mua không bao giờ hiện', () => {
+    expect(
+      describeRefundRequestEntry(entry('APPROVED', 'SYSTEM', 'internal'), 'seller').showNote,
+    ).toBe(false);
+    expect(
+      describeRefundRequestEntry(entry('PENDING_SELLER', 'BUYER', 'internal'), 'seller').showNote,
+    ).toBe(false);
+  });
+
+  it('mọi nhãn/câu ghi chú của góc nhìn shop đều có bản dịch ở vi và en (ghép trạng thái × người làm bất kỳ)', () => {
+    const actors = ['BUYER', 'SELLER', 'ADMIN', 'SYSTEM'] as const;
+    for (const status of refundRequestStatusSchema.options) {
+      for (const actor of actors) {
+        const { labelKey, noteKey } = describeRefundRequestEntry(
+          entry(status, actor, 'x'),
+          'seller',
+        );
+        for (const messages of [vi.order, en.order] as Record<string, string>[]) {
+          expect(messages[labelKey], `${status}/${actor} → ${labelKey}`).toBeTruthy();
+          expect(messages[noteKey], `${status}/${actor} → ${noteKey}`).toBeTruthy();
+        }
+      }
+    }
+  });
+
+  it('câu của góc nhìn shop không trùng câu của người mua (tránh dùng nhầm "Bạn đã gửi yêu cầu" cho shop)', () => {
+    const items = [
+      entry('PENDING_SELLER', 'BUYER'),
+      entry('APPROVED', 'SELLER'),
+      entry('APPROVED', 'SYSTEM'),
+      entry('REJECTED_BY_SELLER', 'SELLER'),
+      entry('ESCALATED', 'BUYER'),
+      entry('ESCALATED', 'SYSTEM'),
+      entry('WITHDRAWN', 'BUYER'),
+    ];
+    for (const item of items) {
+      const buyerKey = describeRefundRequestEntry(item, 'buyer').labelKey;
+      const sellerKey = describeRefundRequestEntry(item, 'seller').labelKey;
+      expect(sellerKey, `${item.toStatus}/${item.actorType}`).not.toBe(buyerKey);
+      expect((vi.order as Record<string, string>)[sellerKey]).not.toBe(
+        (vi.order as Record<string, string>)[buyerKey],
+      );
+    }
+  });
+});
+
 describe('sortRefundHistoryNewestFirst', () => {
   it('đảo cũ → mới thành mới → cũ và không sửa mảng gốc', () => {
     const history = [

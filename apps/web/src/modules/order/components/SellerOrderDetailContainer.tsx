@@ -14,6 +14,7 @@ import { OrderDetailSkeleton } from './OrderDetailSkeleton';
 import { SellerOrderActionDialogs } from './SellerOrderActionDialogs';
 import { SellerOrderActions } from './SellerOrderActions';
 import { SellerOrderDetailView } from './SellerOrderDetailView';
+import { SellerRefundRequestCard } from './SellerRefundRequestCard';
 
 interface SellerOrderDetailContainerProps {
   // shopId do page.tsx (composition root) truyền xuống sau khi resolve "shop của tôi".
@@ -78,6 +79,8 @@ function SellerOrderDetailLoader({ shopId, orderId }: { shopId: string; orderId:
     );
   }
 
+  const refundRequest = order.refundRequest;
+
   return (
     <div className="flex flex-col gap-4">
       {flow.actionError ? <Alert variant="destructive">{flow.actionError}</Alert> : null}
@@ -91,7 +94,18 @@ function SellerOrderDetailLoader({ shopId, orderId }: { shopId: string; orderId:
             onPack={() => void flow.pack(order)}
             onShip={() => flow.openShipDialog(order)}
             onReject={() => flow.openRejectDialog(order)}
+            onCancel={() => flow.openCancelDialog(order)}
           />
+        }
+        refundRequestSection={
+          refundRequest ? (
+            <SellerRefundRequestCard
+              request={refundRequest}
+              isDisabled={flow.isActionPending}
+              onApprove={() => flow.openApproveRefundDialog(refundRequest)}
+              onReject={() => flow.openRejectRefundDialog(refundRequest)}
+            />
+          ) : null
         }
       />
       <SellerOrderActionDialogs {...flow.dialogs} />

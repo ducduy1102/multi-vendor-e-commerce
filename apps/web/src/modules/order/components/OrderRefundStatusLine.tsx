@@ -5,11 +5,13 @@ import { useTranslations } from 'next-intl';
 import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
 
 import { REFUND_REQUEST_TITLE_KEYS } from '../refund-request-display';
-import type { OrderListItem } from '../types';
+import type { SellerRefundRequestSummary } from '../types';
 import { RefundRequestStatusBadge } from './RefundRequestStatusBadge';
 
 interface OrderRefundStatusLineProps {
-  request: OrderListItem['refundRequest'];
+  // Chỉ cần loại + trạng thái: dòng này dùng chung danh sách của người mua (BuyerRefundRequest) và của shop
+  // (SellerRefundRequestSummary), cả hai đều có đủ hai field.
+  request: Pick<SellerRefundRequestSummary, 'kind' | 'status'> | null;
 }
 
 // Dòng gọn về yêu cầu hủy/trả hàng đang có, đặt ở chân card trong DANH SÁCH đơn: khi đã có yêu cầu thì cờ

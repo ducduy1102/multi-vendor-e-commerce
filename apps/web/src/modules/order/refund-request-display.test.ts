@@ -12,6 +12,7 @@ import {
   REFUND_REASON_LABEL_KEYS,
   REFUND_REQUEST_STATUS_DISPLAY,
   REFUND_REQUEST_TITLE_KEYS,
+  REFUND_SELLER_OVERDUE_KEYS,
   describeOrderRefund,
   getRefundReasonLabelKey,
 } from './refund-request-display';
@@ -30,6 +31,13 @@ describe.each(Object.entries(locales))('bản dịch %s', (_locale, messages) =>
   it.each(refundRequestKindSchema.options)('loại yêu cầu %s có tiêu đề', (kind) => {
     expect(messages[REFUND_REQUEST_TITLE_KEYS[kind]]).toBeTruthy();
   });
+
+  it.each(refundRequestKindSchema.options)(
+    'loại yêu cầu %s có câu hệ quả khi shop quá hạn',
+    (kind) => {
+      expect(messages[REFUND_SELLER_OVERDUE_KEYS[kind]]).toBeTruthy();
+    },
+  );
 
   it.each(paymentRefundStatusSchema.options)('khoản hoàn %s có câu mô tả', (status) => {
     const { labelKey } = describeOrderRefund({ status, amount: '1000' });
@@ -56,6 +64,18 @@ describe('getRefundReasonLabelKey', () => {
   it('không nhầm với thuộc tính có sẵn của Object (vd "toString", "constructor")', () => {
     expect(getRefundReasonLabelKey('toString')).toBe('refundReasonOther');
     expect(getRefundReasonLabelKey('constructor')).toBe('refundReasonOther');
+  });
+});
+
+describe('REFUND_SELLER_OVERDUE_KEYS', () => {
+  it('hủy và trả hàng có hệ quả KHÁC nhau (hủy tự duyệt, trả hàng chuyển lên sàn) nên không dùng chung câu', () => {
+    expect(REFUND_SELLER_OVERDUE_KEYS.CANCEL).not.toBe(REFUND_SELLER_OVERDUE_KEYS.RETURN);
+    expect((vi.order as Record<string, string>)[REFUND_SELLER_OVERDUE_KEYS.CANCEL]).toMatch(
+      /tự động bị hủy/,
+    );
+    expect((vi.order as Record<string, string>)[REFUND_SELLER_OVERDUE_KEYS.RETURN]).toMatch(
+      /chuyển lên sàn/,
+    );
   });
 });
 

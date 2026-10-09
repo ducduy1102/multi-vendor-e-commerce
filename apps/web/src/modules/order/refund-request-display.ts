@@ -39,6 +39,14 @@ export const REFUND_REQUEST_TITLE_KEYS: Record<RefundRequestKind, string> = {
   RETURN: 'refundCardTitleReturn',
 };
 
+// Hệ quả khi SHOP để quá hạn phản hồi, theo loại yêu cầu — khớp luật của hệ thống ở REFUND_REQUEST_TRANSITIONS:
+// hủy trước giao thì tự duyệt (hàng chưa rời shop), trả hàng sau giao thì chuyển lên sàn (không tự duyệt tiền).
+// Hiện cạnh hạn để shop biết im lặng thì chuyện gì xảy ra.
+export const REFUND_SELLER_OVERDUE_KEYS: Record<RefundRequestKind, string> = {
+  CANCEL: 'refundSellerOverdueCancel',
+  RETURN: 'refundSellerOverdueReturn',
+};
+
 // Tông màu chỉ dùng token ngữ nghĩa, như ORDER_STATUS_DISPLAY: `warning` = người mua có thể/cần làm gì đó
 // (bị shop từ chối ⇒ khiếu nại được), `neutral` = đang chờ bên khác, `success` = đã chấp thuận, `muted` = kết
 // thúc không có lợi/đã rút. KHÔNG dùng `destructive` — một yêu cầu bị từ chối là kết quả trung tính trong danh sách.

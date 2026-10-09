@@ -19,7 +19,9 @@ import {
   ORDER_CARD_SUMMARY_CLASS,
 } from './order-card.constants';
 import { OrderItemRow } from './OrderItemRow';
+import { OrderRefundStatusLine } from './OrderRefundStatusLine';
 import { OrderStatusBadge } from './OrderStatusBadge';
+import { SellerRefundDeadline } from './SellerRefundDeadline';
 
 interface SellerOrderCardProps {
   order: SellerOrderListItem;
@@ -78,6 +80,20 @@ export function SellerOrderCard({ order, actions }: SellerOrderCardProps) {
         <p className="line-clamp-2 border-t border-border px-3 py-2 text-xs break-words text-muted-foreground sm:px-4">
           {t('sellerCardBuyerNote', { note: order.buyerNote })}
         </p>
+      ) : null}
+
+      {/* Đơn có yêu cầu hủy/trả hàng của người mua: shop phải thấy NGAY ở danh sách (và hạn phản hồi nếu còn chờ
+          mình) — không phải mở từng đơn mới biết. Chi tiết + nút chấp thuận/từ chối ở trang chi tiết đơn. */}
+      {order.refundRequest ? (
+        <div className="grid grid-cols-1 gap-1.5 border-t border-border px-3 py-2 sm:px-4">
+          <OrderRefundStatusLine request={order.refundRequest} />
+          {order.refundRequest.status === 'PENDING_SELLER' ? (
+            <SellerRefundDeadline
+              kind={order.refundRequest.kind}
+              respondBy={order.refundRequest.sellerRespondBy}
+            />
+          ) : null}
+        </div>
       ) : null}
 
       <div className={ORDER_CARD_SUMMARY_CLASS}>

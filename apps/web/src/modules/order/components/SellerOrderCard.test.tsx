@@ -162,6 +162,72 @@ describe('SellerOrderCard', () => {
     });
   });
 
+  describe('yêu cầu hủy/trả hàng của người mua', () => {
+    const request = (
+      overrides: Partial<NonNullable<SellerOrderListItem['refundRequest']>> = {},
+    ): NonNullable<SellerOrderListItem['refundRequest']> => ({
+      id: 'request-1',
+      kind: 'CANCEL',
+      status: 'PENDING_SELLER',
+      sellerRespondBy: '2026-10-03T03:00:00.000Z',
+      ...overrides,
+    });
+
+    it('không có yêu cầu -> không có dòng yêu cầu và không có hạn phản hồi', () => {
+      render(withIntl(<SellerOrderCard order={order({ refundRequest: null })} />));
+
+      expect(screen.queryByText('Yêu cầu hủy đơn')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Hạn phản hồi/)).not.toBeInTheDocument();
+    });
+
+    it('yêu cầu hủy đang chờ shop: loại yêu cầu + huy hiệu + HẠN phản hồi ngay ở danh sách (không phải mở từng đơn mới biết)', () => {
+      render(withIntl(<SellerOrderCard order={order({ refundRequest: request() })} />));
+
+      expect(screen.getByText('Yêu cầu hủy đơn')).toBeInTheDocument();
+      expect(screen.getByText('Chờ shop phản hồi')).toBeInTheDocument();
+      expect(screen.getByText(/Hạn phản hồi: .*2026/)).toBeInTheDocument();
+      expect(screen.getByText(/đơn sẽ tự động bị hủy/)).toBeInTheDocument();
+    });
+
+    it('yêu cầu trả hàng chờ shop: đúng loại và hệ quả quá hạn là chuyển lên sàn', () => {
+      render(
+        withIntl(<SellerOrderCard order={order({ refundRequest: request({ kind: 'RETURN' }) })} />),
+      );
+
+      expect(screen.getByText('Yêu cầu trả hàng/hoàn tiền')).toBeInTheDocument();
+      expect(screen.getByText(/chuyển lên sàn xử lý/)).toBeInTheDocument();
+    });
+
+    it.each([
+      ['ESCALATED', 'Chờ sàn xem xét'],
+      ['APPROVED', 'Đã chấp thuận'],
+      ['REJECTED_BY_SELLER', 'Shop đã từ chối'],
+      ['REJECTED', 'Sàn đã từ chối'],
+    ] as const)(
+      'yêu cầu đã sang bước %s: huy hiệu "%s", KHÔNG còn hạn phản hồi',
+      (status, label) => {
+        render(withIntl(<SellerOrderCard order={order({ refundRequest: request({ status }) })} />));
+
+        expect(screen.getByText(label)).toBeInTheDocument();
+        expect(screen.queryByText(/Hạn phản hồi/)).not.toBeInTheDocument();
+      },
+    );
+
+    it('dòng yêu cầu không làm mất các nút hành động của card', () => {
+      render(
+        withIntl(
+          <SellerOrderCard
+            order={order({ refundRequest: request() })}
+            actions={<button type="button">Hủy đơn</button>}
+          />,
+        ),
+      );
+
+      expect(screen.getByRole('button', { name: 'Hủy đơn' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Xem chi tiết' })).toBeInTheDocument();
+    });
+  });
+
   it('link chi tiết trỏ /seller/orders/<id đầy đủ> (không phải mã rút gọn, không phải /orders của người mua)', () => {
     render(withIntl(<SellerOrderCard order={order()} />));
 
