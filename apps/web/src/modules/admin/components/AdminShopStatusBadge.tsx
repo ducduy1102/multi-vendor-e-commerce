@@ -11,7 +11,7 @@ import type { ShopStatus } from '../types';
 
 // Chỉ semantic color. Chữ của `warning` dùng foreground (không dùng chính màu amber làm màu chữ —
 // amber trên nền sáng không đủ tương phản ở cỡ chữ 12px), `warning` chỉ làm nền/viền nhạt.
-const TONE_STYLE: Record<
+export const TONE_STYLE: Record<
   AdminShopBadgeTone,
   { variant: 'outline' | 'destructive'; className: string }
 > = {
