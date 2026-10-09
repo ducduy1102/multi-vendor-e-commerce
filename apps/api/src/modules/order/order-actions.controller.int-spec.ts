@@ -13,6 +13,7 @@ import type { App } from 'supertest/types';
 import { orderDetailSchema, sellerOrderDetailSchema } from '@ecommerce/types';
 import { AppModule } from '../../app.module';
 import { MAIL_PROVIDER } from '../../shared/mail/mail-provider.interface';
+import { MockPaymentProvider } from '../../shared/payment/mock-payment.provider';
 import { createFakeMail } from '../../shared/testing/fake-mail';
 
 import { AllExceptionsFilter } from '../../shared/filters/all-exceptions.filter';
@@ -782,6 +783,54 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
           actorId: buyerId,
           note: 'Đặt nhầm',
         });
+      });
+
+      // Week9.md 2.13 — cổng hoàn tiền chậm KHÔNG được làm hỏng việc hủy: đơn đã hủy trong DB nên request vẫn 200,
+      // khoản hoàn nằm ở PENDING và RefundJob / Admin chạy tiếp bằng cùng mã tham chiếu.
+      it('cổng hoàn tiền QUÁ HẠN (REFUND_GATEWAY_TIMEOUT_MS) — vẫn 200, đơn CANCELLED, chi tiết báo refund PENDING; sổ có đúng 1 khoản PENDING, Payment còn SUCCESS', async () => {
+        const originalTimeout = process.env.REFUND_GATEWAY_TIMEOUT_MS;
+        process.env.REFUND_GATEWAY_TIMEOUT_MS = '50';
+        const gatewaySpy = jest
+          .spyOn(MockPaymentProvider.prototype, 'refund')
+          .mockImplementationOnce(() => new Promise(() => undefined));
+        try {
+          const { orderId, variantId, groupId } = await seedOne(
+            'PENDING',
+            onlinePaid,
+          );
+
+          const res = await buyer
+            .post(buyerUrl(orderId, 'cancel'))
+            .send({ reason: 'Đặt nhầm' });
+
+          expect(res.status).toBe(200);
+          expect(orderDetailSchema.parse(data(res))).toMatchObject({
+            status: 'CANCELLED',
+            refund: { status: 'PENDING', amount: '220000' },
+          });
+          expect(gatewaySpy).toHaveBeenCalledTimes(1);
+          expect(await stockOf(variantId)).toEqual({
+            stock: STOCK + QTY,
+            reservedStock: 0,
+          });
+          const payment = await prisma.payment.findFirstOrThrow({
+            where: { checkoutGroupId: groupId },
+          });
+          expect(payment.status).toBe('SUCCESS');
+          expect(Number(payment.refundedAmount)).toBe(0);
+          const refunds = await prisma.paymentRefund.findMany({
+            where: { paymentId: payment.id },
+          });
+          expect(refunds).toHaveLength(1);
+          expect(refunds[0]).toMatchObject({ status: 'PENDING', attempts: 1 });
+        } finally {
+          gatewaySpy.mockRestore();
+          if (originalTimeout === undefined) {
+            delete process.env.REFUND_GATEWAY_TIMEOUT_MS;
+          } else {
+            process.env.REFUND_GATEWAY_TIMEOUT_MS = originalTimeout;
+          }
+        }
       });
 
       it('email báo "đang hoàn" kèm số tiền; seller của đơn đọc được đơn đã CANCELLED', async () => {

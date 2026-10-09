@@ -777,6 +777,36 @@ describe('Yêu cầu hủy/trả hàng phía seller (HTTP thật)', () => {
         expect(row.history).toHaveLength(2);
       }
     });
+
+    // Week9.md 2.13 — nhấp đúp nút "Duyệt" (hai request duyệt cùng yêu cầu gần như cùng lúc).
+    it('RACE: seller bấm DUYỆT hai lần ĐỒNG THỜI cùng yêu cầu (8 vòng) — đúng một lần thắng, lần kia 409; đơn hủy một lần, kho cộng một lần, một khoản hoàn, lịch sử đúng một dòng chuyển', async () => {
+      for (let round = 0; round < 8; round++) {
+        const order = await seedOrder({ shopId: shopA, status: 'CONFIRMED' });
+        const requestId = await seedRequest(order.orderId, shopA, {
+          status: 'PENDING_SELLER',
+        });
+
+        const [first, second] = await Promise.all([
+          sellerA.post(requestAction(shopA, requestId, 'approve')),
+          sellerA.post(requestAction(shopA, requestId, 'approve')),
+        ]);
+
+        expect([first.status, second.status].sort()).toEqual([200, 409]);
+        // Mã của bên thua tuỳ thứ tự khoá: đọc yêu cầu còn mở nhưng tới đơn thì đã đổi ⇒ ORDER_ALREADY_CHANGED; tới sau
+        // khi bên kia đã commit ⇒ yêu cầu không còn chờ seller ⇒ REFUND_REQUEST_INVALID_TRANSITION. Cả hai đều là 409.
+        const loser = first.status === 409 ? first : second;
+        expect([
+          'REFUND_REQUEST_INVALID_TRANSITION',
+          'ORDER_ALREADY_CHANGED',
+        ]).toContain(code(loser));
+        const [row] = await requestsOf(order.orderId);
+        expect(row.status).toBe('APPROVED');
+        expect(row.history).toHaveLength(2); // mốc tạo + đúng một lần duyệt
+        expect(await statusOf(order.orderId)).toBe('CANCELLED');
+        expect(await stockOf(order.variantId)).toBe(STOCK + QTY);
+        expect(await refundsOf(order.paymentId)).toHaveLength(1);
+      }
+    });
   });
 
   describe('POST .../refund-requests/:id/reject — từ chối', () => {
