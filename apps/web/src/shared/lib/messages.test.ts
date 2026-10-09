@@ -9,7 +9,7 @@ type Messages = Record<string, Record<string, string>>;
 // Namespace của Tuần 6 (Week6.md 3.9): mọi key phải có ở cả 2 ngôn ngữ, cùng
 // placeholder, không rỗng — thiếu 1 phía next-intl không throw mà hiện chuỗi key
 // thô hoặc rơi về ngôn ngữ khác, rất dễ lọt qua review.
-const NAMESPACES = ['cart', 'voucher', 'checkout', 'order', 'admin', 'review'] as const;
+const NAMESPACES = ['common', 'cart', 'voucher', 'checkout', 'order', 'admin', 'review'] as const;
 
 const viMessages = vi as unknown as Messages;
 const enMessages = en as unknown as Messages;
@@ -70,6 +70,13 @@ describe('số nhiều tiếng Anh', () => {
     expect(tp('resultCount', { count: 1 })).toBe('1 product');
     expect(tp('resultCount', { count: 0 })).toBe('0 products');
     expect(tp('resultCount', { count: 12 })).toBe('12 products');
+  });
+
+  it('common.starRatingOption: 1 star / N stars (nhãn từng sao của StarRatingInput)', () => {
+    const tc = createTranslator({ locale: 'en', messages: en, namespace: 'common' });
+    expect(tc('starRatingOption', { count: 1 })).toBe('1 star');
+    expect(tc('starRatingOption', { count: 2 })).toBe('2 stars');
+    expect(tc('starRatingOption', { count: 5 })).toBe('5 stars');
   });
 
   it('checkout.outOfStockItemAvailable: only 1 item left / only N items left (Week7.md 3.9)', () => {
