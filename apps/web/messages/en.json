@@ -666,6 +666,22 @@
     "paginationLabel": "Reviews pagination",
     "paginationPrev": "Previous",
     "paginationNext": "Next",
-    "paginationStatus": "Page {page} of {totalPages}"
+    "paginationStatus": "Page {page} of {totalPages}",
+    "writeButton": "Write a review",
+    "reviewedLabel": "Reviewed",
+    "editButton": "Edit",
+    "formTitleCreate": "Write a review",
+    "formTitleEdit": "Edit your review",
+    "formDescriptionCreate": "Share your experience with this product.",
+    "formDescriptionEdit": "You can only edit this review once, so check it before saving.",
+    "formRatingLabel": "Your rating",
+    "formCommentLabel": "Comment (optional)",
+    "formCommentPlaceholder": "How were the quality, packaging, delivery...?",
+    "formCommentCounter": "{count}/{max}",
+    "formSubmitCreate": "Submit review",
+    "formSubmitEdit": "Save changes",
+    "formSubmitting": "Sending...",
+    "submitSuccessCreate": "Thanks for reviewing this product!",
+    "submitSuccessEdit": "Your review has been updated"
   }
 }

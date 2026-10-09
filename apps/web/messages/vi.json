@@ -666,6 +666,22 @@
     "paginationLabel": "Phân trang đánh giá",
     "paginationPrev": "Trước",
     "paginationNext": "Sau",
-    "paginationStatus": "Trang {page}/{totalPages}"
+    "paginationStatus": "Trang {page}/{totalPages}",
+    "writeButton": "Viết đánh giá",
+    "reviewedLabel": "Đã đánh giá",
+    "editButton": "Sửa",
+    "formTitleCreate": "Viết đánh giá",
+    "formTitleEdit": "Sửa đánh giá",
+    "formDescriptionCreate": "Chia sẻ trải nghiệm của bạn về sản phẩm này.",
+    "formDescriptionEdit": "Bạn chỉ sửa được đánh giá này một lần, hãy kiểm tra kỹ trước khi lưu.",
+    "formRatingLabel": "Số sao của bạn",
+    "formCommentLabel": "Nhận xét (không bắt buộc)",
+    "formCommentPlaceholder": "Chất lượng, đóng gói, giao hàng... bạn thấy thế nào?",
+    "formCommentCounter": "{count}/{max}",
+    "formSubmitCreate": "Gửi đánh giá",
+    "formSubmitEdit": "Lưu thay đổi",
+    "formSubmitting": "Đang gửi...",
+    "submitSuccessCreate": "Cảm ơn bạn đã đánh giá sản phẩm!",
+    "submitSuccessEdit": "Đã cập nhật đánh giá của bạn"
   }
 }

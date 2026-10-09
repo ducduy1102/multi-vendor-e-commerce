@@ -95,3 +95,24 @@ describe('useCreateReview', () => {
     expect(second).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('useCreateReview — onSettled trả về Promise', () => {
+  it('mutateAsync chỉ kết thúc SAU khi Promise của onSettled xong (cache đã làm mới trước khi nơi dùng đóng form)', async () => {
+    vi.mocked(reviewService.createReview).mockResolvedValue({} as never);
+    const order: string[] = [];
+    const onSettled = vi.fn(async () => {
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      order.push('refreshed');
+    });
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useCreateReview({ onSettled }), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync(INPUT);
+      order.push('after-mutateAsync');
+    });
+
+    expect(order).toEqual(['refreshed', 'after-mutateAsync']);
+  });
+});

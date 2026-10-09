@@ -69,3 +69,23 @@ describe('useUpdateReview', () => {
     expect(onSettled).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('useUpdateReview — onSettled trả về Promise', () => {
+  it('mutateAsync chỉ kết thúc SAU khi Promise của onSettled xong', async () => {
+    vi.mocked(reviewService.updateReview).mockResolvedValue({} as never);
+    const order: string[] = [];
+    const onSettled = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      order.push('refreshed');
+    });
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useUpdateReview({ onSettled }), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ reviewId: 'review-1', rating: 4 });
+      order.push('after-mutateAsync');
+    });
+
+    expect(order).toEqual(['refreshed', 'after-mutateAsync']);
+  });
+});

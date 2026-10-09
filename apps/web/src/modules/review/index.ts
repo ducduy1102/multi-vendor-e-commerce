@@ -4,6 +4,8 @@
 // hiện đánh giá, nên cấm chiều kia để đồ thị không có vòng (shared/lib/module-boundaries.test.ts kiểm điều
 // này).
 export { ProductReviewList } from './components/ProductReviewList';
+export { ReviewForm } from './components/ReviewForm';
+export { ReviewFormSheet, type ReviewFormSheetProps } from './components/ReviewFormSheet';
 export { ReviewListSkeleton } from './components/ReviewListSkeleton';
 export { buildReviewHref, parseReviewPageQuery, type ReviewPageQuery } from './review-page-query';
 export {
