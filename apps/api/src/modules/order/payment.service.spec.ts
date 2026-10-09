@@ -334,6 +334,27 @@ describe('PaymentService', () => {
       expect(tx.$queryRaw).toHaveBeenCalledTimes(1); // không đi tiếp tới khoá đơn
     });
 
+    // Week9.md 2.13 — khoản đã xác nhận RỒI hoàn toàn bộ: IPN gửi lại / mở lại return URL không được kéo Payment
+    // từ REFUNDED về SUCCESS (đã từng xảy ra: trước đây chỉ SUCCESS được coi là "đã xác nhận").
+    it.each(['IPN', 'RETURN'] as const)(
+      'đã REFUNDED (dưới khoá) — callback thành công phát lại qua %s là ALREADY_CONFIRMED, KHÔNG ghi đè trạng thái, không lật đơn, không đụng kho',
+      async (source) => {
+        tx.$queryRaw.mockResolvedValueOnce([{ status: 'REFUNDED' }]);
+
+        const result = await service.confirmPayment(SUCCESS_CALLBACK, source);
+
+        expect(result).toEqual({
+          outcome: 'ALREADY_CONFIRMED',
+          checkoutGroupId: 'g1',
+        });
+        expect(tx.payment.update).not.toHaveBeenCalled();
+        expect(orderStatusService.transition).not.toHaveBeenCalled();
+        expect(inventoryService.commit).not.toHaveBeenCalled();
+        expect(orderEmailService.notifyPlaced).not.toHaveBeenCalled();
+        expect(tx.$queryRaw).toHaveBeenCalledTimes(1); // không đi tiếp tới khoá đơn
+      },
+    );
+
     it('FAILED nhưng đơn vẫn AWAITING_PAYMENT (mâu thuẫn) — vẫn CONFIRMED + chốt kho', async () => {
       tx.$queryRaw
         .mockResolvedValueOnce([{ status: 'FAILED' }])

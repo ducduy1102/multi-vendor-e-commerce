@@ -4,6 +4,7 @@ import {
   type PaymentStatus,
 } from '@prisma/client';
 import { MockPaymentProvider } from '../../shared/payment/mock-payment.provider';
+import type { VerifiedCallback } from '../../shared/payment/payment-gateway.interface';
 import { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
 import { VnpayProvider } from '../../shared/payment/vnpay.provider';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
@@ -996,6 +997,141 @@ describe('RefundService (DB thật)', () => {
       expect((await paymentOf(g.paymentId)).status).toBe('SUCCESS');
       expect(await orderStatusOf(g.orders[0].id)).toBe('PENDING');
       expect(await stockOf(g.orders[0].variantId)).toBe(8);
+    });
+  });
+
+  // Week9.md 2.13 — callback của cổng (IPN / return) tới SAU khi đơn đã hủy và hoàn tiền, hoặc ĐỒNG THỜI với việc
+  // hủy. IPN có thể gửi lại, người dùng có thể mở lại return URL, và lần thanh toán thứ hai của một nhóm có thể
+  // thành công muộn — mọi thứ đó không được kéo Payment đã hoàn về SUCCESS, cũng không được làm kho/tiền lệch.
+  describe('callback thanh toán tới trễ so với hủy + hoàn tiền', () => {
+    const callback = (
+      txnRef: string,
+      amount: number,
+      outcome: VerifiedCallback['outcome'] = 'SUCCESS',
+      transactionId = 'GW-TXN-1',
+    ): VerifiedCallback => ({
+      isSignatureValid: true,
+      txnRef,
+      amountVnd: amount,
+      gatewayTransactionId: transactionId,
+      outcome,
+    });
+    const txnRefOf = async (paymentId: string) =>
+      (
+        await prisma.payment.findUniqueOrThrow({
+          where: { id: paymentId },
+          select: { txnRef: true },
+        })
+      ).txnRef;
+
+    it('phát lại callback THÀNH CÔNG / THẤT BẠI của chính khoản đã hoàn (mở lại return URL, IPN gửi lại) ⇒ ALREADY_CONFIRMED: Payment vẫn REFUNDED, đơn / kho / tiền / nhóm không đổi', async () => {
+      const g = await setupGroup({
+        method: 'VNPAY',
+        orders: [{ status: 'PENDING', quantity: 2, stock: 8 }],
+      });
+      const txnRef = await txnRefOf(g.paymentId);
+      await service.cancelOrderWithRefund(BUYER(g.userId), g.orders[0].id);
+      const settled = await prisma.payment.findUniqueOrThrow({
+        where: { id: g.paymentId },
+      });
+      expect(settled.status).toBe('REFUNDED');
+      const stockAfterCancel = await stockOf(g.orders[0].variantId);
+
+      for (const source of ['RETURN', 'IPN'] as const) {
+        for (const outcome of ['SUCCESS', 'FAILED'] as const) {
+          const result = await paymentService.confirmPayment(
+            callback(txnRef, g.amount, outcome),
+            source,
+          );
+          expect(result).toEqual({
+            outcome: 'ALREADY_CONFIRMED',
+            checkoutGroupId: g.groupId,
+          });
+        }
+      }
+
+      const after = await prisma.payment.findUniqueOrThrow({
+        where: { id: g.paymentId },
+      });
+      expect(after.status).toBe('REFUNDED');
+      expect(Number(after.refundedAmount)).toBe(g.amount);
+      expect(after.paidAt?.getTime()).toBe(settled.paidAt?.getTime());
+      expect(after.transactionId).toBe(settled.transactionId);
+      expect(await orderStatusOf(g.orders[0].id)).toBe('CANCELLED');
+      expect(await stockOf(g.orders[0].variantId)).toBe(stockAfterCancel);
+      expect(await refundsOf(g.paymentId)).toHaveLength(1);
+      // Nhóm vẫn báo đã hủy, KHÔNG biến thành "thanh toán sau khi hết hạn cần hoàn".
+      expect(
+        (await paymentService.getCheckoutGroup(g.userId, g.groupId)).status,
+      ).toBe('CANCELLED');
+    });
+
+    it('RACE (6 vòng): hủy đơn đã trả ‖ callback của lần thanh toán THỨ HAI tới trễ ‖ callback phát lại của lần đầu — không deadlock, đơn hủy + hoàn đúng một lần, lần thứ hai được ghi nhận và Admin hoàn được', async () => {
+      for (let round = 0; round < 6; round++) {
+        const g = await setupGroup({
+          method: 'VNPAY',
+          orders: [{ status: 'PENDING', quantity: 2, stock: 8 }],
+        });
+        const firstRef = await txnRefOf(g.paymentId);
+        const second = await prisma.payment.create({
+          data: {
+            checkoutGroupId: g.groupId,
+            method: 'VNPAY',
+            status: 'PENDING',
+            amount: g.amount,
+            txnRef:
+              `${TAG.toUpperCase()}SECOND${round}${Date.now().toString(36)}`.toUpperCase(),
+            expiresAt: new Date(Date.now() + 15 * 60_000),
+          },
+          select: { id: true, txnRef: true },
+        });
+
+        // Nếu hai transaction chờ vòng nhau, Postgres huỷ một bên (40P01) và Promise.all ném lỗi ngay ở đây.
+        const [cancelled, late, replay] = await Promise.all([
+          service.cancelOrderWithRefund(BUYER(g.userId), g.orders[0].id),
+          paymentService.confirmPayment(
+            callback(second.txnRef, g.amount, 'SUCCESS', 'GW-SECOND'),
+            'IPN',
+          ),
+          paymentService.confirmPayment(callback(firstRef, g.amount), 'IPN'),
+        ]);
+
+        expect(cancelled.refund?.status).toBe('SUCCEEDED');
+        // Lần thanh toán thứ hai: thấy đơn còn sống (trùng) hoặc đã hủy (đến muộn) tuỳ thứ tự — luôn được ghi nhận
+        // nhưng KHÔNG lật đơn, KHÔNG chốt kho.
+        expect([
+          'DUPLICATE_SUCCESS_RECORDED',
+          'LATE_SUCCESS_RECORDED',
+        ]).toContain(late.outcome);
+        expect(replay.outcome).toBe('ALREADY_CONFIRMED');
+
+        expect(await orderStatusOf(g.orders[0].id)).toBe('CANCELLED');
+        // Kho cộng lại ĐÚNG một lần (8 đã chốt + 2 hoàn lại), không bị nhả thêm bởi callback trễ.
+        expect(await stockOf(g.orders[0].variantId)).toBe(10);
+        const first = await prisma.payment.findUniqueOrThrow({
+          where: { id: g.paymentId },
+        });
+        expect(first.status).toBe('REFUNDED');
+        expect(Number(first.refundedAmount)).toBe(g.amount);
+        expect(await refundsOf(g.paymentId)).toHaveLength(1);
+
+        const recorded = await prisma.payment.findUniqueOrThrow({
+          where: { id: second.id },
+        });
+        expect(recorded).toMatchObject({
+          status: 'SUCCESS',
+          transactionId: 'GW-SECOND',
+        });
+        expect(Number(recorded.refundedAmount)).toBe(0);
+        expect(await refundsOf(second.id)).toHaveLength(0);
+
+        // Khoản tiền bị thu thêm này là "thanh toán bất thường": Admin hoàn được, đơn và kho không bị đụng.
+        const adminRefund = await service.refundPayment(ADMIN, second.id);
+        expect(adminRefund.status).toBe('SUCCEEDED');
+        expect((await paymentOf(second.id)).status).toBe('REFUNDED');
+        expect(await orderStatusOf(g.orders[0].id)).toBe('CANCELLED');
+        expect(await stockOf(g.orders[0].variantId)).toBe(10);
+      }
     });
   });
 });

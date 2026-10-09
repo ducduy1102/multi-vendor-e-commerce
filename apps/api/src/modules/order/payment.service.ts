@@ -221,7 +221,10 @@ export class PaymentService {
       const lockedPayment = await tx.$queryRaw<{ status: PaymentStatus }[]>`
         SELECT status FROM payments WHERE id = ${payment.id} FOR UPDATE`;
       const currentStatus = lockedPayment[0].status;
-      if (currentStatus === 'SUCCESS') {
+      // SUCCESS = đã xác nhận trước đó. REFUNDED = đã xác nhận RỒI được hoàn toàn bộ: callback thành công phát lại
+      // (mở lại return URL, IPN gửi lại) không được kéo Payment về SUCCESS — làm lệch sổ cái hoàn tiền và khiến
+      // nhóm bị báo nhầm "thanh toán sau khi hết hạn, cần hoàn" dù tiền đã trả lại người mua.
+      if (currentStatus === 'SUCCESS' || currentStatus === 'REFUNDED') {
         return {
           outcome: 'ALREADY_CONFIRMED' as const,
           checkoutGroupId: payment.checkoutGroupId,
