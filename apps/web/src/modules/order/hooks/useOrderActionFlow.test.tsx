@@ -53,6 +53,15 @@ function setup() {
 
 const apiError = (status: number, code?: string) => new ApiError('x', status, code);
 
+// Mutation của react-query chỉ gọi service sau vài microtask, nên khẳng định "KHÔNG gọi API" ngay sau `act` đồng bộ
+// luôn đúng kể cả khi code có lỗi. Test phủ định phải chờ hết việc treo rồi mới khẳng định — và khẳng định cả không có
+// lỗi giả (`actionError` null): một handler gọi khi chưa có hộp thoại không gọi API nhưng nổ TypeError bên trong và hiện
+// thông báo lỗi chung.
+const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
 describe('useOrderActionFlow', () => {
   beforeEach(() => {
     vi.mocked(orderService.cancelOrder).mockReset();
@@ -430,6 +439,39 @@ describe('useOrderActionFlow', () => {
       await act(async () => resolveCancel({} as never));
       await waitFor(() => expect(result.current.dialogs.isOpen).toBe(false));
       expect(result.current.isActionPending).toBe(false);
+    });
+  });
+
+  describe('handler của hộp thoại khi KHÔNG có hộp thoại tương ứng đang mở', () => {
+    it('chưa mở hộp thoại nào -> mọi handler là no-op: không gọi API, không hiện lỗi giả', async () => {
+      const { result } = setup();
+
+      act(() => result.current.dialogs.onCancel('x'));
+      act(() => result.current.dialogs.onConfirmReceived());
+      act(() => result.current.dialogs.onRequestRefund({ reasonCode: 'CHANGE_OF_MIND' }));
+      act(() => result.current.dialogs.onWithdrawRefund());
+      act(() => result.current.dialogs.onEscalateRefund());
+      await settle();
+
+      expect(orderService.cancelOrder).not.toHaveBeenCalled();
+      expect(orderService.confirmReceived).not.toHaveBeenCalled();
+      expect(orderService.requestRefund).not.toHaveBeenCalled();
+      expect(orderService.withdrawRefundRequest).not.toHaveBeenCalled();
+      expect(orderService.escalateRefundRequest).not.toHaveBeenCalled();
+      expect(result.current.actionError).toBeNull();
+    });
+
+    it('đang mở hộp thoại hủy/đã nhận hàng (không có requestId) -> onWithdrawRefund/onEscalateRefund là no-op', async () => {
+      const { result } = setup();
+      act(() => result.current.openCancelDialog(ORDER));
+
+      act(() => result.current.dialogs.onWithdrawRefund());
+      act(() => result.current.dialogs.onEscalateRefund());
+      await settle();
+
+      expect(orderService.withdrawRefundRequest).not.toHaveBeenCalled();
+      expect(orderService.escalateRefundRequest).not.toHaveBeenCalled();
+      expect(result.current.actionError).toBeNull();
     });
   });
 });

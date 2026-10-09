@@ -25,6 +25,15 @@ vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn() } }));
 const ORDER: SellerOrderActionTarget = { id: 'order-1' };
 const SHOP = 'shop-1';
 
+// Mutation của react-query chỉ gọi service sau vài microtask, nên khẳng định "KHÔNG gọi API" ngay sau `act` đồng bộ
+// luôn đúng kể cả khi code có lỗi (đã gặp: đột biến bỏ kiểm loại hộp thoại vẫn qua test). Test phủ định phải chờ hết
+// việc treo rồi mới khẳng định — và khẳng định cả không có lỗi giả (`actionError` null): một handler gọi nhầm hộp thoại
+// không gọi API nhưng nổ TypeError bên trong và hiện thông báo lỗi chung.
+const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
 function setup() {
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) =>
@@ -279,15 +288,18 @@ describe('useSellerOrderActionFlow', () => {
       expect(toastSuccess).not.toHaveBeenCalled();
     });
 
-    it('chưa mở hộp thoại nào, hoặc đang mở hộp thoại KHÁC loại -> onCancel không gọi API', () => {
+    it('chưa mở hộp thoại nào, hoặc đang mở hộp thoại KHÁC loại -> onCancel không gọi API', async () => {
       const { result } = setup();
 
       act(() => result.current.dialogs.onCancel('x'));
+      await settle();
       expect(orderService.cancelSellerOrder).not.toHaveBeenCalled();
 
       act(() => result.current.openApproveRefundDialog({ id: 'request-1', kind: 'CANCEL' }));
       act(() => result.current.dialogs.onCancel('x'));
+      await settle();
       expect(orderService.cancelSellerOrder).not.toHaveBeenCalled();
+      expect(result.current.actionError).toBeNull();
     });
   });
 
@@ -351,26 +363,30 @@ describe('useSellerOrderActionFlow', () => {
       expect(toastSuccess).not.toHaveBeenCalled();
     });
 
-    it('hộp thoại của ĐƠN đang mở (không phải của yêu cầu) -> onApproveRefund/onRejectRefund không gọi API', () => {
+    it('hộp thoại của ĐƠN đang mở (không phải của yêu cầu) -> onApproveRefund/onRejectRefund không gọi API', async () => {
       const { result } = setup();
       act(() => result.current.openCancelDialog(ORDER));
 
       act(() => result.current.dialogs.onApproveRefund());
       act(() => result.current.dialogs.onRejectRefund('x'));
+      await settle();
 
       expect(orderService.approveRefundRequest).not.toHaveBeenCalled();
       expect(orderService.rejectRefundRequest).not.toHaveBeenCalled();
+      expect(result.current.actionError).toBeNull();
     });
 
-    it('hộp thoại của YÊU CẦU đang mở -> onShip/onReject (của đơn) không gọi API', () => {
+    it('hộp thoại của YÊU CẦU đang mở -> onShip/onReject (của đơn) không gọi API', async () => {
       const { result } = setup();
       act(() => result.current.openApproveRefundDialog(REQUEST));
 
       act(() => result.current.dialogs.onShip({ carrier: 'x', trackingCode: 'y' }));
       act(() => result.current.dialogs.onReject('x'));
+      await settle();
 
       expect(orderService.shipOrder).not.toHaveBeenCalled();
       expect(orderService.rejectOrder).not.toHaveBeenCalled();
+      expect(result.current.actionError).toBeNull();
     });
 
     it('khoá chéo: duyệt yêu cầu đang chạy thì mọi hành động khác (cả hủy đơn) cũng bị khoá, tránh đụng nhau ở BE', async () => {
