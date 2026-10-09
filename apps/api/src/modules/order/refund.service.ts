@@ -92,9 +92,11 @@ const OPEN_REQUEST_STATUSES: readonly RefundRequestStatus[] = [
 
 const REFUND_REASON_MAX_LENGTH = 500;
 
-// Lý do ghi vào PaymentRefund.failureReason khi RefundJob bỏ cuộc (Admin đọc ở màn hoàn tiền lỗi).
+// Lý do ghi vào PaymentRefund.failureReason khi RefundJob bỏ cuộc (Admin đọc ở màn hoàn tiền lỗi). "Cổng chưa bao giờ
+// xác nhận" KHÔNG có nghĩa tiền chưa đi: phản hồi có thể đã mất sau khi cổng nhận yêu cầu (VNPay trả "Request is
+// duplicated" cho mã yêu cầu đã thấy) — nên nhắc kiểm tra trên cổng TRƯỚC khi hoàn tay, tránh hoàn hai lần.
 const EXHAUSTED_ATTEMPTS_REASON =
-  'Automatic retries exhausted: the payment gateway never confirmed this refund';
+  'Automatic retries exhausted: the payment gateway never confirmed this refund; check the gateway before refunding manually, the request may already have been accepted';
 
 const refundOrderSelect = {
   id: true,

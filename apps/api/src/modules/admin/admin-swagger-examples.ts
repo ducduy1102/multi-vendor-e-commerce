@@ -66,7 +66,7 @@ export const ADMIN_REFUND_EXAMPLE = {
   attempts: 3,
   reason: 'Đồng ý trả hàng',
   failureReason:
-    'Automatic retries exhausted: the payment gateway never confirmed this refund',
+    'Automatic retries exhausted: the payment gateway never confirmed this refund; check the gateway before refunding manually, the request may already have been accepted',
   gatewayRef: null,
   initiatedByType: 'ADMIN',
   createdAt: '2026-10-11T09:00:00.000Z',
