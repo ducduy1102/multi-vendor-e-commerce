@@ -1,38 +1,13 @@
-import type {
-  OrderRefundSummary,
-  RefundReasonCode,
-  RefundRequestKind,
-  RefundRequestStatus,
-} from './types';
+import type { OrderRefundSummary, RefundRequestKind, RefundRequestStatus } from './types';
 import type { OrderBadgeTone } from './order-status-display';
 
 // Cách hiển thị yêu cầu hủy/trả hàng của người mua (Week9.md 3.5): key i18n (namespace `order`) tra theo enum
 // lúc chạy nên TypeScript không kiểm được key có bản dịch hay không — refund-request-display.test.ts là lưới
 // an toàn thay thế (mọi mã/trạng thái đều có nhãn ở vi và en).
 
-// Nhãn lý do theo mã (mã là chuỗi kiểm bằng Zod, không phải enum DB — xem refund.ts). `Record<RefundReasonCode, …>`
-// bắt TypeScript báo lỗi nếu BE thêm mã mà FE chưa có nhãn.
-export const REFUND_REASON_LABEL_KEYS: Record<RefundReasonCode, string> = {
-  CHANGE_OF_MIND: 'refundReasonChangeOfMind',
-  ORDER_INFO_WRONG: 'refundReasonOrderInfoWrong',
-  FOUND_CHEAPER: 'refundReasonFoundCheaper',
-  DELIVERY_TOO_SLOW: 'refundReasonDeliveryTooSlow',
-  DAMAGED: 'refundReasonDamaged',
-  WRONG_ITEM: 'refundReasonWrongItem',
-  NOT_AS_DESCRIBED: 'refundReasonNotAsDescribed',
-  MISSING_ITEM: 'refundReasonMissingItem',
-  OTHER: 'refundReasonOther',
-};
-
-// `reasonCode` ở response là chuỗi thường (BE thêm mã mới thì không làm hỏng cả đơn khi parse) nên có thể là
-// mã FE chưa biết — rơi về nhãn "Lý do khác" thay vì hiện mã nội bộ thô cho người dùng.
-export function getRefundReasonLabelKey(code: string): string {
-  // hasOwnProperty chứ không phải `in`: `in` đi lên chuỗi prototype nên "toString"/"constructor" từ BE (hoặc từ
-  // URL/dữ liệu lạ) sẽ trả về một HÀM thay vì nhãn.
-  return Object.prototype.hasOwnProperty.call(REFUND_REASON_LABEL_KEYS, code)
-    ? REFUND_REASON_LABEL_KEYS[code as RefundReasonCode]
-    : REFUND_REASON_LABEL_KEYS.OTHER;
-}
+// Nhãn lý do theo mã nay dùng chung với màn khiếu nại của Admin nên nằm ở shared/lib (hai module không được
+// import nhau); re-export ở đây để mọi nơi trong module order giữ nguyên đường import.
+export { REFUND_REASON_LABEL_KEYS, getRefundReasonLabelKey } from '@/shared/lib/refund-reason';
 
 export const REFUND_REQUEST_TITLE_KEYS: Record<RefundRequestKind, string> = {
   CANCEL: 'refundCardTitleCancel',
