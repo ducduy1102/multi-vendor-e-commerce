@@ -6,6 +6,7 @@ import type {
   PaymentGateway,
   PaymentOutcome,
   RawCallback,
+  RefundParams,
   RefundResult,
   VerifiedCallback,
 } from './payment-gateway.interface';
@@ -13,18 +14,31 @@ import {
   isVnpayConfigured,
   readVnpayAmountLimits,
   readVnpayConfig,
+  readVnpayRefundUrl,
+  VNPAY_API_VERSION,
 } from './payment-config';
+import {
+  buildRefundRequest,
+  checkRefundParams,
+  checkRefundResponseSignature,
+  interpretRefundResponse,
+  MANUAL_REFUND_HINT,
+  parseRefundResponse,
+} from './vnpay-refund';
 import {
   buildSignData,
   formatVnpDate,
   isSignatureEqual,
+  parseVnpDate,
   signVnpay,
 } from './vnpay-signature';
 
-const VNPAY_VERSION = '2.1.0';
 const MAX_RETURN_URL_LENGTH = 255; // vnp_ReturnUrl: Alphanumeric[10,255]
 const MIN_RETURN_URL_LENGTH = 10;
 const DEFAULT_CLIENT_IP = '127.0.0.1';
+// Chặn cứng cho cuộc gọi HTTP hoàn tiền. RefundService đã tự đặt hạn riêng (REFUND_GATEWAY_TIMEOUT_MS, mặc định
+// 8 giây) và bỏ cuộc trước; hạn này chỉ để kết nối treo không sống mãi sau đó.
+const REFUND_HTTP_TIMEOUT_MS = 15_000;
 
 // Mã vnp_ResponseCode mà tài liệu VNPay nêu là THẤT BẠI xác định (khách huỷ, hết hạn chờ, sai OTP,
 // không đủ số dư, vượt hạn mức, ngân hàng bảo trì...). Mã KHÔNG có ở đây (kể cả 07 "trừ tiền, nghi ngờ
@@ -82,7 +96,7 @@ export class VnpayProvider implements PaymentGateway {
     }
 
     const vnpParams: Record<string, string> = {
-      vnp_Version: VNPAY_VERSION,
+      vnp_Version: VNPAY_API_VERSION,
       vnp_Command: 'pay',
       vnp_TmnCode: config.tmnCode,
       // ×100 chỉ ở biên VNPay; đã kiểm ≤ 12 chữ số qua VNPAY_MAX_AMOUNT_HARD_LIMIT.
@@ -106,17 +120,32 @@ export class VnpayProvider implements PaymentGateway {
     };
   }
 
-  // CHƯA hỗ trợ hoàn tiền tự động qua VNPay (Week9.md 2.4; adapter `vnp_command=refund` là 2.12, có hộp
-  // thời gian và chỉ giữ nếu chạy được thật trên sandbox). Trả FAILED xác định kèm lý do để Admin dùng
-  // đường "ghi nhận đã hoàn thủ công" (hoàn trên trang merchant VNPay rồi nhập mã tham chiếu). Không đọc
-  // cấu hình nên không bao giờ ném lỗi, kể cả khi chưa có khoá VNPay.
-  refund(): Promise<RefundResult> {
-    return Promise.resolve({
-      outcome: 'FAILED',
-      gatewayRef: null,
-      failureReason:
-        'VNPay automatic refund is not available; refund it manually on the VNPay merchant portal and record the reference',
+  // Hoàn tiền qua API `vnp_Command=refund` (Week9.md 2.12). Kết quả NGHIỆP VỤ của cổng (từ chối, thiếu điều kiện để
+  // gọi) trả về qua RefundResult — những ca này luôn kèm hướng dẫn hoàn thủ công; lỗi BẤT NGỜ (mạng, quá hạn, HTTP
+  // lỗi, body/chữ ký response không hiểu hoặc sai) ném ra: RefundService coi là PENDING vì chưa biết cổng đã nhận
+  // yêu cầu hay chưa, và chạy lại bằng CÙNG refundRef (vnp_RequestId). Message lỗi không chứa khoá hay chữ ký.
+  async refund(params: RefundParams): Promise<RefundResult> {
+    if (!isVnpayConfigured()) {
+      return failedBeforeCall(`VNPay is not configured; ${MANUAL_REFUND_HINT}`);
+    }
+    const checked = checkRefundParams(params);
+    if (!checked.ok) return failedBeforeCall(checked.reason);
+
+    const config = readVnpayConfig();
+    const request = buildRefundRequest({
+      tmnCode: config.tmnCode,
+      hashSecret: config.hashSecret,
+      params: checked.params,
+      now: new Date(),
+      serverIp: DEFAULT_CLIENT_IP,
     });
+    const response = parseRefundResponse(
+      await postRefundRequest(readVnpayRefundUrl(), request),
+    );
+    return interpretRefundResponse(
+      response,
+      checkRefundResponseSignature(response, config.hashSecret),
+    );
   }
 
   // Kiểm chữ ký TRƯỚC mọi thứ khác. Không bao giờ ném lỗi: chữ ký sai/thiếu/dài-ngắn bất thường/giá trị
@@ -127,6 +156,7 @@ export class VnpayProvider implements PaymentGateway {
       txnRef: null,
       amountVnd: null,
       gatewayTransactionId: null,
+      gatewayPaidAt: null,
       outcome: 'PENDING',
     };
     if (!isVnpayConfigured()) return invalid;
@@ -153,11 +183,41 @@ export class VnpayProvider implements PaymentGateway {
       txnRef: params.vnp_TxnRef || null,
       amountVnd: parseAmountVnd(params.vnp_Amount),
       gatewayTransactionId: params.vnp_TransactionNo || null,
+      // vnp_PayDate chỉ có (và chỉ đáng tin) sau khi chữ ký đã khớp ở trên; sai định dạng ⇒ null.
+      gatewayPaidAt: parseVnpDate(params.vnp_PayDate),
       outcome: resolveOutcome(
         params.vnp_ResponseCode,
         params.vnp_TransactionStatus,
       ),
     };
+  }
+}
+
+// Thất bại XÁC ĐỊNH và chưa gọi cổng — Admin đi đường "ghi nhận đã hoàn thủ công".
+function failedBeforeCall(failureReason: string): RefundResult {
+  return { outcome: 'FAILED', gatewayRef: null, failureReason };
+}
+
+// Gọi API hoàn tiền (POST JSON). Chỉ trả về body đã đọc được; mọi thứ khác (mạng, quá hạn, HTTP không phải 2xx,
+// không phải JSON) ném lỗi để người gọi coi là PENDING. Message cố ý chỉ nêu trạng thái HTTP, không kèm URL hay
+// body (body request chứa chữ ký).
+async function postRefundRequest(
+  url: string,
+  body: Record<string, string>,
+): Promise<unknown> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(REFUND_HTTP_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new Error(`VNPay refund API answered HTTP ${response.status}`);
+  }
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    throw new Error('VNPay refund API returned a body that is not JSON');
   }
 }
 

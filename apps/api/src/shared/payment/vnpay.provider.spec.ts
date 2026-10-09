@@ -1,4 +1,12 @@
-import { buildSignData, signVnpay } from './vnpay-signature';
+import { createHmac } from 'crypto';
+import { VNPAY_SANDBOX_REFUND_URL } from './payment-config';
+import { MANUAL_REFUND_HINT } from './vnpay-refund';
+import {
+  buildPipeSignData,
+  buildSignData,
+  signVnpay,
+  VNPAY_REFUND_RESPONSE_SIGN_FIELDS,
+} from './vnpay-signature';
 import { VnpayProvider } from './vnpay.provider';
 
 const SECRET = 'SECRETKEY123456789';
@@ -6,6 +14,7 @@ const ENV_KEYS = [
   'VNPAY_TMN_CODE',
   'VNPAY_HASH_SECRET',
   'VNPAY_PAY_URL',
+  'VNPAY_REFUND_URL',
   'VNPAY_MIN_AMOUNT',
   'VNPAY_MAX_AMOUNT',
 ];
@@ -256,7 +265,51 @@ describe('VnpayProvider', () => {
         txnRef: 'ABC123',
         amountVnd: 10000,
         gatewayTransactionId: '14000001',
+        gatewayPaidAt: null,
         outcome: 'SUCCESS',
+      });
+    });
+
+    // Week9.md 2.12 — VNPay đòi lại vnp_PayDate làm vnp_TransactionDate khi hoàn tiền.
+    describe('gatewayPaidAt (vnp_PayDate, GMT+7)', () => {
+      const payDateCallback = (payDate?: string) =>
+        provider.verifyCallback(
+          signed({
+            vnp_Amount: '1000000',
+            vnp_ResponseCode: '00',
+            vnp_TransactionNo: '14000001',
+            vnp_TransactionStatus: '00',
+            vnp_TxnRef: 'ABC123',
+            ...(payDate === undefined ? {} : { vnp_PayDate: payDate }),
+          }),
+        );
+
+      it('đọc vnp_PayDate (GMT+7) thành mốc UTC', () => {
+        expect(payDateCallback('20260927103025').gatewayPaidAt).toEqual(
+          new Date('2026-09-27T03:30:25Z'),
+        );
+      });
+
+      it.each([
+        ['thiếu vnp_PayDate', undefined],
+        ['sai định dạng', '2026-09-27'],
+        ['ngày không có thật', '20260231120000'],
+        ['giờ không có thật', '20260927250000'],
+      ])('%s ⇒ null (callback vẫn hợp lệ)', (_label, payDate) => {
+        const result = payDateCallback(payDate);
+
+        expect(result.isSignatureValid).toBe(true);
+        expect(result.gatewayPaidAt).toBeNull();
+      });
+
+      it('chữ ký sai ⇒ không đọc vnp_PayDate (null)', () => {
+        const result = provider.verifyCallback({
+          ...SUCCESS_CALLBACK,
+          vnp_PayDate: '20260927103025',
+        });
+
+        expect(result.isSignatureValid).toBe(false);
+        expect(result.gatewayPaidAt).toBeNull();
       });
     });
 
@@ -290,6 +343,7 @@ describe('VnpayProvider', () => {
         txnRef: null,
         amountVnd: null,
         gatewayTransactionId: null,
+        gatewayPaidAt: null,
         outcome: 'PENDING',
       };
 
@@ -443,44 +497,322 @@ describe('VnpayProvider', () => {
     });
   });
 
-  // Week9.md 2.4 — hoàn tiền tự động qua VNPay làm ở 2.12 (có hộp thời gian); tới lúc đó trả FAILED xác
-  // định để Admin dùng đường "ghi nhận đã hoàn thủ công".
-  describe('refund (tạm — Week9.md 2.12)', () => {
+  // Week9.md 2.12 — hoàn tiền qua API `vnp_Command=refund`. Cuộc gọi mạng được thay bằng fetch giả; logic dựng
+  // request / kiểm chữ ký / phân loại mã đã có vector cố định ở vnpay-refund.spec.ts, ở đây kiểm phần GHÉP:
+  // điều kiện gọi, URL, hạn chờ, lỗi mạng/HTTP/body và việc không lộ khoá.
+  describe('refund (Week9.md 2.12)', () => {
     const refundParams = {
-      refundRef: 'refund-ref-0001',
+      refundRef: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
       txnRef: 'ABC123',
       gatewayTransactionId: '14000001',
-      amountVnd: 250000,
-      paymentAmountVnd: 250000,
+      gatewayPaidAt: new Date('2026-09-27T03:30:25Z'),
+      amountVnd: 100_000,
+      paymentAmountVnd: 250_000,
       reason: 'Order cancelled by buyer',
     };
 
-    it('trả FAILED xác định kèm lý do hướng dẫn hoàn thủ công, không có mã hoàn', async () => {
-      const result = await provider.refund();
+    let fetchMock: jest.SpyInstance;
 
-      expect(result.outcome).toBe('FAILED');
-      expect(result.gatewayRef).toBeNull();
-      expect(result.failureReason).toContain('manually');
+    // Phản hồi ký bằng SECRET của spec (đúng thứ tự trường của tài liệu); trường vắng nối thành chuỗi rỗng.
+    function signedResponse(fields: Record<string, string>) {
+      return {
+        ...fields,
+        vnp_SecureHash: createHmac('sha512', SECRET)
+          .update(
+            buildPipeSignData(VNPAY_REFUND_RESPONSE_SIGN_FIELDS, fields),
+            'utf8',
+          )
+          .digest('hex'),
+      };
+    }
+
+    const acceptedResponse = () =>
+      signedResponse({
+        vnp_ResponseId: 'resp0001',
+        vnp_Command: 'refund',
+        vnp_ResponseCode: '00',
+        vnp_Message: 'Refund success',
+        vnp_TmnCode: 'TESTCODE',
+        vnp_TxnRef: 'ABC123',
+        vnp_Amount: '10000000',
+        vnp_BankCode: 'NCB',
+        vnp_PayDate: '20260927110005',
+        vnp_TransactionNo: '14000099',
+        vnp_TransactionType: '03',
+        vnp_TransactionStatus: '05',
+        vnp_OrderInfo: 'Hoan tien don hang ABC123',
+      });
+
+    function answerWith(
+      body: unknown,
+      init: { ok?: boolean; status?: number } = {},
+    ) {
+      fetchMock.mockResolvedValue({
+        ok: init.ok ?? true,
+        status: init.status ?? 200,
+        json: () => Promise.resolve(body),
+      });
+    }
+
+    function sentBody(): Record<string, string> {
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      return JSON.parse(init.body as string) as Record<string, string>;
+    }
+
+    function calledUrl(): string {
+      return (fetchMock.mock.calls[0] as [string])[0];
+    }
+
+    beforeEach(() => {
+      fetchMock = jest.spyOn(globalThis, 'fetch');
     });
 
-    it('KHÔNG ném lỗi dù chưa cấu hình VNPay (không đọc khoá) — PaymentModule boot được khi thiếu ENV', async () => {
-      for (const key of ENV_KEYS) delete process.env[key];
+    afterEach(() => {
+      fetchMock.mockRestore();
+    });
 
-      await expect(provider.refund()).resolves.toMatchObject({
-        outcome: 'FAILED',
+    describe('KHÔNG gọi cổng — FAILED xác định kèm hướng dẫn hoàn thủ công', () => {
+      it('chưa cấu hình VNPay: không ném lỗi (PaymentModule boot được khi thiếu ENV), không gọi mạng', async () => {
+        for (const key of ENV_KEYS) delete process.env[key];
+
+        const result = await provider.refund(refundParams);
+
+        expect(result).toEqual({
+          outcome: 'FAILED',
+          gatewayRef: null,
+          failureReason: `VNPay is not configured; ${MANUAL_REFUND_HINT}`,
+        });
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it('thanh toán cũ chưa có mốc cổng ghi nhận (gatewayPaidAt null): hoàn thủ công, không đoán mốc', async () => {
+        const result = await provider.refund({
+          ...refundParams,
+          gatewayPaidAt: null,
+        });
+
+        expect(result.outcome).toBe('FAILED');
+        expect(result.failureReason).toContain(MANUAL_REFUND_HINT);
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it('thiếu mã giao dịch của cổng, số tiền hoàn quá số đã thanh toán: không gọi mạng', async () => {
+        for (const override of [
+          { gatewayTransactionId: null },
+          { amountVnd: 250_001 },
+        ]) {
+          const result = await provider.refund({
+            ...refundParams,
+            ...override,
+          });
+
+          expect(result.outcome).toBe('FAILED');
+        }
+        expect(fetchMock).not.toHaveBeenCalled();
       });
     });
 
-    it('lý do không chứa khoá/chữ ký hay dữ liệu của giao dịch', async () => {
-      process.env.VNPAY_TMN_CODE = 'TESTCODE';
-      process.env.VNPAY_HASH_SECRET = SECRET;
+    describe('gọi API hoàn tiền', () => {
+      it('POST JSON tới URL sandbox mặc định; body đúng trường, đúng chữ ký (tính độc lập), có hạn chờ', async () => {
+        answerWith(acceptedResponse());
 
-      const result = await provider.refund();
-      const text = JSON.stringify(result);
+        const result = await provider.refund(refundParams);
 
-      expect(text).not.toContain(SECRET);
-      expect(text).not.toContain('TESTCODE');
-      expect(text).not.toContain(refundParams.txnRef);
+        expect(result).toEqual({
+          outcome: 'SUCCESS',
+          gatewayRef: '14000099',
+          failureReason: null,
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(url).toBe(VNPAY_SANDBOX_REFUND_URL);
+        expect(url).toBe(
+          'https://sandbox.vnpayment.vn/merchant_webapi/api/transaction',
+        );
+        expect(init.method).toBe('POST');
+        expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
+        expect(init.signal).toBeInstanceOf(AbortSignal);
+
+        const body = sentBody();
+        expect(body).toMatchObject({
+          vnp_RequestId: refundParams.refundRef,
+          vnp_Version: '2.1.0',
+          vnp_Command: 'refund',
+          vnp_TmnCode: 'TESTCODE',
+          vnp_TransactionType: '03',
+          vnp_TxnRef: 'ABC123',
+          vnp_Amount: '10000000',
+          vnp_TransactionNo: '14000001',
+          vnp_TransactionDate: '20260927103025',
+          vnp_CreateBy: 'system',
+          vnp_IpAddr: '127.0.0.1',
+          vnp_OrderInfo: 'Hoan tien don hang ABC123',
+        });
+        expect(body.vnp_CreateDate).toMatch(/^\d{14}$/);
+        const expectedHash = createHmac('sha512', SECRET)
+          .update(
+            [
+              body.vnp_RequestId,
+              body.vnp_Version,
+              body.vnp_Command,
+              body.vnp_TmnCode,
+              body.vnp_TransactionType,
+              body.vnp_TxnRef,
+              body.vnp_Amount,
+              body.vnp_TransactionNo,
+              body.vnp_TransactionDate,
+              body.vnp_CreateBy,
+              body.vnp_CreateDate,
+              body.vnp_IpAddr,
+              body.vnp_OrderInfo,
+            ].join('|'),
+            'utf8',
+          )
+          .digest('hex');
+        expect(body.vnp_SecureHash).toBe(expectedHash);
+      });
+
+      it('hoàn đủ số đã thanh toán ⇒ loại 02', async () => {
+        answerWith(acceptedResponse());
+
+        await provider.refund({ ...refundParams, amountVnd: 250_000 });
+
+        expect(sentBody().vnp_TransactionType).toBe('02');
+      });
+
+      it('VNPAY_REFUND_URL tuỳ chỉnh được dùng (production), để trống thì về sandbox', async () => {
+        answerWith(acceptedResponse());
+        process.env.VNPAY_REFUND_URL =
+          'https://pay.example.vn/merchant_webapi/api/transaction';
+
+        await provider.refund(refundParams);
+        expect(calledUrl()).toBe(
+          'https://pay.example.vn/merchant_webapi/api/transaction',
+        );
+
+        fetchMock.mockClear();
+        process.env.VNPAY_REFUND_URL = '   ';
+        await provider.refund(refundParams);
+        expect(calledUrl()).toBe(VNPAY_SANDBOX_REFUND_URL);
+      });
+
+      it('VNPAY_REFUND_URL sai ⇒ reject (PENDING ở RefundService), không gọi mạng', async () => {
+        process.env.VNPAY_REFUND_URL = 'not a url';
+
+        await expect(provider.refund(refundParams)).rejects.toThrow(
+          'VNPAY_REFUND_URL',
+        );
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('kết quả nghiệp vụ của cổng (không ném lỗi)', () => {
+      it('không thấy giao dịch gốc (91, có chữ ký) ⇒ FAILED kèm lời nhắn của cổng', async () => {
+        answerWith(
+          signedResponse({
+            vnp_ResponseId: 'resp0003',
+            vnp_Command: 'refund',
+            vnp_ResponseCode: '91',
+            vnp_Message: 'Transaction not found',
+            vnp_TmnCode: 'TESTCODE',
+            vnp_TxnRef: 'ABC123',
+            vnp_Amount: '10000000',
+          }),
+        );
+
+        await expect(provider.refund(refundParams)).resolves.toEqual({
+          outcome: 'FAILED',
+          gatewayRef: null,
+          failureReason:
+            'VNPay rejected the refund (code 91): Transaction not found',
+        });
+      });
+
+      it('trùng mã yêu cầu (94, không chữ ký) ⇒ PENDING: yêu cầu trước của ta có thể đã được nhận', async () => {
+        answerWith({
+          vnp_ResponseCode: '94',
+          vnp_Message: 'Request is duplicated',
+        });
+
+        await expect(provider.refund(refundParams)).resolves.toEqual({
+          outcome: 'PENDING',
+          gatewayRef: null,
+          failureReason: null,
+        });
+      });
+    });
+
+    describe('lỗi bất ngờ ⇒ reject (RefundService coi là PENDING, thử lại bằng cùng refundRef)', () => {
+      it('lỗi mạng', async () => {
+        fetchMock.mockRejectedValue(new Error('socket hang up'));
+
+        await expect(provider.refund(refundParams)).rejects.toThrow(
+          'socket hang up',
+        );
+      });
+
+      it('HTTP không phải 2xx — message chỉ nêu trạng thái, không kèm body/URL/chữ ký', async () => {
+        answerWith({ any: 'thing' }, { ok: false, status: 502 });
+
+        const error = await provider
+          .refund(refundParams)
+          .catch((e: Error) => e);
+
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBe(
+          'VNPay refund API answered HTTP 502',
+        );
+      });
+
+      it('body không phải JSON', async () => {
+        fetchMock.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: () => Promise.reject(new SyntaxError('Unexpected token <')),
+        });
+
+        await expect(provider.refund(refundParams)).rejects.toThrow('not JSON');
+      });
+
+      it('body không phải phản hồi hoàn tiền (thiếu vnp_ResponseCode)', async () => {
+        answerWith({ hello: 'world' });
+
+        await expect(provider.refund(refundParams)).rejects.toThrow(
+          'could not be understood',
+        );
+      });
+
+      it('chữ ký phản hồi sai — kể cả khi nói "thành công" thì không tin', async () => {
+        answerWith({ ...acceptedResponse(), vnp_Amount: '99999999' });
+
+        await expect(provider.refund(refundParams)).rejects.toThrow(
+          'invalid signature',
+        );
+      });
+
+      it('"thành công" mà không có chữ ký — không tin', async () => {
+        const { vnp_SecureHash: _hash, ...unsigned } = acceptedResponse();
+        void _hash;
+        answerWith(unsigned);
+
+        await expect(provider.refund(refundParams)).rejects.toThrow(
+          'not signed',
+        );
+      });
+    });
+
+    it('không lộ khoá: không trong body gửi đi, không trong kết quả, không trong message lỗi', async () => {
+      answerWith(acceptedResponse());
+      await provider.refund(refundParams);
+      expect(JSON.stringify(sentBody())).not.toContain(SECRET);
+
+      answerWith({ ...acceptedResponse(), vnp_Amount: '1' });
+      const error = await provider.refund(refundParams).catch((e: Error) => e);
+      expect((error as Error).message).not.toContain(SECRET);
+
+      answerWith(acceptedResponse());
+      const result = await provider.refund(refundParams);
+      expect(JSON.stringify(result)).not.toContain(SECRET);
     });
   });
 });
