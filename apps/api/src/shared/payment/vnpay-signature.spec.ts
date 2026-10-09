@@ -1,9 +1,13 @@
 import {
+  buildPipeSignData,
   buildSignData,
   formatVnpDate,
   isSignatureEqual,
+  parseVnpDate,
   signVnpay,
   vnpEncode,
+  VNPAY_REFUND_REQUEST_SIGN_FIELDS,
+  VNPAY_REFUND_RESPONSE_SIGN_FIELDS,
 } from './vnpay-signature';
 
 // VECTOR CỐ ĐỊNH: chuỗi ký được viết TAY đúng thuật toán trong tài liệu VNPay API 2.1.0 (tham số sắp theo
@@ -153,5 +157,120 @@ describe('formatVnpDate', () => {
       jest.spyOn(Date.prototype, 'getDate').mockReturnValue(99);
       expect(formatVnpDate(instant)).toBe('20260927103000');
     });
+  });
+});
+
+// Week9.md 2.12 — vnp_PayDate của callback → mốc UTC (VNPay đòi lại khi hoàn tiền).
+describe('parseVnpDate', () => {
+  it('đọc yyyyMMddHHmmss (GMT+7) thành mốc UTC — ngược lại của formatVnpDate', () => {
+    expect(parseVnpDate('20260927103025')).toEqual(
+      new Date('2026-09-27T03:30:25Z'),
+    );
+  });
+
+  it('qua nửa đêm: 00:00:00 GMT+7 là 17:00:00 UTC của ngày hôm trước', () => {
+    expect(parseVnpDate('20270101000000')).toEqual(
+      new Date('2026-12-31T17:00:00Z'),
+    );
+  });
+
+  it('khứ hồi với formatVnpDate trên nhiều mốc (kể cả biên năm, tháng, năm nhuận)', () => {
+    for (const iso of [
+      '2026-01-01T00:00:00Z',
+      '2026-12-31T16:59:59Z',
+      '2024-02-29T05:06:07Z',
+      '2026-09-27T03:30:25Z',
+    ]) {
+      const date = new Date(iso);
+      expect(parseVnpDate(formatVnpDate(date))).toEqual(date);
+    }
+  });
+
+  it('không phụ thuộc múi giờ máy chủ', () => {
+    const original = process.env.TZ;
+    try {
+      for (const tz of ['UTC', 'America/Los_Angeles', 'Pacific/Kiritimati']) {
+        process.env.TZ = tz;
+        expect(parseVnpDate('20260927103025')).toEqual(
+          new Date('2026-09-27T03:30:25Z'),
+        );
+      }
+    } finally {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    }
+  });
+
+  it.each([
+    ['thiếu', undefined],
+    ['rỗng', ''],
+    ['13 chữ số', '2026092710302'],
+    ['15 chữ số', '202609271030255'],
+    ['có chữ', '2026092710302x'],
+    ['có dấu phân cách', '2026-09-27 10:30'],
+    ['tháng 13', '20261327103025'],
+    ['tháng 0', '20260027103025'],
+    ['ngày 31/02', '20260231120000'],
+    ['29/02 năm không nhuận', '20250229120000'],
+    ['giờ 24', '20260927240000'],
+    ['phút 60', '20260927106000'],
+    ['giây 60', '20260927103060'],
+  ])('%s ⇒ null (chuỗi do cổng gửi, không tin)', (_label, value) => {
+    expect(parseVnpDate(value)).toBeNull();
+  });
+
+  it('29/02 năm nhuận hợp lệ', () => {
+    expect(parseVnpDate('20240229120000')).toEqual(
+      new Date('2024-02-29T05:00:00Z'),
+    );
+  });
+});
+
+// Chuỗi ký của API hoàn tiền: GIÁ TRỊ THÔ nối `|` theo thứ tự cố định của tài liệu VNPay (khác chuỗi ký URL).
+describe('buildPipeSignData', () => {
+  it('nối giá trị theo thứ tự danh sách trường, không theo tên, không mã hoá', () => {
+    expect(
+      buildPipeSignData(['b', 'a', 'c'], { a: '1 x', b: 'é&', c: '3' }),
+    ).toBe('é&|1 x|3');
+  });
+
+  it('trường vắng hoặc undefined nối thành chuỗi rỗng (giữ nguyên số dấu `|`)', () => {
+    expect(buildPipeSignData(['a', 'b', 'c'], { a: '1', c: '3' })).toBe('1||3');
+    expect(buildPipeSignData(['a', 'b'], { a: undefined, b: undefined })).toBe(
+      '|',
+    );
+  });
+
+  it('thứ tự trường của request và response đúng tài liệu (đổi chỗ một trường là sai chữ ký 97)', () => {
+    expect([...VNPAY_REFUND_REQUEST_SIGN_FIELDS]).toEqual([
+      'vnp_RequestId',
+      'vnp_Version',
+      'vnp_Command',
+      'vnp_TmnCode',
+      'vnp_TransactionType',
+      'vnp_TxnRef',
+      'vnp_Amount',
+      'vnp_TransactionNo',
+      'vnp_TransactionDate',
+      'vnp_CreateBy',
+      'vnp_CreateDate',
+      'vnp_IpAddr',
+      'vnp_OrderInfo',
+    ]);
+    expect([...VNPAY_REFUND_RESPONSE_SIGN_FIELDS]).toEqual([
+      'vnp_ResponseId',
+      'vnp_Command',
+      'vnp_ResponseCode',
+      'vnp_Message',
+      'vnp_TmnCode',
+      'vnp_TxnRef',
+      'vnp_Amount',
+      'vnp_BankCode',
+      'vnp_PayDate',
+      'vnp_TransactionNo',
+      'vnp_TransactionType',
+      'vnp_TransactionStatus',
+      'vnp_OrderInfo',
+    ]);
   });
 });
