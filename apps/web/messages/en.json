@@ -417,7 +417,7 @@
     "summaryGrandTotalLabel": "Total payment",
     "paymentMethodSectionTitle": "Payment method",
     "paymentMethodVnpayLabel": "VNPay",
-    "paymentMethodMomoLabel": "Momo",
+    "paymentMethodMomoLabel": "MoMo",
     "paymentMethodCodLabel": "Cash on delivery (COD)",
     "paymentMethodReasonNotConfigured": "This method isn't supported yet",
     "paymentMethodReasonAmountTooSmall": "Order amount is too small for this method",

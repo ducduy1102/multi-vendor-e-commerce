@@ -30,7 +30,7 @@ describe('PaymentMethodSelector', () => {
     expect(radios[0].disabled).toBe(false);
     expect(radios[1].disabled).toBe(true);
     expect(screen.getByText('VNPay')).toBeInTheDocument();
-    expect(screen.getByText('Momo')).toBeInTheDocument();
+    expect(screen.getByText('MoMo')).toBeInTheDocument();
     expect(screen.getByText('Hiện chưa hỗ trợ phương thức này')).toBeInTheDocument();
   });
 

@@ -417,7 +417,7 @@
     "summaryGrandTotalLabel": "Tổng thanh toán",
     "paymentMethodSectionTitle": "Phương thức thanh toán",
     "paymentMethodVnpayLabel": "VNPay",
-    "paymentMethodMomoLabel": "Momo",
+    "paymentMethodMomoLabel": "MoMo",
     "paymentMethodCodLabel": "Thanh toán khi nhận hàng (COD)",
     "paymentMethodReasonNotConfigured": "Hiện chưa hỗ trợ phương thức này",
     "paymentMethodReasonAmountTooSmall": "Số tiền đơn hàng quá nhỏ để dùng phương thức này",
