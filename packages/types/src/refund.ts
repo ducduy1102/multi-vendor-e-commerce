@@ -74,9 +74,7 @@ export function canActorTransitionRefundRequest(
   // Hệ thống chỉ hành động theo HẠN và chỉ theo đúng một hướng cho mỗi loại: hủy trước giao ⇒ tự duyệt
   // (hàng chưa rời shop), trả hàng sau giao ⇒ chuyển Admin (hàng có thể chưa trả về, không tự duyệt tiền).
   if (actor === 'SYSTEM') {
-    return (
-      (to === 'APPROVED' && kind === 'CANCEL') || (to === 'ESCALATED' && kind === 'RETURN')
-    );
+    return (to === 'APPROVED' && kind === 'CANCEL') || (to === 'ESCALATED' && kind === 'RETURN');
   }
   // Yêu cầu đã lên sàn thì Admin quyết định; ngoại lệ duy nhất của seller là hủy đơn trực tiếp (kind CANCEL)
   // — hủy chính là điều người mua xin nên yêu cầu đóng luôn. Seller không được tự "duyệt trả hàng" khi Admin
@@ -121,7 +119,10 @@ export function isRefundRequestTerminal(status: RefundRequestStatus): boolean {
 // Yêu cầu HỦY còn chờ xử lý (seller hoặc Admin) thì seller KHÔNG được đóng gói/giao đơn đó: hàng đang bị
 // người mua xin hủy, phải trả lời trước (Week9.md 1.3). BE dùng để trả 409 REFUND_REQUEST_PENDING và tắt cờ
 // canPack/canShip; FE chỉ đọc cờ.
-export function blocksSellerFulfilment(kind: RefundRequestKind, status: RefundRequestStatus): boolean {
+export function blocksSellerFulfilment(
+  kind: RefundRequestKind,
+  status: RefundRequestStatus,
+): boolean {
   return kind === 'CANCEL' && (status === 'PENDING_SELLER' || status === 'ESCALATED');
 }
 

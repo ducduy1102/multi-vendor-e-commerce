@@ -7,7 +7,13 @@ export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
 
 // CANCELLED = "không thu" (Week9.md 1.2): nhóm COD mà mọi đơn đều bị hủy — tiền chưa từng được thu. Khác
 // FAILED (lỗi cổng, mở đường thanh toán lại). REFUNDED chỉ khi hoàn đủ; hoàn một phần vẫn SUCCESS.
-export const paymentStatusSchema = z.enum(['PENDING', 'SUCCESS', 'FAILED', 'REFUNDED', 'CANCELLED']);
+export const paymentStatusSchema = z.enum([
+  'PENDING',
+  'SUCCESS',
+  'FAILED',
+  'REFUNDED',
+  'CANCELLED',
+]);
 export type PaymentStatus = z.infer<typeof paymentStatusSchema>;
 
 // Vì sao 1 phương thức không chọn được — BE quyết định, FE không tự đoán (1.9). Phương thức
