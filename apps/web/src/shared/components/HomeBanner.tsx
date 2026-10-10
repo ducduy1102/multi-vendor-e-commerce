@@ -9,9 +9,9 @@ import { Button } from '@/shared/components/ui/button';
 // dependency. Server Component (async, gọi getTranslations trực tiếp) —
 // không còn phần nào cần client state nữa (2 banner phụ "Bán hàng cùng
 // Chốt"/"Sản phẩm mới" đã bỏ ở "UI polish đợt 2 lần 2" mục 2 vì trùng đích
-// với 2 mục nav ở Header, chưa có nội dung nào khác biệt để lấp vào — TODO:
-// thêm lại banner phụ khi có nội dung thật sự khác nav, vd khuyến mãi/danh
-// mục nổi bật theo mùa). Đặt NGOÀI <Suspense> ở page.tsx — hiện ngay, không
+// với 2 mục nav ở Header, chưa có nội dung nào khác biệt để lấp vào; sẽ thêm
+// lại banner phụ khi có nội dung thật sự khác nav, vd khuyến mãi/danh mục
+// nổi bật theo mùa). Đặt NGOÀI <Suspense> ở page.tsx — hiện ngay, không
 // chờ HomeCatalog fetch.
 export async function HomeBanner() {
   const t = await getTranslations('home');
