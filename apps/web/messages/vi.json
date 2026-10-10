@@ -7,6 +7,7 @@
     "or": "hoặc",
     "toggleTheme": "Chuyển đổi giao diện sáng/tối",
     "cancel": "Huỷ",
+    "close": "Đóng",
     "errorNetwork": "Mất kết nối mạng, vui lòng kiểm tra và thử lại",
     "errorInvalidResponse": "Không nhận được phản hồi hợp lệ từ máy chủ, vui lòng thử lại",
     "starRatingLabel": "{rating} trên {max} sao",
