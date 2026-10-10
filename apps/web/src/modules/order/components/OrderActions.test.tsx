@@ -223,3 +223,46 @@ describe('OrderActions', () => {
     });
   });
 });
+
+// Ma trận cờ (Week9.md 3.9): 5 cờ của người mua ⇒ 32 tổ hợp. Mỗi tổ hợp phải hiện ĐÚNG tập nút của các cờ đã
+// bật — không thiếu, không thừa, không nút nào hiện nhầm theo cờ khác — và khi đang có hành động chạy thì mọi
+// nút đều bị khoá. Các test theo kịch bản ở trên chỉ thử vài tổ hợp; ma trận bắt lỗi kiểu đổi nhầm cờ giữa hai nút
+// hoặc quên cờ mới trong điều kiện "không render gì".
+const FLAG_BUTTONS = [
+  ['canRetryPayment', 'Thanh toán lại'],
+  ['canConfirmReceived', 'Đã nhận hàng'],
+  ['canCancel', 'Hủy đơn'],
+  ['canRequestCancel', 'Yêu cầu hủy'],
+  ['canRequestReturn', 'Yêu cầu trả hàng/hoàn tiền'],
+] as const;
+
+const FLAG_MATRIX = Array.from({ length: 2 ** FLAG_BUTTONS.length }, (_unused, mask) => {
+  const isOn = (index: number) => ((mask >> index) & 1) === 1;
+  const onButtons = FLAG_BUTTONS.filter((_button, index) => isOn(index));
+  return {
+    title: onButtons.length ? onButtons.map(([flag]) => flag).join(' + ') : 'không cờ nào',
+    flags: Object.fromEntries(FLAG_BUTTONS.map(([flag], index) => [flag, isOn(index)])) as Flags,
+    expected: onButtons.map(([, label]) => label),
+  };
+});
+
+describe('OrderActions — ma trận cờ', () => {
+  it('đủ 32 tổ hợp', () => {
+    expect(FLAG_MATRIX).toHaveLength(32);
+    expect(new Set(FLAG_MATRIX.map((row) => row.title)).size).toBe(32);
+  });
+
+  it.each(FLAG_MATRIX)('$title -> đúng các nút của cờ đã bật', ({ flags, expected }) => {
+    for (const isDisabled of [false, true]) {
+      const { unmount } = setup(flags, isDisabled);
+      const buttons = screen.queryAllByRole('button');
+
+      expect(buttons.map((button) => button.textContent).sort()).toEqual([...expected].sort());
+      for (const button of buttons) {
+        if (isDisabled) expect(button).toBeDisabled();
+        else expect(button).toBeEnabled();
+      }
+      unmount();
+    }
+  });
+});
