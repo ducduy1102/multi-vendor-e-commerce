@@ -6,10 +6,21 @@ import vi from '../../../messages/vi.json';
 
 type Messages = Record<string, Record<string, string>>;
 
-// Namespace của Tuần 6 (Week6.md 3.9): mọi key phải có ở cả 2 ngôn ngữ, cùng
+// Namespace của Tuần 6 (Week6.md 3.9) trở đi: mọi key phải có ở cả 2 ngôn ngữ, cùng
 // placeholder, không rỗng — thiếu 1 phía next-intl không throw mà hiện chuỗi key
-// thô hoặc rơi về ngôn ngữ khác, rất dễ lọt qua review.
-const NAMESPACES = ['common', 'cart', 'voucher', 'checkout', 'order', 'admin', 'review'] as const;
+// thô hoặc rơi về ngôn ngữ khác, rất dễ lọt qua review. `product` và `header` vào lưới
+// ở Tuần 9 (Week9.md 3.8): Tuần 9 thêm nhãn sort `rating`, chuỗi đánh giá và link Admin vào 2 namespace này.
+const NAMESPACES = [
+  'common',
+  'header',
+  'product',
+  'cart',
+  'voucher',
+  'checkout',
+  'order',
+  'admin',
+  'review',
+] as const;
 
 const viMessages = vi as unknown as Messages;
 const enMessages = en as unknown as Messages;
@@ -79,6 +90,39 @@ describe('số nhiều tiếng Anh', () => {
     expect(tc('starRatingOption', { count: 5 })).toBe('5 stars');
   });
 
+  // Các key đếm của Tuần 9 (Week9.md 3.8): "1 reviews" / "Gateway called 1 times" là lỗi hay lọt nhất vì
+  // test component thường chỉ thử đúng một giá trị đếm.
+  it('product.cardReviewCount và detailReviewCount: 1 review / N reviews', () => {
+    const tp = createTranslator({ locale: 'en', messages: en, namespace: 'product' });
+    expect(tp('cardReviewCount', { count: 1 })).toBe('1 review');
+    expect(tp('cardReviewCount', { count: 12 })).toBe('12 reviews');
+    expect(tp('detailReviewCount', { count: 1 })).toBe('1 review');
+    expect(tp('detailReviewCount', { count: 12 })).toBe('12 reviews');
+  });
+
+  it('review.summaryCount: 1 review / N reviews', () => {
+    const tr = createTranslator({ locale: 'en', messages: en, namespace: 'review' });
+    expect(tr('summaryCount', { count: 1 })).toBe('1 review');
+    expect(tr('summaryCount', { count: 12 })).toBe('12 reviews');
+  });
+
+  it('order.cardMoreItems và admin.refundsMoreItems: and 1 more product / and N more products', () => {
+    const to = createTranslator({ locale: 'en', messages: en, namespace: 'order' });
+    const ta = createTranslator({ locale: 'en', messages: en, namespace: 'admin' });
+    expect(to('cardMoreItems', { count: 1 })).toBe('and 1 more product');
+    expect(to('cardMoreItems', { count: 3 })).toBe('and 3 more products');
+    expect(ta('refundsMoreItems', { count: 1 })).toBe('and 1 more product');
+    expect(ta('refundsMoreItems', { count: 3 })).toBe('and 3 more products');
+  });
+
+  it('admin.refundsAttempts và rowResubmitted: 1 time / N times', () => {
+    const ta = createTranslator({ locale: 'en', messages: en, namespace: 'admin' });
+    expect(ta('refundsAttempts', { count: 1 })).toBe('Gateway called 1 time');
+    expect(ta('refundsAttempts', { count: 4 })).toBe('Gateway called 4 times');
+    expect(ta('rowResubmitted', { count: 1 })).toBe('Resubmitted 1 time');
+    expect(ta('rowResubmitted', { count: 2 })).toBe('Resubmitted 2 times');
+  });
+
   it('checkout.outOfStockItemAvailable: only 1 item left / only N items left (Week7.md 3.9)', () => {
     const tc = createTranslator({ locale: 'en', messages: en, namespace: 'checkout' });
     expect(tc('outOfStockItemAvailable', { available: 1 })).toBe('only 1 item left');
@@ -96,6 +140,15 @@ describe('tiếng Việt không chia số nhiều', () => {
     expect(t('quantityAdjusted', { count: 2 })).toBe(
       'Đã điều chỉnh số lượng của 2 sản phẩm theo tồn kho hiện có',
     );
+  });
+
+  it('các key đếm của Tuần 9 dùng cùng 1 dạng dù đếm là 1 hay N', () => {
+    const tp = createTranslator({ locale: 'vi', messages: vi, namespace: 'product' });
+    const ta = createTranslator({ locale: 'vi', messages: vi, namespace: 'admin' });
+    expect(tp('cardReviewCount', { count: 1 })).toBe('1 đánh giá');
+    expect(tp('cardReviewCount', { count: 12 })).toBe('12 đánh giá');
+    expect(ta('refundsAttempts', { count: 1 })).toBe('Đã gọi cổng 1 lần');
+    expect(ta('refundsAttempts', { count: 4 })).toBe('Đã gọi cổng 4 lần');
   });
 
   it('checkout.outOfStockItemAvailable dùng cùng 1 dạng dù available là 1 hay N', () => {
