@@ -108,6 +108,7 @@
     "validationSlugRequired": "Slug is required",
     "validationSlugFormat": "Slug may only contain lowercase letters, numbers and hyphens",
     "validationSlugTooLong": "Slug must be at most 150 characters",
+    "validationSlugReserved": "This slug is reserved, please choose another one",
     "validationNameRequired": "Shop name is required",
     "validationNameTooLong": "Shop name must be at most 100 characters",
     "validationNameInvalid": "Shop name contains invalid characters (angle brackets and control characters aren't allowed)",

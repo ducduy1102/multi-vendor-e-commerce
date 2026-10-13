@@ -108,6 +108,7 @@
     "validationSlugRequired": "Slug không được để trống",
     "validationSlugFormat": "Slug chỉ gồm chữ thường, số và dấu gạch ngang",
     "validationSlugTooLong": "Slug tối đa 150 ký tự",
+    "validationSlugReserved": "Slug này được hệ thống giữ lại, vui lòng chọn slug khác",
     "validationNameRequired": "Tên shop không được để trống",
     "validationNameTooLong": "Tên shop tối đa 100 ký tự",
     "validationNameInvalid": "Tên shop chứa ký tự không hợp lệ (không dùng dấu nhỏ hơn, dấu lớn hơn hoặc ký tự điều khiển)",
