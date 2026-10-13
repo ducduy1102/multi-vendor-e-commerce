@@ -6,7 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { SHOP_EDITABLE_STATUSES } from '@ecommerce/types';
+import {
+  SHOP_EDITABLE_STATUSES,
+  SHOP_RESERVED_SLUGS,
+  shopSlugSchema,
+  type PublicShop,
+} from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { slugify } from '../../shared/utils/slugify';
@@ -31,6 +36,30 @@ const shopSelect = {
 } satisfies Prisma.ShopSelect;
 
 type ShopSummary = Prisma.ShopGetPayload<{ select: typeof shopSelect }>;
+
+// Trang shop CÔNG KHAI (Week9.md 1.10): select CHỈ các field công khai — không có ownerId/status/statusReason
+// nên chúng không thể lọt ra, kể cả khi mapper sau này lỡ spread.
+const publicShopSelect = {
+  id: true,
+  name: true,
+  slug: true,
+  logoUrl: true,
+  bannerUrl: true,
+  description: true,
+  createdAt: true,
+} satisfies Prisma.ShopSelect;
+
+// Kết quả $queryRaw: ép kiểu ở SQL (::int, ::float8) để driver trả number — COUNT/SUM mặc định ra bigint
+// (BigInt không serialize được ra JSON) và ROUND(numeric) ra Decimal.
+interface PublicShopStatsRow {
+  productCount: number;
+  reviewCount: number;
+  avgRating: number;
+}
+
+export type PublicShopView = Omit<PublicShop, 'createdAt'> & {
+  createdAt: Date;
+};
 
 interface ShopCreateData {
   ownerId: string;
@@ -89,6 +118,65 @@ export class ShopService {
       throw new NotFoundException('Shop not found');
     }
     return shop;
+  }
+
+  // GET /shops/:slug — trang shop công khai (Week9.md 1.10). Chỉ shop APPROVED; mọi trường hợp khác (không có,
+  // PENDING/REJECTED/SUSPENDED, slug sai định dạng) đều là CÙNG một 404 để không lộ shop chưa duyệt có tồn tại.
+  // Slug sai định dạng 404 ngay, không chạm DB.
+  //
+  // Điểm đánh giá của shop = trung bình có trọng số của các sản phẩm PUBLISHED, tính từ cột denormalized của
+  // Product (SUM(avgRating × reviewCount) / SUM(reviewCount)) — không thêm cột nào vào Shop, không quét bảng
+  // reviews (tận dụng index [shopId, status]). Làm tròn half-up 2 chữ số bằng NUMERIC ở SQL (số thực dễ sai ở
+  // các mốc như 4.285). Hai truy vấn chạy song song; truy vấn thống kê tự tra shop theo slug nên không phụ
+  // thuộc kết quả truy vấn đầu.
+  async getPublicShop(rawSlug: string): Promise<PublicShopView> {
+    const parsed = shopSlugSchema.safeParse(rawSlug);
+    if (!parsed.success) {
+      throw new NotFoundException('Shop not found');
+    }
+    const slug = parsed.data;
+
+    const [shop, rows] = await Promise.all([
+      this.prisma.shop.findFirst({
+        where: { slug, status: 'APPROVED' },
+        select: publicShopSelect,
+      }),
+      this.prisma.$queryRaw<PublicShopStatsRow[]>`
+        SELECT
+          COUNT(*)::int AS "productCount",
+          COALESCE(SUM(p.review_count), 0)::int AS "reviewCount",
+          COALESCE(
+            ROUND(
+              SUM(p.avg_rating::numeric * p.review_count)
+                / NULLIF(SUM(p.review_count), 0),
+              2
+            ),
+            0
+          )::float8 AS "avgRating"
+        FROM products p
+        JOIN shops s ON s.id = p.shop_id
+        WHERE s.slug = ${slug}
+          AND s.status = 'APPROVED'
+          AND p.status = 'PUBLISHED'`,
+    ]);
+    if (!shop) {
+      throw new NotFoundException('Shop not found');
+    }
+
+    const stats = rows[0];
+    // Liệt kê TƯỜNG MINH từng field công khai (không spread): thêm cột vào Shop không tự thành dữ liệu công khai.
+    return {
+      id: shop.id,
+      name: shop.name,
+      slug: shop.slug,
+      logoUrl: shop.logoUrl,
+      bannerUrl: shop.bannerUrl,
+      description: shop.description,
+      createdAt: shop.createdAt,
+      productCount: Number(stats?.productCount ?? 0),
+      avgRating: Number(stats?.avgRating ?? 0),
+      reviewCount: Number(stats?.reviewCount ?? 0),
+    };
   }
 
   // Sửa thông tin shop (không đổi slug/status). Là MỘT câu UPDATE có điều kiện, KHÔNG đọc-rồi-ghi
@@ -220,6 +308,10 @@ export class ShopService {
     data: ShopCreateData,
     slug: string,
   ): Promise<ShopSummary> {
+    // Slug dành riêng (vd `me`) bị từ chối ở schema; chặn lại ở đây để gọi thẳng service cũng không lọt.
+    if (SHOP_RESERVED_SLUGS.includes(slug)) {
+      throw new ConflictException('Slug already exists');
+    }
     const taken = await this.prisma.shop.findUnique({
       where: { slug },
       select: { id: true },
@@ -244,6 +336,10 @@ export class ShopService {
   ): Promise<ShopSummary> {
     for (let attempt = 0; attempt < MAX_GENERATED_SLUG_ATTEMPTS; attempt++) {
       const slug = attempt === 0 ? baseSlug : `${baseSlug}-${attempt + 1}`;
+      // Slug dành riêng coi như đã bị chiếm: tên "Me" ra `me-2`, không ra `me` (không mở được trang công khai).
+      if (SHOP_RESERVED_SLUGS.includes(slug)) {
+        continue;
+      }
       const taken = await this.prisma.shop.findUnique({
         where: { slug },
         select: { id: true },
