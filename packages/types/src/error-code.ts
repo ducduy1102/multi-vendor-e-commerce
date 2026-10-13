@@ -16,6 +16,13 @@ export const SERVER_ERROR_CODES = [
   // Auth
   'EMAIL_NOT_VERIFIED',
   'ACCOUNT_NOT_ACTIVE',
+  // Đổi / quên mật khẩu (Week9.md 1.11). CURRENT_PASSWORD_INCORRECT: mật khẩu hiện tại sai khi đổi;
+  // PASSWORD_NOT_SET: tài khoản chỉ đăng nhập Google chưa có mật khẩu để "đổi" (đi luồng quên mật khẩu để
+  // đặt lần đầu); RESET_TOKEN_INVALID: token đặt lại sai / hết hạn / đã dùng — MỘT mã cho cả ba ca để không
+  // lộ token từng tồn tại hay không.
+  'CURRENT_PASSWORD_INCORRECT',
+  'PASSWORD_NOT_SET',
+  'RESET_TOKEN_INVALID',
   // Voucher
   'VOUCHER_NOT_FOUND',
   'VOUCHER_INACTIVE',
