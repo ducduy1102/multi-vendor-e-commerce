@@ -43,6 +43,37 @@ describe('listProductsQuerySchema — hành vi cũ', () => {
   });
 });
 
+describe('listProductsQuerySchema — shopSlug (trang shop công khai)', () => {
+  it('không gửi hoặc gửi rỗng ⇒ undefined', () => {
+    expect(listProductsQuerySchema.parse({}).shopSlug).toBeUndefined();
+    expect(
+      listProductsQuerySchema.parse({ shopSlug: '  ' }).shopSlug,
+    ).toBeUndefined();
+  });
+
+  it('nhận slug (trim), giữ nguyên cùng các filter khác', () => {
+    const query = listProductsQuerySchema.parse({
+      shopSlug: ' shop-a ',
+      shopId: 'shop-id',
+      page: '2',
+    });
+    expect(query).toMatchObject({
+      shopSlug: 'shop-a',
+      shopId: 'shop-id',
+      page: 2,
+    });
+  });
+
+  it('slug lạ KHÔNG bị từ chối (chỉ không khớp shop nào ⇒ danh sách rỗng), chỉ chặn độ dài', () => {
+    expect(
+      listProductsQuerySchema.safeParse({ shopSlug: 'Khong-Hop-Le!' }).success,
+    ).toBe(true);
+    expect(
+      listProductsQuerySchema.safeParse({ shopSlug: 'a'.repeat(151) }).success,
+    ).toBe(false);
+  });
+});
+
 describe('listProductsQuerySchema — trần chống truy vấn nặng', () => {
   it(`page nhận ${PRODUCT_LIST_MAX_PAGE}, từ chối ${PRODUCT_LIST_MAX_PAGE + 1}`, () => {
     expect(
