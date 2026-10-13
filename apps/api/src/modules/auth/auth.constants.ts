@@ -1,5 +1,6 @@
 import type { CookieOptions } from 'express';
 import { getFrontendUrl } from '../../shared/utils/frontend-url';
+import { readPositiveInt } from '../../shared/utils/read-positive-int';
 
 export { getFrontendUrl };
 
@@ -33,6 +34,25 @@ export function refreshTokenCookieOptions(): CookieOptions {
 // Phase 5), chỉ là safeguard tối thiểu cho riêng flow này.
 export const EMAIL_VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 export const EMAIL_VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
+
+// Quên mật khẩu (Week9.md 1.11): cooldown theo user giữa hai lần GỬI link (trong cooldown vẫn trả cùng phản
+// hồi như bình thường, không báo gì — báo "gửi quá nhanh" sẽ lộ email có tài khoản). Chưa có rate limit toàn
+// hệ thống (Tuần 12), đây là rào tối thiểu cho riêng luồng này.
+export const PASSWORD_RESET_RESEND_COOLDOWN_MS = 60 * 1000;
+
+// Hạn dùng của link đặt lại mật khẩu, đọc LÚC DÙNG (không lúc boot). Mặc định 60 phút; kẹp tối đa 24 giờ
+// để một giá trị cấu hình nhầm không biến link thành thứ sống cả tuần.
+export const DEFAULT_PASSWORD_RESET_TTL_MINUTES = 60;
+export const MAX_PASSWORD_RESET_TTL_MINUTES = 24 * 60;
+export function readPasswordResetTtlMinutes(): number {
+  return Math.min(
+    readPositiveInt(
+      'PASSWORD_RESET_TTL_MINUTES',
+      DEFAULT_PASSWORD_RESET_TTL_MINUTES,
+    ),
+    MAX_PASSWORD_RESET_TTL_MINUTES,
+  );
+}
 
 // Đích redirect sau Google OAuth callback. `next` phải là kết quả của safeNextPath (đã kiểm) hoặc
 // null; không có next thì về trang chủ như trước khi có tính năng này.
