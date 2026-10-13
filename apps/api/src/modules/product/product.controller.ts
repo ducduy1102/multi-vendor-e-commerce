@@ -314,6 +314,13 @@ export class ProductController {
       'rating = điểm trung bình cao trước, hoà thì nhiều đánh giá hơn trước; sản phẩm chưa có đánh giá xếp cuối',
   })
   @ApiQuery({ name: 'shopId', required: false })
+  @ApiQuery({
+    name: 'shopSlug',
+    required: false,
+    example: 'shop-thoi-trang-abc',
+    description:
+      'Lọc theo slug shop (trang shop công khai). Kết hợp AND với shopId nếu có; slug không khớp shop nào hoặc shop chưa được duyệt ⇒ danh sách rỗng (không phải 400). Tối đa 150 ký tự.',
+  })
   @ApiQuery({ name: 'categoryId', required: false })
   @ApiQuery({ name: 'minPrice', required: false, example: 100000 })
   @ApiQuery({ name: 'maxPrice', required: false, example: 300000 })
@@ -342,7 +349,7 @@ export class ProductController {
   @ApiResponse({
     status: 400,
     description:
-      'Query không hợp lệ (sort ngoài newest/price-asc/price-desc/rating, limit > 50, page/limit không phải số nguyên dương, minPrice/maxPrice âm...)',
+      'Query không hợp lệ (sort ngoài newest/price-asc/price-desc/rating, limit > 50, page > 10000 hoặc page/limit không phải số nguyên dương, shopSlug > 150 ký tự, attributeValues quá 20 giá trị hoặc mỗi giá trị quá 100 ký tự, minPrice/maxPrice âm...). q quá 100 ký tự không bị từ chối mà bị cắt.',
     schema: {
       example: errorExample(
         "sort: Invalid enum value. Expected 'newest' | 'price-asc' | 'price-desc' | 'rating', received 'best'",
