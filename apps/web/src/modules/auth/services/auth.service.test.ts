@@ -18,6 +18,8 @@ const mockUser = {
   name: 'Nguyen Van A',
   role: 'USER',
   emailVerifiedAt: null,
+  locale: 'vi',
+  hasPassword: true,
 };
 
 function mockFetchOnce(body: unknown, status = 200) {

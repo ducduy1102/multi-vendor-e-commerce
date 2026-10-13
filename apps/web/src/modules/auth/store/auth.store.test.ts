@@ -8,6 +8,8 @@ const mockUser = {
   name: 'Nguyen Van A',
   role: 'USER' as const,
   emailVerifiedAt: null,
+  locale: 'vi' as const,
+  hasPassword: true,
 };
 
 describe('useAuthStore', () => {
