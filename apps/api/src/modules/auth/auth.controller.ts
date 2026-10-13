@@ -85,6 +85,7 @@ export class AuthController {
         email: 'user@example.com',
         password: 'password123',
         name: 'Nguyen Van A',
+        locale: 'vi',
       },
     },
   })
@@ -95,7 +96,8 @@ export class AuthController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Email đã được sử dụng, hoặc dữ liệu không hợp lệ',
+    description:
+      'Email đã được sử dụng, hoặc dữ liệu không hợp lệ (tên rỗng/quá 100 ký tự/có ký tự < > hoặc ký tự điều khiển, mật khẩu < 8 ký tự hoặc > 72 byte, locale ngoài vi/en)',
   })
   register(@Body(new ZodValidationPipe(registerSchema)) dto: RegisterDto) {
     return this.authService.register(dto);
