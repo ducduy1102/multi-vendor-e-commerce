@@ -155,6 +155,23 @@ describe('AddToCartButton', () => {
     expect(toastSuccess).not.toHaveBeenCalled();
   });
 
+  it('409 CART_OWN_SHOP_ITEM (người bán mua hàng của shop mình) -> toast đúng lý do, không phải câu 409 chung', async () => {
+    mockMutation((options) =>
+      options.onError?.(
+        new ApiError('You cannot buy products from your own shop', 409, 'CART_OWN_SHOP_ITEM'),
+      ),
+    );
+    const user = userEvent.setup();
+    render(withIntl(<AddToCartButton productVariantId="v1" stock={5} />));
+
+    await user.click(screen.getByRole('button', { name: ADD_LABEL }));
+
+    expect(toastError).toHaveBeenCalledWith('Bạn không thể mua sản phẩm của chính shop mình');
+    expect(toastError).not.toHaveBeenCalledWith(
+      'Không thể thêm: số lượng vượt tồn kho hoặc sản phẩm không còn bán',
+    );
+  });
+
   it('401 -> toast nhắc đăng nhập lại', async () => {
     mockMutation((options) => options.onError?.(new ApiError('Unauthorized', 401)));
     const user = userEvent.setup();

@@ -10,11 +10,15 @@ import { dirname, join, relative, resolve, sep } from 'path';
 const SRC_ROOT = __dirname;
 
 // module (khoá) KHÔNG được import các module (giá trị).
+// `review` (Week9.md 2.0) chỉ được phụ thuộc `product` (ProductRatingService — điểm ghi duy nhất của
+// Product.avgRating/reviewCount); dữ liệu đơn hàng nó tự đọc bằng PrismaService, không import `order`.
+// Chiều ngược lại cũng cấm (`product`/`order` → `review`) để đồ thị không có vòng.
 export const FORBIDDEN_DEPENDENCIES: Record<string, string[]> = {
   voucher: ['cart', 'checkout', 'order'],
-  product: ['cart', 'checkout', 'order'],
-  order: ['checkout', 'cart'],
+  product: ['cart', 'checkout', 'order', 'review'],
+  order: ['checkout', 'cart', 'review'],
   cart: ['checkout', 'order'],
+  review: ['cart', 'checkout', 'order', 'voucher'],
 };
 
 // Ngoại lệ có chủ đích cho luật 2 & 3 — chỉ `import type` (bị xoá lúc biên dịch, không tạo
@@ -152,6 +156,42 @@ describe('module boundaries', () => {
       expect(v).toHaveLength(2);
       expect(v[0]).toContain("'order' không được phụ thuộc module 'checkout'");
       expect(v[1]).toContain("'voucher' không được phụ thuộc module 'cart'");
+    });
+
+    it('bắt phụ thuộc bị cấm của review (review → order, product → review, order → review)', () => {
+      const v = findViolations([
+        file(
+          'modules/review/a.ts',
+          "import { X } from '../order/order.service';",
+        ),
+        file(
+          'modules/product/b.ts',
+          "import { Y } from '../review/review.service';",
+        ),
+        file(
+          'modules/order/c.ts',
+          "import { Z } from '../review/review.service';",
+        ),
+      ]);
+      expect(v).toHaveLength(3);
+      expect(v[0]).toContain("'review' không được phụ thuộc module 'order'");
+      expect(v[1]).toContain("'product' không được phụ thuộc module 'review'");
+      expect(v[2]).toContain("'order' không được phụ thuộc module 'review'");
+    });
+
+    it('cho phép review → product qua *.service nhưng chặn file nội bộ', () => {
+      const v = findViolations([
+        file(
+          'modules/review/a.ts',
+          "import { R } from '../product/product-rating.service';",
+        ),
+        file(
+          'modules/review/b.ts',
+          "import { F } from '../product/format-slug';",
+        ),
+      ]);
+      expect(v).toHaveLength(1);
+      expect(v[0]).toContain('modules/review/b.ts');
     });
 
     it('bắt import file nội bộ của module khác, cho phép *.module/*.service', () => {

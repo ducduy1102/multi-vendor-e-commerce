@@ -78,6 +78,8 @@ describe('wishlist.service', () => {
         minPrice: '100000',
         maxPrice: '150000',
         imageUrl: null,
+        avgRating: 4.2,
+        reviewCount: 5,
         isAvailable: true,
       },
     ];

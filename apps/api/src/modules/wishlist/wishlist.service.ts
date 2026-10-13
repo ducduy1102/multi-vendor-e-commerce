@@ -14,6 +14,9 @@ const wishlistProductSelect = {
   slug: true,
   minPrice: true,
   maxPrice: true,
+  // Điểm đánh giá denormalized (Week9.md 1.8) — wishlist dùng chung shape ProductCard.
+  avgRating: true,
+  reviewCount: true,
   status: true,
   shop: { select: { status: true } },
   variants: {
@@ -38,6 +41,8 @@ export interface WishlistItemSummary {
   minPrice: Prisma.Decimal;
   maxPrice: Prisma.Decimal;
   imageUrl: string | null;
+  avgRating: number;
+  reviewCount: number;
   isAvailable: boolean;
 }
 

@@ -20,9 +20,11 @@ import {
 } from '@nestjs/swagger';
 import {
   cancelOrderSchema,
+  createRefundRequestSchema,
   orderListQuerySchema,
   orderTabSchema,
   type CancelOrderInput,
+  type CreateRefundRequestInput,
   type OrderListQuery,
 } from '@ecommerce/types';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
@@ -34,66 +36,21 @@ import {
 } from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { OrderActionService } from './order-action.service';
-import { ORDER_NOT_FOUND_EXAMPLE } from './order-swagger-examples';
+import {
+  CONFIRMED_ORDER_DETAIL_EXAMPLE,
+  ORDER_DETAIL_EXAMPLE,
+  ORDER_DETAIL_ITEM_EXAMPLE,
+  ORDER_LIST_ITEM_EXAMPLE,
+  ORDER_NOT_FOUND_EXAMPLE,
+  REFUND_REQUEST_EXAMPLE,
+} from './order-swagger-examples';
 import { OrderQueryService } from './order-query.service';
+import { RefundRequestActionService } from './refund-request-action.service';
 
-const ORDER_ITEM_EXAMPLE = {
-  productName: 'Áo thun cotton',
-  variantLabel: 'Đỏ / M',
-  sku: 'SKU-AO-DO-M',
-  imageUrl: 'https://res.cloudinary.com/demo/image/upload/ao-thun.jpg',
-  quantity: 2,
-  priceAtPurchase: '150000',
-};
-
-const ORDER_LIST_ITEM_EXAMPLE = {
-  id: 'b1b2c3d4-1234-4a5b-8c9d-abcdef000002',
-  checkoutGroupId: 'a1b2c3d4-1234-4a5b-8c9d-abcdef000001',
-  status: 'AWAITING_PAYMENT',
-  createdAt: '2026-10-01T10:00:00.000Z',
-  totalAmount: '320000',
-  shop: {
-    id: 'c1b2c3d4-1234-4a5b-8c9d-abcdef000003',
-    name: 'Shop Áo Xinh',
-    slug: 'shop-ao-xinh',
-    logoUrl: null,
-  },
-  items: [ORDER_ITEM_EXAMPLE],
-  itemCount: 1,
-  paymentMethod: 'VNPAY',
-  paymentStatus: 'PENDING',
-  canCancel: true,
-  canConfirmReceived: false,
-  canRetryPayment: true,
-};
-
-const ORDER_DETAIL_EXAMPLE = {
-  ...ORDER_LIST_ITEM_EXAMPLE,
-  recipientName: 'Nguyễn Văn A',
-  recipientPhone: '0912345678',
-  shippingAddressLine: '12 Nguyễn Huệ',
-  shippingWard: 'Phường Bến Nghé',
-  shippingProvince: 'Hồ Chí Minh',
-  subtotal: '300000',
-  discountAmount: '0',
-  shippingFee: '20000',
-  carrier: null,
-  trackingCode: null,
-  buyerNote: 'Giao giờ hành chính, gọi trước khi giao nhé',
-  history: [
-    {
-      fromStatus: null,
-      toStatus: 'AWAITING_PAYMENT',
-      actorType: 'BUYER',
-      note: null,
-      createdAt: '2026-10-01T10:00:00.000Z',
-    },
-  ],
-};
-
-// Đơn của buyer đang đăng nhập (Week8.md 2.4). Mọi truy vấn lọc theo userId lấy từ token. Hành động
-// (hủy, xác nhận đã nhận) ở 2.6. Route thanh toán của cổng nằm ở `OrderController`
-// (`/payments/...`), không liên quan.
+// Đơn của buyer đang đăng nhập (Week8.md 2.4). Mọi truy vấn lọc theo userId lấy từ token. Hành động: hủy,
+// xác nhận đã nhận (Week8.md 2.6) và gửi yêu cầu hủy/trả hàng (Week9.md 2.6); rút/khiếu nại yêu cầu nằm ở
+// `BuyerRefundRequestController`. Route thanh toán của cổng nằm ở `OrderController` (`/payments/...`),
+// không liên quan.
 @ApiTags('orders')
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -107,6 +64,7 @@ export class BuyerOrderController {
   constructor(
     private readonly orderQueryService: OrderQueryService,
     private readonly orderActionService: OrderActionService,
+    private readonly refundRequestActionService: RefundRequestActionService,
   ) {}
 
   @Get()
@@ -161,6 +119,8 @@ export class BuyerOrderController {
   @ApiOperation({
     summary:
       'Chi tiết 1 đơn của tôi — địa chỉ nhận và dòng hàng lúc đặt, lời nhắn tôi đã gửi cho shop (`buyerNote`, null nếu không có), timeline trạng thái',
+    description:
+      'Mỗi dòng hàng kèm `productId`/`productSlug` (dựng link sản phẩm), `canReview` (đơn COMPLETED, còn trong REVIEW_WINDOW_DAYS, chưa đánh giá sản phẩm này trong đơn này, và sản phẩm không thuộc shop của chính tôi) và `review` (đánh giá của chính tôi, null nếu chưa có).',
   })
   @ApiParam({ name: 'id', description: 'ID đơn hàng' })
   @ApiResponse({
@@ -181,7 +141,7 @@ export class BuyerOrderController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Hủy đơn của tôi — đơn chưa thanh toán (hủy CẢ NHÓM thanh toán chứa đơn này) hoặc đơn COD chờ shop xác nhận',
+      'Hủy đơn của tôi — đơn chưa thanh toán (hủy CẢ NHÓM thanh toán chứa đơn này) hoặc đơn đang chờ shop xác nhận (đã trả online ⇒ hoàn tiền tự động về nguồn thanh toán; chi tiết đơn trả `refund` cho biết đang hoàn hay đã hoàn)',
   })
   @ApiParam({ name: 'id', description: 'ID đơn hàng' })
   @ApiBody({
@@ -215,14 +175,14 @@ export class BuyerOrderController {
   @ApiResponse({
     status: 409,
     description:
-      'ORDER_CANCEL_NOT_ALLOWED (details.reason: PAID_ONLINE = đã thanh toán online, PROCESSING_STARTED = shop đã xác nhận trở đi); ORDER_INVALID_TRANSITION = đơn đã kết thúc; ORDER_ALREADY_CHANGED = vừa bị đổi bởi yêu cầu khác (vd shop vừa xác nhận)',
+      'ORDER_CANCEL_NOT_ALLOWED (details.reason: PROCESSING_STARTED = shop đã xác nhận/đóng gói ⇒ gửi YÊU CẦU hủy thay vì hủy ngay; IN_TRANSIT = đã giao cho vận chuyển); ORDER_INVALID_TRANSITION = đơn đã kết thúc; ORDER_ALREADY_CHANGED = vừa bị đổi bởi yêu cầu khác (vd shop vừa xác nhận)',
     schema: {
       example: {
         success: false,
         data: null,
-        message: 'Order cannot be cancelled: PAID_ONLINE',
+        message: 'Order cannot be cancelled: PROCESSING_STARTED',
         code: 'ORDER_CANCEL_NOT_ALLOWED',
-        details: { reason: 'PAID_ONLINE' },
+        details: { reason: 'PROCESSING_STARTED' },
       },
     },
   })
@@ -234,6 +194,78 @@ export class BuyerOrderController {
     body: CancelOrderInput,
   ) {
     await this.orderActionService.cancelByBuyer(user.userId, id, body.reason);
+    return this.orderQueryService.getForBuyer(user.userId, id);
+  }
+
+  @Post(':id/refund-requests')
+  @ApiOperation({
+    summary:
+      'Gửi yêu cầu hủy / trả hàng-hoàn tiền cho đơn của tôi. Loại yêu cầu do BE suy từ trạng thái đơn: shop đã xác nhận/đóng gói ⇒ yêu cầu HỦY (seller duyệt; quá hạn phản hồi hệ thống tự duyệt); đã nhận hàng, trong cửa sổ hoàn trả ⇒ yêu cầu TRẢ HÀNG (seller duyệt; từ chối thì khiếu nại lên sàn; quá hạn chuyển Admin)',
+  })
+  @ApiParam({ name: 'id', description: 'ID đơn hàng' })
+  @ApiBody({
+    schema: {
+      example: {
+        reasonCode: 'CHANGE_OF_MIND',
+        reasonNote: 'Đổi ý, không cần nữa',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Chi tiết đơn sau khi gửi — `refundRequest` là yêu cầu vừa tạo (PENDING_SELLER)',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          ...CONFIRMED_ORDER_DETAIL_EXAMPLE,
+          canRequestCancel: false,
+          refundRequest: REFUND_REQUEST_EXAMPLE,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Thiếu/sai lý do, lý do không thuộc loại yêu cầu của đơn, chọn OTHER mà không ghi chú, ghi chú quá dài (tối đa 500 ký tự)',
+    schema: {
+      example: errorExample('reasonCode: order.validationRefundReasonInvalid'),
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Đơn không tồn tại hoặc không phải của bạn',
+    schema: { example: ORDER_NOT_FOUND_EXAMPLE },
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'REFUND_REQUEST_NOT_ALLOWED (details.reason: NOT_ELIGIBLE_STATUS = đơn không ở CONFIRMED/PACKED/COMPLETED; WINDOW_EXPIRED = quá cửa sổ trả hàng; ALREADY_REQUESTED = đã có yêu cầu cùng loại chưa rút; PAYMENT_NOT_COLLECTED = đơn online chưa có thanh toán thành công); ORDER_ALREADY_CHANGED = đơn vừa đổi trạng thái',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'Refund request is not allowed: ALREADY_REQUESTED',
+        code: 'REFUND_REQUEST_NOT_ALLOWED',
+        details: { reason: 'ALREADY_REQUESTED' },
+      },
+    },
+  })
+  async requestRefund(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    // Express 5: không gửi body ⇒ req.body là undefined — default {} để lỗi báo theo field reasonCode
+    // (giống gửi `{}`) thay vì "value: Required".
+    @Body(
+      new ZodValidationPipe(
+        createRefundRequestSchema.default({} as CreateRefundRequestInput),
+      ),
+    )
+    body: CreateRefundRequestInput,
+  ) {
+    await this.refundRequestActionService.createForBuyer(user.userId, id, body);
     return this.orderQueryService.getForBuyer(user.userId, id);
   }
 
@@ -254,6 +286,8 @@ export class BuyerOrderController {
           ...ORDER_DETAIL_EXAMPLE,
           status: 'COMPLETED',
           canCancel: false,
+          // Vừa hoàn tất ⇒ còn trong cửa sổ đánh giá.
+          items: [{ ...ORDER_DETAIL_ITEM_EXAMPLE, canReview: true }],
         },
       },
     },

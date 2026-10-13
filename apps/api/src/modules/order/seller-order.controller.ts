@@ -21,10 +21,12 @@ import {
 } from '@nestjs/swagger';
 import {
   rejectOrderSchema,
+  sellerCancelOrderSchema,
   sellerOrderListQuerySchema,
   sellerOrderTabSchema,
   shipOrderSchema,
   type RejectOrderInput,
+  type SellerCancelOrderInput,
   type SellerOrderListQuery,
   type ShipOrderInput,
 } from '@ecommerce/types';
@@ -39,7 +41,10 @@ import {
 } from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { OrderActionService } from './order-action.service';
-import { ORDER_NOT_FOUND_EXAMPLE } from './order-swagger-examples';
+import {
+  ORDER_NOT_FOUND_EXAMPLE,
+  SHOP_ID_PARAM,
+} from './order-swagger-examples';
 import { OrderQueryService } from './order-query.service';
 
 const SELLER_ORDER_LIST_ITEM_EXAMPLE = {
@@ -66,7 +71,9 @@ const SELLER_ORDER_LIST_ITEM_EXAMPLE = {
   canConfirm: true,
   canPack: false,
   canShip: false,
-  canReject: false,
+  canReject: true,
+  canCancel: false,
+  refundRequest: null,
 };
 
 const SELLER_ORDER_DETAIL_EXAMPLE = {
@@ -97,7 +104,7 @@ const SELLER_ORDER_DETAIL_EXAMPLE = {
   ],
 };
 
-// Phản hồi lỗi chung của 4 hành động (xác nhận/đóng gói/giao/từ chối).
+// Phản hồi lỗi chung của các hành động (xác nhận/đóng gói/giao/từ chối/hủy).
 const ApiActionErrors = () =>
   applyDecorators(
     ApiResponse({
@@ -109,7 +116,7 @@ const ApiActionErrors = () =>
     ApiResponse({
       status: 409,
       description:
-        'ORDER_INVALID_TRANSITION = đơn không ở trạng thái cho phép làm hành động này; ORDER_CANCEL_NOT_ALLOWED (chỉ reject; details.reason PAID_ONLINE | PROCESSING_STARTED); ORDER_ALREADY_CHANGED = vừa bị đổi bởi yêu cầu khác (vd buyer vừa hủy)',
+        'ORDER_INVALID_TRANSITION = đơn không ở trạng thái cho phép làm hành động này; ORDER_CANCEL_NOT_ALLOWED (chỉ reject/cancel; details.reason PROCESSING_STARTED = đã xác nhận/đóng gói ⇒ dùng "hủy đơn" | IN_TRANSIT = đã giao cho vận chuyển); REFUND_REQUEST_PENDING (chỉ pack/ship) = người mua đang xin hủy, phải phản hồi yêu cầu trước; ORDER_ALREADY_CHANGED = vừa bị đổi bởi yêu cầu khác (vd buyer vừa hủy)',
       schema: {
         example: {
           success: false,
@@ -121,15 +128,8 @@ const ApiActionErrors = () =>
     }),
   );
 
-// shopId lấy qua @ShopOwnerContext() (do ShopOwnerGuard resolve sẵn) chứ không qua @Param('shopId') nên
-// Swagger không tự suy ra tham số đường dẫn này — phải khai tay (cùng lý do VoucherController).
-const SHOP_ID_PARAM = {
-  name: 'shopId',
-  description: 'Id của shop mình sở hữu',
-  example: 'a1b2c3d4-1234-4a5b-8c9d-abcdef000001',
-};
-
-// Đơn hàng của shop mình (Week8.md 2.5 đọc, 2.6 hành động xác nhận/đóng gói/giao/từ chối). ShopOwnerGuard xác nhận shop thuộc người gọi (403 nếu không, 404 nếu shop không tồn tại) —
+// Đơn hàng của shop mình (Week8.md 2.5 đọc, 2.6 hành động xác nhận/đóng gói/giao/từ chối; Week9.md 2.7 từ chối
+// kể cả đơn đã trả online, tự hủy đơn đã xác nhận). ShopOwnerGuard xác nhận shop thuộc người gọi (403 nếu không, 404 nếu shop không tồn tại) —
 // KHÔNG kiểm trạng thái shop: shop bị khoá (SUSPENDED) vẫn xử lý được đơn đã có (Week8.md 1.8).
 // Không có prefix chung ở @Controller() vì path nằm dưới shops/:shopId (cùng VoucherController).
 @ApiTags('seller-orders')
@@ -273,7 +273,10 @@ export class SellerOrderController {
   @ApiParam({ name: 'orderId', description: 'ID đơn hàng' })
   @UseGuards(JwtAuthGuard, ShopOwnerGuard)
   @ApiCookieAuth('access_token')
-  @ApiOperation({ summary: 'Đóng gói đơn (CONFIRMED → PACKED)' })
+  @ApiOperation({
+    summary:
+      'Đóng gói đơn (CONFIRMED → PACKED). Bị chặn (409 REFUND_REQUEST_PENDING) khi người mua đang có yêu cầu HỦY chờ xử lý — phải duyệt/từ chối yêu cầu hoặc tự hủy đơn trước',
+  })
   @ApiResponse({
     status: 200,
     schema: {
@@ -306,7 +309,7 @@ export class SellerOrderController {
   @ApiCookieAuth('access_token')
   @ApiOperation({
     summary:
-      'Giao hàng (PACKED → SHIPPING), kèm đơn vị vận chuyển / mã vận đơn nhập tay (cả 2 tuỳ chọn)',
+      'Giao hàng (PACKED → SHIPPING), kèm đơn vị vận chuyển / mã vận đơn nhập tay (cả 2 tuỳ chọn). Bị chặn (409 REFUND_REQUEST_PENDING) khi người mua đang có yêu cầu HỦY chờ xử lý',
   })
   @ApiBody({
     required: false,
@@ -355,7 +358,7 @@ export class SellerOrderController {
   @ApiCookieAuth('access_token')
   @ApiOperation({
     summary:
-      'Từ chối đơn COD chờ xác nhận (PENDING → CANCELLED, hoàn kho) — lý do bắt buộc. Đơn đã thanh toán online chưa từ chối được (hoàn tiền: Tuần 9)',
+      'Từ chối đơn chờ xác nhận (PENDING → CANCELLED, hoàn kho, trả voucher nếu hết đơn hưởng giảm) — lý do bắt buộc, mọi phương thức thanh toán. Đơn đã thanh toán online được hoàn tiền tự động. Từ CONFIRMED trở đi dùng "hủy đơn" (cancel)',
   })
   @ApiBody({ schema: { example: { reason: 'Hết hàng' } } })
   @ApiResponse({
@@ -366,7 +369,6 @@ export class SellerOrderController {
         data: {
           ...SELLER_ORDER_DETAIL_EXAMPLE,
           status: 'CANCELLED',
-          paymentMethod: 'COD',
           canConfirm: false,
           canReject: false,
         },
@@ -389,6 +391,58 @@ export class SellerOrderController {
     body: RejectOrderInput,
   ) {
     await this.orderActionService.reject(
+      shopId,
+      user.userId,
+      orderId,
+      body.reason,
+    );
+    return this.orderQueryService.getForSeller(shopId, orderId);
+  }
+
+  @Post('shops/:shopId/orders/:orderId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam(SHOP_ID_PARAM)
+  @ApiParam({ name: 'orderId', description: 'ID đơn hàng' })
+  @UseGuards(JwtAuthGuard, ShopOwnerGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({
+    summary:
+      'Tự hủy đơn đã xác nhận/đóng gói (CONFIRMED | PACKED → CANCELLED) — lý do bắt buộc, người mua đọc được. Cộng lại kho, trả voucher nếu hết đơn hưởng giảm, hoàn tiền tự động nếu đã thanh toán online, và tự đóng yêu cầu hủy đang mở của người mua (nếu có). Không bị yêu cầu hủy đang chờ chặn: hủy chính là cách trả lời. Đơn chờ xác nhận dùng "từ chối" (reject); đơn đã giao cho vận chuyển không hủy được',
+  })
+  @ApiBody({ schema: { example: { reason: 'Hết hàng, xin lỗi bạn' } } })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        success: true,
+        data: {
+          ...SELLER_ORDER_DETAIL_EXAMPLE,
+          status: 'CANCELLED',
+          canConfirm: false,
+          canReject: false,
+          canCancel: false,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Thiếu lý do hoặc lý do quá dài (tối đa 500 ký tự)',
+    schema: { example: errorExample('reason: order.validationReasonRequired') },
+  })
+  @ApiActionErrors()
+  async cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @ShopOwnerContext() { shopId }: { shopId: string },
+    @Param('orderId') orderId: string,
+    // Express 5: không gửi body ⇒ req.body là undefined — default lý do rỗng để lỗi báo theo field `reason`
+    // (giống reject). Lý do vẫn BẮT BUỘC.
+    @Body(
+      new ZodValidationPipe(sellerCancelOrderSchema.default({ reason: '' })),
+    )
+    body: SellerCancelOrderInput,
+  ) {
+    await this.orderActionService.cancelBySeller(
       shopId,
       user.userId,
       orderId,

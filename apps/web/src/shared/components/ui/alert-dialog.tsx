@@ -31,6 +31,13 @@ function AlertDialogOverlay({ className, ...props }: AlertDialogPrimitive.Backdr
   );
 }
 
+// SỬA TAY so với bản shadcn sinh ra (đã được người dùng đồng ý, Week9.md 3.7): thêm `grid-cols-1` ngay sau
+// `grid`. Popup là lưới KHÔNG khai cột nên cột ngầm định là `auto`, lấy MIN-CONTENT của phần tử con; một ô nhập
+// `field-sizing: content` (Textarea) chứa chuỗi dài không dấu cách làm cả hộp thoại rộng bằng chuỗi — đã đo thật:
+// ~4385px (CancelOrderDialog) và ~4257px (ShopReasonDialog) ở 390px với 500 ký tự liền, còn khung ngoài vẫn vừa
+// màn hình nên rất dễ bỏ sót (rules/frontend.md mục 5). `grid-cols-1` = `minmax(0, 1fr)` nên mọi hộp thoại có ô
+// nhập, hiện tại lẫn sau này, tự an toàn. Chạy lại `shadcn add alert-dialog` sẽ ghi đè mất dòng này —
+// alert-dialog.test.tsx sẽ đỏ để nhắc.
 function AlertDialogContent({
   className,
   size = 'default',
@@ -45,7 +52,7 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(
-          'group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
+          'group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full grid-cols-1 -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
           className,
         )}
         {...props}

@@ -138,6 +138,17 @@ describe('ShopReasonDialog', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it.each(['reject', 'suspend'] as const)(
+    '%s: hộp thoại khai cột lưới tường minh (grid-cols-1) — lý do dài không dấu cách không làm hộp thoại rộng ra ngoài màn hình',
+    (kind) => {
+      setup({ kind });
+
+      // jsdom không có layout nên không đo được độ rộng; giữ lớp này để không ai vô tình bỏ đi. Đã đo bằng trình
+      // duyệt thật: thiếu lớp này nội dung hộp thoại rộng ~4257px ở 390px với 500 ký tự liền (lỗi có từ Tuần 8).
+      expect(screen.getByRole('alertdialog')).toHaveClass('grid-cols-1');
+    },
+  );
+
   it('"Quay lại" đóng hộp thoại mà không thực hiện gì', async () => {
     const user = userEvent.setup();
     const { onConfirm, onOpenChange } = setup();

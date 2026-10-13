@@ -3,17 +3,21 @@
 import { useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
+import { ReviewFormSheet } from '@/modules/review';
 import { Alert } from '@/shared/components/ui/alert';
 import { Button } from '@/shared/components/ui/button';
 import { ApiError } from '@/shared/lib/api-client';
 
 import { useOrder } from '../hooks/useOrder';
 import { useOrderActionFlow } from '../hooks/useOrderActionFlow';
+import { useOrderItemReviewFlow } from '../hooks/useOrderItemReviewFlow';
 import { getCancelBlockedReasonKey } from '../order-cancel-hint';
 import { OrderActionDialogs } from './OrderActionDialogs';
 import { OrderActions } from './OrderActions';
 import { OrderDetailSkeleton } from './OrderDetailSkeleton';
 import { OrderDetailView } from './OrderDetailView';
+import { OrderItemReviewAction } from './OrderItemReviewAction';
+import { RefundRequestCard } from './RefundRequestCard';
 
 interface OrderDetailContainerProps {
   // null khi URL không phải id hợp lệ — page.tsx (Server Component) đã kiểm UUID trước khi truyền
@@ -44,6 +48,7 @@ function OrderDetailLoader({ orderId }: { orderId: string }) {
 
   const orderQuery = useOrder(orderId);
   const flow = useOrderActionFlow();
+  const reviewFlow = useOrderItemReviewFlow(orderId);
 
   // Có dữ liệu thì luôn hiện dữ liệu — lần tải lại ngầm lỗi (đổi tab về, mạng chớp) không được xoá
   // mất đơn đang xem; chỉ báo lỗi khi chưa có gì để hiện.
@@ -86,19 +91,47 @@ function OrderDetailLoader({ orderId }: { orderId: string }) {
             isDisabled={flow.isActionPending}
             cancelBlockedKey={getCancelBlockedReasonKey(order)}
             onCancel={() => flow.openCancelDialog(order)}
+            onRequestCancel={() => flow.openRequestRefundDialog(order, 'CANCEL')}
+            onRequestReturn={() => flow.openRequestRefundDialog(order, 'RETURN')}
             onConfirmReceived={() => flow.openConfirmReceivedDialog(order)}
             onRetryPayment={() => void flow.retryPayment(order)}
           />
         }
+        // Thẻ yêu cầu hủy/trả hàng (nếu có): trạng thái, dòng thời gian, rút/khiếu nại theo cờ của BE.
+        refundRequestSection={
+          order.refundRequest ? (
+            <RefundRequestCard
+              request={order.refundRequest}
+              isDisabled={flow.isActionPending}
+              onWithdraw={() =>
+                order.refundRequest && flow.openWithdrawRefundDialog(order, order.refundRequest.id)
+              }
+              onEscalate={() =>
+                order.refundRequest && flow.openEscalateRefundDialog(order, order.refundRequest.id)
+              }
+            />
+          ) : null
+        }
+        // Cờ canReview/review do BE tính theo từng dòng; dải chỉ hiện khi được phép (đơn COMPLETED...).
+        renderItemFooter={(item) => (
+          <OrderItemReviewAction
+            canReview={item.canReview}
+            review={item.review}
+            onWrite={() => reviewFlow.openWrite(item)}
+            onEdit={() => reviewFlow.openEdit(item)}
+          />
+        )}
       />
       <OrderActionDialogs {...flow.dialogs} />
+      <ReviewFormSheet {...reviewFlow.sheet} />
     </div>
   );
 }
 
-// Nối dữ liệu (useOrder + luồng hành động) với UI thuần OrderDetailView. Đủ loading/error/404/
-// thành công (rules/frontend.md mục 10). Container không cần unit test (mục 8) — logic có test ở
-// useOrderActionFlow, getCancelBlockedReasonKey, OrderDetailView, OrderActions, OrderTimeline.
+// Nối dữ liệu (useOrder + luồng hành động + luồng đánh giá) với UI thuần OrderDetailView. Đủ loading/error/
+// 404/thành công (rules/frontend.md mục 10). Container không cần unit test (mục 8) — logic có test ở
+// useOrderActionFlow, useOrderItemReviewFlow, getCancelBlockedReasonKey, OrderDetailView, OrderActions,
+// OrderItemReviewAction, OrderTimeline.
 export function OrderDetailContainer({ orderId }: OrderDetailContainerProps) {
   if (!orderId) {
     return <OrderNotFound />;

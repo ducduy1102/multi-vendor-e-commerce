@@ -13,6 +13,7 @@ import type { App } from 'supertest/types';
 import { orderDetailSchema, sellerOrderDetailSchema } from '@ecommerce/types';
 import { AppModule } from '../../app.module';
 import { MAIL_PROVIDER } from '../../shared/mail/mail-provider.interface';
+import { MockPaymentProvider } from '../../shared/payment/mock-payment.provider';
 import { createFakeMail } from '../../shared/testing/fake-mail';
 
 import { AllExceptionsFilter } from '../../shared/filters/all-exceptions.filter';
@@ -315,7 +316,7 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
 
       await sellerA.post(sellerUrl(shopA, orderId, 'pack')).expect(409);
       await sellerC.post(sellerUrl(shopA, orderId, 'confirm')).expect(403);
-      await buyer.post(buyerUrl(orderId, 'cancel')).expect(409);
+      await otherBuyer.post(buyerUrl(orderId, 'cancel')).expect(404);
 
       expect(fakeMail.sent).toHaveLength(0);
     });
@@ -624,18 +625,49 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       expect((await stockOf(variantId)).stock).toBe(STOCK);
     });
 
-    it('seller KHÔNG từ chối được đơn đã trả online — 409 PAID_ONLINE, không hoàn kho', async () => {
-      const { orderId, variantId } = await seedOne('PENDING', onlinePaid);
+    // Week9.md 2.7 — từ chối đơn đã trả online mở: hoàn tiền tự động (cổng mock). Trước đó test này khẳng định
+    // 409 PAID_ONLINE; mã PAID_ONLINE đã bị bỏ.
+    it('seller từ chối được đơn ĐÃ TRẢ ONLINE — 200, đơn CANCELLED, kho +qty, hoàn tiền SUCCEEDED, Payment REFUNDED, email "bị shop từ chối" kèm đoạn hoàn tiền', async () => {
+      const originalMock = process.env.PAYMENT_MOCK_ENABLED;
+      process.env.PAYMENT_MOCK_ENABLED = 'true';
+      try {
+        const { orderId, variantId, groupId } = await seedOne(
+          'PENDING',
+          onlinePaid,
+        );
+        fakeMail.reset();
 
-      const res = await sellerA
-        .post(sellerUrl(shopA, orderId, 'reject'))
-        .send({ reason: 'Hết hàng' });
+        const res = await sellerA
+          .post(sellerUrl(shopA, orderId, 'reject'))
+          .send({ reason: 'Hết hàng' });
 
-      expect(res.status).toBe(409);
-      expect(code(res)).toBe('ORDER_CANCEL_NOT_ALLOWED');
-      expect(details(res)).toEqual({ reason: 'PAID_ONLINE' });
-      expect(await statusOf(orderId)).toBe('PENDING');
-      expect((await stockOf(variantId)).stock).toBe(STOCK);
+        expect(res.status).toBe(200);
+        expect(sellerOrderDetailSchema.parse(data(res))).toMatchObject({
+          status: 'CANCELLED',
+          canReject: false,
+        });
+        expect(await stockOf(variantId)).toEqual({
+          stock: STOCK + QTY,
+          reservedStock: 0,
+        });
+        const payment = await prisma.payment.findFirstOrThrow({
+          where: { checkoutGroupId: groupId },
+        });
+        expect(payment.status).toBe('REFUNDED');
+        expect(Number(payment.refundedAmount)).toBe(220_000);
+        expect((await historyOf(orderId)).at(-1)).toMatchObject({
+          toStatus: 'CANCELLED',
+          actorType: 'SELLER',
+          note: 'Hết hàng',
+        });
+        expect(fakeMail.sent.map((m) => m.subject)).toEqual([
+          'Đơn hàng của bạn đã bị shop từ chối',
+        ]);
+        expect(fakeMail.sent[0].html).toContain('đang hoàn');
+      } finally {
+        if (originalMock === undefined) delete process.env.PAYMENT_MOCK_ENABLED;
+        else process.env.PAYMENT_MOCK_ENABLED = originalMock;
+      }
     });
 
     it('seller KHÔNG từ chối được đơn đã xác nhận — 409 PROCESSING_STARTED', async () => {
@@ -693,19 +725,176 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       });
     });
 
-    it('buyer KHÔNG hủy được đơn đã trả online — 409 PAID_ONLINE; đơn đã xác nhận — PROCESSING_STARTED', async () => {
-      const online = await seedOne('PENDING', onlinePaid);
+    it('buyer KHÔNG hủy ngay được đơn đã xác nhận/đã giao — 409 PROCESSING_STARTED / IN_TRANSIT (gửi yêu cầu hủy thay vì hủy ngay)', async () => {
       const confirmedCod = await seedOne('CONFIRMED', cod);
+      const shippingOnline = await seedOne('SHIPPING', onlinePaid);
 
-      const r1 = await buyer.post(buyerUrl(online.orderId, 'cancel'));
-      const r2 = await buyer.post(buyerUrl(confirmedCod.orderId, 'cancel'));
+      const r1 = await buyer.post(buyerUrl(confirmedCod.orderId, 'cancel'));
+      const r2 = await buyer.post(buyerUrl(shippingOnline.orderId, 'cancel'));
 
       expect(r1.status).toBe(409);
-      expect(details(r1)).toEqual({ reason: 'PAID_ONLINE' });
+      expect(details(r1)).toEqual({ reason: 'PROCESSING_STARTED' });
       expect(r2.status).toBe(409);
-      expect(details(r2)).toEqual({ reason: 'PROCESSING_STARTED' });
-      expect(await statusOf(online.orderId)).toBe('PENDING');
+      expect(details(r2)).toEqual({ reason: 'IN_TRANSIT' });
       expect(await statusOf(confirmedCod.orderId)).toBe('CONFIRMED');
+      expect(await statusOf(shippingOnline.orderId)).toBe('SHIPPING');
+    });
+
+    // Week9.md 2.6 — đơn đã trả online mà shop CHƯA xác nhận hủy NGAY được, kèm hoàn tiền tự động (cổng mock).
+    describe('hủy ngay đơn đã trả online (kèm hoàn tiền)', () => {
+      const originalMock = process.env.PAYMENT_MOCK_ENABLED;
+      beforeAll(() => {
+        process.env.PAYMENT_MOCK_ENABLED = 'true';
+      });
+      afterAll(() => {
+        if (originalMock === undefined) delete process.env.PAYMENT_MOCK_ENABLED;
+        else process.env.PAYMENT_MOCK_ENABLED = originalMock;
+      });
+
+      it('200, đơn CANCELLED, kho cộng lại, chi tiết trả refund SUCCEEDED + Payment REFUNDED, timeline ghi người mua và lý do', async () => {
+        const { orderId, variantId, groupId } = await seedOne(
+          'PENDING',
+          onlinePaid,
+        );
+
+        const res = await buyer
+          .post(buyerUrl(orderId, 'cancel'))
+          .send({ reason: 'Đặt nhầm' });
+
+        expect(res.status).toBe(200);
+        const detail = orderDetailSchema.parse(data(res));
+        expect(detail).toMatchObject({
+          status: 'CANCELLED',
+          canCancel: false,
+          refund: { status: 'SUCCEEDED', amount: '220000' },
+        });
+        expect(await stockOf(variantId)).toEqual({
+          stock: STOCK + QTY,
+          reservedStock: 0,
+        });
+        const payment = await prisma.payment.findFirstOrThrow({
+          where: { checkoutGroupId: groupId },
+        });
+        expect(payment.status).toBe('REFUNDED');
+        expect(Number(payment.refundedAmount)).toBe(220_000);
+        expect((await historyOf(orderId)).at(-1)).toMatchObject({
+          toStatus: 'CANCELLED',
+          actorType: 'BUYER',
+          actorId: buyerId,
+          note: 'Đặt nhầm',
+        });
+      });
+
+      // Week9.md 2.13 — cổng hoàn tiền chậm KHÔNG được làm hỏng việc hủy: đơn đã hủy trong DB nên request vẫn 200,
+      // khoản hoàn nằm ở PENDING và RefundJob / Admin chạy tiếp bằng cùng mã tham chiếu.
+      it('cổng hoàn tiền QUÁ HẠN (REFUND_GATEWAY_TIMEOUT_MS) — vẫn 200, đơn CANCELLED, chi tiết báo refund PENDING; sổ có đúng 1 khoản PENDING, Payment còn SUCCESS', async () => {
+        const originalTimeout = process.env.REFUND_GATEWAY_TIMEOUT_MS;
+        process.env.REFUND_GATEWAY_TIMEOUT_MS = '50';
+        const gatewaySpy = jest
+          .spyOn(MockPaymentProvider.prototype, 'refund')
+          .mockImplementationOnce(() => new Promise(() => undefined));
+        try {
+          const { orderId, variantId, groupId } = await seedOne(
+            'PENDING',
+            onlinePaid,
+          );
+
+          const res = await buyer
+            .post(buyerUrl(orderId, 'cancel'))
+            .send({ reason: 'Đặt nhầm' });
+
+          expect(res.status).toBe(200);
+          expect(orderDetailSchema.parse(data(res))).toMatchObject({
+            status: 'CANCELLED',
+            refund: { status: 'PENDING', amount: '220000' },
+          });
+          expect(gatewaySpy).toHaveBeenCalledTimes(1);
+          expect(await stockOf(variantId)).toEqual({
+            stock: STOCK + QTY,
+            reservedStock: 0,
+          });
+          const payment = await prisma.payment.findFirstOrThrow({
+            where: { checkoutGroupId: groupId },
+          });
+          expect(payment.status).toBe('SUCCESS');
+          expect(Number(payment.refundedAmount)).toBe(0);
+          const refunds = await prisma.paymentRefund.findMany({
+            where: { paymentId: payment.id },
+          });
+          expect(refunds).toHaveLength(1);
+          expect(refunds[0]).toMatchObject({ status: 'PENDING', attempts: 1 });
+        } finally {
+          gatewaySpy.mockRestore();
+          if (originalTimeout === undefined) {
+            delete process.env.REFUND_GATEWAY_TIMEOUT_MS;
+          } else {
+            process.env.REFUND_GATEWAY_TIMEOUT_MS = originalTimeout;
+          }
+        }
+      });
+
+      it('email báo "đang hoàn" kèm số tiền; seller của đơn đọc được đơn đã CANCELLED', async () => {
+        const { orderId } = await seedOne('PENDING', onlinePaid);
+        fakeMail.reset();
+
+        await buyer.post(buyerUrl(orderId, 'cancel')).expect(200);
+
+        expect(fakeMail.sent).toHaveLength(1);
+        expect(fakeMail.sent[0].subject).toBe('Bạn đã hủy đơn hàng');
+        expect(fakeMail.sent[0].html).toContain('đang hoàn');
+        const seller = await sellerA.get(
+          `/api/v1/shops/${shopA}/orders/${orderId}`,
+        );
+        expect(sellerOrderDetailSchema.parse(data(seller)).status).toBe(
+          'CANCELLED',
+        );
+      });
+
+      it('hủy lần 2 — 409 (đơn đã hủy), không hoàn thêm', async () => {
+        const { orderId, groupId } = await seedOne('PENDING', onlinePaid);
+        await buyer.post(buyerUrl(orderId, 'cancel')).expect(200);
+
+        const second = await buyer.post(buyerUrl(orderId, 'cancel'));
+
+        expect(second.status).toBe(409);
+        expect(code(second)).toBe('ORDER_INVALID_TRANSITION');
+        expect(
+          await prisma.paymentRefund.count({
+            where: { payment: { checkoutGroupId: groupId } },
+          }),
+        ).toBe(1);
+      });
+
+      it('RACE: buyer hủy vs seller xác nhận cùng 1 đơn ĐÃ TRẢ ONLINE — đúng 1 bên thắng, hoàn tiền chỉ khi bị hủy, kho nhất quán', async () => {
+        const LOSER_CODES = [
+          'ORDER_ALREADY_CHANGED',
+          'ORDER_INVALID_TRANSITION',
+          'ORDER_CANCEL_NOT_ALLOWED',
+        ];
+        for (let round = 0; round < 6; round++) {
+          const { orderId, variantId, groupId } = await seedOne(
+            'PENDING',
+            onlinePaid,
+          );
+
+          const [cancel, confirm] = await Promise.all([
+            buyer.post(buyerUrl(orderId, 'cancel')),
+            sellerA.post(sellerUrl(shopA, orderId, 'confirm')),
+          ]);
+
+          expect([cancel.status, confirm.status].sort()).toEqual([200, 409]);
+          const loser = cancel.status === 409 ? cancel : confirm;
+          expect(LOSER_CODES).toContain(code(loser));
+          const final = await statusOf(orderId);
+          const refunds = await prisma.paymentRefund.count({
+            where: { payment: { checkoutGroupId: groupId } },
+          });
+          expect(refunds).toBe(final === 'CANCELLED' ? 1 : 0);
+          expect((await stockOf(variantId)).stock).toBe(
+            final === 'CANCELLED' ? STOCK + QTY : STOCK,
+          );
+        }
+      });
     });
   });
 
@@ -789,7 +978,7 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       ).toHaveLength(1);
     });
 
-    it('nhóm đã thanh toán — 409 PAID_ONLINE, không đụng gì', async () => {
+    it('nhóm đã thanh toán — 409 ORDER_ALREADY_CHANGED (đơn nay hủy từng đơn kèm hoàn tiền), không đụng gì', async () => {
       const g = await seedGroup(
         [{ shopId: shopA, status: 'PENDING' }],
         onlinePaid,
@@ -800,8 +989,7 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       );
 
       expect(res.status).toBe(409);
-      expect(code(res)).toBe('ORDER_CANCEL_NOT_ALLOWED');
-      expect(details(res)).toEqual({ reason: 'PAID_ONLINE' });
+      expect(code(res)).toBe('ORDER_ALREADY_CHANGED');
       expect(await statusOf(g.orderIds[0])).toBe('PENDING');
     });
 
@@ -942,7 +1130,9 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
         expect((await paymentOf(g.groupId)).status).toBe('PENDING');
       });
 
-      it('hủy HẾT mọi đơn của nhóm (không có đơn COMPLETED) — KHÔNG ghi nhận đã thu tiền', async () => {
+      // Tuần 9 (Week9.md 1.2): trước đây Payment COD của nhóm hủy hết kẹt PENDING mãi; giờ là CANCELLED
+      // ("không thu"). Vẫn KHÔNG ghi nhận đã thu tiền: không có paidAt.
+      it('hủy HẾT mọi đơn của nhóm (không có đơn COMPLETED) — Payment COD → CANCELLED ("không thu"), KHÔNG ghi nhận đã thu tiền', async () => {
         const g = await seedGroup(
           [
             { shopId: shopA, status: 'PENDING' },
@@ -955,7 +1145,7 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
         await buyer.post(buyerUrl(g.orderIds[1], 'cancel')).expect(200);
 
         const payment = await paymentOf(g.groupId);
-        expect(payment.status).toBe('PENDING');
+        expect(payment.status).toBe('CANCELLED');
         expect(payment.paidAt).toBeNull();
       });
 

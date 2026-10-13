@@ -149,7 +149,9 @@ export class CheckoutService {
     );
 
     const cartItems = await this.cartService.getCartItems(userId);
-    const cartView = await this.cartService.buildCartView(cartItems);
+    // Truyền userId để dòng thuộc shop do chính người mua làm chủ bị loại như dòng không khả dụng (người bán
+    // không được tự mua, Week9.md 2.10): chúng ở lại giỏ và KHÔNG vào đơn.
+    const cartView = await this.cartService.buildCartView(cartItems, userId);
     const purchasableLines = this.extractPurchasableLines(cartView);
     if (purchasableLines.length === 0) {
       throw new AppException(
@@ -456,15 +458,16 @@ export class CheckoutService {
     input: PreviewCheckoutInput,
   ): Promise<CheckoutPreview> {
     const cartItems = await this.cartService.getCartItems(userId);
-    const cartView = await this.cartService.buildCartView(cartItems);
+    const cartView = await this.cartService.buildCartView(cartItems, userId);
 
+    // Lý do cụ thể khi biết (sản phẩm của chính shop mình), nếu không thì lý do chung "không khả dụng".
     const excludedItems: ExcludedItem[] = cartView.shops.flatMap((shop) =>
       shop.items
         .filter((item) => !item.isAvailable)
         .map((item) => ({
           cartItemId: item.id as string,
           name: item.productName,
-          reason: 'UNAVAILABLE' as const,
+          reason: item.unavailableReason ?? ('UNAVAILABLE' as const),
         })),
     );
 

@@ -48,7 +48,8 @@ export const PAYMENT_METHOD_LABEL_KEYS = {
 } as const;
 
 // Trạng thái thanh toán của NHÓM (1 Payment cho N đơn) — lần thử mới nhất. COD luôn PENDING tới khi
-// đơn hoàn tất nên nhãn "Chưa thanh toán" đi kèm phương thức "Thanh toán khi nhận hàng".
+// đơn hoàn tất nên nhãn "Chưa thanh toán" đi kèm phương thức "Thanh toán khi nhận hàng"; nhóm COD bị hủy
+// toàn bộ là CANCELLED ("Không thu", Week9.md 1.2).
 export const PAYMENT_STATUS_LABEL_KEYS: Record<
   NonNullable<OrderDetail['paymentStatus']>,
   string
@@ -57,4 +58,5 @@ export const PAYMENT_STATUS_LABEL_KEYS: Record<
   SUCCESS: 'paymentStatusSuccess',
   FAILED: 'paymentStatusFailed',
   REFUNDED: 'paymentStatusRefunded',
+  CANCELLED: 'paymentStatusCancelled',
 };

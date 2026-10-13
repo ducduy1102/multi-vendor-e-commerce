@@ -65,6 +65,10 @@ export const cartLineSchema = z.object({
   // Week6.md 1.9: item không khả dụng vẫn nằm trong giỏ nhưng bị loại khỏi
   // mọi tổng tiền.
   isAvailable: z.boolean(),
+  // Chỉ có khi sản phẩm vẫn đang bán nhưng là của CHÍNH shop người xem (người bán không được tự mua): dòng bị
+  // loại như dòng không khả dụng, FE dùng để hiện đúng lý do. Giỏ guest (không biết người xem là ai) và dòng
+  // không khả dụng vì lý do khác không bao giờ có field này.
+  unavailableReason: z.literal('OWN_SHOP').optional(),
 });
 export type CartLine = z.infer<typeof cartLineSchema>;
 

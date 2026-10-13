@@ -15,6 +15,7 @@ import { OrderActions } from './OrderActions';
 import { OrderCard } from './OrderCard';
 import { OrderListSkeleton } from './OrderListSkeleton';
 import { OrderPagination } from './OrderPagination';
+import { OrderRefundStatusLine } from './OrderRefundStatusLine';
 import { OrderTabs } from './OrderTabs';
 
 interface OrdersContainerProps {
@@ -100,13 +101,20 @@ export function OrdersContainer({ tab, page }: OrdersContainerProps) {
               <OrderCard
                 order={order}
                 actions={
-                  <OrderActions
-                    order={order}
-                    isDisabled={flow.isActionPending}
-                    onCancel={() => flow.openCancelDialog(order)}
-                    onConfirmReceived={() => flow.openConfirmReceivedDialog(order)}
-                    onRetryPayment={() => void flow.retryPayment(order)}
-                  />
+                  <>
+                    {/* Có yêu cầu hủy/trả hàng thì cờ gửi yêu cầu tắt, card không còn nút — dòng này cho biết
+                        trạng thái; rút/khiếu nại ở trang chi tiết. */}
+                    <OrderRefundStatusLine request={order.refundRequest} />
+                    <OrderActions
+                      order={order}
+                      isDisabled={flow.isActionPending}
+                      onCancel={() => flow.openCancelDialog(order)}
+                      onRequestCancel={() => flow.openRequestRefundDialog(order, 'CANCEL')}
+                      onRequestReturn={() => flow.openRequestRefundDialog(order, 'RETURN')}
+                      onConfirmReceived={() => flow.openConfirmReceivedDialog(order)}
+                      onRetryPayment={() => void flow.retryPayment(order)}
+                    />
+                  </>
                 }
               />
             </li>

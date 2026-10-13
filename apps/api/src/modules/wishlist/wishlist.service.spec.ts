@@ -18,6 +18,8 @@ function productRow(overrides: Record<string, unknown> = {}) {
     slug: 'ao-thun-nam',
     minPrice: '150000',
     maxPrice: '150000',
+    avgRating: 0,
+    reviewCount: 0,
     status: 'PUBLISHED',
     shop: { status: 'APPROVED' },
     variants: [{ images: [{ url: 'https://example.com/a.jpg', position: 0 }] }],
@@ -155,6 +157,17 @@ describe('WishlistService', () => {
 
       expect(result[0].imageUrl).toBe('https://example.com/a.jpg');
       expect(result[1].imageUrl).toBeNull();
+    });
+
+    // Week9.md 1.8/2.2 — wishlist dùng chung shape ProductCard nên cũng mang điểm đánh giá.
+    it('mang avgRating/reviewCount của sản phẩm ra item', async () => {
+      prisma.wishlist.findMany.mockResolvedValue([
+        { product: productRow({ avgRating: 4.2, reviewCount: 5 }) },
+      ]);
+
+      const result = await service.listMyWishlist('user-1');
+
+      expect(result[0]).toMatchObject({ avgRating: 4.2, reviewCount: 5 });
     });
 
     // Week5.md Bước 1.17 — isAvailable = product PUBLISHED && shop APPROVED.

@@ -4,6 +4,7 @@ import { PaymentModule } from '../../shared/payment/payment.module';
 import { ProductModule } from '../product/product.module';
 import { VoucherModule } from '../voucher/voucher.module';
 import { BuyerOrderController } from './buyer-order.controller';
+import { BuyerRefundRequestController } from './buyer-refund-request.controller';
 import { OrderActionService } from './order-action.service';
 import { OrderAutoCompleteJob } from './order-auto-complete.job';
 import { OrderEmailService } from './order-email.service';
@@ -13,7 +14,13 @@ import { OrderStatusService } from './order-status.service';
 import { OrderService } from './order.service';
 import { PaymentExpiryJob } from './payment-expiry.job';
 import { PaymentService } from './payment.service';
+import { RefundQueryService } from './refund-query.service';
+import { RefundRequestActionService } from './refund-request-action.service';
+import { RefundJob } from './refund.job';
+import { RefundRequestService } from './refund-request.service';
+import { RefundService } from './refund.service';
 import { SellerOrderController } from './seller-order.controller';
+import { SellerRefundRequestController } from './seller-refund-request.controller';
 
 // Chiều phụ thuộc (Week7.md 1.14): order → { voucher, product, shared/payment }.
 // order KHÔNG được import checkout/cart — checkout gọi OrderService.createOrders(tx, ...) và
@@ -22,7 +29,13 @@ import { SellerOrderController } from './seller-order.controller';
 // AppModule, còn @Cron() tự hoạt động miễn provider có trong graph của app.
 @Module({
   imports: [MailModule, PaymentModule, ProductModule, VoucherModule],
-  controllers: [OrderController, BuyerOrderController, SellerOrderController],
+  controllers: [
+    OrderController,
+    BuyerOrderController,
+    BuyerRefundRequestController,
+    SellerOrderController,
+    SellerRefundRequestController,
+  ],
   providers: [
     OrderService,
     OrderActionService,
@@ -30,14 +43,24 @@ import { SellerOrderController } from './seller-order.controller';
     OrderQueryService,
     OrderStatusService,
     PaymentService,
+    RefundQueryService,
+    RefundRequestActionService,
+    RefundRequestService,
+    RefundService,
     PaymentExpiryJob,
     OrderAutoCompleteJob,
+    RefundJob,
   ],
+  // Phần khu Admin (module `admin`, Week9.md 2.9) dùng để xử lý tiền hoàn: đọc hàng chờ, quyết định yêu cầu,
+  // thử lại / ghi nhận thủ công / hoàn thanh toán bất thường — chỉ qua các service này, không import file nội bộ.
   exports: [
     OrderService,
     OrderStatusService,
     OrderEmailService,
     PaymentService,
+    RefundQueryService,
+    RefundRequestActionService,
+    RefundService,
   ],
 })
 export class OrderModule {}

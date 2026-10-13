@@ -118,6 +118,12 @@ const groupSelect = {
       payUrl: true,
       expiresAt: true,
       createdAt: true,
+      // Chỉ cần biết CÓ khoản hoàn chưa FAILED hay không (Week9.md 1.5): lọc + take 1 ngay trong select.
+      refunds: {
+        where: { status: { not: 'FAILED' as const } },
+        select: { id: true },
+        take: 1,
+      },
     },
   },
 } satisfies Prisma.CheckoutGroupSelect;
@@ -125,6 +131,11 @@ const groupSelect = {
 type LoadedGroup = Prisma.CheckoutGroupGetPayload<{
   select: typeof groupSelect;
 }>;
+
+// Nhóm có khoản hoàn tiền (PaymentRefund) chưa FAILED — truyền cho deriveCheckoutGroupStatus để cửa sổ giữa
+// "đơn đã hủy" và "cổng báo hoàn xong" không bị báo nhầm là thanh toán đến muộn.
+const hasActiveRefund = (payments: LoadedGroup['payments']): boolean =>
+  payments.some((payment) => payment.refunds.length > 0);
 
 // Sở hữu xác nhận thanh toán, thu hồi giữ chỗ quá hạn, và đọc nhóm thanh toán (Week7.md 1.14, 2.9).
 // Là NGƯỜI ĐIỀU PHỐI: mở transaction rồi gọi InventoryService/VoucherUsageService với `tx`, không tự
@@ -210,7 +221,10 @@ export class PaymentService {
       const lockedPayment = await tx.$queryRaw<{ status: PaymentStatus }[]>`
         SELECT status FROM payments WHERE id = ${payment.id} FOR UPDATE`;
       const currentStatus = lockedPayment[0].status;
-      if (currentStatus === 'SUCCESS') {
+      // SUCCESS = đã xác nhận trước đó. REFUNDED = đã xác nhận RỒI được hoàn toàn bộ: callback thành công phát lại
+      // (mở lại return URL, IPN gửi lại) không được kéo Payment về SUCCESS — làm lệch sổ cái hoàn tiền và khiến
+      // nhóm bị báo nhầm "thanh toán sau khi hết hạn, cần hoàn" dù tiền đã trả lại người mua.
+      if (currentStatus === 'SUCCESS' || currentStatus === 'REFUNDED') {
         return {
           outcome: 'ALREADY_CONFIRMED' as const,
           checkoutGroupId: payment.checkoutGroupId,
@@ -238,6 +252,8 @@ export class PaymentService {
           status: 'SUCCESS',
           transactionId: callback.gatewayTransactionId,
           paidAt: new Date(),
+          // Mốc do CỔNG báo (VNPay: vnp_PayDate); cổng không báo thì null ⇒ hoàn tiền đi đường thủ công.
+          gatewayPaidAt: callback.gatewayPaidAt ?? null,
         },
       });
 
@@ -396,7 +412,9 @@ export class PaymentService {
   // Buyer chủ động hủy cả nhóm CHƯA thanh toán (Week8.md 2.6) — dùng lại đúng reclaimCheckoutGroup
   // (idempotent, nhả kho + voucher, ghi history với actor BUYER). Hủy theo NHÓM chứ không lẻ từng đơn
   // vì 1 Payment cho cả nhóm. Chỉ chủ nhóm (người khác ⇒ 404). Gọi lại khi nhóm đã hủy ⇒ trả trạng thái
-  // hiện tại (idempotent); nhóm đã trả tiền hoặc không còn đơn chờ thanh toán ⇒ 409.
+  // hiện tại (idempotent); nhóm không còn đơn chờ thanh toán ⇒ 409. Nhóm vừa được thanh toán giữa lúc người
+  // mua mở trang và lúc bấm hủy (IPN tới trước) ⇒ 409 ORDER_ALREADY_CHANGED: đơn nay đã ở trạng thái chờ shop
+  // xác nhận và hủy từng đơn kèm hoàn tiền, không còn "hủy cả nhóm chưa thanh toán" (Week9.md 2.7).
   async cancelCheckoutGroup(
     userId: string,
     groupId: string,
@@ -416,9 +434,8 @@ export class PaymentService {
     if (view.status === 'PAID' || view.status === 'PAID_AFTER_EXPIRY') {
       throw new AppException(
         409,
-        'ORDER_CANCEL_NOT_ALLOWED',
-        'This checkout group has already been paid',
-        { reason: 'PAID_ONLINE' },
+        'ORDER_ALREADY_CHANGED',
+        'This checkout group has already been paid — cancel the individual orders instead',
       );
     }
     throw new AppException(
@@ -451,7 +468,12 @@ export class PaymentService {
     const group = await this.loadGroupForOwner(userId, groupId);
     const fresh = await this.reclaimIfLapsedThenReload(group);
     const now = new Date();
-    const status = deriveCheckoutGroupStatus(fresh.orders, fresh.payments, now);
+    const status = deriveCheckoutGroupStatus(
+      fresh.orders,
+      fresh.payments,
+      now,
+      hasActiveRefund(fresh.payments),
+    );
 
     if (status === 'PAID' || status === 'PAID_AFTER_EXPIRY') {
       throw new AppException(
@@ -607,7 +629,12 @@ export class PaymentService {
 
   private toView(group: LoadedGroup): CheckoutGroupView {
     const now = new Date();
-    const status = deriveCheckoutGroupStatus(group.orders, group.payments, now);
+    const status = deriveCheckoutGroupStatus(
+      group.orders,
+      group.payments,
+      now,
+      hasActiveRefund(group.payments),
+    );
     const latest = group.payments[0] ?? null;
     const totalAmount = group.orders.reduce(
       (sum, o) => sum + o.totalAmount.toNumber(),

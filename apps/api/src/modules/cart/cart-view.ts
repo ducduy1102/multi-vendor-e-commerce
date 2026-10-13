@@ -6,7 +6,7 @@ import type {
   CartView,
 } from '@ecommerce/types';
 import { availableStock } from '../../shared/utils/available-stock';
-import { isVariantAvailable } from './cart-availability';
+import { isOwnShopVariant, isVariantAvailable } from './cart-availability';
 
 // Mọi thứ cần để dựng 1 dòng giỏ hiển thị được: giá live, tồn kho, tên
 // product/shop, ảnh đầu tiên của variant, thuộc tính đã chọn (Week6.md 1.2).
@@ -19,8 +19,9 @@ export const cartVariantSelect = {
   product: {
     select: { id: true, name: true, slug: true, status: true },
   },
+  // ownerId chỉ để biết dòng này có phải của chính shop người xem không (composeCartView) — không ra response.
   shop: {
-    select: { id: true, name: true, slug: true, status: true },
+    select: { id: true, name: true, slug: true, status: true, ownerId: true },
   },
   images: { orderBy: { position: 'asc' }, take: 1, select: { url: true } },
   attributeValues: {
@@ -53,7 +54,14 @@ export interface CartLineSource {
 // số DÒNG (sản phẩm khác nhau) chứ không cộng số lượng — giống badge giỏ hàng
 // của các sàn (giỏ 1 sản phẩm x16 hiện 1, không phải 16). Item không
 // khả dụng (1.9) vẫn hiện nhưng KHÔNG cộng vào subtotal/tổng.
-export function composeCartView(lines: CartLineSource[]): CartView {
+//
+// `viewerUserId` là người đang xem giỏ (đã đăng nhập): dòng thuộc shop do chính họ làm chủ bị loại như dòng
+// không khả dụng (người bán không được tự mua) và mang `unavailableReason: 'OWN_SHOP'` để FE nói đúng lý do.
+// Bỏ trống (guest, hoặc nơi không cần) ⇒ không áp luật này.
+export function composeCartView(
+  lines: CartLineSource[],
+  viewerUserId?: string,
+): CartView {
   const groups = new Map<string, CartShopGroup & { subtotalValue: number }>();
   let subtotal = 0;
   let itemCount = 0;
@@ -62,7 +70,9 @@ export function composeCartView(lines: CartLineSource[]): CartView {
     const { variant } = source;
     const unitPrice = variant.price.toNumber();
     const lineTotal = unitPrice * source.quantity;
-    const isAvailable = isVariantAvailable(variant);
+    const isSellable = isVariantAvailable(variant);
+    const isOwnShop = isOwnShopVariant(variant, viewerUserId);
+    const isAvailable = isSellable && !isOwnShop;
 
     const line: CartLine = {
       id: source.id,
@@ -86,6 +96,11 @@ export function composeCartView(lines: CartLineSource[]): CartView {
       lineTotal: String(lineTotal),
       stock: availableStock(variant),
       isAvailable,
+      // Chỉ khi sản phẩm vẫn đang bán bình thường mà lý do duy nhất khiến người xem không mua được là shop của
+      // chính họ; sản phẩm đã ngừng bán thì hiện lý do chung (không có field này).
+      ...(isSellable && isOwnShop
+        ? { unavailableReason: 'OWN_SHOP' as const }
+        : {}),
     };
 
     let group = groups.get(variant.shop.id);

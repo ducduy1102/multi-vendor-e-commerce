@@ -79,6 +79,7 @@ export function AddToCartButton({ productVariantId, stock }: AddToCartButtonProp
         const maxLines = getErrorDetails(error.details, 'CART_FULL')?.maxLines ?? MAX_CART_LINES;
         return t('cartFull', { max: maxLines });
       }
+      if (code === 'CART_OWN_SHOP_ITEM') return t('errorOwnShopItem');
       if (error.status === 409) return t('addToCartConflict');
       if (error.status === 401) return t('addToCartUnauthorized');
     }

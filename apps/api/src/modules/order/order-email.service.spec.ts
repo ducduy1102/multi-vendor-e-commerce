@@ -234,6 +234,25 @@ describe('OrderEmailService', () => {
 
       expect(mail.sendOrderCancelled).not.toHaveBeenCalled();
     });
+
+    it('hủy kèm hoàn tiền (Week9.md 1.5): chuyển số tiền ĐANG hoàn vào email; mặc định là null (không hoàn)', async () => {
+      prisma.order.findMany.mockResolvedValue([emailOrder({ id: 'o-1' })]);
+
+      await service.notifyCancelled(
+        { orderIds: ['o-1'] },
+        'BUYER',
+        null,
+        410_000,
+      );
+      await service.notifyCancelled({ orderIds: ['o-1'] }, 'BUYER');
+
+      const calls = mail.sendOrderCancelled.mock.calls as [
+        string,
+        { refundAmount: number | null },
+      ][];
+      expect(calls[0][1].refundAmount).toBe(410_000);
+      expect(calls[1][1].refundAmount).toBeNull();
+    });
   });
 
   describe('KHÔNG BAO GIỜ ném lỗi (DB đã commit — mail lỗi chỉ được log)', () => {

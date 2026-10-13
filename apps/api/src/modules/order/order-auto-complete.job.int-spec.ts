@@ -22,6 +22,8 @@ import { OrderAutoCompleteJob } from './order-auto-complete.job';
 import { OrderEmailService } from './order-email.service';
 import { OrderStatusService } from './order-status.service';
 import { PaymentService } from './payment.service';
+import { RefundRequestService } from './refund-request.service';
+import { RefundService } from './refund.service';
 
 // Integration test trên DB dev THẬT: OrderAutoCompleteJob (Week8.md 1.7/2.9) chạy end-to-end qua
 // job.run() thật — chọn đúng đơn theo MỐC GIAO HÀNG trong history, hoàn tất qua cùng đường với buyer bấm
@@ -37,20 +39,34 @@ describe('OrderAutoCompleteJob (DB thật)', () => {
     prisma as unknown as PrismaService,
     createFakeMail().mailService,
   );
+  const voucherUsageService = new VoucherUsageService();
+  const paymentGateway = new PaymentGatewayService(
+    new VnpayProvider(),
+    new MockPaymentProvider(),
+  );
   const paymentService = new PaymentService(
     prisma as unknown as PrismaService,
     inventoryService,
-    new VoucherUsageService(),
-    new PaymentGatewayService(new VnpayProvider(), new MockPaymentProvider()),
+    voucherUsageService,
+    paymentGateway,
     orderStatusService,
+    orderEmailService,
+  );
+  const refundService = new RefundService(
+    prisma as unknown as PrismaService,
+    orderStatusService,
+    inventoryService,
+    voucherUsageService,
+    paymentGateway,
+    new RefundRequestService(),
     orderEmailService,
   );
   const actionService = new OrderActionService(
     prisma as unknown as PrismaService,
     orderStatusService,
-    inventoryService,
     paymentService,
     orderEmailService,
+    refundService,
   );
   const job = new OrderAutoCompleteJob(
     prisma as unknown as PrismaService,

@@ -114,12 +114,15 @@ export class OrderEmailService {
     });
   }
 
-  // Hủy theo từng đơn (seller từ chối, buyer hủy đơn COD) hoặc theo nhóm (buyer hủy nhóm chưa thanh
-  // toán, hết hạn thanh toán — chỉ lấy các đơn ĐÃ CANCELLED của nhóm). 1 email gộp.
+  // Hủy theo từng đơn (seller từ chối/hủy, buyer hủy, duyệt yêu cầu hủy) hoặc theo nhóm (buyer hủy nhóm
+  // chưa thanh toán, hết hạn thanh toán — chỉ lấy các đơn ĐÃ CANCELLED của nhóm). 1 email gộp.
+  // `refundAmount` = số tiền đang hoàn về phương thức thanh toán ban đầu (đơn đã trả online, Week9.md 1.5);
+  // null = không có khoản hoàn (COD, nhóm chưa thanh toán).
   notifyCancelled(
     target: CancelledTarget,
     cancelledBy: OrderCancelledBy,
     reason: string | null = null,
+    refundAmount: number | null = null,
   ): Promise<void> {
     const key =
       'orderIds' in target ? target.orderIds.join(',') : target.checkoutGroupId;
@@ -137,6 +140,7 @@ export class OrderEmailService {
         orders: orders.map((o) => this.toEmailOrder(o)),
         cancelledBy,
         reason,
+        refundAmount,
       });
     });
   }

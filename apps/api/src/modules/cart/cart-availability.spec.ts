@@ -1,4 +1,5 @@
 import {
+  isOwnShopVariant,
   isVariantAvailable,
   type VariantAvailabilityRow,
 } from './cart-availability';
@@ -13,7 +14,7 @@ function row(
     reservedStock: 0,
     isActive,
     product: { status: productStatus },
-    shop: { status: shopStatus },
+    shop: { status: shopStatus, ownerId: 'owner-1' },
   } as VariantAvailabilityRow;
 }
 
@@ -49,4 +50,31 @@ describe('isVariantAvailable', () => {
   it('chỉ đúng 1 trong 24 tổ hợp là khả dụng', () => {
     expect(combos.filter((c) => c.expected)).toHaveLength(1);
   });
+});
+
+// Người bán không được mua sản phẩm của chính shop mình (Week9.md 2.10). Luật phụ thuộc NGƯỜI XEM nên không nằm
+// trong isVariantAvailable (một sản phẩm đang bán bình thường với mọi người khác).
+describe('isOwnShopVariant', () => {
+  const variant = row(true, 'PUBLISHED', 'APPROVED'); // shop do 'owner-1' làm chủ
+
+  it('đúng chủ shop ⇒ true', () => {
+    expect(isOwnShopVariant(variant, 'owner-1')).toBe(true);
+  });
+
+  it('người khác ⇒ false', () => {
+    expect(isOwnShopVariant(variant, 'user-2')).toBe(false);
+  });
+
+  it('không biết người xem (guest) ⇒ false, không bao giờ khớp nhầm với chủ shop', () => {
+    expect(isOwnShopVariant(variant, undefined)).toBe(false);
+  });
+
+  it.each(['PENDING', 'REJECTED', 'SUSPENDED'])(
+    'không phụ thuộc trạng thái shop (%s) — chủ shop vẫn là chủ shop',
+    (shopStatus) => {
+      expect(
+        isOwnShopVariant(row(true, 'PUBLISHED', shopStatus), 'owner-1'),
+      ).toBe(true);
+    },
+  );
 });

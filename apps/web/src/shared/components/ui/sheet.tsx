@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Dialog as SheetPrimitive } from '@base-ui/react/dialog';
 import { XIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@/shared/components/ui/button';
 import { cn } from '@/shared/lib/utils';
@@ -46,6 +47,10 @@ function SheetContent({
   side?: 'top' | 'right' | 'bottom' | 'left';
   showCloseButton?: boolean;
 }) {
+  // Sửa tay so với bản shadcn sinh ra (chữ "Close" cứng tiếng Anh) — `shadcn add sheet` sẽ ghi đè mất,
+  // `sheet.test.tsx` đỏ để nhắc thêm lại.
+  const t = useTranslations('common');
+
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -65,7 +70,7 @@ function SheetContent({
             render={<Button variant="ghost" className="absolute top-3 right-3" size="icon-sm" />}
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{t('close')}</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Popup>

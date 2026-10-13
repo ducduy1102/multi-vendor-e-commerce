@@ -103,6 +103,9 @@ type ProductWithRelations = Prisma.ProductGetPayload<{
 const productDetailSelect = {
   ...productWithRelationsSelect,
   shop: { select: { name: true, slug: true, ownerId: true, status: true } },
+  // Điểm đánh giá denormalized (Week9.md 1.8) — response PUBLIC của chi tiết sản phẩm.
+  avgRating: true,
+  reviewCount: true,
 } satisfies Prisma.ProductSelect;
 
 // Danh sách seller (GET /shops/:shopId/products) không cần join
@@ -146,6 +149,9 @@ const productCardSelect = {
   slug: true,
   minPrice: true,
   maxPrice: true,
+  // Điểm đánh giá denormalized (Week9.md 1.8): card hiện sao khi reviewCount > 0.
+  avgRating: true,
+  reviewCount: true,
   variants: {
     where: { isActive: true },
     orderBy: { createdAt: 'asc' },
@@ -182,6 +188,8 @@ export interface ProductCardSummary {
   minPrice: Prisma.Decimal;
   maxPrice: Prisma.Decimal;
   imageUrl: string | null;
+  avgRating: number;
+  reviewCount: number;
 }
 
 export interface PaginatedProductCards {
@@ -212,6 +220,8 @@ export type ProductSummary = Omit<ProductWithRelations, 'variants'> & {
 // bảng shops nên không có field này (Week5.md Bước 1.5/2.2).
 export type ProductDetailSummary = ProductSummary & {
   shop: { name: string; slug: string };
+  avgRating: number;
+  reviewCount: number;
 };
 
 @Injectable()
@@ -467,11 +477,16 @@ export class ProductService {
     // (destructure lấy đúng 2 field này từ `shop`, không đưa nguyên object
     // `shop` — vẫn giữ ownerId/status ở lại bên trong, không lặp lại đúng
     // bug cũ theo hướng ngược lại).
-    const { shop, ...productWithoutShop } = product;
+    //
+    // avgRating/reviewCount (Week9.md 1.8) cũng tách tường minh rồi gắn lại có chủ đích, cùng cách với
+    // `shop`: mapProduct() chỉ biết các field của productWithRelationsSelect.
+    const { shop, avgRating, reviewCount, ...productWithoutShop } = product;
     return {
       // reservedStock lộ nhu cầu mua của sản phẩm — chỉ trả cho chủ shop.
       ...this.mapProduct(productWithoutShop, isOwner),
       shop: { name: shop.name, slug: shop.slug },
+      avgRating,
+      reviewCount,
     };
   }
 
@@ -540,12 +555,19 @@ export class ProductService {
       where.id = { in: [...rankById.keys()] };
     }
 
-    const orderBy: Prisma.ProductOrderByWithRelationInput =
+    // sort=rating (Week9.md 1.8): điểm trung bình cao trước, hoà thì nhiều đánh giá hơn trước, hoà nữa thì theo
+    // `id` để thứ tự (và phân trang) ổn định — nhiều sản phẩm cùng 0 sao/0 đánh giá là chuyện thường. Sản phẩm
+    // chưa có đánh giá (avgRating = 0) tự rơi xuống cuối. Khớp index [status, avgRating].
+    const orderBy:
+      | Prisma.ProductOrderByWithRelationInput
+      | Prisma.ProductOrderByWithRelationInput[] =
       query.sort === 'price-asc'
         ? { minPrice: 'asc' }
         : query.sort === 'price-desc'
           ? { minPrice: 'desc' }
-          : { createdAt: 'desc' };
+          : query.sort === 'rating'
+            ? [{ avgRating: 'desc' }, { reviewCount: 'desc' }, { id: 'asc' }]
+            : { createdAt: 'desc' };
 
     // Có `q` và user KHÔNG tự chọn sort khác (vẫn 'newest' mặc định từ Zod)
     // -> xếp theo độ liên quan (ts_rank) thay vì mới nhất, đúng 1.8. Chọn

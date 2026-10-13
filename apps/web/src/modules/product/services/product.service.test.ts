@@ -171,6 +171,9 @@ describe('product.service', () => {
         },
       ],
       shop: { name: 'Shop ABC', slug: 'shop-abc' },
+      // Điểm đánh giá denormalized (Week9.md 1.8): response public của chi tiết luôn có.
+      avgRating: 4.5,
+      reviewCount: 12,
     };
     mockFetchOnce({ success: true, data: { product: productDetail } });
 

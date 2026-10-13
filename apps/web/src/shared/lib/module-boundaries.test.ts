@@ -12,7 +12,14 @@ import { describe, expect, it } from 'vitest';
 //      toán ở /cart chỉ là <Link> tới /checkout (Week7.md 1.14);
 //   3. `modules/order` import `modules/checkout`/`modules/cart` (kể cả qua
 //      barrel) — nút "Thanh toán lại" gọi `POST /checkout/groups/:groupId/pay`
-//      bằng service riêng của `order`, hoặc ghép ở page.tsx (Week8.md 3.0).
+//      bằng service riêng của `order`, hoặc ghép ở page.tsx (Week8.md 3.0);
+//   4. `modules/review` import `product`/`order`/`cart`/`checkout`/`voucher` (kể
+//      cả qua barrel) — `product` (trang chi tiết) và `order` (form viết đánh
+//      giá ở chi tiết đơn) import barrel `review`, cấm chiều ngược lại để đồ
+//      thị không có vòng (Week9.md 3.0; BE có luật tương ứng ở
+//      apps/api/src/module-boundaries.spec.ts). `order` → `product` vẫn được
+//      phép: chỉ để dùng lại `formatPrice` qua barrel, còn link sản phẩm dựng
+//      từ `productSlug` BE trả sẵn.
 
 const SRC_ROOT = resolve(__dirname, '..', '..'); // apps/web/src
 
@@ -20,6 +27,7 @@ const SRC_ROOT = resolve(__dirname, '..', '..'); // apps/web/src
 export const FORBIDDEN_MODULE_IMPORTS: Record<string, string[]> = {
   cart: ['checkout'],
   order: ['checkout', 'cart'],
+  review: ['product', 'order', 'cart', 'checkout', 'voucher'],
 };
 
 const BARREL_ONLY_NAMES = new Set(['index', 'index.ts', 'index.tsx']);
@@ -149,6 +157,56 @@ describe('module boundaries (FE)', () => {
       expect(v).toHaveLength(2);
       expect(v[0]).toContain("'order' không được phụ thuộc module 'checkout'");
       expect(v[1]).toContain("'order' không được phụ thuộc module 'cart'");
+    });
+
+    it('cấm modules/review import product/order/cart/checkout/voucher, kể cả qua barrel', () => {
+      const v = findViolations([
+        file('modules/review/a.ts', "import { formatPrice } from '@/modules/product';"),
+        file('modules/review/b.ts', "import { useOrder } from '@/modules/order';"),
+        file('modules/review/c.ts', "import { useCart } from '@/modules/cart';"),
+        file('modules/review/d.ts', "import { usePlaceOrder } from '@/modules/checkout';"),
+        file('modules/review/e.ts', "import { useVouchers } from '@/modules/voucher';"),
+      ]);
+      expect(v).toHaveLength(5);
+      expect(v[0]).toContain("'review' không được phụ thuộc module 'product'");
+      expect(v[1]).toContain("'review' không được phụ thuộc module 'order'");
+      expect(v[2]).toContain("'review' không được phụ thuộc module 'cart'");
+      expect(v[3]).toContain("'review' không được phụ thuộc module 'checkout'");
+      expect(v[4]).toContain("'review' không được phụ thuộc module 'voucher'");
+    });
+
+    it('cho phép product/order import barrel modules/review, cấm import sâu', () => {
+      const ok = findViolations([
+        file('modules/product/a.ts', "import { ProductReviewList } from '@/modules/review';"),
+        file('modules/order/a.ts', "import { ReviewSheet } from '@/modules/review';"),
+      ]);
+      expect(ok).toEqual([]);
+
+      const deep = findViolations([
+        file(
+          'modules/order/b.ts',
+          "import { ReviewForm } from '@/modules/review/components/ReviewForm';",
+        ),
+      ]);
+      expect(deep).toHaveLength(1);
+      expect(deep[0]).toContain('import sâu vào modules/review/components/ReviewForm');
+    });
+
+    it('cho phép modules/review import auth/shop qua barrel và @ecommerce/types', () => {
+      const v = findViolations([
+        file(
+          'modules/review/a.ts',
+          "import { useAuthStore } from '@/modules/auth';\nimport type { Review } from '@ecommerce/types';",
+        ),
+      ]);
+      expect(v).toEqual([]);
+    });
+
+    it('modules/order vẫn được import formatPrice từ barrel modules/product', () => {
+      const v = findViolations([
+        file('modules/order/OrderItemRow.tsx', "import { formatPrice } from '@/modules/product';"),
+      ]);
+      expect(v).toEqual([]);
     });
 
     it('cho phép module khác (admin, product...) import barrel modules/order', () => {

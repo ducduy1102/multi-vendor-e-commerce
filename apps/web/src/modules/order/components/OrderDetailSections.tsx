@@ -8,13 +8,14 @@ import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
 import { cn } from '@/shared/lib/utils';
 
 import { PAYMENT_METHOD_LABEL_KEYS, PAYMENT_STATUS_LABEL_KEYS } from '../order-status-display';
-import type { OrderDetail } from '../types';
+import { describeOrderRefund } from '../refund-request-display';
+import type { OrderDetail, OrderListItem } from '../types';
 import {
   ORDER_CARD_CLASS,
   ORDER_DETAIL_SECTION_BODY_CLASS,
   ORDER_DETAIL_SECTION_TITLE_CLASS,
 } from './order-card.constants';
-import { OrderItemRow } from './OrderItemRow';
+import { OrderItemRow, type OrderItemRowProps } from './OrderItemRow';
 
 // Các khối trình bày dùng chung giữa trang chi tiết của NGƯỜI MUA (OrderDetailView) và của SELLER
 // (SellerOrderDetailView): hai bên nhận cùng các trường (dòng hàng, tiền, địa chỉ nhận, vận
@@ -61,14 +62,23 @@ function SummaryRow({
   );
 }
 
-export function OrderItemsSection({ items }: { items: OrderDetail['items'] }) {
+// Dòng hàng của người mua và của Seller dùng chung khối này. Phần dành riêng cho người mua (liên kết sản phẩm, nút
+// đánh giá) đi qua `getItemProps` — nhận đúng loại dòng hàng của nơi gọi (generic) nên chi tiết đơn của người mua
+// đọc được `productSlug`/`canReview`/`review` mà Seller không phải khai gì.
+export function OrderItemsSection<TItem extends OrderListItem['items'][number]>({
+  items,
+  getItemProps,
+}: {
+  items: TItem[];
+  getItemProps?: (item: TItem) => Pick<OrderItemRowProps, 'productSlug' | 'footer'>;
+}) {
   const t = useTranslations('order');
 
   return (
     <DetailSection title={t('detailItemsTitle')} isPadded={false}>
       <ul className="divide-y divide-border">
         {items.map((item) => (
-          <OrderItemRow key={item.sku} item={item} />
+          <OrderItemRow key={item.sku} item={item} {...getItemProps?.(item)} />
         ))}
       </ul>
     </DetailSection>
@@ -80,10 +90,18 @@ type PaymentFields = Pick<
   'subtotal' | 'discountAmount' | 'shippingFee' | 'totalAmount' | 'paymentMethod' | 'paymentStatus'
 >;
 
-export function OrderPaymentSection({ order }: { order: PaymentFields }) {
+// `refund` chỉ có ở chi tiết đơn của NGƯỜI MUA (khoản hoàn qua cổng của đơn); Seller không truyền, dòng ẩn.
+export function OrderPaymentSection({
+  order,
+  refund = null,
+}: {
+  order: PaymentFields;
+  refund?: OrderDetail['refund'];
+}) {
   const t = useTranslations('order');
   const tDynamic = t as unknown as LooseTranslator;
   const hasDiscount = Number(order.discountAmount) > 0;
+  const refundDescription = refund ? describeOrderRefund(refund) : null;
 
   return (
     <DetailSection title={t('detailSummaryTitle')}>
@@ -115,6 +133,14 @@ export function OrderPaymentSection({ order }: { order: PaymentFields }) {
           {order.paymentStatus ? (
             <SummaryRow label={t('detailPaymentStatusLabel')}>
               {tDynamic(PAYMENT_STATUS_LABEL_KEYS[order.paymentStatus])}
+            </SummaryRow>
+          ) : null}
+          {refundDescription ? (
+            <SummaryRow label={t('detailRefundLabel')}>
+              {tDynamic(refundDescription.labelKey, {
+                amount:
+                  refundDescription.amount === null ? '' : formatPrice(refundDescription.amount),
+              })}
             </SummaryRow>
           ) : null}
         </dl>

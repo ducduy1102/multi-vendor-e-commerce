@@ -49,4 +49,8 @@ export interface OrderCancelledEmailData extends OrderEmailBase {
   orders: OrderEmailOrder[];
   cancelledBy: OrderCancelledBy;
   reason: string | null;
+  // Tổng số tiền ĐANG được hoàn về phương thức thanh toán ban đầu (VND, Week9.md 1.5). Không có/null/0 ⇒
+  // không có khoản hoàn (đơn COD chưa thu tiền, nhóm chưa thanh toán). Nội dung chỉ nói "đang hoàn" chứ không
+  // khẳng định đã hoàn — cổng có thể chậm hoặc lỗi.
+  refundAmount?: number | null;
 }

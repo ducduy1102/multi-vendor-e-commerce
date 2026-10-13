@@ -128,6 +128,81 @@ export async function createCheckoutGroup(
   });
 }
 
+// Đơn COD của `userId` gồm đúng 1 dòng hàng `variantId` (đã chốt kho — không đụng tồn kho), mặc định đã
+// COMPLETED vào lúc `completedAt` (mặc định: hôm qua). Dùng cho int-spec đánh giá: lịch sử trạng thái đi đúng
+// đường thật (PENDING → CONFIRMED → PACKED → SHIPPING → COMPLETED), các mốc lùi dần từ `completedAt` nên mốc
+// COMPLETED luôn là dòng mới nhất. COD nên không cần Payment trước khi giao; tạo kèm Payment COD để chi tiết đơn
+// hiện phương thức thanh toán như đơn thật.
+export async function createOrderWithItem(
+  prisma: PrismaClient,
+  input: {
+    userId: string;
+    shopId: string;
+    variantId: string;
+    status?: OrderStatus;
+    completedAt?: Date;
+  },
+) {
+  const status = input.status ?? 'COMPLETED';
+  const completedAt =
+    input.completedAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const history = seedOrderHistory(status, { isCod: true });
+  const group = await createCheckoutGroup(prisma, input.userId);
+  const variant = await prisma.productVariant.findUniqueOrThrow({
+    where: { id: input.variantId },
+    select: { sku: true, price: true },
+  });
+
+  const order = await prisma.order.create({
+    data: {
+      userId: input.userId,
+      shopId: input.shopId,
+      checkoutGroupId: group.id,
+      status,
+      totalAmount: variant.price,
+      recipientName: 'Nguyễn Văn A',
+      recipientPhone: '0912345678',
+      shippingAddressLine: '12 Nguyễn Huệ',
+      shippingWard: 'Phường Bến Nghé',
+      shippingProvince: 'Hồ Chí Minh',
+      items: {
+        create: [
+          {
+            productVariantId: input.variantId,
+            quantity: 1,
+            priceAtPurchase: variant.price,
+            productName: `${nextId()}-sp`,
+            sku: variant.sku,
+            variantLabel: null,
+            imageUrl: null,
+          },
+        ],
+      },
+      statusHistory: {
+        create: history.map((row, index) => ({
+          ...row,
+          createdAt: new Date(
+            completedAt.getTime() - (history.length - 1 - index) * 60_000,
+          ),
+        })),
+      },
+    },
+    select: { id: true },
+  });
+  await prisma.payment.create({
+    data: {
+      checkoutGroupId: group.id,
+      method: 'COD',
+      status: status === 'COMPLETED' ? 'SUCCESS' : 'PENDING',
+      amount: variant.price,
+      txnRef: `ORDER${nextId()}`.toUpperCase(),
+      expiresAt: null,
+      paidAt: status === 'COMPLETED' ? completedAt : null,
+    },
+  });
+  return { orderId: order.id, groupId: group.id };
+}
+
 // Sổ địa chỉ giao hàng — dùng trực tiếp prisma (không qua AddressService) vì int-spec chỉ cần dữ
 // liệu hợp lệ, không kiểm lại luật CRUD (đã có address.int-spec.ts riêng).
 export async function createAddress(
@@ -177,6 +252,28 @@ export async function cleanupByTag(prisma: PrismaClient, tag: string) {
   // Thứ tự xoá theo chiều FK RESTRICT (Payment/Order/VoucherUsage → CheckoutGroup → User;
   // Order/OrderItem → Shop/ProductVariant): xoá "lá" trước "gốc". Cart/CartItem/Address cascade
   // tự động theo User (onDelete: Cascade) nên không cần dọn riêng.
+  // Tuần 9 thêm 3 bảng giữ FK RESTRICT/không cascade tới Order/Payment/Shop/User nên phải xoá TRƯỚC:
+  // PaymentRefund trước RefundRequest (nó tham chiếu RefundRequest), RefundRequestHistory tự xoá theo
+  // RefundRequest (cascade); Review trước Order (Review.order không cascade).
+  await prisma.paymentRefund.deleteMany({
+    where: { payment: { checkoutGroup: { userId: { in: userIds } } } },
+  });
+  await prisma.refundRequest.deleteMany({
+    where: {
+      OR: [
+        { userId: { in: userIds } },
+        { shop: { slug: { startsWith: tag } } },
+      ],
+    },
+  });
+  await prisma.review.deleteMany({
+    where: {
+      OR: [
+        { userId: { in: userIds } },
+        { product: { shop: { slug: { startsWith: tag } } } },
+      ],
+    },
+  });
   await prisma.payment.deleteMany({
     where: { checkoutGroup: { userId: { in: userIds } } },
   });

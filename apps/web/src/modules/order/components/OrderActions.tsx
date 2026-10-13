@@ -9,9 +9,15 @@ import type { CancelBlockedReasonKey } from '../order-cancel-hint';
 import type { OrderListItem } from '../types';
 
 interface OrderActionsProps {
-  // Chỉ 3 cờ do BE tính — FE KHÔNG tự suy luật theo status/phương thức thanh toán (đổi chính sách
-  // hủy đơn ở Tuần 9 không phải sửa FE).
-  order: Pick<OrderListItem, 'canCancel' | 'canConfirmReceived' | 'canRetryPayment'>;
+  // Chỉ các cờ do BE tính — FE KHÔNG tự suy luật theo status/phương thức thanh toán/cửa sổ hoàn trả:
+  //   canCancel         hủy NGAY, không ai duyệt (chưa thanh toán / chờ shop xác nhận, kể cả đã trả online);
+  //   canRequestCancel  gửi YÊU CẦU hủy (shop đã xác nhận/đóng gói) — shop duyệt;
+  //   canRequestReturn  gửi yêu cầu trả hàng/hoàn tiền (đã nhận hàng, còn trong cửa sổ hoàn trả);
+  // đã có yêu cầu cùng loại (chưa rút) thì BE tắt cờ tương ứng.
+  order: Pick<
+    OrderListItem,
+    'canCancel' | 'canRequestCancel' | 'canRequestReturn' | 'canConfirmReceived' | 'canRetryPayment'
+  >;
   // Khoá mọi nút khi 1 hành động đang chạy (tránh gửi trùng/2 hành động chồng nhau).
   isDisabled: boolean;
   // Chỉ trang chi tiết truyền: BE không cho hủy (canCancel = false) nhưng đơn ở trạng thái người
@@ -19,27 +25,39 @@ interface OrderActionsProps {
   // đơn không truyền — card gọn chỉ hiện hành động làm được.
   cancelBlockedKey?: CancelBlockedReasonKey | null;
   onCancel: () => void;
+  onRequestCancel: () => void;
+  onRequestReturn: () => void;
   onConfirmReceived: () => void;
   onRetryPayment: () => void;
 }
 
 // Component THUẦN: chỉ hiện nút theo cờ và gọi callback — hộp thoại xác nhận, mutation, xử lý lỗi
-// nằm ở Container. "Hủy đơn" dùng outline (trung tính, không đỏ/accent — đỏ chỉ ở nút xác nhận
-// trong hộp thoại), hành động chính (thanh toán lại / đã nhận hàng) dùng primary.
+// nằm ở Container. "Hủy đơn", "Yêu cầu hủy", "Yêu cầu trả hàng/hoàn tiền" dùng outline (trung tính, không
+// đỏ/accent — đỏ chỉ ở nút xác nhận hủy trong hộp thoại), hành động chính (thanh toán lại / đã nhận hàng)
+// dùng primary. Cờ nào bật thì hiện nút đó; các cờ loại trừ nhau theo trạng thái đơn là việc của BE.
 export function OrderActions({
   order,
   isDisabled,
   cancelBlockedKey = null,
   onCancel,
+  onRequestCancel,
+  onRequestReturn,
   onConfirmReceived,
   onRetryPayment,
 }: OrderActionsProps) {
   const t = useTranslations('order');
   const hintId = useId();
-  // Cờ BE luôn thắng: cho hủy được thì không bao giờ hiện bản bị khoá.
-  const blockedKey = order.canCancel ? null : cancelBlockedKey;
+  // Cờ BE luôn thắng: hủy được (ngay hoặc bằng yêu cầu) thì không bao giờ hiện bản bị khoá.
+  const blockedKey = order.canCancel || order.canRequestCancel ? null : cancelBlockedKey;
 
-  if (!order.canRetryPayment && !order.canConfirmReceived && !order.canCancel && !blockedKey) {
+  if (
+    !order.canRetryPayment &&
+    !order.canConfirmReceived &&
+    !order.canCancel &&
+    !order.canRequestCancel &&
+    !order.canRequestReturn &&
+    !blockedKey
+  ) {
     return null;
   }
 
@@ -58,6 +76,16 @@ export function OrderActions({
       {order.canCancel ? (
         <Button type="button" variant="outline" disabled={isDisabled} onClick={onCancel}>
           {t('actionCancel')}
+        </Button>
+      ) : null}
+      {order.canRequestCancel ? (
+        <Button type="button" variant="outline" disabled={isDisabled} onClick={onRequestCancel}>
+          {t('actionRequestCancel')}
+        </Button>
+      ) : null}
+      {order.canRequestReturn ? (
+        <Button type="button" variant="outline" disabled={isDisabled} onClick={onRequestReturn}>
+          {t('actionRequestReturn')}
         </Button>
       ) : null}
       {blockedKey ? (

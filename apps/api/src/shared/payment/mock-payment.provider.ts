@@ -8,6 +8,8 @@ import type {
   PaymentGateway,
   PaymentOutcome,
   RawCallback,
+  RefundParams,
+  RefundResult,
   VerifiedCallback,
 } from './payment-gateway.interface';
 import { VNPAY_MAX_AMOUNT_HARD_LIMIT } from './payment-config';
@@ -24,6 +26,13 @@ export function isMockPaymentEnabled(): boolean {
     process.env.NODE_ENV !== 'production' &&
     process.env.PAYMENT_MOCK_ENABLED?.trim().toLowerCase() === 'true'
   );
+}
+
+// Ép MỌI lần hoàn tiền của mock thất bại để test tay đường lỗi (Week9.md 1.6: Admin thử lại/ghi nhận thủ
+// công). Đọc LÚC DÙNG (không lúc boot — rules/backend.md mục 8). Chỉ có tác dụng khi mock đang bật, mà mock
+// bị vô hiệu hoá CỨNG ở production nên biến này không bao giờ ảnh hưởng tiền thật.
+function isMockRefundFailureForced(): boolean {
+  return process.env.PAYMENT_MOCK_REFUND_FAIL?.trim().toLowerCase() === 'true';
 }
 
 function mockSecret(): string {
@@ -68,6 +77,39 @@ export class MockPaymentProvider implements PaymentGateway {
     });
     return Promise.resolve({
       payUrl: `${apiPublicUrl()}/api/v1/payments/mock/pay?${query.toString()}`,
+    });
+  }
+
+  // Hoàn tiền giả (Week9.md 1.6): thành công TỨC THÌ với mã hoàn xác định theo refundRef (gọi lại cùng
+  // refundRef ra cùng mã — đúng tính idempotent mà cổng thật phải có). Vẫn kiểm số tiền như cổng thật
+  // (nguyên, dương, không vượt số đã thanh toán) để lỗi gọi sai lộ ra ngay ở dev/test chứ không chỉ ở sandbox.
+  refund(params: RefundParams): Promise<RefundResult> {
+    if (!isMockPaymentEnabled()) {
+      return Promise.reject(new Error('Mock payment is disabled'));
+    }
+    const { refundRef, amountVnd, paymentAmountVnd } = params;
+    if (
+      !Number.isInteger(amountVnd) ||
+      amountVnd <= 0 ||
+      amountVnd > paymentAmountVnd
+    ) {
+      return Promise.resolve({
+        outcome: 'FAILED',
+        gatewayRef: null,
+        failureReason: `Refund amount ${amountVnd} is out of range (paid ${paymentAmountVnd})`,
+      });
+    }
+    if (isMockRefundFailureForced()) {
+      return Promise.resolve({
+        outcome: 'FAILED',
+        gatewayRef: null,
+        failureReason: 'Mock refund failure forced by PAYMENT_MOCK_REFUND_FAIL',
+      });
+    }
+    return Promise.resolve({
+      outcome: 'SUCCESS',
+      gatewayRef: `MOCK-REFUND-${refundRef}`,
+      failureReason: null,
     });
   }
 

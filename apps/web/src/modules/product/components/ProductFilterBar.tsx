@@ -115,6 +115,7 @@ export function ProductFilterBar({ categories, initialFilters }: ProductFilterBa
           <option value="newest">{t('sortNewest')}</option>
           <option value="price-asc">{t('sortPriceAsc')}</option>
           <option value="price-desc">{t('sortPriceDesc')}</option>
+          <option value="rating">{t('sortRating')}</option>
         </select>
       </div>
 

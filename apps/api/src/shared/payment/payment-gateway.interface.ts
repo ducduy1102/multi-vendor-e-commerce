@@ -33,6 +33,10 @@ export interface VerifiedCallback {
   // Số tiền cổng báo, đã đổi về VND; null nếu thiếu/không hợp lệ. Người gọi phải so với Payment.amount.
   amountVnd: number | null;
   gatewayTransactionId: string | null;
+  // Thời điểm CỔNG ghi nhận giao dịch (VNPay: vnp_PayDate) — khác Payment.paidAt là giờ server lúc nhận callback.
+  // Cổng cần lại mốc này khi hoàn tiền (VNPay: vnp_TransactionDate). Cổng không báo (hoặc không đọc được) thì
+  // bỏ trống/null; tuỳ chọn để cổng không có khái niệm này (mock) không phải khai.
+  gatewayPaidAt?: Date | null;
   outcome: PaymentOutcome;
 }
 
@@ -44,6 +48,42 @@ export interface AmountLimits {
   max: number;
 }
 
+// --- Hoàn tiền (Week9.md 1.5/1.6) ----------------------------------------------------------------
+// Giống PaymentOutcome nhưng cho hoàn tiền: SUCCESS/FAILED chỉ khi cổng báo XÁC ĐỊNH; mọi tín hiệu mơ hồ
+// (quá hạn chờ, mã lạ, cổng chưa trả lời) là PENDING — RefundService để khoản hoàn ở PENDING và job quét
+// lại bằng CÙNG refundRef, nên "thà chờ hơn kết luận sai" (kết luận FAILED nhầm mở đường hoàn thủ công
+// lần nữa ⇒ hoàn hai lần).
+export type RefundOutcome = 'SUCCESS' | 'FAILED' | 'PENDING';
+
+export interface RefundParams {
+  // Mã tham chiếu hoàn ỔN ĐỊNH, suy từ PaymentRefund.id (không sinh mới mỗi lần gọi): gọi lại với cùng mã
+  // thì cổng PHẢI coi là cùng một yêu cầu và không hoàn thêm lần nữa — nền tảng để RefundJob thử lại an toàn.
+  refundRef: string;
+  // Khoản thanh toán gốc cần hoàn tiền: mã tham chiếu ta gửi cổng (Payment.txnRef) và mã giao dịch cổng
+  // trả về (Payment.transactionId, vd vnp_TransactionNo; null nếu cổng chưa từng báo).
+  txnRef: string;
+  gatewayTransactionId: string | null;
+  // Mốc cổng ghi nhận khoản thanh toán gốc (Payment.gatewayPaidAt; VNPay bắt buộc làm vnp_TransactionDate).
+  // null với thanh toán thành công TRƯỚC khi cột này được ghi — cổng cần mốc này thì trả FAILED xác định và
+  // Admin hoàn thủ công, không đoán mốc.
+  gatewayPaidAt: Date | null;
+  // Số tiền hoàn và tổng số tiền của khoản thanh toán gốc (VND nguyên). Cổng phân biệt hoàn toàn bộ với
+  // hoàn một phần bằng cặp số này; hoàn quá số đã thanh toán bị từ chối.
+  amountVnd: number;
+  paymentAmountVnd: number;
+  // Lý do hoàn (không chứa dữ liệu nhạy cảm) — gửi kèm cho cổng nếu cổng có chỗ ghi.
+  reason: string;
+}
+
+export interface RefundResult {
+  outcome: RefundOutcome;
+  // Mã hoàn do cổng trả về (lưu PaymentRefund.gatewayRef); null khi chưa có (FAILED/PENDING).
+  gatewayRef: string | null;
+  // Lý do thất bại cho Admin/log (PaymentRefund.failureReason) — KHÔNG hiện cho người mua, không chứa
+  // khoá/chữ ký; null khi SUCCESS/PENDING.
+  failureReason: string | null;
+}
+
 export interface PaymentGateway {
   readonly method: PaymentMethod;
   // Đủ cấu hình ENV để dùng chưa. KHÔNG throw — dùng để quyết định hiện/ẩn phương thức.
@@ -52,4 +92,8 @@ export interface PaymentGateway {
   amountLimits(): AmountLimits;
   createPayment(params: CreatePaymentParams): Promise<CreatePaymentResult>;
   verifyCallback(raw: RawCallback): VerifiedCallback;
+  // Hoàn tiền về nguồn thanh toán ban đầu. Kết quả nghiệp vụ (cổng từ chối, số tiền sai) trả về qua
+  // RefundResult chứ không ném lỗi; lỗi bất ngờ (mạng, cấu hình) có thể reject — RefundService bắt và coi
+  // là PENDING vì chưa biết cổng đã nhận yêu cầu hay chưa. COD không có cổng nên không đi đường này.
+  refund(params: RefundParams): Promise<RefundResult>;
 }

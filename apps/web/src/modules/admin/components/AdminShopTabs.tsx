@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
 import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
-import { cn } from '@/shared/lib/utils';
+import { getTabLinkClass } from '@/shared/lib/tab-link-class';
 
 import { ADMIN_SHOP_STATUS_DISPLAY, ADMIN_SHOP_TAB_STATUSES } from '../admin-status-display';
 import { buildAdminShopsHref } from '../admin-shops-href';
@@ -16,8 +16,9 @@ interface AdminShopTabsProps {
 
 // Tab là link thường (đổi `?status=` trên URL, page.tsx đọc lại qua searchParams) — không state cục
 // bộ, nên chia sẻ/refresh/nút Back đều giữ đúng tab. Đổi tab luôn về trang 1. Hàng tab tự cuộn
-// ngang trong khung của nó trên màn hẹp (không làm cả trang tràn ngang). Cùng kiểu OrderTabs nhưng
-// module admin không import module order (rules/general.md mục 1).
+// ngang trong khung của nó trên màn hẹp (không làm cả trang tràn ngang). Cùng kiểu OrderTabs; kiểu
+// của một tab nằm ở shared/lib/tab-link-class (module admin không import module order, rules/general.md
+// mục 1).
 export function AdminShopTabs({ activeStatus }: AdminShopTabsProps) {
   const t = useTranslations('admin');
   const tDynamic = t as unknown as LooseTranslator;
@@ -32,12 +33,7 @@ export function AdminShopTabs({ activeStatus }: AdminShopTabsProps) {
               <Link
                 href={buildAdminShopsHref({ status })}
                 aria-current={isActive ? 'page' : undefined}
-                className={cn(
-                  '-mb-px inline-flex min-h-11 items-center rounded-t-md border-b-2 px-3 text-sm font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-                  isActive
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                )}
+                className={getTabLinkClass(isActive)}
               >
                 {tDynamic(ADMIN_SHOP_STATUS_DISPLAY[status].labelKey)}
               </Link>

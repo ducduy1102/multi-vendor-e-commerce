@@ -17,6 +17,8 @@ export function ProductCardSkeleton() {
         <Skeleton className="h-4 w-full motion-reduce:animate-none" />
         <Skeleton className="h-4 w-2/3 motion-reduce:animate-none" />
         <Skeleton className="h-4 w-1/3 motion-reduce:animate-none" />
+        {/* Hàng sao + số đánh giá của ProductPreviewCard (luôn chiếm chỗ, kể cả khi chưa có đánh giá). */}
+        <Skeleton className="h-3 w-1/2 motion-reduce:animate-none" />
       </div>
     </div>
   );

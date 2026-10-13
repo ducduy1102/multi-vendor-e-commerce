@@ -85,6 +85,22 @@ describe('CheckoutSummary', () => {
     expect(screen.getByText(/Áo thun/)).toBeInTheDocument();
   });
 
+  it('excludedItems có lý do OWN_SHOP -> nói rõ đó là sản phẩm của shop mình, khác lý do ngừng bán', () => {
+    renderSummary({
+      preview: preview({
+        excludedItems: [
+          { cartItemId: 'item-1', name: 'Áo thun', reason: 'OWN_SHOP' },
+          { cartItemId: 'item-2', name: 'Quần jean', reason: 'UNAVAILABLE' },
+        ],
+      }),
+    });
+
+    expect(
+      screen.getByText(/Áo thun — Sản phẩm của chính shop bạn nên không thể tự mua/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Quần jean — Sản phẩm đã ngừng bán/)).toBeInTheDocument();
+  });
+
   it('blockingIssues -> hiện cảnh báo vượt tồn kho kèm link quay lại giỏ hàng', () => {
     renderSummary({
       preview: preview({

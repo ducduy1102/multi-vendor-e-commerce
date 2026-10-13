@@ -146,6 +146,18 @@ describe('CartItemRow', () => {
       expect(onRemove).toHaveBeenCalledTimes(1);
     });
 
+    it('sản phẩm của chính shop người xem (unavailableReason OWN_SHOP) -> badge "Shop của bạn" thay cho "Ngừng bán", vẫn xoá được, không stepper', async () => {
+      const user = userEvent.setup();
+      const { onRemove } = renderRow(line({ isAvailable: false, unavailableReason: 'OWN_SHOP' }));
+
+      expect(screen.getByText('Shop của bạn')).toBeInTheDocument();
+      expect(screen.queryByText('Ngừng bán')).not.toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: 'Số lượng' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Xoá Áo thun nam khỏi giỏ hàng' }));
+      expect(onRemove).toHaveBeenCalledTimes(1);
+    });
+
     it('không cảnh báo tồn kho dù số lượng lớn hơn stock (dòng đã ngừng bán)', () => {
       renderRow(line({ isAvailable: false, quantity: 9, stock: 2 }));
 

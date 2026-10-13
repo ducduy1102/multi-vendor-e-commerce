@@ -1,39 +1,62 @@
 import { useState } from 'react';
 
 import { redirectToPaymentGateway } from '../redirect-to-payment-gateway';
-import type { OrderListItem } from '../types';
+import type { CreateRefundRequestInput, OrderListItem, RefundRequestKind } from '../types';
 import { useCancelOrder } from './useCancelOrder';
 import { useConfirmReceived } from './useConfirmReceived';
 import { useDescribeOrderError } from './useDescribeOrderError';
+import { useEscalateRefundRequest } from './useEscalateRefundRequest';
+import { useRequestRefund } from './useRequestRefund';
 import { useRetryOrderPayment } from './useRetryOrderPayment';
+import { useWithdrawRefundRequest } from './useWithdrawRefundRequest';
 
-// Chỉ cần 3 field — danh sách (OrderListItem) lẫn trang chi tiết (OrderDetail) đều truyền được.
-export type OrderActionTarget = Pick<OrderListItem, 'id' | 'checkoutGroupId' | 'status'>;
+// Chỉ cần ít field — danh sách (OrderListItem) lẫn trang chi tiết (OrderDetail) đều truyền được.
+// paymentMethod/paymentStatus để hộp thoại hủy biết đơn đã trả online (BE sẽ hoàn tiền) hay chưa.
+export type OrderActionTarget = Pick<
+  OrderListItem,
+  'id' | 'checkoutGroupId' | 'status' | 'paymentMethod' | 'paymentStatus'
+>;
 
-type DialogKind = 'cancel' | 'confirmReceived';
+type DialogKind =
+  'cancel' | 'confirmReceived' | 'requestRefund' | 'withdrawRefund' | 'escalateRefund';
 
-// Mọi thứ <OrderActionDialogs> cần để vẽ 2 hộp thoại — trả nguyên cụm để nơi dùng chỉ việc spread.
+// Mọi thứ <OrderActionDialogs> cần để vẽ các hộp thoại — trả nguyên cụm để nơi dùng chỉ việc spread.
 export interface OrderActionDialogsState {
   // Đơn đang được hỏi xác nhận. Giữ lại cả sau khi đóng (xem isOpen) để nội dung hộp thoại không
-  // đổi giữa chừng lúc đang chạy hiệu ứng đóng.
-  dialog: { kind: DialogKind; order: OrderActionTarget } | null;
+  // đổi giữa chừng lúc đang chạy hiệu ứng đóng. `refundKind` chỉ có ở hộp thoại gửi yêu cầu (CANCEL =
+  // yêu cầu hủy, RETURN = trả hàng/hoàn tiền); `requestId` chỉ có ở hộp thoại rút/khiếu nại.
+  dialog: {
+    kind: DialogKind;
+    order: OrderActionTarget;
+    refundKind?: RefundRequestKind;
+    requestId?: string;
+  } | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   isCancelPending: boolean;
   isConfirmReceivedPending: boolean;
+  isRequestRefundPending: boolean;
+  isWithdrawRefundPending: boolean;
+  isEscalateRefundPending: boolean;
   onCancel: (reason: string | undefined) => void;
   onConfirmReceived: () => void;
+  onRequestRefund: (values: CreateRefundRequestInput) => void;
+  onWithdrawRefund: () => void;
+  onEscalateRefund: () => void;
 }
 
-// Luồng 3 hành động của NGƯỜI MUA trên 1 đơn (hủy, đã nhận hàng, thanh toán lại), dùng chung cho
-// trang danh sách và trang chi tiết: trạng thái hộp thoại xác nhận, gọi mutation, dịch lỗi theo
-// `code`, khoá nút khi đang chạy. Chỉ chứa luồng — hiển thị nằm ở component thuần.
+// Luồng các hành động của NGƯỜI MUA trên 1 đơn (hủy ngay, đã nhận hàng, thanh toán lại, gửi/rút/khiếu nại
+// yêu cầu hủy-trả hàng), dùng chung cho trang danh sách và trang chi tiết: trạng thái hộp thoại xác nhận,
+// gọi mutation, dịch lỗi theo `code`, khoá nút khi đang chạy. Chỉ chứa luồng — hiển thị nằm ở component thuần.
 export function useOrderActionFlow() {
   const describeError = useDescribeOrderError();
 
   const cancelOrder = useCancelOrder();
   const confirmReceived = useConfirmReceived();
   const retryPayment = useRetryOrderPayment();
+  const requestRefund = useRequestRefund();
+  const withdrawRefund = useWithdrawRefundRequest();
+  const escalateRefund = useEscalateRefundRequest();
 
   const [dialog, setDialog] = useState<OrderActionDialogsState['dialog']>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -42,11 +65,17 @@ export function useOrderActionFlow() {
   const [isRedirecting, setIsRedirecting] = useState(false);
 
   const isActionPending =
-    cancelOrder.isPending || confirmReceived.isPending || retryPayment.isPending || isRedirecting;
+    cancelOrder.isPending ||
+    confirmReceived.isPending ||
+    retryPayment.isPending ||
+    requestRefund.isPending ||
+    withdrawRefund.isPending ||
+    escalateRefund.isPending ||
+    isRedirecting;
 
-  function openDialog(kind: DialogKind, order: OrderActionTarget) {
+  function openDialog(next: NonNullable<OrderActionDialogsState['dialog']>) {
     setActionError(null);
-    setDialog({ kind, order });
+    setDialog(next);
     setIsOpen(true);
   }
 
@@ -56,21 +85,11 @@ export function useOrderActionFlow() {
     setIsOpen(open);
   }
 
-  async function onCancel(reason: string | undefined) {
-    if (!dialog) return;
+  // Chạy một mutation của hộp thoại đang mở: lỗi thì dịch theo `code` hiện ở thông báo của trang, và dù thành
+  // công hay lỗi hộp thoại đều đóng (lỗi như quá hạn/đã đổi trạng thái không sửa được bằng cách nhập lại).
+  async function runDialogAction(action: () => Promise<unknown>) {
     try {
-      await cancelOrder.mutateAsync({ orderId: dialog.order.id, reason });
-    } catch (error) {
-      setActionError(describeError(error));
-    } finally {
-      setIsOpen(false);
-    }
-  }
-
-  async function onConfirmReceived() {
-    if (!dialog) return;
-    try {
-      await confirmReceived.mutateAsync(dialog.order.id);
+      await action();
     } catch (error) {
       setActionError(describeError(error));
     } finally {
@@ -96,15 +115,47 @@ export function useOrderActionFlow() {
     onOpenChange,
     isCancelPending: cancelOrder.isPending,
     isConfirmReceivedPending: confirmReceived.isPending,
-    onCancel: (reason) => void onCancel(reason),
-    onConfirmReceived: () => void onConfirmReceived(),
+    isRequestRefundPending: requestRefund.isPending,
+    isWithdrawRefundPending: withdrawRefund.isPending,
+    isEscalateRefundPending: escalateRefund.isPending,
+    onCancel: (reason) => {
+      if (!dialog) return;
+      void runDialogAction(() => cancelOrder.mutateAsync({ orderId: dialog.order.id, reason }));
+    },
+    onConfirmReceived: () => {
+      if (!dialog) return;
+      void runDialogAction(() => confirmReceived.mutateAsync(dialog.order.id));
+    },
+    onRequestRefund: (values) => {
+      if (!dialog) return;
+      void runDialogAction(() =>
+        requestRefund.mutateAsync({ orderId: dialog.order.id, ...values }),
+      );
+    },
+    onWithdrawRefund: () => {
+      if (!dialog?.requestId) return;
+      const { requestId } = dialog;
+      void runDialogAction(() => withdrawRefund.mutateAsync({ requestId }));
+    },
+    onEscalateRefund: () => {
+      if (!dialog?.requestId) return;
+      const { requestId } = dialog;
+      void runDialogAction(() => escalateRefund.mutateAsync({ requestId }));
+    },
   };
 
   return {
     actionError,
     isActionPending,
-    openCancelDialog: (order: OrderActionTarget) => openDialog('cancel', order),
-    openConfirmReceivedDialog: (order: OrderActionTarget) => openDialog('confirmReceived', order),
+    openCancelDialog: (order: OrderActionTarget) => openDialog({ kind: 'cancel', order }),
+    openConfirmReceivedDialog: (order: OrderActionTarget) =>
+      openDialog({ kind: 'confirmReceived', order }),
+    openRequestRefundDialog: (order: OrderActionTarget, refundKind: RefundRequestKind) =>
+      openDialog({ kind: 'requestRefund', order, refundKind }),
+    openWithdrawRefundDialog: (order: OrderActionTarget, requestId: string) =>
+      openDialog({ kind: 'withdrawRefund', order, requestId }),
+    openEscalateRefundDialog: (order: OrderActionTarget, requestId: string) =>
+      openDialog({ kind: 'escalateRefund', order, requestId }),
     retryPayment: startRetryPayment,
     dialogs,
   };

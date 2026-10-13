@@ -8,6 +8,11 @@ import type { AmountLimits } from './payment-gateway.interface';
 
 export const VNPAY_SANDBOX_PAY_URL =
   'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
+// API giao dịch (hoàn tiền, truy vấn) của VNPay — khác URL thanh toán nên có biến riêng (Week9.md 2.12).
+export const VNPAY_SANDBOX_REFUND_URL =
+  'https://sandbox.vnpayment.vn/merchant_webapi/api/transaction';
+// Phiên bản API VNPay dùng cho cả tạo thanh toán lẫn hoàn tiền.
+export const VNPAY_API_VERSION = '2.1.0';
 
 // vnp_Amount = số tiền × 100, tối đa 12 chữ số ⇒ số tiền tối đa 9.999.999.999 VND (tài liệu VNPay).
 export const VNPAY_MAX_AMOUNT_HARD_LIMIT = 9_999_999_999;
@@ -40,6 +45,18 @@ export function readVnpayConfig(): VnpayConfig {
   if (!result.success) {
     const fields = result.error.issues.map((i) => i.path.join('.')).join(', ');
     throw new Error(`VNPay is not configured correctly (${fields})`);
+  }
+  return result.data;
+}
+
+// URL API hoàn tiền: tách khỏi vnpayConfigSchema có chủ đích — một giá trị sai ở đây chỉ được làm hỏng việc hoàn
+// tiền, không bao giờ làm VNPay thành "chưa cấu hình" và chặn cả thanh toán. Mặc định là sandbox (cùng cách
+// VNPAY_PAY_URL); lên production phải đặt VNPAY_REFUND_URL. Throw khi sai — chỉ gọi lúc thật sự hoàn tiền.
+export function readVnpayRefundUrl(): string {
+  const raw = process.env.VNPAY_REFUND_URL?.trim() || VNPAY_SANDBOX_REFUND_URL;
+  const result = z.string().url().safeParse(raw);
+  if (!result.success) {
+    throw new Error('VNPay refund URL is not a valid URL (VNPAY_REFUND_URL)');
   }
   return result.data;
 }

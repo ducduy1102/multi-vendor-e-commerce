@@ -27,6 +27,9 @@ interface CancelOrderDialogProps {
   // Đơn chưa thanh toán ⇒ BE hủy CẢ NHÓM thanh toán (kể cả đơn của shop khác) — phải nói rõ trước
   // khi người dùng xác nhận. Chỉ ảnh hưởng nội dung cảnh báo; luật hủy do BE quyết định.
   isGroupCancel: boolean;
+  // Đơn đã thanh toán online ⇒ BE hoàn tiền tự động ngay khi hủy — nói trước để người mua biết tiền đi đâu.
+  // Chỉ ảnh hưởng một dòng thông báo; việc hoàn tiền do BE làm.
+  isPaidOnline: boolean;
   isPending: boolean;
   // `undefined` khi để trống lý do (lý do tuỳ chọn).
   onConfirm: (reason: string | undefined) => void;
@@ -34,6 +37,7 @@ interface CancelOrderDialogProps {
 
 interface CancelOrderFormProps {
   isGroupCancel: boolean;
+  isPaidOnline: boolean;
   isPending: boolean;
   onConfirm: (reason: string | undefined) => void;
 }
@@ -41,7 +45,12 @@ interface CancelOrderFormProps {
 // Form nằm trong component riêng vì chỉ được mount khi hộp thoại mở: mỗi lần mở là 1 form mới
 // (không giữ lại lý do của lần hủy trước). Nút xác nhận KHÔNG phải AlertDialogAction — action đó
 // tự đóng hộp thoại ngay khi bấm, còn ở đây phải giữ hộp thoại mở (nút khoá) tới khi yêu cầu xong.
-function CancelOrderForm({ isGroupCancel, isPending, onConfirm }: CancelOrderFormProps) {
+function CancelOrderForm({
+  isGroupCancel,
+  isPaidOnline,
+  isPending,
+  onConfirm,
+}: CancelOrderFormProps) {
   const t = useTranslations('order');
   const translateValidation = useValidationMessage();
   const {
@@ -60,6 +69,9 @@ function CancelOrderForm({ isGroupCancel, isPending, onConfirm }: CancelOrderFor
         <AlertDialogDescription>
           {isGroupCancel ? t('cancelDialogDescriptionGroup') : t('cancelDialogDescription')}
         </AlertDialogDescription>
+        {isPaidOnline ? (
+          <p className="text-sm font-medium text-foreground">{t('cancelDialogRefundNote')}</p>
+        ) : null}
       </AlertDialogHeader>
 
       <div className="flex flex-col gap-1.5">
@@ -96,6 +108,7 @@ export function CancelOrderDialog({
   open,
   onOpenChange,
   isGroupCancel,
+  isPaidOnline,
   isPending,
   onConfirm,
 }: CancelOrderDialogProps) {
@@ -104,6 +117,7 @@ export function CancelOrderDialog({
       <AlertDialogContent>
         <CancelOrderForm
           isGroupCancel={isGroupCancel}
+          isPaidOnline={isPaidOnline}
           isPending={isPending}
           onConfirm={onConfirm}
         />

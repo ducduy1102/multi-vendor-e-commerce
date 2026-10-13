@@ -538,14 +538,14 @@ export class CheckoutController {
   @ApiResponse({
     status: 409,
     description:
-      'ORDER_CANCEL_NOT_ALLOWED (details.reason: PAID_ONLINE = nhóm đã thanh toán); ORDER_INVALID_TRANSITION = nhóm không còn đơn chờ thanh toán',
+      'ORDER_ALREADY_CHANGED = nhóm vừa được thanh toán (đơn nay hủy từng đơn kèm hoàn tiền); ORDER_INVALID_TRANSITION = nhóm không còn đơn chờ thanh toán',
     schema: {
       example: {
         success: false,
         data: null,
-        message: 'This checkout group has already been paid',
-        code: 'ORDER_CANCEL_NOT_ALLOWED',
-        details: { reason: 'PAID_ONLINE' },
+        message:
+          'This checkout group has already been paid — cancel the individual orders instead',
+        code: 'ORDER_ALREADY_CHANGED',
       },
     },
   })

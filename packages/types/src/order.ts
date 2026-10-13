@@ -1,15 +1,19 @@
 import { z } from 'zod';
 import { checkoutOrderItemSchema } from './checkout';
-import { orderStatusSchema, type OrderStatus } from './order-status';
+import { optionalText } from './optional-text';
+import { orderActorTypeSchema, orderStatusSchema, type OrderStatus } from './order-status';
 import { paymentMethodSchema, paymentStatusSchema } from './payment';
+import {
+  buyerRefundRequestSchema,
+  orderRefundSummarySchema,
+  refundRequestStatusSchema,
+  sellerRefundRequestSchema,
+  sellerRefundRequestSummarySchema,
+} from './refund';
+import { orderItemReviewSchema } from './review';
 
 // Số tiền VND luôn là chuỗi số nguyên đồng trong RESPONSE (cùng quy ước CartView/CheckoutGroup).
 const moneySchema = z.string();
-
-// Ai thực hiện 1 lần chuyển trạng thái — khớp enum OrderActorType của Prisma. Response KHÔNG trả
-// `actorId` (không lộ định danh người dùng/seller cho phía bên kia).
-export const orderActorTypeSchema = z.enum(['BUYER', 'SELLER', 'ADMIN', 'SYSTEM']);
-export type OrderActorType = z.infer<typeof orderActorTypeSchema>;
 
 // --- Tab trạng thái (Week8.md 1.11) ------------------------------------------------------------
 // Định nghĩa 1 lần ở đây cho cả FE (hiển thị tab) lẫn BE (lọc theo tab). Tab là NHÓM trạng thái,
@@ -96,9 +100,20 @@ export const orderListItemSchema = z.object({
   // Thanh toán gắn theo NHÓM (1 Payment cho N đơn) — đây là lần thử mới nhất của nhóm.
   paymentMethod: paymentMethodSchema.nullable(),
   paymentStatus: paymentStatusSchema.nullable(),
+  // Hủy NGAY (không cần ai duyệt): đơn chưa thanh toán, đơn chờ shop xác nhận.
   canCancel: z.boolean(),
+  // Gửi YÊU CẦU hủy (shop đã xác nhận/đóng gói) / yêu cầu trả hàng-hoàn tiền (đã nhận, trong cửa sổ hoàn trả)
+  // — Week9.md 1.3. Đã có yêu cầu cùng loại (chưa rút) thì tắt.
+  canRequestCancel: z.boolean(),
+  canRequestReturn: z.boolean(),
   canConfirmReceived: z.boolean(),
   canRetryPayment: z.boolean(),
+  // Yêu cầu hủy/trả hàng MỚI NHẤT chưa rút của đơn (kèm dòng thời gian, không có actorId); null = chưa có.
+  // Các cờ canWithdraw/canEscalate do BE tính (Week9.md 1.3/1.4).
+  refundRequest: buyerRefundRequestSchema.nullable(),
+  // Khoản hoàn tiền qua cổng của đơn (từ sổ cái); null = chưa có (đơn COD không bao giờ có: hoàn tiền mặt
+  // ngoài hệ thống).
+  refund: orderRefundSummarySchema.nullable(),
 });
 export type OrderListItem = z.infer<typeof orderListItemSchema>;
 
@@ -110,9 +125,22 @@ export const orderListResponseSchema = z.object({
 });
 export type OrderListResponse = z.infer<typeof orderListResponseSchema>;
 
+// Dòng hàng ở CHI TIẾT đơn của người mua: snapshot lúc đặt + định danh sản phẩm để dựng link và nút đánh giá
+// (Week9.md 1.8). OrderItem không có productId — BE nối qua productVariantId → ProductVariant.productId.
+// `canReview` do BE tính (đơn COMPLETED, trong REVIEW_WINDOW_DAYS, chưa đánh giá sản phẩm này trong đơn này);
+// `review` là đánh giá của chính người mua (null = chưa có). Hai dòng cùng một sản phẩm (khác biến thể) dùng
+// chung một đánh giá — mỗi (người mua, sản phẩm, đơn) chỉ đánh giá một lần.
+export const orderDetailItemSchema = checkoutOrderItemSchema.extend({
+  productId: z.string(),
+  productSlug: z.string(),
+  canReview: z.boolean(),
+  review: orderItemReviewSchema.nullable(),
+});
+export type OrderDetailItem = z.infer<typeof orderDetailItemSchema>;
+
 // Chi tiết: snapshot địa chỉ + dòng hàng LÚC ĐẶT (không đổi khi Seller/user sửa sau đó) và timeline.
 export const orderDetailSchema = orderListItemSchema.extend({
-  items: z.array(checkoutOrderItemSchema),
+  items: z.array(orderDetailItemSchema),
   recipientName: z.string(),
   recipientPhone: z.string(),
   shippingAddressLine: z.string(),
@@ -148,9 +176,14 @@ export const sellerOrderListItemSchema = z.object({
   paymentMethod: paymentMethodSchema.nullable(),
   paymentStatus: paymentStatusSchema.nullable(),
   canConfirm: z.boolean(),
+  // Tắt khi buyer đang có yêu cầu HỦY chờ xử lý: phải phản hồi yêu cầu trước (Week9.md 1.3).
   canPack: z.boolean(),
   canShip: z.boolean(),
   canReject: z.boolean(),
+  // Seller tự hủy đơn đã xác nhận/đóng gói (Week9.md 1.3).
+  canCancel: z.boolean(),
+  // Yêu cầu hủy/trả hàng MỚI NHẤT chưa rút của đơn (tóm tắt, không có lý do của người mua); null = chưa có.
+  refundRequest: sellerRefundRequestSummarySchema.nullable(),
 });
 export type SellerOrderListItem = z.infer<typeof sellerOrderListItemSchema>;
 
@@ -173,6 +206,8 @@ export const sellerOrderDetailSchema = sellerOrderListItemSchema.extend({
   carrier: z.string().nullable(),
   trackingCode: z.string().nullable(),
   history: z.array(orderHistoryEntrySchema),
+  // Chi tiết: đủ lý do của người mua + dòng thời gian + cờ duyệt/từ chối (ghi đè bản tóm tắt ở danh sách).
+  refundRequest: sellerRefundRequestSchema.nullable(),
 });
 export type SellerOrderDetail = z.infer<typeof sellerOrderDetailSchema>;
 
@@ -180,16 +215,6 @@ export type SellerOrderDetail = z.infer<typeof sellerOrderDetailSchema>;
 
 export const ORDER_REASON_MAX_LENGTH = 500;
 export const ORDER_SHIPPING_FIELD_MAX_LENGTH = 100;
-
-// Input HTML bỏ trống gửi chuỗi rỗng "" — coi như chưa nhập (cùng cách `shop.ts`: `.transform()` ở
-// CUỐI chain, không dùng z.preprocess để giữ input type cho zodResolver).
-const optionalText = (maxLength: number, tooLongMessage: string) =>
-  z
-    .string()
-    .trim()
-    .max(maxLength, tooLongMessage)
-    .optional()
-    .transform((value) => (value === '' ? undefined : value));
 
 // POST /orders/:id/cancel — lý do tuỳ chọn.
 export const cancelOrderSchema = z.object({
@@ -207,6 +232,11 @@ export const rejectOrderSchema = z.object({
 });
 export type RejectOrderInput = z.infer<typeof rejectOrderSchema>;
 
+// POST /shops/:shopId/orders/:orderId/cancel — Seller tự hủy đơn đã xác nhận/đóng gói (kèm hoàn tiền nếu đã
+// thu), lý do BẮT BUỘC như từ chối đơn: người mua đọc được lý do này.
+export const sellerCancelOrderSchema = rejectOrderSchema;
+export type SellerCancelOrderInput = RejectOrderInput;
+
 // POST /shops/:shopId/orders/:orderId/ship — thông tin vận chuyển nhập tay, cả 2 tuỳ chọn.
 export const shipOrderSchema = z.object({
   carrier: optionalText(ORDER_SHIPPING_FIELD_MAX_LENGTH, 'order.validationCarrierTooLong'),
@@ -216,3 +246,34 @@ export const shipOrderSchema = z.object({
   ),
 });
 export type ShipOrderInput = z.infer<typeof shipOrderSchema>;
+
+// --- Seller: hàng chờ yêu cầu hủy/trả hàng GET /shops/:shopId/refund-requests (Week9.md 2.7) -----------
+// `status` bỏ trống = mọi yêu cầu chưa rút; yêu cầu đã rút (WITHDRAWN) không bao giờ hiện cho seller.
+export const sellerRefundRequestListQuerySchema = z.object({
+  status: refundRequestStatusSchema.exclude(['WITHDRAWN']).optional(),
+  ...paginationShape,
+});
+export type SellerRefundRequestListQuery = z.infer<typeof sellerRefundRequestListQuerySchema>;
+
+// Mỗi dòng = yêu cầu đầy đủ + tóm tắt đơn vừa đủ để quyết định (người nhận, hàng, tiền, cách thanh toán).
+export const sellerRefundRequestListItemSchema = sellerRefundRequestSchema.extend({
+  order: z.object({
+    id: z.string(),
+    status: orderStatusSchema,
+    totalAmount: moneySchema,
+    recipientName: z.string(),
+    items: z.array(checkoutOrderItemSchema),
+    itemCount: z.number().int().nonnegative(),
+    paymentMethod: paymentMethodSchema.nullable(),
+    paymentStatus: paymentStatusSchema.nullable(),
+  }),
+});
+export type SellerRefundRequestListItem = z.infer<typeof sellerRefundRequestListItemSchema>;
+
+export const sellerRefundRequestListResponseSchema = z.object({
+  items: z.array(sellerRefundRequestListItemSchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int(),
+  limit: z.number().int(),
+});
+export type SellerRefundRequestListResponse = z.infer<typeof sellerRefundRequestListResponseSchema>;

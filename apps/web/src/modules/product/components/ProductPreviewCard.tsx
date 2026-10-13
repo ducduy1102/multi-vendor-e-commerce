@@ -1,7 +1,9 @@
 import { ImageOff } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import Image from 'next/image';
 
 import { Link } from '@/i18n/navigation';
+import { StarRating } from '@/shared/components/StarRating';
 import { Badge } from '@/shared/components/ui/badge';
 import { cn } from '@/shared/lib/utils';
 import { formatPrice } from '../format-price';
@@ -19,10 +21,12 @@ interface ProductPreviewCardProps {
   // sản phẩm/shop đã bị archive/suspend sau khi user đã wishlist — hiện
   // badge mờ + KHÔNG cho bấm vào trang chi tiết (trang đó sẽ tự trả 404 vì
   // không còn PUBLISHED/APPROVED, tránh UX cụt hứng). Nhận `unavailableLabel`
-  // qua prop (không tự gọi useTranslations/getTranslations bên trong) — giữ
-  // component thuần không phụ thuộc i18n hook, vẫn dùng được nguyên trong cả
-  // cây Server Component (trang chủ/`/products`) lẫn Client Component
-  // (trang wishlist, Bước 3.7, fetch qua TanStack Query).
+  // qua prop — chuỗi này chỉ có nghĩa ở ngữ cảnh wishlist nên để nơi gọi
+  // quyết định. (Từ Tuần 9 card có dùng useTranslations cho nhãn số đánh giá,
+  // hook của next-intl chạy được ở cả Server Component — trang chủ,
+  // `/products` — lẫn Client Component — trang wishlist, Bước 3.7, fetch qua
+  // TanStack Query — nên không phá "dùng được ở cả hai cây"; test của card
+  // phải bọc withIntl.)
   isAvailable?: boolean;
   unavailableLabel?: string;
 }
@@ -36,6 +40,7 @@ export function ProductPreviewCard({
   isAvailable = true,
   unavailableLabel,
 }: ProductPreviewCardProps) {
+  const t = useTranslations('product');
   const priceLabel =
     product.minPrice === product.maxPrice
       ? formatPrice(product.minPrice)
@@ -83,6 +88,19 @@ export function ProductPreviewCard({
     <div className={cn('flex flex-col gap-1 p-3', !isAvailable && 'opacity-60')}>
       <span className="line-clamp-2 text-sm font-medium text-foreground">{product.name}</span>
       <span className="text-sm font-semibold text-foreground">{priceLabel}</span>
+      {/* Hàng sao LUÔN chiếm chiều cao cố định (h-4) kể cả khi chưa có đánh giá: mọi thẻ cao bằng nhau
+          và ProductCardSkeleton khớp đúng, không nhảy layout khi dữ liệu về. */}
+      <div className="flex h-4 items-center gap-1">
+        {product.reviewCount > 0 ? (
+          <>
+            <StarRating value={product.avgRating} size="sm" />
+            <span aria-hidden="true" className="text-xs text-muted-foreground">
+              ({product.reviewCount})
+            </span>
+            <span className="sr-only">{t('cardReviewCount', { count: product.reviewCount })}</span>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 

@@ -842,6 +842,81 @@ describe('CheckoutService.placeOrder', () => {
       ]);
     });
 
+    // Người bán không được tự mua (Week9.md 2.10): dòng của shop mình do CartService đánh dấu isAvailable=false
+    // (kèm unavailableReason) — checkout chỉ cần truyền userId để cart biết người mua là ai, rồi loại như mọi dòng
+    // không khả dụng.
+    describe('dòng thuộc shop của chính người mua (Week9.md 2.10)', () => {
+      it('đọc giỏ với userId của người mua (để cart biết ai là chủ shop)', async () => {
+        await service.placeOrder('user-1', INPUT);
+
+        expect(cartService.buildCartView).toHaveBeenCalledWith(
+          expect.any(Array),
+          'user-1',
+        );
+      });
+
+      it('dòng của shop mình KHÔNG vào đơn / deleteMany / reserve, nằm lại giỏ; dòng shop khác vẫn được mua', async () => {
+        cartService.buildCartView.mockResolvedValue(
+          cartView([
+            {
+              shopId: 'shop-own',
+              items: [
+                cartLine({
+                  id: 'item-own',
+                  productVariantId: 'variant-own',
+                  isAvailable: false,
+                  unavailableReason: 'OWN_SHOP',
+                }),
+              ],
+            },
+            {
+              shopId: 'shop-1',
+              items: [
+                cartLine({ id: 'item-1', productVariantId: 'variant-1' }),
+              ],
+            },
+          ]),
+        );
+
+        await service.placeOrder('user-1', INPUT);
+
+        expect(tx.cartItem.deleteMany).toHaveBeenCalledWith({
+          where: { OR: [{ id: 'item-1', quantity: 2 }] },
+        });
+        expect(inventoryService.reserve).toHaveBeenCalledWith(tx, [
+          { productVariantId: 'variant-1', quantity: 2 },
+        ]);
+        const [, input] = orderService.createOrders.mock.calls[0] as [
+          unknown,
+          { orders: { shopId: string }[] },
+        ];
+        expect(input.orders.map((order) => order.shopId)).toEqual(['shop-1']);
+      });
+
+      it('giỏ chỉ có hàng của shop mình ⇒ 400 NO_PURCHASABLE_ITEMS, không mở transaction, không giữ chỗ', async () => {
+        cartService.buildCartView.mockResolvedValue(
+          cartView([
+            {
+              shopId: 'shop-own',
+              items: [
+                cartLine({
+                  isAvailable: false,
+                  unavailableReason: 'OWN_SHOP',
+                }),
+              ],
+            },
+          ]),
+        );
+
+        await expectAppException(service.placeOrder('user-1', INPUT), {
+          status: 400,
+          code: 'NO_PURCHASABLE_ITEMS',
+        });
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(inventoryService.reserve).not.toHaveBeenCalled();
+      });
+    });
+
     it('không còn dòng khả dụng nào — 400 NO_PURCHASABLE_ITEMS, không mở transaction', async () => {
       cartService.buildCartView.mockResolvedValue(
         cartView([
@@ -1551,6 +1626,49 @@ describe('CheckoutService.placeOrder', () => {
       ]);
       expect(result.orders[0].items).toHaveLength(1);
       expect(result.orders[0].items[0].id).toBe('item-1');
+      expect(result.canPlaceOrder).toBe(true);
+    });
+
+    it('đọc giỏ với userId của người xem; dòng của shop mình vào excludedItems với lý do OWN_SHOP (khác UNAVAILABLE), không nằm trong đơn', async () => {
+      cartService.buildCartView.mockResolvedValue(
+        previewCartView([
+          {
+            shopId: 'shop-1',
+            items: [
+              cartLine({ id: 'item-1', productVariantId: 'variant-1' }),
+              cartLine({
+                id: 'item-own',
+                productVariantId: 'variant-own',
+                productName: 'Hàng của shop tôi',
+                isAvailable: false,
+                unavailableReason: 'OWN_SHOP',
+              }),
+              cartLine({
+                id: 'item-off',
+                productVariantId: 'variant-off',
+                productName: 'Ngừng bán',
+                isAvailable: false,
+              }),
+            ],
+          },
+        ]),
+      );
+
+      const result = await service.preview('user-1', {});
+
+      expect(cartService.buildCartView).toHaveBeenCalledWith(
+        expect.any(Array),
+        'user-1',
+      );
+      expect(result.excludedItems).toEqual([
+        {
+          cartItemId: 'item-own',
+          name: 'Hàng của shop tôi',
+          reason: 'OWN_SHOP',
+        },
+        { cartItemId: 'item-off', name: 'Ngừng bán', reason: 'UNAVAILABLE' },
+      ]);
+      expect(result.orders[0].items.map((item) => item.id)).toEqual(['item-1']);
       expect(result.canPlaceOrder).toBe(true);
     });
 

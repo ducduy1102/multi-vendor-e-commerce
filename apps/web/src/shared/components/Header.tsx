@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, Package, Search, ShieldCheck, ShoppingCart, X } from 'lucide-react';
+import { ChevronDown, Package, Search, ShieldCheck, ShoppingCart, Undo2, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
@@ -214,6 +214,14 @@ export function Header() {
           <DropdownMenuItem render={<Link href="/admin/shops" />}>
             <ShieldCheck />
             {t('adminLink')}
+          </DropdownMenuItem>
+        )}
+        {/* "Hoàn tiền" (Week9.md 3.7): khiếu nại, hoàn tiền lỗi và thanh toán bất thường — cùng điều kiện ADMIN và
+            ngay sau "Quản trị". */}
+        {user.role === 'ADMIN' && (
+          <DropdownMenuItem render={<Link href="/admin/refunds" />}>
+            <Undo2 />
+            {t('adminRefundsLink')}
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />

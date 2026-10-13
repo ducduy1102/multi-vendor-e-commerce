@@ -79,11 +79,12 @@ export const checkoutPreviewOrderSchema = z.object({
 });
 export type CheckoutPreviewOrder = z.infer<typeof checkoutPreviewOrderSchema>;
 
-// Dòng không khả dụng: không được thanh toán và vẫn ở trong giỏ.
+// Dòng không khả dụng: không được thanh toán và vẫn ở trong giỏ. OWN_SHOP = sản phẩm của chính shop người mua
+// (người bán không được tự mua), phân biệt với UNAVAILABLE (ngừng bán / hết hiệu lực) để FE nói đúng lý do.
 export const excludedItemSchema = z.object({
   cartItemId: z.string(),
   name: z.string(),
-  reason: z.literal('UNAVAILABLE'),
+  reason: z.enum(['UNAVAILABLE', 'OWN_SHOP']),
 });
 export type ExcludedItem = z.infer<typeof excludedItemSchema>;
 

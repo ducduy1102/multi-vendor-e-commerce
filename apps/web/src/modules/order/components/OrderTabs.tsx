@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
 import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
-import { cn } from '@/shared/lib/utils';
+import { getTabLinkClass } from '@/shared/lib/tab-link-class';
 
 import {
   BUYER_ORDER_TAB_KEYS,
@@ -45,12 +45,7 @@ export function OrderTabs({
               <Link
                 href={buildOrdersHref({ tab: tab === 'all' ? undefined : tab, basePath })}
                 aria-current={isActive ? 'page' : undefined}
-                className={cn(
-                  '-mb-px inline-flex min-h-11 items-center rounded-t-md border-b-2 px-3 text-sm font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-                  isActive
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                )}
+                className={getTabLinkClass(isActive)}
               >
                 {tDynamic(ORDER_TAB_LABEL_KEYS[tab])}
               </Link>

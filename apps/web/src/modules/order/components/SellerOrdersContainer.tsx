@@ -118,6 +118,7 @@ export function SellerOrdersContainer({ shopId, tab, page }: SellerOrdersContain
                     onPack={() => void flow.pack(order)}
                     onShip={() => flow.openShipDialog(order)}
                     onReject={() => flow.openRejectDialog(order)}
+                    onCancel={() => flow.openCancelDialog(order)}
                   />
                 }
               />

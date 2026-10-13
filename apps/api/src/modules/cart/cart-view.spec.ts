@@ -19,7 +19,13 @@ function variant(overrides: Record<string, unknown> = {}): CartVariantRow {
       slug: 'ao-thun',
       status: 'PUBLISHED',
     },
-    shop: { id: 's1', name: 'Shop A', slug: 'shop-a', status: 'APPROVED' },
+    shop: {
+      id: 's1',
+      name: 'Shop A',
+      slug: 'shop-a',
+      status: 'APPROVED',
+      ownerId: 'owner-a',
+    },
     images: [{ url: 'https://example.com/a.jpg' }],
     attributeValues: [],
     ...overrides,
@@ -35,6 +41,87 @@ function line(
 }
 
 describe('composeCartView', () => {
+  // --- Người bán không được tự mua (Week9.md 2.10) -------------------------------------------------------
+  describe('dòng thuộc shop của chính người xem', () => {
+    const own = () =>
+      variant({ id: 'own', price: new Prisma.Decimal('500000') });
+    const other = () =>
+      variant({
+        id: 'other',
+        price: new Prisma.Decimal('100000'),
+        shop: {
+          id: 's2',
+          name: 'Shop B',
+          slug: 'shop-b',
+          status: 'APPROVED',
+          ownerId: 'owner-b',
+        },
+      });
+
+    it('bị loại khỏi mua (isAvailable=false) kèm lý do OWN_SHOP, không cộng vào subtotal / tổng', () => {
+      const view = composeCartView(
+        [line(2, own(), 'i1'), line(1, other(), 'i2')],
+        'owner-a',
+      );
+
+      const ownLine = view.shops.find((s) => s.shopId === 's1')?.items[0];
+      expect(ownLine).toMatchObject({
+        productVariantId: 'own',
+        isAvailable: false,
+        unavailableReason: 'OWN_SHOP',
+      });
+      expect(view.shops.find((s) => s.shopId === 's1')?.subtotal).toBe('0');
+      expect(view.subtotal).toBe('100000'); // chỉ còn dòng của shop B
+      expect(view.grandTotal).toBe('100000');
+      // Vẫn hiện trong giỏ và vẫn được đếm là một dòng (người dùng còn xoá được).
+      expect(view.itemCount).toBe(2);
+    });
+
+    it('dòng của shop KHÁC không bị ảnh hưởng và không có lý do', () => {
+      const view = composeCartView([line(1, other())], 'owner-a');
+
+      const item = view.shops[0].items[0];
+      expect(item.isAvailable).toBe(true);
+      expect(item).not.toHaveProperty('unavailableReason');
+    });
+
+    it('không biết người xem (guest) ⇒ không áp luật: dòng vẫn mua được', () => {
+      const view = composeCartView([line(1, own())]);
+
+      expect(view.shops[0].items[0].isAvailable).toBe(true);
+      expect(view.shops[0].items[0]).not.toHaveProperty('unavailableReason');
+    });
+
+    it('người xem là chủ shop KHÁC ⇒ dòng này không bị loại', () => {
+      const view = composeCartView([line(1, own())], 'owner-b');
+
+      expect(view.shops[0].items[0].isAvailable).toBe(true);
+    });
+
+    it('sản phẩm đã ngừng bán thì lý do là "không khả dụng" chung (không gắn OWN_SHOP)', () => {
+      const delisted = variant({
+        product: {
+          id: 'p1',
+          name: 'Áo thun',
+          slug: 'ao-thun',
+          status: 'ARCHIVED',
+        },
+      });
+
+      const item = composeCartView([line(1, delisted)], 'owner-a').shops[0]
+        .items[0];
+
+      expect(item.isAvailable).toBe(false);
+      expect(item).not.toHaveProperty('unavailableReason');
+    });
+
+    it('KHÔNG lộ ownerId (định danh chủ shop) ra response', () => {
+      const view = composeCartView([line(1, own())], 'owner-a');
+
+      expect(JSON.stringify(view)).not.toContain('owner-a');
+    });
+  });
+
   it('field stock trả về là available (stock - reservedStock)', () => {
     const v1 = variant({ stock: 10, reservedStock: 4 });
 

@@ -9,7 +9,7 @@ interface RejectOrderVariables {
   reason: string;
 }
 
-// PENDING → CANCELLED, chỉ đơn COD; lý do bắt buộc.
+// PENDING → CANCELLED, mọi phương thức thanh toán (đơn đã trả online được hoàn tiền tự động); lý do bắt buộc.
 export function useRejectOrder(shopId: string) {
   const queryClient = useQueryClient();
 
