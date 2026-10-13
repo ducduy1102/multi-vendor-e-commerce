@@ -1,9 +1,17 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type ShopStatus } from '@prisma/client';
+import { frontendUrl } from '../../shared/mail/frontend-url';
+import type { MailLocale } from '../../shared/mail/mail-locale';
+import { MailService } from '../../shared/mail/mail.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { ShopStatusService } from '../shop/shop-status.service';
 import type { ListShopsQueryDto } from './dto/list-shops-query.dto';
 import type { UpdateShopStatusDto } from './dto/update-shop-status.dto';
+import {
+  shopStatusEmailKind,
+  shopStatusEmailPath,
+  shopStatusEmailReason,
+} from './shop-status-email';
 
 // Select vẫn tự khai thay vì import từ ShopService — không import chéo file nội bộ giữa 2 module
 // nghiệp vụ (rules/general.md mục 1, module-boundaries.spec.ts); chỉ dùng ShopStatusService (điểm duy
@@ -57,6 +65,17 @@ function toAdminShop(row: AdminShopRow) {
 
 type AdminShopSummary = ReturnType<typeof toAdminShop>;
 
+// Người nhận email trạng thái shop: chủ shop. Truy vấn riêng và hẹp (không nhét `locale` vào
+// adminShopSelect) để không đổi hình dạng response của Admin.
+const shopStatusRecipientSelect = {
+  name: true,
+  owner: { select: { name: true, email: true, locale: true } },
+} satisfies Prisma.ShopSelect;
+
+type ShopStatusRecipient = Prisma.ShopGetPayload<{
+  select: typeof shopStatusRecipientSelect;
+}>;
+
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
@@ -64,6 +83,7 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shopStatusService: ShopStatusService,
+    private readonly mailService: MailService,
   ) {}
 
   // Hàng chờ duyệt (PENDING) xếp theo MỐC VÀO HÀNG CHỜ cũ nhất trước để không ai bị bỏ quên — shop nộp lại
@@ -126,11 +146,51 @@ export class AdminService {
       `Admin ${adminId} changed shop ${shopId} status ${from} -> ${dto.status}`,
     );
 
-    return toAdminShop(
-      await this.prisma.shop.findUniqueOrThrow({
+    const [shop, recipient] = await Promise.all([
+      this.prisma.shop.findUniqueOrThrow({
         where: { id: shopId },
         select: adminShopSelect,
       }),
-    );
+      this.prisma.shop.findUnique({
+        where: { id: shopId },
+        select: shopStatusRecipientSelect,
+      }),
+    ]);
+
+    // SAU khi transaction đã commit (không bao giờ trong $transaction — gọi dịch vụ ngoài trong transaction
+    // giữ khoá lâu và mail lỗi sẽ rollback cả việc duyệt). Không bao giờ ném.
+    await this.notifyOwnerSafely(shopId, from, dto, recipient);
+
+    return toAdminShop(shop);
+  }
+
+  // Báo chủ shop kết quả Admin vừa xử lý (Week9.md 1.13), theo `User.locale` của họ. Chỉ 4 cạnh của Admin
+  // có mail (shopStatusEmailKind); `resubmit` của chủ shop đi qua ShopStatusService trực tiếp, không qua đây.
+  // Cùng nguyên tắc rules/backend.md mục 4: DB đã xong việc của nó, mail lỗi chỉ được log (kèm shopId,
+  // KHÔNG kèm lý do do Admin nhập) chứ không làm fail request và không đảo ngược trạng thái đã đổi.
+  private async notifyOwnerSafely(
+    shopId: string,
+    from: ShopStatus,
+    dto: UpdateShopStatusDto,
+    recipient: ShopStatusRecipient | null,
+  ): Promise<void> {
+    const kind = shopStatusEmailKind(from, dto.status);
+    if (!kind || !recipient?.owner) return;
+
+    const locale: MailLocale = recipient.owner.locale;
+    try {
+      await this.mailService.sendShopStatusChanged(recipient.owner.email, {
+        locale,
+        ownerName: recipient.owner.name,
+        shopName: recipient.name,
+        kind,
+        reason: shopStatusEmailReason(kind, dto.reason),
+        shopUrl: frontendUrl(shopStatusEmailPath(kind), locale),
+      });
+    } catch (error) {
+      this.logger.error(
+        `Gửi email trạng thái shop ${shopId} (${kind}) thất bại: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }
