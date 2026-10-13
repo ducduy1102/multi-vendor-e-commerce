@@ -1,0 +1,38 @@
+import type { MailLocale } from '../mail-locale';
+
+// Dữ liệu cho email tài khoản và trạng thái shop (Week9.md 1.11–1.13). Khai ở `shared/mail` (hạ tầng không
+// được import `modules/`). `locale` BẮT BUỘC, không có mặc định — xem `OrderEmailBase`. Mọi URL đã được người
+// gọi dựng bằng `frontendUrl` (đúng prefix ngôn ngữ).
+
+export interface PasswordResetEmailData {
+  locale: MailLocale;
+  name: string;
+  // Link đặt lại mật khẩu chứa token dùng một lần.
+  resetUrl: string;
+  // Số phút còn hiệu lực — nói rõ trong email để người dùng biết phải làm ngay.
+  expiresInMinutes: number;
+}
+
+// Email bảo mật gửi cho CHÍNH CHỦ sau mỗi lần đổi mật khẩu thành công. KHÔNG chứa mật khẩu hay token.
+export interface PasswordChangedEmailData {
+  locale: MailLocale;
+  name: string;
+  // Link tới trang "quên mật khẩu" cho người không phải mình đổi.
+  forgotPasswordUrl: string;
+}
+
+// APPROVED: PENDING → APPROVED. REJECTED: PENDING → REJECTED (kèm lý do). SUSPENDED: APPROVED → SUSPENDED
+// (kèm lý do). REINSTATED: SUSPENDED → APPROVED (mở khoá).
+export type ShopStatusEmailKind =
+  'APPROVED' | 'REJECTED' | 'SUSPENDED' | 'REINSTATED';
+
+export interface ShopStatusEmailData {
+  locale: MailLocale;
+  ownerName: string;
+  shopName: string;
+  kind: ShopStatusEmailKind;
+  // Lý do Admin nhập; bắt buộc có ở REJECTED/SUSPENDED (BE kiểm), null ở hai loại còn lại.
+  reason: string | null;
+  // Link tới trang quản lý shop của chủ shop.
+  shopUrl: string;
+}
