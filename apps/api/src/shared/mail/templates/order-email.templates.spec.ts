@@ -31,6 +31,7 @@ const ORDER: OrderEmailOrder = {
 };
 
 const BASE = {
+  locale: 'vi' as const,
   buyerName: 'Nguyễn Văn A',
   ordersUrl: 'http://localhost:3000/orders/o1',
 };

@@ -43,7 +43,11 @@ describe('MailService', () => {
       discountAmount: 0,
       totalAmount: 120_000,
     };
-    const base = { buyerName: 'An', ordersUrl: 'http://localhost:3000/orders' };
+    const base = {
+      locale: 'vi' as const,
+      buyerName: 'An',
+      ordersUrl: 'http://localhost:3000/orders',
+    };
 
     it('sendOrderPlaced / Confirmed / Shipped / Cancelled: gọi provider đúng 1 lần với người nhận + subject + html', async () => {
       await service.sendOrderPlaced('a@x.com', {
@@ -95,6 +99,7 @@ describe('MailService', () => {
         'user@example.com',
         'Nguyen Van A',
         'http://localhost:3000/verify-email?token=abc123',
+        'vi',
       );
 
       expect(provider.send).toHaveBeenCalledTimes(1);
@@ -105,6 +110,133 @@ describe('MailService', () => {
         'http://localhost:3000/verify-email?token=abc123',
       );
       expect(message.html).toContain('Nguyen Van A');
+    });
+  });
+
+  describe('sendVerificationEmail theo ngôn ngữ', () => {
+    it('en: tiêu đề tiếng Anh, link giữ nguyên', async () => {
+      await service.sendVerificationEmail(
+        'user@example.com',
+        'John',
+        'http://localhost:3000/en/verify-email?token=abc123',
+        'en',
+      );
+
+      const message = provider.send.mock.calls[0][0];
+      expect(message.subject).toBe('Verify your email');
+      expect(message.html).toContain('Hi John,');
+      expect(message.html).toContain(
+        'http://localhost:3000/en/verify-email?token=abc123',
+      );
+    });
+  });
+
+  describe('email tài khoản và trạng thái shop (Week9.md 1.11–1.13)', () => {
+    it('sendPasswordReset: gửi đúng người nhận, đúng ngôn ngữ, có link đặt lại', async () => {
+      await service.sendPasswordReset('a@x.com', {
+        locale: 'en',
+        name: 'John',
+        resetUrl: 'http://localhost:3000/en/reset-password?token=tok',
+        expiresInMinutes: 60,
+      });
+
+      expect(provider.send).toHaveBeenCalledTimes(1);
+      const message = provider.send.mock.calls[0][0];
+      expect(message.to).toBe('a@x.com');
+      expect(message.subject).toBe('Reset your password');
+      expect(message.html).toContain('reset-password?token=tok');
+    });
+
+    it('sendPasswordChanged: email bảo mật, không có token', async () => {
+      await service.sendPasswordChanged('a@x.com', {
+        locale: 'vi',
+        name: 'An',
+        forgotPasswordUrl: 'http://localhost:3000/forgot-password',
+      });
+
+      const message = provider.send.mock.calls[0][0];
+      expect(message.to).toBe('a@x.com');
+      expect(message.subject).toBe('Mật khẩu của bạn đã được thay đổi');
+      expect(message.html).toContain('/forgot-password');
+    });
+
+    it('sendShopStatusChanged: tiêu đề theo loại, lý do có trong nội dung', async () => {
+      await service.sendShopStatusChanged('owner@x.com', {
+        locale: 'vi',
+        ownerName: 'An',
+        shopName: 'Shop A',
+        kind: 'SUSPENDED',
+        reason: 'Vi phạm chính sách',
+        shopUrl: 'http://localhost:3000/seller/shop',
+      });
+
+      const message = provider.send.mock.calls[0][0];
+      expect(message.to).toBe('owner@x.com');
+      expect(message.subject).toBe('Shop Shop A đã bị tạm khoá');
+      expect(message.html).toContain('Vi phạm chính sách');
+    });
+
+    it('sendOrderRefunded: nêu số tiền và mã đơn', async () => {
+      await service.sendOrderRefunded('b@x.com', {
+        locale: 'en',
+        buyerName: 'John',
+        ordersUrl: 'http://localhost:3000/en/orders/o1',
+        order: {
+          orderCode: 'AB12CD34',
+          shopName: 'Shop A',
+          items: [
+            {
+              productName: 'Shirt',
+              variantLabel: null,
+              quantity: 1,
+              unitPrice: 100_000,
+            },
+          ],
+          shippingFee: 20_000,
+          discountAmount: 0,
+          totalAmount: 120_000,
+        },
+        refundAmount: 120_000,
+        refundTo: 'ORIGINAL_PAYMENT',
+      });
+
+      const message = provider.send.mock.calls[0][0];
+      expect(message.to).toBe('b@x.com');
+      expect(message.subject).toBe('Your return request has been approved');
+      expect(message.html).toContain('#AB12CD34');
+      expect(message.html.replace(/\s/g, ' ')).toContain('120.000 ₫');
+    });
+
+    it('lỗi của provider được ném lại cho người gọi ở mọi hàm mới', async () => {
+      provider.send.mockRejectedValue(new Error('Resend down'));
+
+      await expect(
+        service.sendPasswordReset('a@x.com', {
+          locale: 'vi',
+          name: 'An',
+          resetUrl: 'http://localhost:3000/reset-password?token=t',
+          expiresInMinutes: 60,
+        }),
+      ).rejects.toThrow('Resend down');
+    });
+  });
+
+  describe('tiêu đề thư luôn là một dòng (chống chèn header)', () => {
+    it('xuống dòng và ký tự điều khiển trong tên shop không lọt vào subject', async () => {
+      await service.sendShopStatusChanged('owner@x.com', {
+        locale: 'en',
+        ownerName: 'An',
+        shopName: 'Evil\r\nBcc: victim@example.com',
+        kind: 'APPROVED',
+        reason: null,
+        shopUrl: 'http://localhost:3000/en/seller/shop',
+      });
+
+      const { subject } = provider.send.mock.calls[0][0];
+      expect(subject).not.toMatch(/[\r\n]/);
+      expect(subject).toBe(
+        'Your shop Evil Bcc: victim@example.com has been approved',
+      );
     });
   });
 });
