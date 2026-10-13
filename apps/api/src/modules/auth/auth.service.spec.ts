@@ -53,6 +53,7 @@ describe('AuthService', () => {
     role: Role.USER,
     accountStatus: AccountStatus.ACTIVE,
     refreshTokenHash: null as string | null,
+    locale: 'vi' as 'vi' | 'en',
     emailVerifiedAt: null as Date | null,
     emailVerificationTokenHash: null as string | null,
     emailVerificationExpiresAt: null as Date | null,
@@ -139,7 +140,7 @@ describe('AuthService', () => {
       expect(result.user).not.toHaveProperty('refreshTokenHash');
     });
 
-    it('lưu locale người đăng ký chọn; bỏ trống thì không gửi field để DB dùng DEFAULT vi', async () => {
+    it('lưu locale người đăng ký chọn; bỏ trống thì dùng ngôn ngữ mặc định vi', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       prisma.user.create.mockImplementation(({ data }) =>
         Promise.resolve({ ...baseUser, ...data }),
@@ -158,7 +159,7 @@ describe('AuthService', () => {
         password: 'password123',
         name: 'Default User',
       });
-      expect(prisma.user.create.mock.calls[1][0].data.locale).toBeUndefined();
+      expect(prisma.user.create.mock.calls[1][0].data.locale).toBe('vi');
     });
 
     it('chỉ trả đúng field của AuthUser (allowlist): không lọt hash, token reset, accountStatus', async () => {
@@ -195,6 +196,51 @@ describe('AuthService', () => {
       expect(JSON.stringify(result.user)).not.toMatch(/hash/i);
     });
 
+    it('email xác thực theo ngôn ngữ người đăng ký: en ⇒ link có prefix /en và template nhận locale en', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockImplementation(({ data }) =>
+        Promise.resolve({ ...baseUser, ...data }),
+      );
+
+      await service.register({
+        email: 'en@example.com',
+        password: 'password123',
+        name: 'English User',
+        locale: 'en',
+      });
+
+      expect(mailService.sendVerificationEmail).toHaveBeenCalledWith(
+        'en@example.com',
+        'English User',
+        expect.stringMatching(
+          /^http:\/\/localhost:3000\/en\/verify-email\?token=[0-9a-f]{64}$/,
+        ),
+        'en',
+      );
+    });
+
+    it('email xác thực mặc định vi: link KHÔNG có prefix', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockImplementation(({ data }) =>
+        Promise.resolve({ ...baseUser, ...data }),
+      );
+
+      await service.register({
+        email: 'vi@example.com',
+        password: 'password123',
+        name: 'Người Việt',
+      });
+
+      expect(mailService.sendVerificationEmail).toHaveBeenCalledWith(
+        'vi@example.com',
+        'Người Việt',
+        expect.stringMatching(
+          /^http:\/\/localhost:3000\/verify-email\?token=[0-9a-f]{64}$/,
+        ),
+        'vi',
+      );
+    });
+
     it('tạo token verify email (hash lưu DB, không lộ ra ngoài) và gửi mail xác thực', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       prisma.user.create.mockImplementation(({ data }) =>
@@ -217,6 +263,7 @@ describe('AuthService', () => {
         'new@example.com',
         'New User',
         expect.stringContaining('/verify-email?token='),
+        'vi',
       );
     });
 
@@ -692,6 +739,7 @@ describe('AuthService', () => {
         baseUser.email,
         baseUser.name,
         expect.stringContaining('/verify-email?token='),
+        'vi',
       );
     });
 
