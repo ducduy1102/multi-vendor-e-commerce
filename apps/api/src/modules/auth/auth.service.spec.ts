@@ -1,13 +1,13 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { AccountStatus, OAuthProvider, Role } from '@prisma/client';
+import { AccountStatus, OAuthProvider, Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
 import { MailService } from '../../shared/mail/mail.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { EMAIL_VERIFICATION_RESEND_COOLDOWN_MS } from './auth.constants';
-import { AuthService } from './auth.service';
+import { AuthService, FORGOT_PASSWORD_MESSAGE } from './auth.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -37,13 +37,18 @@ describe('AuthService', () => {
       findUnique: jest.Mock;
       create: jest.Mock<Promise<unknown>, [CreateUserArgs]>;
       update: jest.Mock<Promise<unknown>, [UpdateUserArgs]>;
+      updateMany: jest.Mock;
     };
     oAuthAccount: {
       findUnique: jest.Mock;
       create: jest.Mock;
     };
   };
-  let mailService: { sendVerificationEmail: jest.Mock };
+  let mailService: {
+    sendVerificationEmail: jest.Mock;
+    sendPasswordReset: jest.Mock;
+    sendPasswordChanged: jest.Mock;
+  };
 
   const baseUser = {
     id: 'user-1',
@@ -75,6 +80,7 @@ describe('AuthService', () => {
         findUnique: jest.fn(),
         create: jest.fn<Promise<unknown>, [CreateUserArgs]>(),
         update: jest.fn<Promise<unknown>, [UpdateUserArgs]>(),
+        updateMany: jest.fn(),
       },
       oAuthAccount: {
         findUnique: jest.fn(),
@@ -83,6 +89,8 @@ describe('AuthService', () => {
     };
     mailService = {
       sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
+      sendPasswordReset: jest.fn().mockResolvedValue(undefined),
+      sendPasswordChanged: jest.fn().mockResolvedValue(undefined),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -758,6 +766,444 @@ describe('AuthService', () => {
       const result = await service.resendVerification(baseUser.id);
 
       expect(result.message).toBeDefined();
+    });
+  });
+
+  // --- Hồ sơ và mật khẩu (Week9.md 1.11/5.4). Luồng đầy đủ với DB thật nằm ở
+  // auth-password.controller.int-spec.ts; ở đây khoá các quyết định của service bằng mock.
+
+  describe('issueTokens — refresh token luôn duy nhất', () => {
+    it('hai lần đăng nhập trong CÙNG một giây cho refresh token KHÁC nhau (jti ngẫu nhiên)', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        passwordHash: await bcrypt.hash('password123', 4),
+      });
+      prisma.user.update.mockResolvedValue({});
+
+      const first = await service.login({
+        email: baseUser.email,
+        password: 'password123',
+      });
+      const second = await service.login({
+        email: baseUser.email,
+        password: 'password123',
+      });
+
+      expect(first.refreshToken).not.toBe(second.refreshToken);
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('chỉ ghi name và locale, đúng where theo userId', async () => {
+      prisma.user.update.mockResolvedValue({
+        ...baseUser,
+        name: 'Tên mới',
+        locale: 'en',
+      });
+
+      const result = await service.updateProfile('user-1', {
+        name: 'Tên mới',
+        locale: 'en',
+      });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { name: 'Tên mới', locale: 'en' },
+      });
+      expect(result.user).toMatchObject({ name: 'Tên mới', locale: 'en' });
+      expect(result.user).not.toHaveProperty('passwordHash');
+    });
+
+    it('chỉ gửi locale thì data không có name (cập nhật từng phần)', async () => {
+      prisma.user.update.mockResolvedValue({ ...baseUser, locale: 'en' });
+
+      await service.updateProfile('user-1', { locale: 'en' });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { locale: 'en' },
+      });
+    });
+
+    it('user đã bị xoá giữa chừng (P2025) ⇒ 401, không phải 500', async () => {
+      prisma.user.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.updateProfile('gone', { name: 'A' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
+  describe('changePassword', () => {
+    const OLD = 'old-password-1';
+    let oldHash: string;
+
+    beforeEach(async () => {
+      oldHash = await bcrypt.hash(OLD, 4);
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        passwordHash: oldHash,
+      });
+      prisma.user.updateMany.mockResolvedValue({ count: 1 });
+      prisma.user.update.mockResolvedValue({});
+      mailService.sendPasswordChanged.mockResolvedValue(undefined);
+    });
+
+    it('thành công: UPDATE có điều kiện theo hash vừa xác minh, xoá token reset, cấp lại token, gửi 1 email bảo mật', async () => {
+      const result = await service.changePassword('user-1', {
+        currentPassword: OLD,
+        newPassword: 'new-password-2',
+      });
+
+      const [args] = prisma.user.updateMany.mock.calls[0] as [
+        {
+          where: Record<string, unknown>;
+          data: Record<string, unknown>;
+        },
+      ];
+      expect(args.where).toEqual({ id: 'user-1', passwordHash: oldHash });
+      expect(args.data).toMatchObject({
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+        passwordResetSentAt: null,
+      });
+      expect(
+        await bcrypt.compare(
+          'new-password-2',
+          args.data.passwordHash as string,
+        ),
+      ).toBe(true);
+      expect(result.accessToken).toEqual(expect.any(String));
+      expect(result.refreshToken).toEqual(expect.any(String));
+      expect(mailService.sendPasswordChanged).toHaveBeenCalledTimes(1);
+      expect(mailService.sendPasswordChanged).toHaveBeenCalledWith(
+        baseUser.email,
+        expect.objectContaining({
+          locale: 'vi',
+          name: baseUser.name,
+          forgotPasswordUrl: expect.stringContaining(
+            '/forgot-password',
+          ) as string,
+        }),
+      );
+    });
+
+    it('sai mật khẩu hiện tại ⇒ CURRENT_PASSWORD_INCORRECT, không ghi, không gửi mail', async () => {
+      await expect(
+        service.changePassword('user-1', {
+          currentPassword: 'wrong',
+          newPassword: 'new-password-2',
+        }),
+      ).rejects.toMatchObject({
+        code: 'CURRENT_PASSWORD_INCORRECT',
+        status: 400,
+      });
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+      expect(mailService.sendPasswordChanged).not.toHaveBeenCalled();
+    });
+
+    it('tài khoản chưa có mật khẩu ⇒ PASSWORD_NOT_SET', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        passwordHash: null,
+      });
+
+      await expect(
+        service.changePassword('user-1', {
+          currentPassword: OLD,
+          newPassword: 'new-password-2',
+        }),
+      ).rejects.toMatchObject({ code: 'PASSWORD_NOT_SET', status: 400 });
+    });
+
+    it('mật khẩu bị đổi giữa chừng bởi luồng khác (count = 0) ⇒ KHÔNG ghi đè, báo sai mật khẩu hiện tại', async () => {
+      prisma.user.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.changePassword('user-1', {
+          currentPassword: OLD,
+          newPassword: 'new-password-2',
+        }),
+      ).rejects.toMatchObject({ code: 'CURRENT_PASSWORD_INCORRECT' });
+      expect(mailService.sendPasswordChanged).not.toHaveBeenCalled();
+    });
+
+    it('gửi mail lỗi không làm hỏng request', async () => {
+      mailService.sendPasswordChanged.mockRejectedValue(new Error('Resend'));
+
+      await expect(
+        service.changePassword('user-1', {
+          currentPassword: OLD,
+          newPassword: 'new-password-2',
+        }),
+      ).resolves.toMatchObject({ message: expect.any(String) as string });
+    });
+
+    it('user không còn tồn tại ⇒ 401', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.changePassword('gone', {
+          currentPassword: OLD,
+          newPassword: 'new-password-2',
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
+  describe('forgotPassword', () => {
+    // Mail gửi KHÔNG chờ (chống dò email qua thời gian) nên phải đợi microtask/timer xong mới khẳng định.
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+    const DTO = { email: 'user@example.com' };
+
+    beforeEach(() => {
+      prisma.user.updateMany.mockResolvedValue({ count: 1 });
+      mailService.sendPasswordReset.mockResolvedValue(undefined);
+    });
+
+    it('user ACTIVE: ghi hash (không ghi token thô) bằng UPDATE có điều kiện cooldown, gửi 1 mail có link', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...baseUser });
+
+      const result = await service.forgotPassword(DTO);
+      await flush();
+
+      expect(result.message).toBe(FORGOT_PASSWORD_MESSAGE);
+      const [args] = prisma.user.updateMany.mock.calls[0] as [
+        {
+          where: { id: string; OR: unknown[] };
+          data: {
+            passwordResetTokenHash: string;
+            passwordResetExpiresAt: Date;
+            passwordResetSentAt: Date;
+          };
+        },
+      ];
+      expect(args.where.id).toBe('user-1');
+      expect(args.where.OR).toHaveLength(2); // sentAt null HOẶC cũ hơn cooldown
+      expect(args.data.passwordResetTokenHash).toMatch(/^[0-9a-f]{64}$/);
+      const ttlMs = args.data.passwordResetExpiresAt.getTime() - Date.now();
+      expect(ttlMs).toBeGreaterThan(59 * 60_000);
+      expect(ttlMs).toBeLessThanOrEqual(60 * 60_000);
+
+      expect(mailService.sendPasswordReset).toHaveBeenCalledTimes(1);
+      const [to, data] = mailService.sendPasswordReset.mock.calls[0] as [
+        string,
+        { resetUrl: string; expiresInMinutes: number },
+      ];
+      expect(to).toBe('user@example.com');
+      expect(data.expiresInMinutes).toBe(60);
+      const rawToken = /token=([0-9a-f]{64})/.exec(data.resetUrl)?.[1];
+      expect(rawToken).toBeDefined();
+      expect(createHash('sha256').update(rawToken!).digest('hex')).toBe(
+        args.data.passwordResetTokenHash,
+      );
+      expect(args.data.passwordResetTokenHash).not.toBe(rawToken);
+    });
+
+    it('PASSWORD_RESET_TTL_MINUTES đọc LÚC DÙNG, kẹp tối đa 24 giờ, giá trị rỗng/sai ⇒ 60', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...baseUser });
+      const ttlOf = async (value: string | undefined) => {
+        if (value === undefined) delete process.env.PASSWORD_RESET_TTL_MINUTES;
+        else process.env.PASSWORD_RESET_TTL_MINUTES = value;
+        mailService.sendPasswordReset.mockClear();
+        await service.forgotPassword(DTO);
+        await flush();
+        const [, data] = mailService.sendPasswordReset.mock.calls[0] as [
+          string,
+          { expiresInMinutes: number },
+        ];
+        return data.expiresInMinutes;
+      };
+
+      try {
+        expect(await ttlOf('15')).toBe(15);
+        expect(await ttlOf('999999')).toBe(1440);
+        expect(await ttlOf('')).toBe(60);
+        expect(await ttlOf('abc')).toBe(60);
+        expect(await ttlOf(undefined)).toBe(60);
+      } finally {
+        delete process.env.PASSWORD_RESET_TTL_MINUTES;
+      }
+    });
+
+    it('email không có tài khoản: cùng phản hồi, không ghi, không gửi', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      const result = await service.forgotPassword(DTO);
+      await flush();
+
+      expect(result.message).toBe(FORGOT_PASSWORD_MESSAGE);
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+      expect(mailService.sendPasswordReset).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      AccountStatus.SUSPENDED,
+      AccountStatus.BANNED,
+      AccountStatus.DEACTIVATED,
+    ])(
+      'tài khoản %s: cùng phản hồi, không ghi, không gửi',
+      async (accountStatus) => {
+        prisma.user.findUnique.mockResolvedValue({
+          ...baseUser,
+          accountStatus,
+        });
+
+        const result = await service.forgotPassword(DTO);
+        await flush();
+
+        expect(result.message).toBe(FORGOT_PASSWORD_MESSAGE);
+        expect(prisma.user.updateMany).not.toHaveBeenCalled();
+        expect(mailService.sendPasswordReset).not.toHaveBeenCalled();
+      },
+    );
+
+    it('đang trong cooldown (UPDATE có điều kiện trả count = 0): cùng phản hồi, KHÔNG gửi mail', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...baseUser });
+      prisma.user.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.forgotPassword(DTO);
+      await flush();
+
+      expect(result.message).toBe(FORGOT_PASSWORD_MESSAGE);
+      expect(mailService.sendPasswordReset).not.toHaveBeenCalled();
+    });
+
+    it('mail lỗi: vẫn trả phản hồi bình thường, lỗi được log chứ không ném', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...baseUser });
+      mailService.sendPasswordReset.mockRejectedValue(new Error('Resend'));
+
+      await expect(service.forgotPassword(DTO)).resolves.toEqual({
+        message: FORGOT_PASSWORD_MESSAGE,
+      });
+      await flush();
+    });
+
+    it('mail theo ngôn ngữ của user (en) và link có /en', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...baseUser, locale: 'en' });
+
+      await service.forgotPassword(DTO);
+      await flush();
+
+      const [, data] = mailService.sendPasswordReset.mock.calls[0] as [
+        string,
+        { locale: string; resetUrl: string },
+      ];
+      expect(data.locale).toBe('en');
+      expect(data.resetUrl).toContain('/en/reset-password?token=');
+    });
+  });
+
+  describe('resetPassword', () => {
+    const TOKEN = 'a'.repeat(64);
+    const TOKEN_HASH = createHash('sha256').update(TOKEN).digest('hex');
+    const pending = () => ({
+      ...baseUser,
+      passwordResetTokenHash: TOKEN_HASH,
+      passwordResetExpiresAt: new Date(Date.now() + 30 * 60_000),
+    });
+
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue(pending());
+      prisma.user.updateMany.mockResolvedValue({ count: 1 });
+      mailService.sendPasswordChanged.mockResolvedValue(undefined);
+    });
+
+    it('tra theo HASH của token, đặt mật khẩu bcrypt, xoá 3 cột token, thu hồi refresh token, gửi 1 email bảo mật', async () => {
+      const result = await service.resetPassword({
+        token: TOKEN,
+        newPassword: 'new-password-2',
+      });
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { passwordResetTokenHash: TOKEN_HASH },
+      });
+      const [args] = prisma.user.updateMany.mock.calls[0] as [
+        {
+          where: Record<string, unknown>;
+          data: Record<string, unknown>;
+        },
+      ];
+      expect(args.where).toMatchObject({
+        id: 'user-1',
+        passwordResetTokenHash: TOKEN_HASH,
+        accountStatus: AccountStatus.ACTIVE,
+      });
+      expect(args.where.passwordResetExpiresAt).toEqual({
+        gt: expect.any(Date) as Date,
+      });
+      expect(args.data).toMatchObject({
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+        passwordResetSentAt: null,
+        refreshTokenHash: null,
+      });
+      expect(args.data.passwordHash).not.toBe('new-password-2');
+      expect(
+        await bcrypt.compare(
+          'new-password-2',
+          args.data.passwordHash as string,
+        ),
+      ).toBe(true);
+      expect(result.message).toBeDefined();
+      expect(mailService.sendPasswordChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['không tìm thấy token', null],
+      [
+        'token hết hạn',
+        {
+          ...baseUser,
+          passwordResetTokenHash: TOKEN_HASH,
+          passwordResetExpiresAt: new Date(Date.now() - 1000),
+        },
+      ],
+      [
+        'tài khoản không còn ACTIVE',
+        {
+          ...baseUser,
+          accountStatus: AccountStatus.SUSPENDED,
+          passwordResetTokenHash: TOKEN_HASH,
+          passwordResetExpiresAt: new Date(Date.now() + 60_000),
+        },
+      ],
+    ])(
+      '%s ⇒ RESET_TOKEN_INVALID, không ghi, không gửi mail',
+      async (_label, row) => {
+        prisma.user.findUnique.mockResolvedValue(row);
+
+        await expect(
+          service.resetPassword({
+            token: TOKEN,
+            newPassword: 'new-password-2',
+          }),
+        ).rejects.toMatchObject({ code: 'RESET_TOKEN_INVALID', status: 400 });
+        expect(prisma.user.updateMany).not.toHaveBeenCalled();
+        expect(mailService.sendPasswordChanged).not.toHaveBeenCalled();
+      },
+    );
+
+    it('thua cuộc đua dùng một lần (count = 0) ⇒ RESET_TOKEN_INVALID, không gửi mail', async () => {
+      prisma.user.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.resetPassword({ token: TOKEN, newPassword: 'new-password-2' }),
+      ).rejects.toMatchObject({ code: 'RESET_TOKEN_INVALID' });
+      expect(mailService.sendPasswordChanged).not.toHaveBeenCalled();
+    });
+
+    it('mail lỗi không làm hỏng việc đặt lại', async () => {
+      mailService.sendPasswordChanged.mockRejectedValue(new Error('Resend'));
+
+      await expect(
+        service.resetPassword({ token: TOKEN, newPassword: 'new-password-2' }),
+      ).resolves.toMatchObject({ message: expect.any(String) as string });
     });
   });
 });
