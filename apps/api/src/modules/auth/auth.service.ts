@@ -10,13 +10,17 @@ import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { AccountStatus, OAuthProvider, Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { frontendUrl } from '../../shared/mail/frontend-url';
+import {
+  DEFAULT_MAIL_LOCALE,
+  type MailLocale,
+} from '../../shared/mail/mail-locale';
 import { MailService } from '../../shared/mail/mail.service';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
   EMAIL_VERIFICATION_TOKEN_TTL_MS,
-  getFrontendUrl,
 } from './auth.constants';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
@@ -67,8 +71,8 @@ export class AuthService {
         email: dto.email,
         passwordHash,
         name: dto.name,
-        // undefined ⇒ cột nhận DEFAULT 'vi' của DB (FE luôn gửi, client khác có thể không).
-        locale: dto.locale,
+        // FE luôn gửi; client khác bỏ trống ⇒ ngôn ngữ mặc định (cùng giá trị DEFAULT của cột).
+        locale: dto.locale ?? DEFAULT_MAIL_LOCALE,
         emailVerificationTokenHash: verification.tokenHash,
         emailVerificationExpiresAt: verification.expiresAt,
         emailVerificationSentAt: new Date(),
@@ -78,6 +82,7 @@ export class AuthService {
       user.email,
       user.name,
       verification.rawToken,
+      user.locale,
     );
 
     // Không tự issue token/tạo session sau khi đăng ký — bắt người dùng đăng
@@ -146,6 +151,7 @@ export class AuthService {
       user.email,
       user.name,
       verification.rawToken,
+      user.locale,
     );
 
     return { message: 'Đã gửi lại email xác thực' };
@@ -160,12 +166,14 @@ export class AuthService {
     email: string,
     name: string,
     rawToken: string,
+    locale: MailLocale,
   ): Promise<void> {
     try {
       await this.mailService.sendVerificationEmail(
         email,
         name,
-        this.buildVerifyEmailUrl(rawToken),
+        this.buildVerifyEmailUrl(rawToken, locale),
+        locale,
       );
     } catch (error) {
       this.logger.error(
@@ -367,7 +375,11 @@ export class AuthService {
     };
   }
 
-  private buildVerifyEmailUrl(rawToken: string): string {
-    return `${getFrontendUrl()}/verify-email?token=${rawToken}`;
+  // Link có prefix ngôn ngữ của người nhận (`/en/...` cho en): FE dùng `localePrefix: as-needed`.
+  private buildVerifyEmailUrl(rawToken: string, locale: MailLocale): string {
+    return frontendUrl(
+      `/verify-email?token=${encodeURIComponent(rawToken)}`,
+      locale,
+    );
   }
 }
