@@ -84,6 +84,15 @@ export class ShopController {
     description: 'Tạo shop thành công',
     schema: { example: { success: true, data: { shop: SHOP_EXAMPLE } } },
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Body không hợp lệ (tên rỗng/quá 100 ký tự/có ký tự < > hoặc ký tự điều khiển; slug sai định dạng, quá 150 ký tự hoặc là slug dành riêng "me"; mô tả quá 2000 ký tự; logo/banner không phải URL https)',
+    schema: {
+      example: errorExample('slug: shop.validationSlugReserved'),
+    },
+  })
   @ApiResponse({
     status: 403,
     description:
@@ -110,6 +119,7 @@ export class ShopController {
     status: 200,
     schema: { example: { success: true, data: { shop: SHOP_EXAMPLE } } },
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 404, description: 'User chưa có shop' })
   async getMine(@CurrentUser() user: AuthenticatedUser) {
     const shop = await this.shopService.getMyShop(user.userId);
@@ -160,6 +170,15 @@ export class ShopController {
     status: 200,
     schema: { example: { success: true, data: { shop: SHOP_EXAMPLE } } },
   })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Body không hợp lệ (tên/mô tả/URL vi phạm giới hạn — xem POST /shops)',
+    schema: {
+      example: errorExample('logoUrl: shop.validationLogoUrlInvalid'),
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 403, description: 'Không phải chủ sở hữu shop' })
   @ApiResponse({ status: 404, description: 'Shop không tồn tại' })
   @ApiResponse({
