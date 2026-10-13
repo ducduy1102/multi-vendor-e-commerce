@@ -222,6 +222,40 @@ describe('OrderEmailService (DB thật)', () => {
     expect(fakeMail.sent[0].html).toContain('&lt;img');
   });
 
+  it('buyer có User.locale = en (đọc từ DB thật): email tiếng Anh, link có prefix /en, tiền vẫn định dạng vi-VN', async () => {
+    const { user, orderIds } = await seedGroup('CONFIRMED', 'VNPAY', 1, {
+      shopName: 'Shop A',
+    });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { locale: 'en' },
+    });
+
+    await service.notifyConfirmed(orderIds[0]);
+
+    expect(fakeMail.sent).toHaveLength(1);
+    const { subject, html } = fakeMail.sent[0];
+    expect(subject).toBe('Shop A has confirmed your order');
+    expect(html).toContain('Your order has been confirmed');
+    expect(html).toContain(`http://localhost:3000/en/orders/${orderIds[0]}`);
+    expect(html.replace(/\s/g, ' ')).toContain('220.000 ₫');
+    expect(html).not.toContain('Xem đơn hàng');
+  });
+
+  it('notifyRefunded (đơn đã trả online): đọc thật tên/shop/dòng hàng, nói đang hoàn số tiền đã truyền', async () => {
+    const { user, orderIds } = await seedGroup('REFUNDED', 'VNPAY');
+
+    await service.notifyRefunded(orderIds[0], 190_000);
+
+    expect(fakeMail.sent).toHaveLength(1);
+    const [mail] = fakeMail.sent;
+    expect(mail.to).toBe(user.email);
+    expect(mail.subject).toBe('Yêu cầu trả hàng của bạn đã được chấp nhận');
+    const text = mail.html.replace(/\s/g, ' ');
+    expect(text).toContain('đang hoàn 190.000 ₫');
+    expect(text).toContain('Áo thun cotton (Đỏ / M) × 2');
+  });
+
   it('provider mail lỗi — KHÔNG ném (DB đã commit, chỉ log)', async () => {
     const { groupId, orderIds } = await seedGroup('PENDING', 'COD');
     fakeMail.failWith(new Error('Resend down'));

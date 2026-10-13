@@ -604,7 +604,12 @@ describe('Yêu cầu hủy/trả hàng phía seller (HTTP thật)', () => {
       expect(await statusOf(order.orderId)).toBe('REFUNDED');
       expect(await stockOf(order.variantId)).toBe(STOCK);
       expect((await paymentOf(order.paymentId)).status).toBe('REFUNDED');
-      expect(fakeMail.sent).toHaveLength(0);
+      // Một email "đã duyệt trả hàng" (không phải "đơn bị hủy"), đơn đã trả online ⇒ hoàn về phương thức ban đầu.
+      expect(fakeMail.sent).toHaveLength(1);
+      expect(fakeMail.sent[0].subject).toBe(
+        'Yêu cầu trả hàng của bạn đã được chấp nhận',
+      );
+      expect(fakeMail.sent[0].html).toContain('phương thức thanh toán ban đầu');
     });
 
     it('yêu cầu TRẢ HÀNG đơn COD: REFUNDED, không có khoản hoàn qua cổng, Payment COD giữ SUCCESS', async () => {
@@ -626,6 +631,12 @@ describe('Yêu cầu hủy/trả hàng phía seller (HTTP thật)', () => {
       expect(await statusOf(order.orderId)).toBe('REFUNDED');
       expect(await refundsOf(order.paymentId)).toHaveLength(0);
       expect((await paymentOf(order.paymentId)).status).toBe('SUCCESS');
+      // Đơn COD: email nói shop hoàn tiền mặt trực tiếp, không hứa hoàn qua cổng.
+      expect(fakeMail.sent).toHaveLength(1);
+      expect(fakeMail.sent[0].html).toContain('tiền mặt');
+      expect(fakeMail.sent[0].html).not.toContain(
+        'phương thức thanh toán ban đầu',
+      );
     });
 
     it('yêu cầu HỦY đã lên sàn (ESCALATED) vẫn duyệt được — seller nhượng bộ; yêu cầu TRẢ HÀNG đã lên sàn ⇒ 409, đơn không đổi', async () => {

@@ -18,7 +18,7 @@ function emailOrder(overrides: Record<string, unknown> = {}) {
     shippingProvince: 'Hồ Chí Minh',
     carrier: null,
     trackingCode: null,
-    user: { email: 'buyer@example.com', name: 'Nguyễn Văn A' },
+    user: { email: 'buyer@example.com', name: 'Nguyễn Văn A', locale: 'vi' },
     shop: { name: 'Shop Áo Xinh' },
     items: [
       {
@@ -41,6 +41,7 @@ describe('OrderEmailService', () => {
     sendOrderConfirmed: jest.Mock;
     sendOrderShipped: jest.Mock;
     sendOrderCancelled: jest.Mock;
+    sendOrderRefunded: jest.Mock;
   };
 
   beforeEach(() => {
@@ -51,6 +52,7 @@ describe('OrderEmailService', () => {
       sendOrderConfirmed: jest.fn().mockResolvedValue(undefined),
       sendOrderShipped: jest.fn().mockResolvedValue(undefined),
       sendOrderCancelled: jest.fn().mockResolvedValue(undefined),
+      sendOrderRefunded: jest.fn().mockResolvedValue(undefined),
     };
     service = new OrderEmailService(
       prisma as unknown as PrismaService,
@@ -294,5 +296,150 @@ describe('OrderEmailService', () => {
         }
       },
     );
+  });
+
+  describe('ngôn ngữ email theo User.locale (Week9.md 1.12)', () => {
+    const enUser = {
+      email: 'buyer@example.com',
+      name: 'John',
+      locale: 'en',
+    };
+
+    it('đọc locale của buyer ở cùng truy vấn (không thêm truy vấn)', async () => {
+      prisma.order.findMany.mockResolvedValue([emailOrder()]);
+
+      await service.notifyConfirmed('order-1');
+
+      expect(prisma.order.findMany).toHaveBeenCalledTimes(1);
+      const [args] = prisma.order.findMany.mock.calls[0] as [
+        { select: { user: unknown } },
+      ];
+      expect(args.select.user).toEqual({
+        select: { email: true, name: true, locale: true },
+      });
+    });
+
+    it('buyer en: email mang locale en và link có prefix /en', async () => {
+      prisma.order.findMany.mockResolvedValue([emailOrder({ user: enUser })]);
+
+      await service.notifyConfirmed('order-1');
+
+      const [, data] = mail.sendOrderConfirmed.mock.calls[0] as [
+        string,
+        { locale: string; ordersUrl: string },
+      ];
+      expect(data.locale).toBe('en');
+      expect(data.ordersUrl).toBe('http://localhost:3000/en/orders/order-1');
+    });
+
+    it('buyer vi: link KHÔNG có prefix (localePrefix as-needed của FE)', async () => {
+      prisma.order.findMany.mockResolvedValue([emailOrder()]);
+
+      await service.notifyConfirmed('order-1');
+
+      const [, data] = mail.sendOrderConfirmed.mock.calls[0] as [
+        string,
+        { locale: string; ordersUrl: string },
+      ];
+      expect(data.locale).toBe('vi');
+      expect(data.ordersUrl).toBe('http://localhost:3000/orders/order-1');
+    });
+
+    it.each([
+      [
+        'notifyPlaced',
+        'sendOrderPlaced',
+        (s: OrderEmailService) => s.notifyPlaced('g1'),
+      ],
+      [
+        'notifyShipped',
+        'sendOrderShipped',
+        (s: OrderEmailService) => s.notifyShipped('o1'),
+      ],
+      [
+        'notifyCancelled',
+        'sendOrderCancelled',
+        (s: OrderEmailService) =>
+          s.notifyCancelled({ orderIds: ['o1'] }, 'SELLER'),
+      ],
+      [
+        'notifyRefunded',
+        'sendOrderRefunded',
+        (s: OrderEmailService) => s.notifyRefunded('o1'),
+      ],
+    ] as const)(
+      '%s: truyền locale en của buyer cho template',
+      async (_name, sender, call) => {
+        prisma.order.findMany.mockResolvedValue([emailOrder({ user: enUser })]);
+
+        await call(service);
+
+        const [, data] = mail[sender].mock.calls[0] as [
+          string,
+          { locale: string; ordersUrl: string },
+        ];
+        expect(data.locale).toBe('en');
+        expect(data.ordersUrl).toMatch(/^http:\/\/localhost:3000\/en\/orders/);
+      },
+    );
+  });
+
+  describe('notifyRefunded (duyệt trả hàng sau giao)', () => {
+    it('đơn đã trả online: hoàn về phương thức ban đầu, số tiền là khoản hoàn qua cổng', async () => {
+      prisma.order.findMany.mockResolvedValue([emailOrder()]);
+
+      await service.notifyRefunded('order-1', 200_000);
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'order-1' } }),
+      );
+      const [to, data] = mail.sendOrderRefunded.mock.calls[0] as [
+        string,
+        {
+          refundAmount: number;
+          refundTo: string;
+          ordersUrl: string;
+          order: { shopName: string };
+        },
+      ];
+      expect(to).toBe('buyer@example.com');
+      expect(data.refundAmount).toBe(200_000);
+      expect(data.refundTo).toBe('ORIGINAL_PAYMENT');
+      expect(data.ordersUrl).toBe('http://localhost:3000/orders/order-1');
+      expect(data.order.shopName).toBe('Shop Áo Xinh');
+    });
+
+    it('đơn COD: shop hoàn tiền mặt, số tiền lấy từ tổng đơn khi không có khoản hoàn qua cổng', async () => {
+      prisma.order.findMany.mockResolvedValue([
+        emailOrder({
+          totalAmount: D(310_000),
+          checkoutGroup: { payments: [{ method: 'COD' }] },
+        }),
+      ]);
+
+      await service.notifyRefunded('order-1', null);
+
+      const [, data] = mail.sendOrderRefunded.mock.calls[0] as [
+        string,
+        { refundAmount: number; refundTo: string },
+      ];
+      expect(data.refundTo).toBe('SHOP_CASH');
+      expect(data.refundAmount).toBe(310_000);
+    });
+
+    it('không có đơn — không gửi gì', async () => {
+      await service.notifyRefunded('order-khong-co', 1);
+
+      expect(mail.sendOrderRefunded).not.toHaveBeenCalled();
+    });
+
+    it('provider mail lỗi — resolve bình thường (DB đã xong việc của nó)', async () => {
+      prisma.order.findMany.mockResolvedValue([emailOrder()]);
+      mail.sendOrderRefunded.mockRejectedValue(new Error('Resend down'));
+
+      await expect(
+        service.notifyRefunded('order-1', 1),
+      ).resolves.toBeUndefined();
+    });
   });
 });

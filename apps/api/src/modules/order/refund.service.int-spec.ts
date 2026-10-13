@@ -784,7 +784,14 @@ describe('RefundService (DB thật)', () => {
       const payment = await paymentOf(g.paymentId);
       expect(payment.status).toBe('REFUNDED');
       expect(Number(payment.refundedAmount)).toBe(g.amount);
-      expect(fakeMail.sent).toHaveLength(0); // email hoàn tiền: 5.3
+      // Đúng MỘT email "đã duyệt trả hàng" cho buyer (không phải email "đơn bị hủy"), nói ĐANG hoàn số tiền
+      // của khoản hoàn qua cổng — gửi sau commit, đọc ngôn ngữ từ User.locale (mặc định vi).
+      expect(fakeMail.sent).toHaveLength(1);
+      expect(fakeMail.sent[0].subject).toBe(
+        'Yêu cầu trả hàng của bạn đã được chấp nhận',
+      );
+      expect(fakeMail.sent[0].html).toContain('đang hoàn');
+      expect(fakeMail.sent[0].html).not.toContain('bị hủy');
       expect(
         (await paymentService.getCheckoutGroup(g.userId, g.groupId)).status,
       ).toBe('CANCELLED');
