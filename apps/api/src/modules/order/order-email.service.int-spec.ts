@@ -40,10 +40,17 @@ describe('OrderEmailService (DB thật)', () => {
     status: OrderStatus,
     method: PaymentMethod,
     shopCount = 1,
-    extra: { carrier?: string; trackingCode?: string; shopName?: string } = {},
+    extra: {
+      carrier?: string;
+      trackingCode?: string;
+      shopName?: string;
+      locale?: 'vi' | 'en';
+    } = {},
   ) {
     const user = await prisma.user.update({
-      where: { id: (await createUser(prisma, TAG)).id },
+      where: {
+        id: (await createUser(prisma, TAG, { locale: extra.locale })).id,
+      },
       data: { name: 'Nguyễn Văn A' },
       select: { id: true, email: true },
     });
@@ -223,12 +230,9 @@ describe('OrderEmailService (DB thật)', () => {
   });
 
   it('buyer có User.locale = en (đọc từ DB thật): email tiếng Anh, link có prefix /en, tiền vẫn định dạng vi-VN', async () => {
-    const { user, orderIds } = await seedGroup('CONFIRMED', 'VNPAY', 1, {
+    const { orderIds } = await seedGroup('CONFIRMED', 'VNPAY', 1, {
       shopName: 'Shop A',
-    });
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { locale: 'en' },
+      locale: 'en',
     });
 
     await service.notifyConfirmed(orderIds[0]);

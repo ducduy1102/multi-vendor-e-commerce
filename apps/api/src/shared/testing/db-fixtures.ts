@@ -1,4 +1,9 @@
-import type { OrderActorType, OrderStatus, PrismaClient } from '@prisma/client';
+import type {
+  OrderActorType,
+  OrderStatus,
+  PrismaClient,
+  UserLocale,
+} from '@prisma/client';
 
 // Dữ liệu dựng cho các integration test (`*.int-spec.ts`, chạy bằng `pnpm test:int`) trên DB dev
 // thật. Mọi bản ghi mang tiền tố `tag` riêng của từng file spec và được dọn theo tiền tố đó, để
@@ -7,12 +12,20 @@ import type { OrderActorType, OrderStatus, PrismaClient } from '@prisma/client';
 let counter = 0;
 const nextId = () => `${Date.now().toString(36)}${(counter++).toString(36)}`;
 
-export async function createUser(prisma: PrismaClient, tag: string) {
+// `locale` (ngôn ngữ email, mặc định vi theo DB) và `passwordHash` (mặc định null = chưa có mật khẩu, như tài
+// khoản chỉ đăng nhập Google) tuỳ chọn để test dựng đúng người dùng mình cần thay vì sửa lại sau khi tạo.
+export async function createUser(
+  prisma: PrismaClient,
+  tag: string,
+  options: { locale?: UserLocale; passwordHash?: string | null } = {},
+) {
   return prisma.user.create({
     data: {
       email: `${tag}${nextId()}@test.local`,
       name: `${tag}user`,
       emailVerifiedAt: new Date(),
+      locale: options.locale,
+      passwordHash: options.passwordHash,
     },
     select: { id: true },
   });
