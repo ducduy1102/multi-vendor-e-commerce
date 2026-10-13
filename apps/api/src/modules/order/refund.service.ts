@@ -260,7 +260,8 @@ export class RefundService {
   }
 
   // Duyệt trả hàng/hoàn tiền SAU giao: COMPLETED → REFUNDED. Không cộng kho (hàng chưa về/chưa kiểm), không trả
-  // voucher (đã dùng thật). Email "đã hoàn tiền" làm ở 5.3 (cần hạ tầng locale).
+  // voucher (đã dùng thật). Email SAU commit, nói "đang hoàn" chứ không khẳng định đã hoàn (cổng có thể chậm
+  // hoặc lỗi); đơn COD không có khoản hoàn qua cổng ⇒ email nói shop hoàn tiền mặt.
   async refundReturnedOrder(
     actor: OrderActor,
     orderId: string,
@@ -271,6 +272,10 @@ export class RefundService {
       actor,
       orderId,
       options,
+    );
+    await this.orderEmailService.notifyRefunded(
+      orderId,
+      outcome.refund ? Number(outcome.refund.amount) : null,
     );
     return { refund: outcome.refund };
   }

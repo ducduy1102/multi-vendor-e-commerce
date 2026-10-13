@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { frontendUrl } from '../../shared/mail/frontend-url';
+import type { MailLocale } from '../../shared/mail/mail-locale';
 import { MailService } from '../../shared/mail/mail.service';
 import type {
   OrderCancelledBy,
   OrderEmailOrder,
 } from '../../shared/mail/templates/order-email.types';
 import { PrismaService } from '../../shared/prisma/prisma.service';
-import { getFrontendUrl } from '../../shared/utils/frontend-url';
 
 const emailOrderSelect = {
   id: true,
@@ -20,7 +21,8 @@ const emailOrderSelect = {
   shippingProvince: true,
   carrier: true,
   trackingCode: true,
-  user: { select: { email: true, name: true } },
+  // `locale` = ngôn ngữ email của buyer (Week9.md 1.12).
+  user: { select: { email: true, name: true, locale: true } },
   shop: { select: { name: true } },
   items: {
     select: {
@@ -50,14 +52,15 @@ export type CancelledTarget =
   { orderIds: string[] } | { checkoutGroupId: string };
 
 // Email giao dịch cho buyer khi đơn đổi trạng thái (Week8.md 1.12/2.8): đặt thành công, shop xác nhận,
-// đang giao, bị hủy. Mọi hàm `notify*`:
+// đang giao, bị hủy, đã duyệt trả hàng. Mọi hàm `notify*`:
 //  - gọi SAU KHI DB đã commit (không bao giờ nằm trong $transaction — gọi dịch vụ ngoài trong
 //    transaction giữ khoá lâu và khiến mail lỗi làm rollback cả đơn);
 //  - KHÔNG BAO GIỜ ném lỗi: DB đã xong việc của nó, mail lỗi (Resend down, sai key, hết quota, user
 //    không có email...) chỉ được log — cùng pattern AuthService.sendVerificationEmailSafely
 //    (rules/backend.md mục 4);
 //  - tự đọc dữ liệu cần gửi (tên/email buyer, dòng hàng...) bằng 1 truy vấn nhỏ sau commit.
-// Email tiếng Việt cố định: `User` chưa có field locale (Week8.md 1.12).
+// Ngôn ngữ email = `User.locale` của buyer, đọc cùng truy vấn nhỏ đó (Week9.md 1.12); link trong email có
+// prefix ngôn ngữ tương ứng (`frontendUrl`).
 @Injectable()
 export class OrderEmailService {
   private readonly logger = new Logger(OrderEmailService.name);
@@ -75,8 +78,9 @@ export class OrderEmailService {
       if (orders.length === 0) return;
       const first = orders[0];
       await this.mailService.sendOrderPlaced(first.user.email, {
+        locale: first.user.locale,
         buyerName: first.user.name,
-        ordersUrl: this.ordersUrl(),
+        ordersUrl: this.ordersUrl(first.user.locale),
         orders: orders.map((o) => this.toEmailOrder(o)),
         paymentMethod: first.checkoutGroup.payments[0]?.method ?? null,
         recipient: {
@@ -93,8 +97,9 @@ export class OrderEmailService {
       const [order] = await this.load({ id: orderId });
       if (!order) return;
       await this.mailService.sendOrderConfirmed(order.user.email, {
+        locale: order.user.locale,
         buyerName: order.user.name,
-        ordersUrl: this.ordersUrl(orderId),
+        ordersUrl: this.ordersUrl(order.user.locale, orderId),
         order: this.toEmailOrder(order),
       });
     });
@@ -105,8 +110,9 @@ export class OrderEmailService {
       const [order] = await this.load({ id: orderId });
       if (!order) return;
       await this.mailService.sendOrderShipped(order.user.email, {
+        locale: order.user.locale,
         buyerName: order.user.name,
-        ordersUrl: this.ordersUrl(orderId),
+        ordersUrl: this.ordersUrl(order.user.locale, orderId),
         order: this.toEmailOrder(order),
         carrier: order.carrier,
         trackingCode: order.trackingCode,
@@ -135,12 +141,38 @@ export class OrderEmailService {
       if (orders.length === 0) return;
       const first = orders[0];
       await this.mailService.sendOrderCancelled(first.user.email, {
+        locale: first.user.locale,
         buyerName: first.user.name,
-        ordersUrl: this.ordersUrl(orders.length === 1 ? first.id : undefined),
+        ordersUrl: this.ordersUrl(
+          first.user.locale,
+          orders.length === 1 ? first.id : undefined,
+        ),
         orders: orders.map((o) => this.toEmailOrder(o)),
         cancelledBy,
         reason,
         refundAmount,
+      });
+    });
+  }
+
+  // Duyệt trả hàng/hoàn tiền SAU giao (COMPLETED → REFUNDED, Week9.md 1.3). `refundAmount` = số tiền của
+  // khoản hoàn qua cổng (PaymentRefund); null = không có khoản hoàn qua cổng (đơn COD — shop hoàn tiền mặt
+  // trực tiếp) ⇒ dùng tổng của đơn. Đơn đã trả online ⇒ "đang hoàn về phương thức thanh toán ban đầu".
+  notifyRefunded(
+    orderId: string,
+    refundAmount: number | null = null,
+  ): Promise<void> {
+    return this.safely('order-refunded', orderId, async () => {
+      const [order] = await this.load({ id: orderId });
+      if (!order) return;
+      const method = order.checkoutGroup.payments[0]?.method ?? null;
+      await this.mailService.sendOrderRefunded(order.user.email, {
+        locale: order.user.locale,
+        buyerName: order.user.name,
+        ordersUrl: this.ordersUrl(order.user.locale, orderId),
+        order: this.toEmailOrder(order),
+        refundAmount: refundAmount ?? order.totalAmount.toNumber(),
+        refundTo: method === 'COD' ? 'SHOP_CASH' : 'ORIGINAL_PAYMENT',
       });
     });
   }
@@ -167,9 +199,8 @@ export class OrderEmailService {
     });
   }
 
-  private ordersUrl(orderId?: string): string {
-    const base = getFrontendUrl().replace(/\/+$/, '');
-    return orderId ? `${base}/orders/${orderId}` : `${base}/orders`;
+  private ordersUrl(locale: MailLocale, orderId?: string): string {
+    return frontendUrl(orderId ? `/orders/${orderId}` : '/orders', locale);
   }
 
   private addressOf(order: LoadedEmailOrder): string {

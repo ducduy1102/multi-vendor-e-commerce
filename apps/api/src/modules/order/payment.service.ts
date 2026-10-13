@@ -3,6 +3,7 @@ import type { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
 import type { PaymentMethod } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { findUserLocale } from '../../shared/utils/user-locale';
 import {
   readPaymentMaxHoldMinutes,
   readPaymentReclaimGraceMinutes,
@@ -575,7 +576,8 @@ export class PaymentService {
       amountVnd,
       returnUrl: this.buildReturnUrl(method),
       expiresAt,
-      locale: 'vi',
+      // Ngôn ngữ trang thanh toán của cổng theo `User.locale` (Week9.md 1.12), không cứng 'vi'.
+      locale: await findUserLocale(this.prisma, userId),
     });
     await this.prisma.payment.update({
       where: { txnRef },
