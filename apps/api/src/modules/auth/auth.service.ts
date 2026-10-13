@@ -30,6 +30,13 @@ interface VerificationToken {
   expiresAt: Date;
 }
 
+// Hình dạng user trả ra ngoài (khớp `authUserSchema`). Là ALLOWLIST: cột nào thêm vào bảng users sau này
+// (hash, token, cột nội bộ) mặc định KHÔNG lọt ra response — thêm field vào đây là quyết định có chủ đích.
+export type SafeUser = Pick<
+  User,
+  'id' | 'email' | 'name' | 'role' | 'emailVerifiedAt' | 'locale'
+> & { hasPassword: boolean };
+
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
@@ -60,6 +67,8 @@ export class AuthService {
         email: dto.email,
         passwordHash,
         name: dto.name,
+        // undefined ⇒ cột nhận DEFAULT 'vi' của DB (FE luôn gửi, client khác có thể không).
+        locale: dto.locale,
         emailVerificationTokenHash: verification.tokenHash,
         emailVerificationExpiresAt: verification.expiresAt,
         emailVerificationSentAt: new Date(),
@@ -336,20 +345,17 @@ export class AuthService {
     );
   }
 
-  private sanitizeUser(
-    user: User,
-  ): Omit<
-    User,
-    'passwordHash' | 'refreshTokenHash' | 'emailVerificationTokenHash'
-  > {
-    const safe: Partial<User> = { ...user };
-    delete safe.passwordHash;
-    delete safe.refreshTokenHash;
-    delete safe.emailVerificationTokenHash;
-    return safe as Omit<
-      User,
-      'passwordHash' | 'refreshTokenHash' | 'emailVerificationTokenHash'
-    >;
+  private sanitizeUser(user: User): SafeUser {
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      emailVerifiedAt: user.emailVerifiedAt,
+      locale: user.locale,
+      // Tính từ hash TRƯỚC khi nó biến mất khỏi response — FE chọn "đổi" hay "đặt" mật khẩu theo cờ này.
+      hasPassword: user.passwordHash !== null,
+    };
   }
 
   private generateVerificationToken(): VerificationToken {

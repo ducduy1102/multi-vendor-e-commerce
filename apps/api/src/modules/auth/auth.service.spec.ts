@@ -17,6 +17,7 @@ describe('AuthService', () => {
       email: string;
       passwordHash: string | null;
       name: string;
+      locale?: 'vi' | 'en';
       emailVerificationTokenHash?: string | null;
       emailVerificationExpiresAt?: Date | null;
       emailVerificationSentAt?: Date | null;
@@ -136,6 +137,62 @@ describe('AuthService', () => {
 
       expect(result.user).not.toHaveProperty('passwordHash');
       expect(result.user).not.toHaveProperty('refreshTokenHash');
+    });
+
+    it('lưu locale người đăng ký chọn; bỏ trống thì không gửi field để DB dùng DEFAULT vi', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockImplementation(({ data }) =>
+        Promise.resolve({ ...baseUser, ...data }),
+      );
+
+      await service.register({
+        email: 'en@example.com',
+        password: 'password123',
+        name: 'English User',
+        locale: 'en',
+      });
+      expect(prisma.user.create.mock.calls[0][0].data.locale).toBe('en');
+
+      await service.register({
+        email: 'default@example.com',
+        password: 'password123',
+        name: 'Default User',
+      });
+      expect(prisma.user.create.mock.calls[1][0].data.locale).toBeUndefined();
+    });
+
+    it('chỉ trả đúng field của AuthUser (allowlist): không lọt hash, token reset, accountStatus', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({
+        ...baseUser,
+        passwordHash: 'bcrypt-hash',
+        refreshTokenHash: 'refresh-hash',
+        locale: 'en',
+        emailVerificationTokenHash: 'verify-hash',
+        passwordResetTokenHash: 'reset-hash',
+        passwordResetExpiresAt: new Date(),
+        passwordResetSentAt: new Date(),
+      });
+
+      const result = await service.register({
+        email: 'new@example.com',
+        password: 'password123',
+        name: 'New User',
+      });
+
+      expect(Object.keys(result.user).sort()).toEqual(
+        [
+          'email',
+          'emailVerifiedAt',
+          'hasPassword',
+          'id',
+          'locale',
+          'name',
+          'role',
+        ].sort(),
+      );
+      expect(result.user.locale).toBe('en');
+      expect(JSON.stringify(result.user)).not.toMatch(/hash/i);
     });
 
     it('tạo token verify email (hash lưu DB, không lộ ra ngoài) và gửi mail xác thực', async () => {
@@ -494,6 +551,38 @@ describe('AuthService', () => {
       expect(result.user.id).toBe(baseUser.id);
       expect(result.user).not.toHaveProperty('passwordHash');
       expect(result.user).not.toHaveProperty('refreshTokenHash');
+    });
+
+    it('hasPassword = true khi tài khoản có mật khẩu, false khi chỉ đăng nhập Google (passwordHash null)', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        passwordHash: 'bcrypt-hash',
+      });
+      expect((await service.me(baseUser.id)).user.hasPassword).toBe(true);
+
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        passwordHash: null,
+      });
+      const googleOnly = await service.me(baseUser.id);
+      expect(googleOnly.user.hasPassword).toBe(false);
+      expect(googleOnly.user).not.toHaveProperty('passwordHash');
+    });
+
+    it('không lộ 3 cột reset mật khẩu dù DB đang giữ token chờ', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        passwordHash: 'bcrypt-hash',
+        passwordResetTokenHash: 'a'.repeat(64),
+        passwordResetExpiresAt: new Date(),
+        passwordResetSentAt: new Date(),
+      });
+
+      const { user } = await service.me(baseUser.id);
+
+      expect(user).not.toHaveProperty('passwordResetTokenHash');
+      expect(user).not.toHaveProperty('passwordResetExpiresAt');
+      expect(user).not.toHaveProperty('passwordResetSentAt');
     });
 
     it('báo lỗi 401 nếu user không còn tồn tại (đã bị xoá sau khi token issue)', async () => {
