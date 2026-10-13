@@ -3,8 +3,10 @@ import {
   publicShopSchema,
   SHOP_DESCRIPTION_MAX_LENGTH,
   SHOP_NAME_MAX_LENGTH,
+  SHOP_RESERVED_SLUGS,
   SHOP_SLUG_MAX_LENGTH,
   SHOP_URL_MAX_LENGTH,
+  shopSlugSchema,
   updateShopSchema,
 } from '@ecommerce/types';
 
@@ -187,6 +189,34 @@ describe('createShopSchema — slug', () => {
         }),
       ),
     ).toEqual(['shop.validationSlugTooLong']);
+  });
+});
+
+describe('slug dành riêng và shopSlugSchema', () => {
+  it('"me" là slug dành riêng (trùng GET /shops/me)', () => {
+    expect(SHOP_RESERVED_SLUGS).toContain('me');
+  });
+
+  it('tự nhập slug dành riêng bị từ chối bằng key riêng', () => {
+    expect(
+      messagesOf(createShopSchema.safeParse({ name: 'A', slug: 'me' })),
+    ).toEqual(['shop.validationSlugReserved']);
+  });
+
+  it('slug gần giống (me-2, mee) vẫn hợp lệ', () => {
+    expect(
+      createShopSchema.safeParse({ name: 'A', slug: 'me-2' }).success,
+    ).toBe(true);
+    expect(createShopSchema.safeParse({ name: 'A', slug: 'mee' }).success).toBe(
+      true,
+    );
+  });
+
+  it('shopSlugSchema (tham số đường dẫn công khai): nhận slug đúng, từ chối phần còn lại', () => {
+    expect(shopSlugSchema.parse('shop-thoi-trang-1')).toBe('shop-thoi-trang-1');
+    for (const bad of ['', 'Shop', 'a b', '../x', 'a--b']) {
+      expect(shopSlugSchema.safeParse(bad).success).toBe(false);
+    }
   });
 });
 
