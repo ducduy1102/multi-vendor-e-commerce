@@ -21,6 +21,9 @@ describe('safeNextPath', () => {
       '/products?page=2&categoryId=abc',
       '/products/ao-thun-nam',
       '/products/ao-thun%20nam',
+      '/account',
+      '/account/addresses',
+      '/account/password?from=reset',
       '/cart#top',
     ])('%s', (path) => {
       expect(safeNextPath(path)).toBe(path);
@@ -94,6 +97,9 @@ describe('safeNextPath', () => {
       '/products-evil.com',
       '/adminevil',
       '/admin-evil.com',
+      '/accounting',
+      '/account-evil.com',
+      '/account/../admin/../..//evil.com',
     ])('%s', (value) => {
       expect(safeNextPath(value)).toBeNull();
     });
