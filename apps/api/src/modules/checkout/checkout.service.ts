@@ -12,6 +12,7 @@ import type {
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { TxClient } from '../../shared/prisma/tx-client';
+import { findUserLocale } from '../../shared/utils/user-locale';
 import { readPaymentTtlMinutes } from '../../shared/payment/payment-config';
 import { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
 import { generateTxnRef } from '../../shared/payment/txn-ref';
@@ -434,7 +435,7 @@ export class CheckoutService {
     const paymentUrl =
       created.expiresAt === null
         ? null
-        : await this.createPayUrlSafely(input.paymentMethod, {
+        : await this.createPayUrlSafely(input.paymentMethod, userId, {
             ...created,
             expiresAt: created.expiresAt,
           });
@@ -617,6 +618,7 @@ export class CheckoutService {
 
   private async createPayUrlSafely(
     method: PaymentMethod,
+    userId: string,
     created: {
       groupId: string;
       txnRef: string;
@@ -626,13 +628,15 @@ export class CheckoutService {
   ): Promise<string | null> {
     const gateway = this.paymentGateway.getConfigured(method);
     if (!gateway) return null;
+    // Ngôn ngữ trang thanh toán của cổng theo `User.locale` (Week9.md 1.12), không cứng 'vi'.
+    const locale = await findUserLocale(this.prisma, userId);
     try {
       const { payUrl } = await gateway.createPayment({
         txnRef: created.txnRef,
         amountVnd: created.amount,
         returnUrl: this.buildReturnUrl(method),
         expiresAt: created.expiresAt,
-        locale: 'vi',
+        locale,
       });
       await this.prisma.payment.update({
         where: { txnRef: created.txnRef },
