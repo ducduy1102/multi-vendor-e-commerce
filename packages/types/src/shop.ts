@@ -71,12 +71,22 @@ export const SHOP_SLUG_MAX_LENGTH = 150;
 export const SHOP_DESCRIPTION_MAX_LENGTH = 2000;
 export const SHOP_URL_MAX_LENGTH = 2048;
 
+export const SHOP_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+// Slug KHÔNG được dùng cho shop: trùng một đoạn đường dẫn cố định dưới `/shops/`. `GET /shops/me` là shop của
+// chính user (khai báo trước `GET /shops/:slug`), nên một shop tên "Me" mà lấy slug `me` sẽ không bao giờ mở
+// được trang công khai của nó. Tên shop sinh ra slug này được tự đổi sang hậu tố (`me-2`), slug tự nhập thì bị từ chối.
+export const SHOP_RESERVED_SLUGS: readonly string[] = ['me'];
+
 const slugSchema = z
   .string()
   .trim()
   .min(1, 'shop.validationSlugRequired')
   .max(SHOP_SLUG_MAX_LENGTH, 'shop.validationSlugTooLong')
-  .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'shop.validationSlugFormat');
+  .regex(SHOP_SLUG_PATTERN, 'shop.validationSlugFormat');
+
+// Dùng cho tham số đường dẫn `GET /shops/:slug` (công khai).
+export const shopSlugSchema = slugSchema;
 
 // Input HTML bỏ trống gửi lên chuỗi rỗng "" (React Hook Form), không phải
 // undefined — coi "" như chưa nhập cho mọi field optional dạng string, để
@@ -119,7 +129,9 @@ export const createShopSchema = z.object({
     .refine(isSafeName, 'shop.validationNameInvalid'),
   // Bỏ trống thì BE tự sinh slug từ name (xem ShopService.createShop, Week3.md
   // Bước 2.3) — nếu người dùng tự nhập, vẫn phải đúng định dạng slug.
-  slug: slugSchema.optional(),
+  slug: slugSchema
+    .refine((value) => !SHOP_RESERVED_SLUGS.includes(value), 'shop.validationSlugReserved')
+    .optional(),
   description: optionalDescriptionSchema(),
   logoUrl: optionalUrlSchema('shop.validationLogoUrlInvalid'),
   bannerUrl: optionalUrlSchema('shop.validationBannerUrlInvalid'),

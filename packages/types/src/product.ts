@@ -1,4 +1,5 @@
 import { z, type RefinementCtx } from 'zod';
+import { SHOP_SLUG_MAX_LENGTH } from './shop';
 import { validationMessage } from './validation-message';
 
 export const productStatusSchema = z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']);
@@ -324,6 +325,17 @@ export const listProductsQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(50).default(12),
   sort: z.enum(['newest', 'price-asc', 'price-desc', 'rating']).default('newest'),
   shopId: z.string().trim().optional(),
+  // Lọc theo slug shop để trang shop công khai lấy shop và sản phẩm SONG SONG (không phải slug → id → sản
+  // phẩm nối tiếp; Week9.md 1.10). Cố ý KHÔNG kiểm định dạng: slug lạ chỉ không khớp shop nào ⇒ danh sách rỗng
+  // (tham số hoá, không có đường tấn công), và trang shop với slug gõ sai ra 404 từ API shop thay vì 400 làm
+  // vỡ trang. Chỉ chặn độ dài. Kết hợp AND với `shopId` nếu có; vẫn luôn bắt buộc product PUBLISHED + shop
+  // APPROVED nên shop chưa duyệt không lộ sản phẩm qua đường này.
+  shopSlug: z
+    .string()
+    .trim()
+    .max(SHOP_SLUG_MAX_LENGTH)
+    .optional()
+    .transform((val) => (val === '' ? undefined : val)),
   categoryId: z.string().trim().optional(),
   minPrice: z.coerce.number().nonnegative().optional(),
   maxPrice: z.coerce.number().nonnegative().optional(),
