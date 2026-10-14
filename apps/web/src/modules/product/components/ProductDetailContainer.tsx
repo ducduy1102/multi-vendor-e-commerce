@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 
+import { Link } from '@/i18n/navigation';
 import { ProductReviewList, ReviewListSkeleton, type ReviewPageQuery } from '@/modules/review';
 import { WishlistButton } from '@/modules/wishlist';
 import { ApiError } from '@/shared/lib/api-client';
@@ -71,7 +72,16 @@ export async function ProductDetailContainer({ slug, reviewQuery }: ProductDetai
             <dl className="flex flex-col gap-1 text-sm text-muted-foreground">
               <div className="flex gap-1">
                 <dt>{t('detailShopLabel')}:</dt>
-                <dd className="text-foreground">{product.shop.name}</dd>
+                {/* Link tới trang shop công khai (Week9.md 6.3). `slug` đã có sẵn ở productDetailSchema.shop;
+                    sản phẩm này chỉ xem được khi shop APPROVED nên trang đích luôn tồn tại. */}
+                <dd className="min-w-0 text-foreground">
+                  <Link
+                    href={`/shops/${encodeURIComponent(product.shop.slug)}`}
+                    className="font-medium break-words underline-offset-4 hover:text-primary hover:underline"
+                  >
+                    {product.shop.name}
+                  </Link>
+                </dd>
               </div>
               {categoryName ? (
                 <div className="flex gap-1">
