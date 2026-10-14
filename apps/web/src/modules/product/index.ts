@@ -25,6 +25,7 @@ export { ProductGridSkeleton } from './components/ProductGridSkeleton';
 export { ProductListResults } from './components/ProductListResults';
 export { ProductPagination } from './components/ProductPagination';
 export { ProductPreviewCard } from './components/ProductPreviewCard';
+export { ProductSortSelect } from './components/ProductSortSelect';
 export { SellerProductsContainer } from './components/SellerProductsContainer';
 export { SellerProductsListSkeleton } from './components/SellerProductsListSkeleton';
 export { useCategories } from './hooks/useCategories';
