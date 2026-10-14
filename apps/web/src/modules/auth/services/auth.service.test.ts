@@ -3,12 +3,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/shared/lib/api-client';
 
 import {
+  forgotPassword,
   login,
   logout,
   me,
   refresh,
   register,
   resendVerification,
+  resetPassword,
   verifyEmail,
 } from './auth.service';
 
@@ -126,5 +128,46 @@ describe('auth.service', () => {
       expect.stringContaining('/auth/resend-verification'),
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+
+  it('forgotPassword gửi POST /auth/forgot-password chỉ với email', async () => {
+    mockFetchOnce({ success: true, data: { message: 'ok' } });
+
+    const result = await forgotPassword({ email: 'user@example.com' });
+
+    expect(result).toEqual({ message: 'ok' });
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/forgot-password'),
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        body: JSON.stringify({ email: 'user@example.com' }),
+      }),
+    );
+  });
+
+  it('resetPassword gửi POST /auth/reset-password với token và mật khẩu mới', async () => {
+    mockFetchOnce({ success: true, data: { message: 'ok' } });
+
+    await resetPassword({ token: 'raw-token', newPassword: 'password-moi-1' });
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/reset-password'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ token: 'raw-token', newPassword: 'password-moi-1' }),
+      }),
+    );
+  });
+
+  it('resetPassword giữ nguyên `code` RESET_TOKEN_INVALID của BE để Container nhận diện', async () => {
+    mockFetchOnce(
+      { success: false, data: null, message: 'invalid', code: 'RESET_TOKEN_INVALID' },
+      400,
+    );
+
+    await expect(
+      resetPassword({ token: 'used-token', newPassword: 'password-moi-1' }),
+    ).rejects.toMatchObject({ status: 400, code: 'RESET_TOKEN_INVALID' });
   });
 });

@@ -142,6 +142,33 @@ describe('decideAuthRedirect', () => {
     });
   });
 
+  describe('/forgot-password và /reset-password (Week9.md 6.1)', () => {
+    // Không guest-only: người đang đăng nhập bằng Google dùng chính luồng này để đặt mật khẩu lần đầu.
+    it.each(['/forgot-password', '/reset-password'])(
+      '%s -> không redirect dù đã đăng nhập (kể cả có ?token=)',
+      (pathname) => {
+        expect(
+          decideAuthRedirect({
+            pathname,
+            search: '?token=abc',
+            isAuthenticated: true,
+            role: 'USER',
+          }),
+        ).toBeNull();
+      },
+    );
+
+    // Không protected: người quên mật khẩu chắc chắn chưa đăng nhập được.
+    it.each(['/forgot-password', '/reset-password'])(
+      '%s -> không redirect khi là guest',
+      (pathname) => {
+        expect(
+          decideAuthRedirect({ pathname, search: '?token=abc', isAuthenticated: false }),
+        ).toBeNull();
+      },
+    );
+  });
+
   describe('đã đăng nhập vào /login hoặc /register', () => {
     it('không có ?next= -> về "/"', () => {
       expect(decideAuthRedirect({ pathname: '/login', search: '', isAuthenticated: true })).toBe(
