@@ -63,7 +63,7 @@ function openSheet() {
   render(withIntl(<AccountSheet />));
 }
 
-describe('AccountSheet — mục "Đơn hàng của tôi"', () => {
+describe('AccountSheet — mục "Trang cá nhân" và "Đơn hàng của tôi"', () => {
   // Theo dõi console.error ở MỌI test: Base UI chỉ báo MỖI thông điệp MỘT lần, nên test nào render
   // trước sẽ là test bắt được. Lỗi cụ thể cần chặn: `SheetClose render={<Link/>}` — Base UI coi
   // SheetClose là nút và đòi <button> (`nativeButton`), render <a> vào thì báo lỗi (hiện thành
@@ -90,6 +90,32 @@ describe('AccountSheet — mục "Đơn hàng của tôi"', () => {
       'href',
       '/orders',
     );
+  });
+
+  it('có link "Trang cá nhân" trỏ /account, đứng ĐẦU khối link (Week9.md 6.2)', () => {
+    openSheet();
+
+    const account = screen.getByRole('link', { name: 'Trang cá nhân' });
+    expect(account).toHaveAttribute('href', '/account');
+    const orders = screen.getByRole('link', { name: 'Đơn hàng của tôi' });
+    expect(account.compareDocumentPosition(orders) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(account.parentElement).toBe(orders.parentElement);
+  });
+
+  it('bấm "Trang cá nhân" -> đóng Sheet (để thấy ngay trang đích)', async () => {
+    const user = userEvent.setup();
+    openSheet();
+
+    await user.click(screen.getByRole('link', { name: 'Trang cá nhân' }));
+
+    expect(useUIStore.getState().isAccountSheetOpen).toBe(false);
+  });
+
+  it('khách chưa đăng nhập -> KHÔNG có "Trang cá nhân"', () => {
+    auth.user = null;
+    openSheet();
+
+    expect(screen.queryByRole('link', { name: 'Trang cá nhân' })).not.toBeInTheDocument();
   });
 
   it('đứng TRƯỚC mục kênh người bán, cả hai cùng khối', () => {
@@ -119,7 +145,7 @@ describe('AccountSheet — mục "Đơn hàng của tôi"', () => {
     openSheet();
 
     const links = screen.getAllByRole('link').map((link) => link.textContent);
-    expect(links).toEqual(['Đơn hàng của tôi', 'Trở thành người bán']);
+    expect(links).toEqual(['Trang cá nhân', 'Đơn hàng của tôi', 'Trở thành người bán']);
   });
 
   describe('mục "Quản trị" (Week8.md 3.9) — chỉ ADMIN', () => {

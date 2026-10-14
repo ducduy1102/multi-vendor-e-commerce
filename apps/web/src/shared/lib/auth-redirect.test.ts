@@ -46,6 +46,35 @@ describe('decideAuthRedirect', () => {
       expect(detail).toBe(`/login?next=${encodeURIComponent('/orders/order-1')}`);
     });
 
+    it('/account và các trang con -> /login?next=<đúng trang đó> (đăng nhập xong quay lại đúng chỗ, Week9.md 6.2)', () => {
+      expect(decideAuthRedirect({ pathname: '/account', search: '', isAuthenticated: false })).toBe(
+        '/login?next=%2Faccount',
+      );
+      expect(
+        decideAuthRedirect({ pathname: '/account/addresses', search: '', isAuthenticated: false }),
+      ).toBe('/login?next=%2Faccount%2Faddresses');
+      expect(
+        decideAuthRedirect({ pathname: '/account/password', search: '', isAuthenticated: false }),
+      ).toBe('/login?next=%2Faccount%2Fpassword');
+    });
+
+    it('đã đăng nhập vào /account/* -> không redirect', () => {
+      expect(
+        decideAuthRedirect({
+          pathname: '/account/addresses',
+          search: '',
+          isAuthenticated: true,
+          role: 'USER',
+        }),
+      ).toBeNull();
+    });
+
+    it('/accountevil -> không phải route /account (không khớp tiền tố), không bị chặn', () => {
+      expect(
+        decideAuthRedirect({ pathname: '/accountevil', search: '', isAuthenticated: false }),
+      ).toBeNull();
+    });
+
     it('/ordersevil -> không phải route /orders (không khớp tiền tố), không bị chặn', () => {
       expect(
         decideAuthRedirect({ pathname: '/ordersevil', search: '', isAuthenticated: false }),
