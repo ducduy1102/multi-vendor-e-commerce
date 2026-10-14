@@ -1,6 +1,7 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { userLocaleSchema } from '@ecommerce/types';
+import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Link, useRouter } from '@/i18n/navigation';
@@ -31,6 +32,7 @@ export function RegisterFormContainer({ next }: RegisterFormContainerProps) {
   const tApi = useApiErrorMessage();
   const tCommon = useTranslations('common');
   const router = useRouter();
+  const locale = useLocale();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loginHref = next ? { pathname: '/login' as const, query: { next } } : '/login';
@@ -40,10 +42,13 @@ export function RegisterFormContainer({ next }: RegisterFormContainerProps) {
     setError(null);
     try {
       // confirmPassword chỉ để validate ở FE (Bước 3.2) — không gửi lên BE.
+      // `locale` = ngôn ngữ giao diện lúc đăng ký, BE lưu làm ngôn ngữ EMAIL của tài khoản (Week9.md
+      // 1.12; sửa được ở /account). Giá trị lạ (không thuộc vi/en) bị bỏ ⇒ BE dùng 'vi'.
       await register({
         email: values.email,
         password: values.password,
         name: values.name,
+        locale: userLocaleSchema.safeParse(locale).data,
       });
       router.push(loginHref);
     } catch (err) {
