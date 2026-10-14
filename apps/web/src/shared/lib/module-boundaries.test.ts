@@ -20,6 +20,11 @@ import { describe, expect, it } from 'vitest';
 //      apps/api/src/module-boundaries.spec.ts). `order` → `product` vẫn được
 //      phép: chỉ để dùng lại `formatPrice` qua barrel, còn link sản phẩm dựng
 //      từ `productSlug` BE trả sẵn.
+//   5. `modules/auth` và `modules/checkout` import `modules/account` (kể cả
+//      qua barrel) — `account` ghép UI trên `auth` (`ResendVerificationButton`,
+//      `useAuthStore`) và `checkout` (hook địa chỉ, `AddressForm`) qua barrel
+//      của chúng, nên cấm chiều ngược lại để đồ thị không có vòng (Week9.md
+//      6.0). `account` chỉ có ở FE: phía BE endpoint tài khoản nằm trong `auth`.
 
 const SRC_ROOT = resolve(__dirname, '..', '..'); // apps/web/src
 
@@ -28,6 +33,8 @@ export const FORBIDDEN_MODULE_IMPORTS: Record<string, string[]> = {
   cart: ['checkout'],
   order: ['checkout', 'cart'],
   review: ['product', 'order', 'cart', 'checkout', 'voucher'],
+  auth: ['account'],
+  checkout: ['account'],
 };
 
 const BARREL_ONLY_NAMES = new Set(['index', 'index.ts', 'index.tsx']);
@@ -200,6 +207,40 @@ describe('module boundaries (FE)', () => {
         ),
       ]);
       expect(v).toEqual([]);
+    });
+
+    it('cấm modules/auth và modules/checkout import modules/account, kể cả qua barrel', () => {
+      const v = findViolations([
+        file('modules/auth/a.ts', "import { ProfileForm } from '@/modules/account';"),
+        file('modules/checkout/a.ts', "import { AddressBook } from '@/modules/account';"),
+      ]);
+      expect(v).toHaveLength(2);
+      expect(v[0]).toContain("'auth' không được phụ thuộc module 'account'");
+      expect(v[1]).toContain("'checkout' không được phụ thuộc module 'account'");
+    });
+
+    it('cho phép modules/account import auth/checkout qua barrel, cấm import sâu', () => {
+      const ok = findViolations([
+        file(
+          'modules/account/a.ts',
+          "import { ResendVerificationButton, useAuthStore } from '@/modules/auth';\nimport { useAddresses, useDeleteAddress } from '@/modules/checkout';",
+        ),
+      ]);
+      expect(ok).toEqual([]);
+
+      const deep = findViolations([
+        file(
+          'modules/account/b.ts',
+          "import { useDeleteAddress } from '@/modules/checkout/hooks/useDeleteAddress';",
+        ),
+        file(
+          'modules/account/c.ts',
+          "import { useAuthStore } from '@/modules/auth/store/auth.store';",
+        ),
+      ]);
+      expect(deep).toHaveLength(2);
+      expect(deep[0]).toContain('import sâu vào modules/checkout/hooks/useDeleteAddress');
+      expect(deep[1]).toContain('import sâu vào modules/auth/store/auth.store');
     });
 
     it('modules/order vẫn được import formatPrice từ barrel modules/product', () => {
