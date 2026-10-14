@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 
+import { Link } from '@/i18n/navigation';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
@@ -45,7 +46,15 @@ export function LoginForm({ onSubmit, isSubmitting }: LoginFormProps) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="login-password">{t('loginPasswordLabel')}</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="login-password">{t('loginPasswordLabel')}</Label>
+          <Link
+            href="/forgot-password"
+            className="py-1 text-sm text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+          >
+            {t('loginForgotPasswordLink')}
+          </Link>
+        </div>
         <Input
           id="login-password"
           type="password"

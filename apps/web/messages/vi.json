@@ -69,6 +69,7 @@
     "loginGoogleErrorFailed": "Đăng nhập bằng Google thất bại, vui lòng thử lại.",
     "loginNoAccountPrompt": "Chưa có tài khoản?",
     "loginRegisterLink": "Đăng ký ngay",
+    "loginForgotPasswordLink": "Quên mật khẩu?",
 
     "registerTitle": "Đăng ký",
     "registerNameLabel": "Họ tên",
@@ -89,6 +90,25 @@
 
     "googleSignIn": "Đăng nhập với Google",
     "registerGoogleSignIn": "Đăng ký với Google",
+
+    "forgotPasswordTitle": "Quên mật khẩu",
+    "forgotPasswordDescription": "Nhập email đã đăng ký, chúng tôi sẽ gửi liên kết để bạn đặt lại mật khẩu.",
+    "forgotPasswordEmailLabel": "Email",
+    "forgotPasswordSubmit": "Gửi liên kết đặt lại",
+    "forgotPasswordSubmitting": "Đang gửi...",
+    "forgotPasswordGenericError": "Không gửi được yêu cầu, vui lòng thử lại sau",
+    "forgotPasswordSent": "Nếu {email} đã đăng ký tài khoản, chúng tôi vừa gửi liên kết đặt lại mật khẩu tới hộp thư đó. Hãy kiểm tra cả mục thư rác; liên kết chỉ có hiệu lực trong thời gian ngắn.",
+    "forgotPasswordUseOtherEmail": "Dùng email khác",
+    "forgotPasswordBackToLogin": "Quay lại đăng nhập",
+    "resetPasswordTitle": "Đặt lại mật khẩu",
+    "resetPasswordNewPasswordLabel": "Mật khẩu mới",
+    "resetPasswordConfirmPasswordLabel": "Nhập lại mật khẩu mới",
+    "resetPasswordSubmit": "Đặt lại mật khẩu",
+    "resetPasswordSubmitting": "Đang lưu...",
+    "resetPasswordSuccess": "Đã đặt lại mật khẩu. Hãy đăng nhập bằng mật khẩu mới",
+    "resetPasswordGenericError": "Không đặt lại được mật khẩu, vui lòng thử lại sau",
+    "resetPasswordMissingToken": "Liên kết đặt lại mật khẩu không hợp lệ hoặc thiếu mã xác thực. Vui lòng yêu cầu liên kết mới",
+    "resetPasswordRequestNewLink": "Yêu cầu liên kết mới",
 
     "verifyEmailTitle": "Xác thực email",
     "verifyEmailMissingToken": "Thiếu token xác thực trong đường dẫn",

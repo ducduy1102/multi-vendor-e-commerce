@@ -69,6 +69,7 @@
     "loginGoogleErrorFailed": "Google sign-in failed, please try again.",
     "loginNoAccountPrompt": "Don't have an account?",
     "loginRegisterLink": "Sign up now",
+    "loginForgotPasswordLink": "Forgot password?",
 
     "registerTitle": "Sign up",
     "registerNameLabel": "Full name",
@@ -89,6 +90,25 @@
 
     "googleSignIn": "Sign in with Google",
     "registerGoogleSignIn": "Sign up with Google",
+
+    "forgotPasswordTitle": "Forgot your password",
+    "forgotPasswordDescription": "Enter the email you registered with and we'll send you a link to reset your password.",
+    "forgotPasswordEmailLabel": "Email",
+    "forgotPasswordSubmit": "Send reset link",
+    "forgotPasswordSubmitting": "Sending...",
+    "forgotPasswordGenericError": "We couldn't send the request, please try again later",
+    "forgotPasswordSent": "If {email} has an account, we've just sent a password reset link to that inbox. Check your spam folder too; the link is only valid for a short time.",
+    "forgotPasswordUseOtherEmail": "Use a different email",
+    "forgotPasswordBackToLogin": "Back to log in",
+    "resetPasswordTitle": "Reset your password",
+    "resetPasswordNewPasswordLabel": "New password",
+    "resetPasswordConfirmPasswordLabel": "Confirm new password",
+    "resetPasswordSubmit": "Reset password",
+    "resetPasswordSubmitting": "Saving...",
+    "resetPasswordSuccess": "Your password has been reset. Please log in with your new password",
+    "resetPasswordGenericError": "We couldn't reset your password, please try again later",
+    "resetPasswordMissingToken": "This password reset link is invalid or missing its token. Please request a new one",
+    "resetPasswordRequestNewLink": "Request a new link",
 
     "verifyEmailTitle": "Verify email",
     "verifyEmailMissingToken": "Missing verification token in the link",
