@@ -75,4 +75,89 @@ describe('AddressForm', () => {
 
     expect(screen.getByRole('button', { name: 'Đang lưu...' })).toBeDisabled();
   });
+
+  describe('chế độ sửa (initialValues, Week9.md 6.2)', () => {
+    const existing = {
+      recipientName: 'Trần Thị B',
+      phone: '0987654321',
+      line1: '5 Lê Lợi',
+      ward: 'Phường 1',
+      province: 'Hà Nội',
+    };
+
+    it('điền sẵn mọi ô và đổi nhãn nút thành "Lưu thay đổi"', () => {
+      renderForm({ initialValues: existing });
+
+      expect(screen.getByLabelText('Họ tên người nhận')).toHaveValue('Trần Thị B');
+      expect(screen.getByLabelText('Số điện thoại')).toHaveValue('0987654321');
+      expect(screen.getByLabelText('Số nhà, tên đường')).toHaveValue('5 Lê Lợi');
+      expect(screen.getByLabelText('Xã/Phường')).toHaveValue('Phường 1');
+      expect(screen.getByLabelText('Tỉnh/Thành phố')).toHaveValue('Hà Nội');
+      expect(screen.getByRole('button', { name: 'Lưu thay đổi' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Lưu địa chỉ' })).not.toBeInTheDocument();
+    });
+
+    it('sửa một ô rồi lưu -> onSubmit nhận ĐỦ 5 ô (giá trị cũ + ô đã sửa)', async () => {
+      const user = userEvent.setup();
+      const { onSubmit } = renderForm({ initialValues: existing });
+
+      const line1 = screen.getByLabelText('Số nhà, tên đường');
+      await user.clear(line1);
+      await user.type(line1, '99 Hai Bà Trưng');
+      await user.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+
+      await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+      expect(onSubmit.mock.calls[0][0]).toEqual({ ...existing, line1: '99 Hai Bà Trưng' });
+    });
+
+    it('initialValues đổi sang địa chỉ khác -> form điền lại theo địa chỉ mới (dùng `values`, không phải `defaultValues`)', () => {
+      const other = { ...existing, recipientName: 'Lê Văn C', province: 'Hồ Chí Minh' };
+      const { rerender } = render(
+        withIntl(<AddressForm onSubmit={vi.fn()} initialValues={existing} />),
+      );
+
+      rerender(withIntl(<AddressForm onSubmit={vi.fn()} initialValues={other} />));
+
+      expect(screen.getByLabelText('Họ tên người nhận')).toHaveValue('Lê Văn C');
+      expect(screen.getByLabelText('Tỉnh/Thành phố')).toHaveValue('Hồ Chí Minh');
+    });
+
+    it('ô sửa thành giá trị sai -> vẫn chặn bằng cùng luật validate như tạo mới', async () => {
+      const user = userEvent.setup();
+      const { onSubmit } = renderForm({ initialValues: existing });
+
+      const phone = screen.getByLabelText('Số điện thoại');
+      await user.clear(phone);
+      await user.type(phone, '123');
+      await user.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+
+      expect(await screen.findByText('Số điện thoại không hợp lệ')).toBeInTheDocument();
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('nút Hủy (onCancel)', () => {
+    it('không truyền onCancel -> không có nút Hủy (form ở /checkout giữ nguyên)', () => {
+      renderForm();
+
+      expect(screen.queryByRole('button', { name: 'Hủy' })).not.toBeInTheDocument();
+    });
+
+    it('có onCancel -> bấm "Hủy" gọi onCancel và KHÔNG gửi form', async () => {
+      const user = userEvent.setup();
+      const onCancel = vi.fn();
+      const { onSubmit } = renderForm({ onCancel });
+
+      await user.click(screen.getByRole('button', { name: 'Hủy' }));
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it('đang gửi -> nút Hủy cũng bị vô hiệu', () => {
+      renderForm({ onCancel: vi.fn(), isSubmitting: true });
+
+      expect(screen.getByRole('button', { name: 'Hủy' })).toBeDisabled();
+    });
+  });
 });
