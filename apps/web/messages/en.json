@@ -165,7 +165,17 @@
     "resubmitShopSubmit": "Save and resubmit for review",
     "resubmitShopSubmitting": "Submitting...",
     "resubmitShopSuccess": "Resubmitted. Your shop is waiting for an admin's review.",
-    "resubmitShopGenericError": "Couldn't resubmit the shop, please try again"
+    "resubmitShopGenericError": "Couldn't resubmit the shop, please try again",
+    "viewPublicPageLink": "View shop page",
+    "publicReviewCount": "{count, plural, one {# review} other {# reviews}}",
+    "publicNoReviews": "No reviews yet",
+    "publicProductCount": "{count, plural, one {# product} other {# products}}",
+    "publicJoined": "Joined {date}",
+    "publicChatButton": "Chat with shop",
+    "publicChatSoon": "Chat is coming soon",
+    "publicProductsTitle": "Shop products",
+    "publicNoProducts": "This shop has no products yet.",
+    "publicMetaDescription": "Products and reviews from {name}."
   },
   "product": {
     "validationNameRequired": "Product name is required",

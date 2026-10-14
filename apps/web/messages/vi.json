@@ -165,7 +165,17 @@
     "resubmitShopSubmit": "Lưu và gửi duyệt lại",
     "resubmitShopSubmitting": "Đang gửi...",
     "resubmitShopSuccess": "Đã gửi duyệt lại. Shop đang chờ quản trị viên xem xét.",
-    "resubmitShopGenericError": "Gửi duyệt lại thất bại, vui lòng thử lại"
+    "resubmitShopGenericError": "Gửi duyệt lại thất bại, vui lòng thử lại",
+    "viewPublicPageLink": "Xem trang shop",
+    "publicReviewCount": "{count} đánh giá",
+    "publicNoReviews": "Chưa có đánh giá",
+    "publicProductCount": "{count} sản phẩm",
+    "publicJoined": "Tham gia {date}",
+    "publicChatButton": "Chat với shop",
+    "publicChatSoon": "Tính năng chat sẽ sớm có",
+    "publicProductsTitle": "Sản phẩm của shop",
+    "publicNoProducts": "Shop chưa có sản phẩm nào.",
+    "publicMetaDescription": "Sản phẩm và đánh giá của {name}."
   },
   "product": {
     "validationNameRequired": "Tên sản phẩm không được để trống",

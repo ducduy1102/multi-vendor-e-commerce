@@ -1,6 +1,8 @@
 import {
+  publicShopSchema,
   shopSchema,
   type CreateShopInput,
+  type PublicShop,
   type ResubmitShopInput,
   type Shop,
   type UpdateShopInput,
@@ -49,4 +51,22 @@ export async function resubmitShop(id: string, values: ResubmitShopInput): Promi
     body: JSON.stringify(values),
   });
   return shopSchema.parse(data.shop);
+}
+
+// Trang shop công khai (/shops/[slug], Week9.md 1.10): chỉ shop APPROVED — mọi trường hợp khác (không tồn
+// tại, PENDING, REJECTED, SUSPENDED, slug sai định dạng) BE trả CÙNG một 404 không phân biệt. Trả null để
+// page.tsx gọi notFound() thay vì để ApiError văng lên error boundary; lỗi thật khác (mạng, 5xx) ném lại.
+// Chạy được ở Server Component (apiFetch không phụ thuộc trình duyệt).
+export async function getPublicShop(slug: string): Promise<PublicShop | null> {
+  try {
+    const data = await apiFetch<{ shop: unknown }>(`/shops/${encodeURIComponent(slug)}`, {
+      method: 'GET',
+    });
+    return publicShopSchema.parse(data.shop);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
 }
