@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/shared/lib/api-client';
 
-import { createShop, getMyShop, updateShop, resubmitShop } from './shop.service';
+import { createShop, getMyShop, getPublicShop, updateShop, resubmitShop } from './shop.service';
 
 const mockShop = {
   id: 'shop-1',
@@ -162,5 +162,64 @@ describe('shop.service', () => {
     mockFetchOnce({ success: true, data: { shop: withoutChangedAt } });
 
     await expect(updateShop('shop-1', { name: 'x' })).rejects.toThrow();
+  });
+  describe('getPublicShop (trang shop công khai, Week9.md 6.3)', () => {
+    const publicShop = {
+      id: 'shop-1',
+      name: 'Shop ABC',
+      slug: 'shop-abc',
+      logoUrl: null,
+      bannerUrl: null,
+      description: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      productCount: 3,
+      avgRating: 4.5,
+      reviewCount: 10,
+    };
+
+    it('gọi GET /shops/:slug và trả shop đã parse', async () => {
+      mockFetchOnce({ success: true, data: { shop: publicShop } });
+
+      const result = await getPublicShop('shop-abc');
+
+      expect(result).toEqual(publicShop);
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/shops\/shop-abc$/),
+        expect.objectContaining({ method: 'GET' }),
+      );
+    });
+
+    it('mã hoá slug trước khi đưa vào path (không để ký tự lạ đổi đường dẫn)', async () => {
+      mockFetchOnce({ success: true, data: { shop: publicShop } });
+
+      await getPublicShop('a/../b?x=1');
+
+      const url = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(url).toContain('/shops/a%2F..%2Fb%3Fx%3D1');
+    });
+
+    it('404 (không tồn tại hoặc chưa được duyệt) -> null để page gọi notFound()', async () => {
+      mockFetchOnce({ success: false, data: null, message: 'Shop not found' }, 404);
+
+      await expect(getPublicShop('khong-co')).resolves.toBeNull();
+    });
+
+    it('lỗi khác (5xx) -> ném lại, KHÔNG nuốt thành null (nếu không trang 500 hiện thành 404)', async () => {
+      mockFetchOnce({ success: false, data: null, message: 'boom' }, 500);
+
+      await expect(getPublicShop('shop-abc')).rejects.toBeInstanceOf(ApiError);
+    });
+
+    it('response lộ field nội bộ không có trong hợp đồng công khai vẫn bị loại khi parse', async () => {
+      mockFetchOnce({
+        success: true,
+        data: { shop: { ...publicShop, ownerId: 'user-1', status: 'APPROVED' } },
+      });
+
+      const result = await getPublicShop('shop-abc');
+
+      expect(result).not.toHaveProperty('ownerId');
+      expect(result).not.toHaveProperty('status');
+    });
   });
 });
