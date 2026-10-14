@@ -420,6 +420,8 @@
     "provinceLabel": "Tỉnh/Thành phố",
     "provincePlaceholder": "-- Chọn Tỉnh/Thành phố --",
     "addressFormSubmit": "Lưu địa chỉ",
+    "addressFormUpdateSubmit": "Lưu thay đổi",
+    "addressFormCancel": "Hủy",
     "addressFormSubmitting": "Đang lưu...",
     "addressFormGenericError": "Lưu địa chỉ thất bại, vui lòng thử lại",
     "addressListLabel": "Chọn địa chỉ giao hàng",

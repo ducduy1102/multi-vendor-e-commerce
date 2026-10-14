@@ -420,6 +420,8 @@
     "provinceLabel": "Province/City",
     "provincePlaceholder": "-- Select Province/City --",
     "addressFormSubmit": "Save address",
+    "addressFormUpdateSubmit": "Save changes",
+    "addressFormCancel": "Cancel",
     "addressFormSubmitting": "Saving...",
     "addressFormGenericError": "Failed to save the address, please try again",
     "addressListLabel": "Choose a shipping address",

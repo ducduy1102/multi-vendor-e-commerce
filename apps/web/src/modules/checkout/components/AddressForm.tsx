@@ -19,6 +19,12 @@ import {
 interface AddressFormProps {
   onSubmit: (values: AddressFormInput) => void | Promise<void>;
   isSubmitting?: boolean;
+  // Có giá trị ⇒ chế độ SỬA một địa chỉ đã có (nhãn nút "Lưu thay đổi", ô được điền sẵn); bỏ trống ⇒
+  // tạo mới (Week9.md 6.2). Truyền object ổn định (useMemo ở nơi gọi) — form so sánh sâu để biết có
+  // cần điền lại không.
+  initialValues?: AddressFormInput;
+  // Có truyền ⇒ hiện nút "Hủy" cạnh nút lưu (form mở ngay trong trang, không phải hộp thoại).
+  onCancel?: () => void;
 }
 
 // Native <select> (không thêm primitive Select của shadcn — chưa được duyệt, cùng quyết định
@@ -30,7 +36,12 @@ const SELECT_CLASS =
 // 01/07/2025). Chỉ lo UI + validate, gọi API do component cha truyền onSubmit vào (giống
 // VoucherForm/LoginForm). Mọi ô là chuỗi (input === output type, addressFormSchema không
 // transform), province chuẩn hoá về tên chuẩn ở BE (createAddressSchema), không phải ở đây.
-export function AddressForm({ onSubmit, isSubmitting = false }: AddressFormProps) {
+export function AddressForm({
+  onSubmit,
+  isSubmitting = false,
+  initialValues,
+  onCancel,
+}: AddressFormProps) {
   const t = useTranslations('checkout');
   const tv = useValidationMessage();
   const {
@@ -40,6 +51,9 @@ export function AddressForm({ onSubmit, isSubmitting = false }: AddressFormProps
   } = useForm<AddressFormInput>({
     resolver: zodResolver(addressFormSchema),
     defaultValues: EMPTY_ADDRESS_FORM_VALUES,
+    // `values` chứ không phải `defaultValues` cho dữ liệu điền sẵn (rules/frontend.md mục 4):
+    // `defaultValues` chỉ đọc đúng một lần lúc khởi tạo. undefined ⇒ form tạo mới chạy như cũ.
+    values: initialValues,
   });
 
   return (
@@ -118,9 +132,20 @@ export function AddressForm({ onSubmit, isSubmitting = false }: AddressFormProps
         </div>
       </div>
 
-      <Button type="submit" disabled={isSubmitting} className="self-start">
-        {isSubmitting ? t('addressFormSubmitting') : t('addressFormSubmit')}
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting
+            ? t('addressFormSubmitting')
+            : initialValues
+              ? t('addressFormUpdateSubmit')
+              : t('addressFormSubmit')}
+        </Button>
+        {onCancel ? (
+          <Button type="button" variant="outline" disabled={isSubmitting} onClick={onCancel}>
+            {t('addressFormCancel')}
+          </Button>
+        ) : null}
+      </div>
     </form>
   );
 }
