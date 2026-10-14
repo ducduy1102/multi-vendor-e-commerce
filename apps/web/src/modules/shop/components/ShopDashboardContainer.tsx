@@ -100,12 +100,24 @@ export function ShopDashboardContainer() {
           <h1 className="truncate text-xl font-semibold">{shop.name}</h1>
           <p className="truncate text-sm text-muted-foreground">/{shop.slug}</p>
         </div>
-        <Link
-          href="/seller/products"
-          className="shrink-0 text-sm font-medium text-foreground hover:underline"
-        >
-          {tProduct('manageProductsLink')}
-        </Link>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Link
+            href="/seller/products"
+            className="text-sm font-medium text-foreground hover:underline"
+          >
+            {tProduct('manageProductsLink')}
+          </Link>
+          {/* Trang công khai chỉ tồn tại khi shop APPROVED (BE trả 404 cho mọi trạng thái khác) nên
+              không hiện link dẫn tới một trang 404. */}
+          {shop.status === 'APPROVED' ? (
+            <Link
+              href={`/shops/${encodeURIComponent(shop.slug)}`}
+              className="text-sm font-medium text-foreground hover:underline"
+            >
+              {t('viewPublicPageLink')}
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       <ShopStatusBanner status={shop.status} reason={shop.statusReason} />
