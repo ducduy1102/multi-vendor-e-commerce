@@ -1,0 +1,25 @@
+# Keep host files out of the build context (host node_modules/dist would break the image build).
+
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/generated
+
+# Never ship env files or secrets.
+**/.env
+**/.env.*
+
+.git
+.github
+.claude
+.vscode
+.idea
+
+# Not needed by the API image. A future web image needs its own apps/web/Dockerfile.dockerignore.
+apps/web
+rules
+skills
+**/*.md
