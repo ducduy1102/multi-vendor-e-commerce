@@ -3,6 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './shared/prisma/prisma.module';
+import { HealthModule } from './shared/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ShopModule } from './modules/shop/shop.module';
 import { ProductModule } from './modules/product/product.module';
@@ -19,6 +20,7 @@ import { ReviewModule } from './modules/review/review.module';
     // 1 lần duy nhất cho toàn app (Week7.md 1.4/2.10) — kích hoạt @Cron() của PaymentExpiryJob.
     ScheduleModule.forRoot(),
     PrismaModule,
+    HealthModule,
     AuthModule,
     ShopModule,
     ProductModule,

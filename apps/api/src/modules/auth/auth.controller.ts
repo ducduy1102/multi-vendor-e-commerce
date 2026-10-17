@@ -30,6 +30,7 @@ import {
   ACCESS_TOKEN_COOKIE,
   REFRESH_TOKEN_COOKIE,
   accessTokenCookieOptions,
+  clearTokenCookieOptions,
   googleFailureRedirectUrl,
   googleSuccessRedirectUrl,
   refreshTokenCookieOptions,
@@ -200,8 +201,8 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     await this.authService.logout(user.userId);
-    res.clearCookie(ACCESS_TOKEN_COOKIE, accessTokenCookieOptions());
-    res.clearCookie(REFRESH_TOKEN_COOKIE, refreshTokenCookieOptions());
+    res.clearCookie(ACCESS_TOKEN_COOKIE, clearTokenCookieOptions());
+    res.clearCookie(REFRESH_TOKEN_COOKIE, clearTokenCookieOptions());
     return { message: 'Đăng xuất thành công' };
   }
 

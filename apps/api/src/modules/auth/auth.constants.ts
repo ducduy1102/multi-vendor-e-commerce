@@ -12,12 +12,23 @@ export const REFRESH_TOKEN_COOKIE = 'refresh_token';
 const ACCESS_TOKEN_MAX_AGE_MS = 15 * 60 * 1000;
 const REFRESH_TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+// `Domain` của cookie đăng nhập (Week9.md 8.3). Đặt `.<domain>` để cookie do `api.<domain>` set cũng được
+// gửi tới `app.<domain>` — `proxy.ts` của web đọc `access_token` ở đó. Không đặt ⇒ cookie chỉ gắn với host
+// của API (đúng cho local). Đọc LÚC DÙNG, không lúc boot (rules/backend.md mục 8); `VAR=` (chuỗi rỗng)
+// cũng ⇒ không đặt (rules/general.md mục 4). Chỉ đặt ở staging/production, KHÔNG đặt ở local: trình duyệt bỏ
+// cookie có `Domain=localhost`.
+function readCookieDomain(): string | undefined {
+  return process.env.COOKIE_DOMAIN?.trim() || undefined;
+}
+
 function baseCookieOptions(): CookieOptions {
+  const domain = readCookieDomain();
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
+    ...(domain ? { domain } : {}),
   };
 }
 
@@ -27,6 +38,13 @@ export function accessTokenCookieOptions(): CookieOptions {
 
 export function refreshTokenCookieOptions(): CookieOptions {
   return { ...baseCookieOptions(), maxAge: REFRESH_TOKEN_MAX_AGE_MS };
+}
+
+// Option khi XOÁ cookie: trình duyệt chỉ xoá khi Domain/Path/Secure/SameSite KHỚP HỆT lúc đặt (trừ
+// maxAge/expires) — lệch một thuộc tính thì cookie cũ còn nguyên và đăng xuất không kết thúc được phiên.
+// Lấy từ cùng `baseCookieOptions` với hai hàm trên nên không thể lệch; cố ý không kèm `maxAge`.
+export function clearTokenCookieOptions(): CookieOptions {
+  return baseCookieOptions();
 }
 
 // Token verify email dùng 1 lần, hết hạn sau 24h. Cooldown chống spam bấm

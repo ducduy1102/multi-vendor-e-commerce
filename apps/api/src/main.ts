@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
@@ -9,10 +10,14 @@ import {
 } from './modules/auth/auth.constants';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from './shared/interceptors/transform-response.interceptor';
+import { parseTrustProxy } from './shared/utils/parse-trust-proxy';
 import { readCorsOrigins } from './shared/utils/read-cors-origins';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Sau reverse proxy của nền tảng deploy, req.ip mới là IP khách thay vì IP của proxy (Week9.md 8.2).
+  // Không đặt TRUST_PROXY ⇒ tắt (chạy local không qua proxy).
+  app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
   // Version ngay từ endpoint đầu tiên (Tuần 3 Bước 1.5) — tránh phải đổi
   // toàn bộ client khi có breaking change sau này. SwaggerModule.setup('docs')
   // bên dưới không đi qua prefix này (route riêng do Swagger tự đăng ký).
