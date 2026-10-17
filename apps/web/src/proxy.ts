@@ -37,7 +37,7 @@ function withLocalePrefix(prefix: string, path: string): string {
 
 // Chặn route dành cho guest (login/register) khi đã có session — quay lại
 // đúng `?next=` nếu có (Week7.md 1.2/3.2); chặn route cần đăng nhập
-// (/seller/*, /wishlist, /checkout, /orders, /admin/*) khi chưa có session, giữ
+// (/seller/*, /wishlist, /checkout, /orders, /account/*, /admin/*) khi chưa có session, giữ
 // lại đích tới qua `?next=` để quay lại sau khi login. Riêng /admin/* còn đẩy
 // người KHÔNG phải ADMIN về "/" — role đọc từ payload JWT KHÔNG verify chữ ký
 // (readJwtRole), chỉ để điều hướng; quyền thật nằm ở RolesGuard của BE

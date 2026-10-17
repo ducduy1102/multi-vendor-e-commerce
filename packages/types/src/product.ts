@@ -1,4 +1,5 @@
 import { z, type RefinementCtx } from 'zod';
+import { SHOP_SLUG_MAX_LENGTH } from './shop';
 import { validationMessage } from './validation-message';
 
 export const productStatusSchema = z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']);
@@ -305,16 +306,36 @@ export const productListItemSchema = z.object({
 });
 export type ProductListItem = z.infer<typeof productListItemSchema>;
 
+// Trần cho các tham số mà BE nhân thành việc tốn công ở DB (Week9.md 5.2): `page` đẩy OFFSET, mỗi giá trị
+// `attributeValues` thành một điều kiện `some` lồng nhau (AND), `q` đi vào tsquery. URL dài ~8KB đủ chứa hàng
+// trăm `attributeValues=` lặp nên không chặn thì một request rẻ có thể thành truy vấn rất nặng. Con số rộng
+// hơn nhiều so với UI thật (bộ lọc chỉ có vài giá trị).
+export const PRODUCT_LIST_MAX_PAGE = 10_000;
+export const PRODUCT_SEARCH_MAX_LENGTH = 100;
+export const PRODUCT_ATTRIBUTE_FILTER_MAX_VALUES = 20;
+export const PRODUCT_ATTRIBUTE_FILTER_VALUE_MAX_LENGTH = 100;
+
 // Query cho GET /products (trang chủ + trang danh sách public, dùng chung —
 // đúng quyết định Week4.md Bước 1.12, không tách endpoint /products/featured
 // riêng). Query param qua URL luôn là string — coerce number cho page/limit/
 // giá, tự chuẩn hoá attributeValues (1 giá trị -> string, ≥2 -> string[])
 // thành mảng để FE lẫn BE dùng cùng 1 shape.
 export const listProductsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
+  page: z.coerce.number().int().positive().max(PRODUCT_LIST_MAX_PAGE).default(1),
   limit: z.coerce.number().int().positive().max(50).default(12),
   sort: z.enum(['newest', 'price-asc', 'price-desc', 'rating']).default('newest'),
   shopId: z.string().trim().optional(),
+  // Lọc theo slug shop để trang shop công khai lấy shop và sản phẩm SONG SONG (không phải slug → id → sản
+  // phẩm nối tiếp; Week9.md 1.10). Cố ý KHÔNG kiểm định dạng: slug lạ chỉ không khớp shop nào ⇒ danh sách rỗng
+  // (tham số hoá, không có đường tấn công), và trang shop với slug gõ sai ra 404 từ API shop thay vì 400 làm
+  // vỡ trang. Chỉ chặn độ dài. Kết hợp AND với `shopId` nếu có; vẫn luôn bắt buộc product PUBLISHED + shop
+  // APPROVED nên shop chưa duyệt không lộ sản phẩm qua đường này.
+  shopSlug: z
+    .string()
+    .trim()
+    .max(SHOP_SLUG_MAX_LENGTH)
+    .optional()
+    .transform((val) => (val === '' ? undefined : val)),
   categoryId: z.string().trim().optional(),
   minPrice: z.coerce.number().nonnegative().optional(),
   maxPrice: z.coerce.number().nonnegative().optional(),
@@ -324,12 +345,25 @@ export const listProductsQuerySchema = z.object({
   // trị đó, mỗi giá trị trong mảng lọc độc lập (AND giữa các giá trị, không
   // cần cùng 1 variant) — giống hành vi facet filter thực tế (Shopee/Lazada).
   attributeValues: z
-    .union([z.string(), z.array(z.string())])
+    .union([
+      z.string().max(PRODUCT_ATTRIBUTE_FILTER_VALUE_MAX_LENGTH),
+      z
+        .array(z.string().max(PRODUCT_ATTRIBUTE_FILTER_VALUE_MAX_LENGTH))
+        .max(PRODUCT_ATTRIBUTE_FILTER_MAX_VALUES),
+    ])
     .optional()
     .transform((val) => (val === undefined ? undefined : Array.isArray(val) ? val : [val])),
   // Search full-text (Week5.md Bước 1.6/1.8-1.9) — mở rộng GET /products có
   // sẵn thay vì tách endpoint riêng, kết hợp AND với các filter khác ở trên.
-  q: z.string().trim().optional(),
+  // Cắt (không từ chối) chuỗi quá dài: người dùng dán một đoạn dài vào ô tìm kiếm thì vẫn ra kết quả theo
+  // phần đầu thay vì nhận 400 làm vỡ trang. Cắt theo code point để không chẻ đôi cặp surrogate.
+  q: z
+    .string()
+    .trim()
+    .optional()
+    .transform((val) =>
+      val === undefined ? undefined : Array.from(val).slice(0, PRODUCT_SEARCH_MAX_LENGTH).join(''),
+    ),
 });
 export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
 

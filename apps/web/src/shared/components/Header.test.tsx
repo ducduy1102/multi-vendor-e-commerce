@@ -75,13 +75,13 @@ describe('Header — menu tài khoản (desktop)', () => {
     );
   });
 
-  it('thứ tự: Đơn hàng của tôi -> kênh người bán -> Đăng xuất', async () => {
+  it('thứ tự: Trang cá nhân -> Đơn hàng của tôi -> kênh người bán -> Đăng xuất', async () => {
     const menu = await openAccountMenu();
 
     const labels = Array.from(menu.querySelectorAll('[role="menuitem"], button')).map((el) =>
       el.textContent?.trim(),
     );
-    expect(labels).toEqual(['Đơn hàng của tôi', 'Sản phẩm của tôi', 'Đăng xuất']);
+    expect(labels).toEqual(['Trang cá nhân', 'Đơn hàng của tôi', 'Sản phẩm của tôi', 'Đăng xuất']);
   });
 
   it('chưa có shop -> mục người bán là "Trở thành người bán", "Đơn hàng của tôi" vẫn đứng đầu', async () => {
@@ -96,7 +96,12 @@ describe('Header — menu tài khoản (desktop)', () => {
     const labels = Array.from(menu.querySelectorAll('[role="menuitem"], button')).map((el) =>
       el.textContent?.trim(),
     );
-    expect(labels).toEqual(['Đơn hàng của tôi', 'Trở thành người bán', 'Đăng xuất']);
+    expect(labels).toEqual([
+      'Trang cá nhân',
+      'Đơn hàng của tôi',
+      'Trở thành người bán',
+      'Đăng xuất',
+    ]);
   });
 
   it('chưa kịp biết shop (shopLink null) -> vẫn có "Đơn hàng của tôi" và Đăng xuất, đủ dải phân cách', async () => {
@@ -121,6 +126,7 @@ describe('Header — menu tài khoản (desktop)', () => {
         el.textContent?.trim(),
       );
       expect(labels).toEqual([
+        'Trang cá nhân',
         'Đơn hàng của tôi',
         'Sản phẩm của tôi',
         'Quản trị',
@@ -171,8 +177,17 @@ describe('Header — menu tài khoản (desktop)', () => {
     });
   });
 
-  it('mục "Trang cá nhân" vẫn ẨN (chưa có trang tài khoản thật)', async () => {
-    await openAccountMenu();
+  it('có mục "Trang cá nhân" trỏ /account, đứng ĐẦU menu (Week9.md 6.2)', async () => {
+    const menu = await openAccountMenu();
+
+    const account = screen.getByRole('menuitem', { name: 'Trang cá nhân' });
+    expect(account).toHaveAttribute('href', '/account');
+    expect(menu.querySelector('[role="menuitem"]')).toBe(account);
+  });
+
+  it('khách chưa đăng nhập -> KHÔNG có "Trang cá nhân"', () => {
+    auth.user = null;
+    render(withIntl(<Header />));
 
     expect(screen.queryByText('Trang cá nhân')).not.toBeInTheDocument();
   });

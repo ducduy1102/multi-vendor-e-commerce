@@ -1,4 +1,30 @@
+import type { MailLocale } from '../mail-locale';
 import { escapeHtml } from './html';
+
+interface Copy {
+  subject: string;
+  greeting: (escapedName: string) => string;
+  instruction: string;
+  ignore: string;
+}
+
+// Mỗi chuỗi đã là HTML (`escapedName` do hàm gọi escape trước) — xem chú thích bên dưới về lý do escape.
+const COPY: Record<MailLocale, Copy> = {
+  vi: {
+    subject: 'Xác thực email của bạn',
+    greeting: (escapedName) => `Chào ${escapedName},`,
+    instruction:
+      'Vui lòng bấm vào link bên dưới để xác thực email (link hết hạn sau 24 giờ):',
+    ignore: 'Nếu bạn không tạo tài khoản này, hãy bỏ qua email.',
+  },
+  en: {
+    subject: 'Verify your email',
+    greeting: (escapedName) => `Hi ${escapedName},`,
+    instruction:
+      'Please click the link below to verify your email (the link expires in 24 hours):',
+    ignore: "If you didn't create this account, you can ignore this email.",
+  },
+};
 
 // `name` do người đăng ký tự nhập — và email này gửi tới ĐỊA CHỈ ĐƯỢC KHAI lúc đăng ký (có thể là của
 // người khác): nếu không escape, kẻ tấn công đăng ký bằng email của nạn nhân kèm tên chứa HTML sẽ chèn
@@ -7,15 +33,17 @@ import { escapeHtml } from './html';
 export function verifyEmailTemplate(
   name: string,
   verifyUrl: string,
+  locale: MailLocale,
 ): { subject: string; html: string } {
+  const copy = COPY[locale];
   const safeUrl = escapeHtml(verifyUrl);
   return {
-    subject: 'Xác thực email của bạn',
+    subject: copy.subject,
     html: `
-      <p>Chào ${escapeHtml(name)},</p>
-      <p>Vui lòng bấm vào link bên dưới để xác thực email (link hết hạn sau 24 giờ):</p>
+      <p>${copy.greeting(escapeHtml(name))}</p>
+      <p>${escapeHtml(copy.instruction)}</p>
       <p><a href="${safeUrl}">${safeUrl}</a></p>
-      <p>Nếu bạn không tạo tài khoản này, hãy bỏ qua email.</p>
+      <p>${escapeHtml(copy.ignore)}</p>
     `,
   };
 }

@@ -277,6 +277,8 @@ describe('AddToCartButton', () => {
             name: 'A',
             role: 'USER',
             emailVerifiedAt: null,
+            locale: 'vi',
+            hasPassword: true,
           },
           isHydrating: false,
         });

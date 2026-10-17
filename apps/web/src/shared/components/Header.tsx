@@ -1,6 +1,15 @@
 'use client';
 
-import { ChevronDown, Package, Search, ShieldCheck, ShoppingCart, Undo2, X } from 'lucide-react';
+import {
+  ChevronDown,
+  Package,
+  Search,
+  ShieldCheck,
+  ShoppingCart,
+  Undo2,
+  UserRound,
+  X,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
@@ -191,13 +200,15 @@ export function Header() {
           rộng bằng đúng trigger (--anchor-width), không đủ chỗ cho
           "Sản phẩm của tôi" trên 1 dòng. */}
       <DropdownMenuContent align="end" className="min-w-48">
-        {/* "Đơn hàng của tôi" (Week8.md 1.9/3.8) đứng ĐẦU — việc người mua dùng thường xuyên hơn
-            kênh người bán. Trang /orders có route riêng, không qua trang "tài khoản tổng".
-            TODO: bật lại mục "Trang cá nhân" (key i18n header.myAccountLink, giữ nguyên trong
-            messages/*.json) khi có trang tài khoản thật để trỏ tới — hồ sơ, sổ địa chỉ, đổi mật
-            khẩu (Tuần 9, roadmap). Wishlist (/wishlist) và Đơn hàng (/orders) cố tình là route
-            RIÊNG, không gộp vào trang đó. Ẩn tạm vì trỏ "/" không có đích thật, dễ gây hiểu nhầm
-            là bug. */}
+        {/* "Trang cá nhân" (Week9.md 6.2) đứng ĐẦU, trỏ /account (hồ sơ, sổ địa chỉ, đổi mật khẩu).
+            Cùng thứ tự với AccountSheet (mobile). Wishlist (/wishlist) và Đơn hàng (/orders) cố tình
+            là route RIÊNG, không gộp vào trang đó. */}
+        <DropdownMenuItem render={<Link href="/account" />}>
+          <UserRound />
+          {t('myAccountLink')}
+        </DropdownMenuItem>
+        {/* "Đơn hàng của tôi" (Week8.md 1.9/3.8) — việc người mua dùng thường xuyên hơn kênh người
+            bán. Trang /orders có route riêng, không qua trang "tài khoản tổng". */}
         <DropdownMenuItem render={<Link href="/orders" />}>
           <Package />
           {t('myOrdersLink')}

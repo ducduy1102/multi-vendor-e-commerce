@@ -38,6 +38,20 @@ import { ShopService } from './shop.service';
 // AuthController). "access_token" khớp ACCESS_TOKEN_COOKIE ở
 // modules/auth/auth.constants.ts — chỉ dùng cho annotation Swagger nên viết
 // literal thay vì import chéo module (rules/general.md mục 1).
+// Hình dạng công khai: KHÔNG có ownerId/status/statusReason/updatedAt.
+const PUBLIC_SHOP_EXAMPLE = {
+  id: 'b3f1c2e0-1234-4a5b-8c9d-abcdef123456',
+  name: 'Shop Thời Trang ABC',
+  slug: 'shop-thoi-trang-abc',
+  logoUrl: 'https://res.cloudinary.com/demo/image/upload/logo.png',
+  bannerUrl: null,
+  description: 'Chuyên thời trang nam nữ',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  productCount: 24,
+  avgRating: 4.65,
+  reviewCount: 130,
+};
+
 const SHOP_EXAMPLE = {
   id: 'b3f1c2e0-1234-4a5b-8c9d-abcdef123456',
   ownerId: 'c4a2d3f1-1234-4a5b-8c9d-abcdef654321',
@@ -70,6 +84,15 @@ export class ShopController {
     description: 'Tạo shop thành công',
     schema: { example: { success: true, data: { shop: SHOP_EXAMPLE } } },
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Body không hợp lệ (tên rỗng/quá 100 ký tự/có ký tự < > hoặc ký tự điều khiển; slug sai định dạng, quá 150 ký tự hoặc là slug dành riêng "me"; mô tả quá 2000 ký tự; logo/banner không phải URL https)',
+    schema: {
+      example: errorExample('slug: shop.validationSlugReserved'),
+    },
+  })
   @ApiResponse({
     status: 403,
     description:
@@ -96,9 +119,38 @@ export class ShopController {
     status: 200,
     schema: { example: { success: true, data: { shop: SHOP_EXAMPLE } } },
   })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 404, description: 'User chưa có shop' })
   async getMine(@CurrentUser() user: AuthenticatedUser) {
     const shop = await this.shopService.getMyShop(user.userId);
+    return { shop };
+  }
+
+  // CÔNG KHAI, không guard. PHẢI khai báo SAU `GET /shops/me` (cùng hình dạng đường dẫn — Express khớp theo thứ
+  // tự khai báo, đặt trước thì "me" bị hiểu là một slug). Slug "me" vì vậy được giữ chỗ (SHOP_RESERVED_SLUGS).
+  @Get(':slug')
+  @ApiParam({ name: 'slug', description: 'Slug của shop' })
+  @ApiOperation({
+    summary: 'Trang shop công khai — chỉ shop đã được duyệt (APPROVED)',
+    description:
+      'Không cần đăng nhập. Trả thông tin công khai của shop kèm số sản phẩm đang bán và điểm đánh giá gộp ' +
+      '(trung bình có trọng số theo số lượt đánh giá của các sản phẩm đang bán). Không có thông tin chủ shop. ' +
+      'Shop không tồn tại, chưa duyệt, bị từ chối hoặc bị khoá đều trả cùng một 404.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: { success: true, data: { shop: PUBLIC_SHOP_EXAMPLE } },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Shop không tồn tại hoặc chưa/không còn ở trạng thái APPROVED (không phân biệt)',
+    schema: { example: errorExample('Shop not found') },
+  })
+  async getPublic(@Param('slug') slug: string) {
+    const shop = await this.shopService.getPublicShop(slug);
     return { shop };
   }
 
@@ -118,6 +170,15 @@ export class ShopController {
     status: 200,
     schema: { example: { success: true, data: { shop: SHOP_EXAMPLE } } },
   })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Body không hợp lệ (tên/mô tả/URL vi phạm giới hạn — xem POST /shops)',
+    schema: {
+      example: errorExample('logoUrl: shop.validationLogoUrlInvalid'),
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 403, description: 'Không phải chủ sở hữu shop' })
   @ApiResponse({ status: 404, description: 'Shop không tồn tại' })
   @ApiResponse({

@@ -33,6 +33,7 @@ describe('PaymentService', () => {
       update: jest.Mock;
     };
     checkoutGroup: { findFirst: jest.Mock };
+    user: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
   let tx: {
@@ -67,6 +68,7 @@ describe('PaymentService', () => {
         update: jest.fn().mockResolvedValue({}),
       },
       checkoutGroup: { findFirst: jest.fn() },
+      user: { findUnique: jest.fn().mockResolvedValue({ locale: 'vi' }) },
       $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(tx)),
     };
     inventoryService = {
@@ -1033,6 +1035,49 @@ describe('PaymentService', () => {
       });
       expect(prisma.payment.create).toHaveBeenCalled();
       expect(result.paymentUrl).toBe('https://pay.example/new');
+    });
+
+    it('ngôn ngữ trang thanh toán của cổng theo User.locale của người mua (en), không cứng vi', async () => {
+      prisma.user.findUnique.mockResolvedValue({ locale: 'en' });
+      const createPayment = jest
+        .fn()
+        .mockResolvedValue({ payUrl: 'https://pay.example/new' });
+      paymentGateway.getConfigured.mockReturnValue({ createPayment });
+      prisma.checkoutGroup.findFirst.mockResolvedValue(
+        pendingGroup({
+          payments: [{ ...pendingGroup().payments[0], payUrl: null }],
+        }),
+      );
+
+      await service.retryPayment('user-1', 'g1');
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { locale: true },
+      });
+      expect(createPayment).toHaveBeenCalledWith(
+        expect.objectContaining({ locale: 'en' }),
+      );
+    });
+
+    it('không đọc được locale — vẫn tạo lần thử mới với ngôn ngữ mặc định vi', async () => {
+      prisma.user.findUnique.mockRejectedValue(new Error('db timeout'));
+      const createPayment = jest
+        .fn()
+        .mockResolvedValue({ payUrl: 'https://pay.example/new' });
+      paymentGateway.getConfigured.mockReturnValue({ createPayment });
+      prisma.checkoutGroup.findFirst.mockResolvedValue(
+        pendingGroup({
+          payments: [{ ...pendingGroup().payments[0], payUrl: null }],
+        }),
+      );
+
+      const result = await service.retryPayment('user-1', 'g1');
+
+      expect(result.paymentUrl).toBe('https://pay.example/new');
+      expect(createPayment).toHaveBeenCalledWith(
+        expect.objectContaining({ locale: 'vi' }),
+      );
     });
 
     it('lần thử mới nhất đã FAILED, còn trong hạn giữ — tạo lần thử mới ngay (không cần đánh dấu lại)', async () => {

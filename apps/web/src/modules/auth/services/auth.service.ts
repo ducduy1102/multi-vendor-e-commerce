@@ -1,8 +1,10 @@
 import {
   authUserSchema,
   type AuthUser,
+  type ForgotPasswordInput,
   type LoginInput,
   type RegisterInput,
+  type ResetPasswordInput,
 } from '@ecommerce/types';
 
 import { apiFetch } from '@/shared/lib/api-client';
@@ -50,5 +52,24 @@ export async function verifyEmail(token: string): Promise<{ message: string }> {
 export async function resendVerification(): Promise<{ message: string }> {
   return apiFetch<{ message: string }>('/auth/resend-verification', {
     method: 'POST',
+  });
+}
+
+// Công khai, không cần đăng nhập. BE luôn trả cùng một phản hồi dù email có tài khoản hay không (để không
+// lộ tài khoản nào tồn tại — xem AuthService.forgotPassword), nên FE cũng không được suy ra gì từ kết quả:
+// thành công chỉ nghĩa là "yêu cầu đã được nhận".
+export async function forgotPassword(values: ForgotPasswordInput): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify(values),
+  });
+}
+
+// Công khai, xác thực bằng token trong email (dùng một lần). Không tự đăng nhập — BE chỉ đổi mật khẩu và
+// thu hồi mọi phiên refresh; FE chuyển sang /login. Token sai/hết hạn/đã dùng đều ra RESET_TOKEN_INVALID.
+export async function resetPassword(values: ResetPasswordInput): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify(values),
   });
 }

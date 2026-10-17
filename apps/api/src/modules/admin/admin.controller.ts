@@ -51,9 +51,13 @@ const ADMIN_SHOP_EXAMPLE = {
   description: null,
   status: 'PENDING',
   statusReason: null,
+  statusChangedAt: '2026-10-01T00:00:00.000Z',
   createdAt: '2026-10-01T00:00:00.000Z',
   updatedAt: '2026-10-01T00:00:00.000Z',
   owner: { name: 'Nguyễn Văn A', email: 'nguyenvana@example.com' },
+  // Suy từ ShopStatusHistory (không phải cột): lý do từ chối GẦN NHẤT và số lần chủ shop đã gửi duyệt lại.
+  lastRejectionReason: null,
+  resubmissionCount: 0,
 };
 
 // Khu quản trị toàn sàn — chỉ role ADMIN (Week8.md 1.8, lần đầu RolesGuard/@Roles gắn route thật).
@@ -126,7 +130,9 @@ export class AdminController {
     description:
       'Từ chối (REJECTED) và khoá (SUSPENDED) bắt buộc có `reason`; duyệt và mở khoá xoá lý do cũ ' +
       '(`reason` gửi kèm bị bỏ qua). Khoá chỉ ngừng nhận ĐƠN MỚI và ẩn sản phẩm khỏi trang công khai — ' +
-      'Seller vẫn đăng nhập và xử lý đơn đã có.',
+      'Seller vẫn đăng nhập và xử lý đơn đã có. Sau khi đổi thành công, hệ thống gửi email báo CHỦ SHOP theo ' +
+      'ngôn ngữ của họ (duyệt / từ chối kèm lý do / khoá kèm lý do / mở khoá); gửi lỗi không làm request thất bại ' +
+      'và không hoàn tác việc đổi trạng thái.',
   })
   @ApiParam({ name: 'id', description: 'ID shop' })
   @ApiBody({

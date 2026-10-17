@@ -4,7 +4,7 @@ describe('verifyEmailTemplate', () => {
   const URL = 'http://localhost:3000/verify-email?token=abc123';
 
   it('giữ nguyên nội dung bình thường: tên có dấu và link xác thực', () => {
-    const { subject, html } = verifyEmailTemplate('Nguyễn Văn A', URL);
+    const { subject, html } = verifyEmailTemplate('Nguyễn Văn A', URL, 'vi');
 
     expect(subject).toBe('Xác thực email của bạn');
     expect(html).toContain('Chào Nguyễn Văn A,');
@@ -15,6 +15,7 @@ describe('verifyEmailTemplate', () => {
     const { html } = verifyEmailTemplate(
       '<a href="https://evil.example">Bấm để giữ tài khoản</a><script>x()</script>',
       URL,
+      'vi',
     );
 
     expect(html).not.toContain('<script>');
@@ -29,6 +30,7 @@ describe('verifyEmailTemplate', () => {
     const { html } = verifyEmailTemplate(
       'An',
       'http://localhost:3000/verify-email?token=a&next="><script>x()</script>',
+      'vi',
     );
 
     expect(html).not.toContain('<script>');

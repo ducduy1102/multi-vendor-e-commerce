@@ -15,9 +15,11 @@ packages/
 `packages/types` (và mọi package dùng chung khác sau này) **bắt buộc có build step riêng** (`tsconfig.build.json` output CommonJS + script `build`, `main`/`types` trỏ vào `dist/`) — không trỏ `main`/`types` thẳng vào file `.ts` nguồn. `nest build`/`tsc --noEmit` chỉ type-check nên không lộ lỗi, nhưng `require()` lúc chạy thật (`node dist/main.js`) sẽ báo `SyntaxError: Unexpected token 'export'` vì Node không tự biên dịch ESM export syntax của file `.ts` nguồn.
 
 Module theo domain (áp dụng cả 2 phía FE & BE, tên thư mục giống nhau để dễ đối chiếu):
-`auth`, `shop`, `product`, `wishlist`, `cart`, `checkout`, `voucher`, `order`, `review`, `chat`, `admin`
+`auth`, `shop`, `product`, `wishlist`, `cart`, `checkout`, `voucher`, `order`, `review`, `account`, `chat`, `admin`
 
 `wishlist` tách riêng khỏi `product` từ Tuần 5 (`Week5.md` Bước 1.11) — khác `Category` (chỉ đọc, gộp vào `product`), Wishlist có đủ CRUD riêng (add/remove/list/status) kèm route/service/hook/trang `/wishlist` riêng, đủ lớn để tách theo đúng nguyên tắc module ở mục này.
+
+`account` tách riêng khỏi `auth` từ Tuần 9 (`Week9.md` Bước 1.11, 6.0) và **chỉ có ở FE** — ngoại lệ so với câu "cả 2 phía" ở trên: endpoint tài khoản phía BE (`PATCH /auth/me`, `change-password`, `forgot-password`, `reset-password`) nằm trong module `auth`, không có `modules/account` ở `apps/api`. `auth` chỉ lo danh tính/phiên (đăng nhập, đăng ký, xác thực email, quên/đặt lại mật khẩu, `useAuthStore`); khu `/account` (hồ sơ, sổ địa chỉ, đổi/đặt mật khẩu) là các màn quản lý dữ liệu cá nhân có route/service/hook/trang riêng, đúng tiền lệ `wishlist`. `account` chỉ ghép UI trên hook/component sẵn có của `checkout` (hook địa chỉ, `AddressForm`) và `auth` (`ResendVerificationButton`, `useAuthStore`), **chỉ qua barrel** của chúng; chiều ngược lại (`auth`/`checkout` import `account`) bị cấm để đồ thị không có vòng — `shared/lib/module-boundaries.test.ts` kiểm cả hai.
 
 **Nguyên tắc:**
 - Mỗi module tự chứa code riêng của nó. Không import chéo trực tiếp giữa 2 module nghiệp vụ — muốn lấy dữ liệu module khác thì gọi qua API (BE) hoặc qua `packages/types` (FE).

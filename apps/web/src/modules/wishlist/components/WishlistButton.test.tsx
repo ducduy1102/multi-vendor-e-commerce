@@ -29,6 +29,8 @@ function loginUser() {
     name: 'Nguyen Van A',
     role: 'USER',
     emailVerifiedAt: '2026-01-01T00:00:00.000Z',
+    locale: 'vi',
+    hasPassword: true,
   });
   useAuthStore.getState().setIsHydrating(false);
 }

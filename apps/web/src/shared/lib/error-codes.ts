@@ -19,6 +19,10 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   // Auth
   EMAIL_NOT_VERIFIED: 'auth.errorEmailNotVerified',
   ACCOUNT_NOT_ACTIVE: 'auth.loginGoogleErrorAccountNotActive',
+  // Đổi / quên mật khẩu (Week9.md 1.11)
+  CURRENT_PASSWORD_INCORRECT: 'auth.errorCurrentPasswordIncorrect',
+  PASSWORD_NOT_SET: 'auth.errorPasswordNotSet',
+  RESET_TOKEN_INVALID: 'auth.errorResetTokenInvalid',
   // Voucher (áp mã ở giỏ hàng) — dùng lại đúng 7 key đã có từ Tuần 6.
   VOUCHER_NOT_FOUND: 'cart.voucherNotFound',
   VOUCHER_INACTIVE: 'cart.voucherInactive',

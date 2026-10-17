@@ -10,6 +10,8 @@ type Messages = Record<string, Record<string, string>>;
 // placeholder, không rỗng — thiếu 1 phía next-intl không throw mà hiện chuỗi key
 // thô hoặc rơi về ngôn ngữ khác, rất dễ lọt qua review. `product` và `header` vào lưới
 // ở Tuần 9 (Week9.md 3.8): Tuần 9 thêm nhãn sort `rating`, chuỗi đánh giá và link Admin vào 2 namespace này.
+// `auth` vào lưới ở 6.1 (Week9.md): quên/đặt lại mật khẩu thêm 20 key vào namespace này (parity đã đúng
+// 74/74 lúc thêm, không phải sửa bản dịch cho qua).
 const NAMESPACES = [
   'common',
   'header',
@@ -20,6 +22,9 @@ const NAMESPACES = [
   'order',
   'admin',
   'review',
+  'auth',
+  'account',
+  'shop',
 ] as const;
 
 const viMessages = vi as unknown as Messages;

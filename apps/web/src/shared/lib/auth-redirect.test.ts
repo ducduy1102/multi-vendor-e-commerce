@@ -46,6 +46,35 @@ describe('decideAuthRedirect', () => {
       expect(detail).toBe(`/login?next=${encodeURIComponent('/orders/order-1')}`);
     });
 
+    it('/account và các trang con -> /login?next=<đúng trang đó> (đăng nhập xong quay lại đúng chỗ, Week9.md 6.2)', () => {
+      expect(decideAuthRedirect({ pathname: '/account', search: '', isAuthenticated: false })).toBe(
+        '/login?next=%2Faccount',
+      );
+      expect(
+        decideAuthRedirect({ pathname: '/account/addresses', search: '', isAuthenticated: false }),
+      ).toBe('/login?next=%2Faccount%2Faddresses');
+      expect(
+        decideAuthRedirect({ pathname: '/account/password', search: '', isAuthenticated: false }),
+      ).toBe('/login?next=%2Faccount%2Fpassword');
+    });
+
+    it('đã đăng nhập vào /account/* -> không redirect', () => {
+      expect(
+        decideAuthRedirect({
+          pathname: '/account/addresses',
+          search: '',
+          isAuthenticated: true,
+          role: 'USER',
+        }),
+      ).toBeNull();
+    });
+
+    it('/accountevil -> không phải route /account (không khớp tiền tố), không bị chặn', () => {
+      expect(
+        decideAuthRedirect({ pathname: '/accountevil', search: '', isAuthenticated: false }),
+      ).toBeNull();
+    });
+
     it('/ordersevil -> không phải route /orders (không khớp tiền tố), không bị chặn', () => {
       expect(
         decideAuthRedirect({ pathname: '/ordersevil', search: '', isAuthenticated: false }),
@@ -140,6 +169,33 @@ describe('decideAuthRedirect', () => {
         decideAuthRedirect({ pathname: '/register', search: '', isAuthenticated: false }),
       ).toBeNull();
     });
+  });
+
+  describe('/forgot-password và /reset-password (Week9.md 6.1)', () => {
+    // Không guest-only: người đang đăng nhập bằng Google dùng chính luồng này để đặt mật khẩu lần đầu.
+    it.each(['/forgot-password', '/reset-password'])(
+      '%s -> không redirect dù đã đăng nhập (kể cả có ?token=)',
+      (pathname) => {
+        expect(
+          decideAuthRedirect({
+            pathname,
+            search: '?token=abc',
+            isAuthenticated: true,
+            role: 'USER',
+          }),
+        ).toBeNull();
+      },
+    );
+
+    // Không protected: người quên mật khẩu chắc chắn chưa đăng nhập được.
+    it.each(['/forgot-password', '/reset-password'])(
+      '%s -> không redirect khi là guest',
+      (pathname) => {
+        expect(
+          decideAuthRedirect({ pathname, search: '?token=abc', isAuthenticated: false }),
+        ).toBeNull();
+      },
+    );
   });
 
   describe('đã đăng nhập vào /login hoặc /register', () => {

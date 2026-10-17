@@ -115,6 +115,7 @@ describe('CheckoutService.placeOrder', () => {
     order: { findMany: jest.Mock };
     payment: { update: jest.Mock };
     productVariant: { findMany: jest.Mock };
+    user: { findUnique: jest.Mock };
   };
   let tx: {
     cartItem: { deleteMany: jest.Mock };
@@ -174,6 +175,9 @@ describe('CheckoutService.placeOrder', () => {
         findMany: jest
           .fn()
           .mockResolvedValue([{ id: 'variant-1', weightGram: 500 }]),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ locale: 'vi' }),
       },
     };
     cartService = {
@@ -340,6 +344,39 @@ describe('CheckoutService.placeOrder', () => {
         expiresAt: expect.any(String) as string,
         paymentUrl: 'https://pay.example/url',
       });
+    });
+
+    it('ngôn ngữ trang thanh toán của cổng theo User.locale của người mua (en), không cứng vi', async () => {
+      prisma.user.findUnique.mockResolvedValue({ locale: 'en' });
+      const createPayment = jest
+        .fn()
+        .mockResolvedValue({ payUrl: 'https://pay.example/url' });
+      paymentGateway.getConfigured.mockReturnValue({ createPayment });
+
+      await service.placeOrder('user-1', INPUT);
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { locale: true },
+      });
+      expect(createPayment).toHaveBeenCalledWith(
+        expect.objectContaining({ locale: 'en' }),
+      );
+    });
+
+    it('không đọc được locale (DB lỗi/user không còn) — vẫn tạo link thanh toán với ngôn ngữ mặc định vi', async () => {
+      prisma.user.findUnique.mockRejectedValue(new Error('db timeout'));
+      const createPayment = jest
+        .fn()
+        .mockResolvedValue({ payUrl: 'https://pay.example/url' });
+      paymentGateway.getConfigured.mockReturnValue({ createPayment });
+
+      const result = await service.placeOrder('user-1', INPUT);
+
+      expect(result.paymentUrl).toBe('https://pay.example/url');
+      expect(createPayment).toHaveBeenCalledWith(
+        expect.objectContaining({ locale: 'vi' }),
+      );
     });
 
     it('gọi cổng lấy payUrl SAU commit và lưu vào Payment.txnRef', async () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, Package, ShieldCheck, Undo2, User } from 'lucide-react';
+import { LogOut, Package, ShieldCheck, Undo2, User, UserRound } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
@@ -117,9 +117,14 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
                 <span className="truncate text-sm font-medium text-foreground">{user.name}</span>
               </div>
 
-              {/* "Đơn hàng của tôi" đứng đầu (Week8.md 1.9/3.8), cùng thứ tự với dropdown desktop
-                  của Header. Đóng Sheet khi bấm để vào được trang ngay. */}
+              {/* "Trang cá nhân" (Week9.md 6.2) đứng đầu rồi tới "Đơn hàng của tôi" (Week8.md 1.9/3.8),
+                  cùng thứ tự với dropdown desktop của Header. Đóng Sheet khi bấm để vào được trang
+                  ngay. */}
               <div className="flex flex-col gap-1">
+                <Link href="/account" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
+                  <UserRound className="size-4" aria-hidden="true" />
+                  {t('myAccountLink')}
+                </Link>
                 <Link href="/orders" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
                   <Package className="size-4" aria-hidden="true" />
                   {t('myOrdersLink')}

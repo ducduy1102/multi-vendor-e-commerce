@@ -27,6 +27,7 @@ describe('ShopService', () => {
       count: jest.Mock;
       findUniqueOrThrow: jest.Mock;
     };
+    $queryRaw: jest.Mock;
     $transaction: jest.Mock;
   };
 
@@ -41,6 +42,7 @@ describe('ShopService', () => {
         count: jest.fn(),
         findUniqueOrThrow: jest.fn(),
       },
+      $queryRaw: jest.fn(),
       // tx = chính mock prisma: `tx.shop.create` là `prisma.shop.create`, nên các test cũ vẫn kiểm được.
       $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
         callback(prisma),
@@ -443,6 +445,139 @@ describe('ShopService', () => {
       ).rejects.toThrow('db down');
       // Không nuốt lỗi: không đọc lại/không trả shop như thể đã thành công.
       expect(prisma.shop.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+  });
+
+  // --- GET /shops/:slug (Week9.md 1.10/5.5). Truy vấn thật + HTTP ở shop-public.controller.int-spec.ts.
+
+  describe('getPublicShop', () => {
+    const SHOP_ROW = {
+      id: 'shop-1',
+      name: 'Shop A',
+      slug: 'shop-a',
+      logoUrl: 'https://res.cloudinary.com/demo/logo.png',
+      bannerUrl: null,
+      description: 'Mô tả',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+
+    beforeEach(() => {
+      prisma.shop.findFirst.mockResolvedValue(SHOP_ROW);
+      prisma.$queryRaw.mockResolvedValue([
+        { productCount: 3, reviewCount: 3, avgRating: 4 },
+      ]);
+    });
+
+    it('tra shop theo slug VÀ status APPROVED, chỉ select field công khai (không ownerId/status)', async () => {
+      await service.getPublicShop('shop-a');
+
+      expect(prisma.shop.findFirst).toHaveBeenCalledWith({
+        where: { slug: 'shop-a', status: 'APPROVED' },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          logoUrl: true,
+          bannerUrl: true,
+          description: true,
+          createdAt: true,
+        },
+      });
+    });
+
+    it('trả đúng các field công khai kèm số liệu, kiểu number', async () => {
+      const shop = await service.getPublicShop('shop-a');
+
+      expect(shop).toEqual({
+        id: 'shop-1',
+        name: 'Shop A',
+        slug: 'shop-a',
+        logoUrl: 'https://res.cloudinary.com/demo/logo.png',
+        bannerUrl: null,
+        description: 'Mô tả',
+        createdAt: SHOP_ROW.createdAt,
+        productCount: 3,
+        avgRating: 4,
+        reviewCount: 3,
+      });
+      expect(typeof shop.productCount).toBe('number');
+    });
+
+    it('KHÔNG lộ field nội bộ dù truy vấn lỡ trả thừa', async () => {
+      prisma.shop.findFirst.mockResolvedValue({
+        ...SHOP_ROW,
+        ownerId: 'owner-1',
+        status: 'APPROVED',
+        statusReason: 'x',
+        updatedAt: new Date(),
+      });
+
+      const shop = await service.getPublicShop('shop-a');
+
+      for (const key of ['ownerId', 'status', 'statusReason', 'updatedAt']) {
+        expect(shop).not.toHaveProperty(key);
+      }
+    });
+
+    it('chưa có sản phẩm/đánh giá: 0/0/0, không NaN', async () => {
+      prisma.$queryRaw.mockResolvedValue([
+        { productCount: 0, reviewCount: 0, avgRating: 0 },
+      ]);
+
+      const shop = await service.getPublicShop('shop-a');
+
+      expect(shop).toMatchObject({
+        productCount: 0,
+        reviewCount: 0,
+        avgRating: 0,
+      });
+    });
+
+    it('shop không tồn tại hoặc chưa được duyệt ⇒ 404 (cùng thông điệp)', async () => {
+      prisma.shop.findFirst.mockResolvedValue(null);
+
+      await expect(service.getPublicShop('shop-a')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it.each([
+      ['chữ hoa', 'Shop-A'],
+      ['có khoảng trắng', 'shop a'],
+      ['đường dẫn lên trên', '../etc'],
+      ['quá dài', 'a'.repeat(151)],
+      ['rỗng', ''],
+      ['ký tự lạ', "shop'; DROP TABLE shops;--"],
+    ])('slug %s ⇒ 404 và KHÔNG chạm DB', async (_label, slug) => {
+      await expect(service.getPublicShop(slug)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.shop.findFirst).not.toHaveBeenCalled();
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('slug dành riêng (me)', () => {
+    it('tên shop "Me" tự sinh slug me-2 chứ không phải me (me sẽ không bao giờ mở được trang công khai)', async () => {
+      prisma.shop.findFirst.mockResolvedValue(null);
+      prisma.shop.findUnique.mockResolvedValue(null);
+      prisma.shop.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'shop-1', ...data }),
+      );
+
+      await service.createShop('user-1', { name: 'Me' });
+
+      const [args] = prisma.shop.create.mock.calls[0];
+      expect(args.data.slug).toBe('me-2');
+    });
+
+    it('tự nhập slug "me" ⇒ 409, không tạo shop', async () => {
+      prisma.shop.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.createShop('user-1', { name: 'Shop', slug: 'me' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.shop.create).not.toHaveBeenCalled();
     });
   });
 });

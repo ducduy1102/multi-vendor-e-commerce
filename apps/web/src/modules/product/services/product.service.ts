@@ -79,6 +79,9 @@ export async function listProducts(
   if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
   if (params.sort !== undefined) searchParams.set('sort', params.sort);
   if (params.shopId !== undefined) searchParams.set('shopId', params.shopId);
+  // Trang shop công khai lấy shop và sản phẩm SONG SONG theo slug (Week9.md 1.10) thay vì slug → id → sản
+  // phẩm nối tiếp. BE vẫn bắt buộc shop APPROVED nên slug của shop chưa duyệt không lộ sản phẩm.
+  if (params.shopSlug !== undefined) searchParams.set('shopSlug', params.shopSlug);
   if (params.categoryId !== undefined) searchParams.set('categoryId', params.categoryId);
   if (params.minPrice !== undefined) searchParams.set('minPrice', String(params.minPrice));
   if (params.maxPrice !== undefined) searchParams.set('maxPrice', String(params.maxPrice));

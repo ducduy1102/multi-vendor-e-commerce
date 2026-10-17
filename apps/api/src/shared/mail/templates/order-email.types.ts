@@ -1,3 +1,5 @@
+import type { MailLocale } from '../mail-locale';
+
 // Dữ liệu cho email đơn hàng (Week8.md 1.12). Khai ở `shared/mail` (hạ tầng không được import
 // `modules/`) — module `order` tự ánh xạ dữ liệu của nó sang các kiểu này. Số tiền là số nguyên VND.
 
@@ -21,8 +23,11 @@ export interface OrderEmailOrder {
 }
 
 export interface OrderEmailBase {
+  // Ngôn ngữ email = `User.locale` của người nhận (Week9.md 1.12). BẮT BUỘC (không có mặc định) để quên
+  // truyền là lỗi biên dịch, không phải email tiếng Việt gửi nhầm cho người dùng tiếng Anh.
+  locale: MailLocale;
   buyerName: string;
-  // Link tới trang đơn hàng của FE.
+  // Link tới trang đơn hàng của FE (đã có prefix ngôn ngữ — dựng bằng `frontendUrl`).
   ordersUrl: string;
 }
 
@@ -53,4 +58,15 @@ export interface OrderCancelledEmailData extends OrderEmailBase {
   // không có khoản hoàn (đơn COD chưa thu tiền, nhóm chưa thanh toán). Nội dung chỉ nói "đang hoàn" chứ không
   // khẳng định đã hoàn — cổng có thể chậm hoặc lỗi.
   refundAmount?: number | null;
+}
+
+// Trả hàng/hoàn tiền SAU giao được chấp nhận (COMPLETED → REFUNDED, Week9.md 1.3). `refundTo` quyết định
+// câu về tiền: đơn đã trả online ⇒ hoàn về phương thức thanh toán ban đầu (nói "đang hoàn", không khẳng định
+// đã về); đơn COD ⇒ shop hoàn tiền mặt trực tiếp, hệ thống không theo dõi khoản này.
+export type OrderRefundTarget = 'ORIGINAL_PAYMENT' | 'SHOP_CASH';
+
+export interface OrderRefundedEmailData extends OrderEmailBase {
+  order: OrderEmailOrder;
+  refundAmount: number;
+  refundTo: OrderRefundTarget;
 }

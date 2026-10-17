@@ -29,6 +29,8 @@ describe('EmailVerificationBanner', () => {
       name: 'Nguyen Van A',
       role: 'USER',
       emailVerifiedAt: '2026-01-01T00:00:00.000Z',
+      locale: 'vi',
+      hasPassword: true,
     });
 
     render(withIntl(<EmailVerificationBanner />));
@@ -43,6 +45,8 @@ describe('EmailVerificationBanner', () => {
       name: 'Nguyen Van A',
       role: 'USER',
       emailVerifiedAt: null,
+      locale: 'vi',
+      hasPassword: true,
     });
 
     render(withIntl(<EmailVerificationBanner />));

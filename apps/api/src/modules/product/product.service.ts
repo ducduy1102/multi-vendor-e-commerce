@@ -505,6 +505,12 @@ export class ProductService {
     if (query.shopId) {
       where.shopId = query.shopId;
     }
+    // Lọc theo slug shop (trang shop công khai, Week9.md 1.10) — AND với shopId nếu có (không khớp nhau ⇒
+    // rỗng). Điều kiện shop.status = APPROVED ở trên vẫn giữ nguyên, slug chỉ THÊM ràng buộc nên shop chưa
+    // duyệt không lộ sản phẩm qua đường này.
+    if (query.shopSlug) {
+      where.shop = { status: 'APPROVED', slug: query.shopSlug };
+    }
     if (query.categoryId) {
       where.categoryId = query.categoryId;
     }

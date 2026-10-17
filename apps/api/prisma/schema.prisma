@@ -36,6 +36,16 @@ enum AccountStatus {
   DEACTIVATED
 }
 
+// Ngôn ngữ dùng để GỬI EMAIL cho user (Week9.md 1.12) — không phải ngôn ngữ giao
+// diện: LocaleSwitcher ở FE vẫn chỉ đổi giao diện (cookie NEXT_LOCALE thuộc domain
+// FE, API không đọc được). Giá trị trùng `locales` của next-intl (`vi`, `en`) để
+// dựng link email theo đúng prefix; thêm ngôn ngữ mới = thêm giá trị enum + 1 bản
+// dịch cho mỗi template email.
+enum UserLocale {
+  vi
+  en
+}
+
 // Seller-level (tầng thứ 3, khác User.accountStatus/emailVerifiedAt): shop có
 // được phép đăng bán hay không. Đủ dùng cho "xác minh cơ bản" — không tạo
 // bảng SellerVerification/KYC riêng trừ khi phát sinh yêu cầu thật (giấy phép
@@ -125,6 +135,7 @@ model User {
   name             String
   role             Role          @default(USER)
   accountStatus    AccountStatus @default(ACTIVE) @map("account_status")
+  locale           UserLocale    @default(vi)
   refreshTokenHash String?       @map("refresh_token_hash")
 
   // Email verification (Tuần 2, Bước 2.10) — token dùng 1 lần, hash bằng SHA-256
@@ -136,6 +147,17 @@ model User {
   emailVerificationTokenHash String?   @unique @map("email_verification_token_hash")
   emailVerificationExpiresAt DateTime? @map("email_verification_expires_at")
   emailVerificationSentAt    DateTime? @map("email_verification_sent_at")
+
+  // Quên / đặt lại mật khẩu (Week9.md 1.11) — cùng mẫu với email verification
+  // nhưng 3 cột RIÊNG: hai link dùng chung cột sẽ ghi đè nhau (user bấm "quên mật
+  // khẩu" làm link xác thực email đang chờ chết, và ngược lại). Chỉ cần MỘT token
+  // đang sống mỗi user nên không dùng bảng riêng. Token là randomBytes(32), lưu
+  // SHA-256 (không bcrypt — xem AuthService.hashToken), dùng một lần: đổi mật khẩu
+  // xong xoá cả 3 cột. passwordResetSentAt phục vụ cooldown 60s của forgot-password.
+  // Cả 3 null = không có yêu cầu nào đang chờ. Không bao giờ trả ra response.
+  passwordResetTokenHash String?   @unique @map("password_reset_token_hash")
+  passwordResetExpiresAt DateTime? @map("password_reset_expires_at")
+  passwordResetSentAt    DateTime? @map("password_reset_sent_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

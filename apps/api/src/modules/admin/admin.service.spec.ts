@@ -6,6 +6,7 @@ import {
   SHOP_STATUS_TRANSITIONS,
   shopStatusSchema,
 } from '@ecommerce/types';
+import { MailService } from '../../shared/mail/mail.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
 import { ShopStatusService } from '../shop/shop-status.service';
@@ -48,6 +49,7 @@ describe('AdminService', () => {
     shopStatusHistory: { create: jest.fn() },
     $transaction: jest.fn(),
   };
+  const mailService = { sendShopStatusChanged: jest.fn() };
 
   // ShopStatusService là THẬT (không mock): AdminService chỉ điều phối nên điều cần chứng minh ở đây là
   // luật cạnh + actor ADMIN và các thao tác DB mà nó sinh ra; tx của $transaction chính là mock prisma.
@@ -57,11 +59,13 @@ describe('AdminService', () => {
       (callback: (tx: unknown) => unknown) => callback(prisma),
     );
     prisma.shopStatusHistory.create.mockResolvedValue({});
+    mailService.sendShopStatusChanged.mockResolvedValue(undefined);
     const moduleRef = await Test.createTestingModule({
       providers: [
         AdminService,
         ShopStatusService,
         { provide: PrismaService, useValue: prisma },
+        { provide: MailService, useValue: mailService },
       ],
     }).compile();
     service = moduleRef.get(AdminService);
@@ -451,6 +455,186 @@ describe('AdminService', () => {
 
       expect(log).not.toHaveBeenCalled();
       log.mockRestore();
+    });
+  });
+
+  // --- Email báo chủ shop (Week9.md 1.13/5.6). Luồng thật (DB + HTTP) ở admin.controller.int-spec.ts.
+
+  describe('email trạng thái shop', () => {
+    const OWNER = {
+      name: 'Chủ Shop',
+      email: 'owner@example.com',
+      locale: 'vi' as 'vi' | 'en',
+    };
+
+    // findUnique được gọi 2 lần: trong transaction (đọc trạng thái hiện tại, select { status }) và sau đó
+    // (đọc người nhận mail). Phân biệt theo `select` thay vì thứ tự gọi.
+    function givenShop(
+      from: ShopStatus,
+      owner: typeof OWNER | null = OWNER,
+    ): void {
+      prisma.shop.findUnique.mockImplementation(
+        ({ select }: { select: Record<string, unknown> }) =>
+          Promise.resolve(
+            'status' in select
+              ? { status: from }
+              : owner
+                ? { name: 'Shop Áo Xinh', owner }
+                : null,
+          ),
+      );
+      prisma.shop.updateMany.mockResolvedValue({ count: 1 });
+      prisma.shop.findUniqueOrThrow.mockResolvedValue(shopRow({ id: SHOP_ID }));
+    }
+
+    it.each<
+      [ShopStatus, 'APPROVED' | 'REJECTED' | 'SUSPENDED', string, string | null]
+    >([
+      ['PENDING', 'APPROVED', 'APPROVED', null],
+      ['PENDING', 'REJECTED', 'REJECTED', 'Thiếu giấy tờ'],
+      ['APPROVED', 'SUSPENDED', 'SUSPENDED', 'Vi phạm chính sách'],
+      ['SUSPENDED', 'APPROVED', 'REINSTATED', null],
+    ])(
+      '%s → %s: gửi đúng 1 email loại %s cho chủ shop',
+      async (from, to, kind, reason) => {
+        givenShop(from);
+
+        await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+          status: to,
+          ...(reason ? { reason } : {}),
+        });
+
+        expect(mailService.sendShopStatusChanged).toHaveBeenCalledTimes(1);
+        expect(mailService.sendShopStatusChanged).toHaveBeenCalledWith(
+          'owner@example.com',
+          {
+            locale: 'vi',
+            ownerName: 'Chủ Shop',
+            shopName: 'Shop Áo Xinh',
+            kind,
+            reason,
+            shopUrl:
+              kind === 'APPROVED' || kind === 'REINSTATED'
+                ? 'http://localhost:3000/seller/products'
+                : 'http://localhost:3000/seller/shop',
+          },
+        );
+      },
+    );
+
+    it('theo ngôn ngữ của CHỦ SHOP: en ⇒ locale en và link có /en', async () => {
+      givenShop('PENDING', { ...OWNER, locale: 'en' });
+
+      await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+        status: 'APPROVED',
+      });
+
+      expect(mailService.sendShopStatusChanged).toHaveBeenCalledWith(
+        'owner@example.com',
+        expect.objectContaining({
+          locale: 'en',
+          shopUrl: 'http://localhost:3000/en/seller/products',
+        }),
+      );
+    });
+
+    it('duyệt/mở khoá không mang lý do dù body có gửi kèm; từ chối thì lý do được cắt khoảng trắng', async () => {
+      givenShop('PENDING');
+      await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+        status: 'APPROVED',
+        reason: 'ghi chú thừa',
+      });
+      expect(mailService.sendShopStatusChanged).toHaveBeenLastCalledWith(
+        'owner@example.com',
+        expect.objectContaining({ kind: 'APPROVED', reason: null }),
+      );
+
+      givenShop('PENDING');
+      await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+        status: 'REJECTED',
+        reason: '  Thiếu giấy tờ  ',
+      });
+      expect(mailService.sendShopStatusChanged).toHaveBeenLastCalledWith(
+        'owner@example.com',
+        expect.objectContaining({ kind: 'REJECTED', reason: 'Thiếu giấy tờ' }),
+      );
+    });
+
+    it('gửi SAU khi transaction đã commit (không nằm trong $transaction)', async () => {
+      givenShop('PENDING');
+
+      await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+        status: 'APPROVED',
+      });
+
+      const transactionOrder = prisma.$transaction.mock.invocationCallOrder[0];
+      const mailOrder =
+        mailService.sendShopStatusChanged.mock.invocationCallOrder[0];
+      expect(mailOrder).toBeGreaterThan(transactionOrder);
+      // Callback của $transaction đã chạy xong trước khi gửi: mock tx là chính prisma nên chỉ cần biết
+      // việc ghi trạng thái xảy ra trước mail.
+      const updateOrder = prisma.shop.updateMany.mock.invocationCallOrder[0];
+      expect(updateOrder).toBeLessThan(mailOrder);
+    });
+
+    it('mail lỗi: request vẫn thành công và trả shop; lỗi được log KHÔNG kèm lý do Admin nhập', async () => {
+      givenShop('PENDING');
+      const error = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      mailService.sendShopStatusChanged.mockRejectedValue(
+        new Error('Resend down'),
+      );
+
+      const result = await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+        status: 'REJECTED',
+        reason: 'Lý do nhạy cảm không được vào log',
+      });
+
+      expect(result.id).toBe(SHOP_ID);
+      expect(error).toHaveBeenCalledTimes(1);
+      const [message] = error.mock.calls[0] as [string];
+      expect(message).toContain(SHOP_ID);
+      expect(message).toContain('REJECTED');
+      expect(message).not.toContain('Lý do nhạy cảm');
+      error.mockRestore();
+    });
+
+    it('đổi trạng thái thất bại (cạnh sai / thua race / shop không có): KHÔNG gửi email', async () => {
+      // Cạnh sai.
+      givenShop('REJECTED');
+      await expect(
+        service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+          status: 'APPROVED',
+          reason: 'x',
+        }),
+      ).rejects.toBeDefined();
+
+      // Thua race: UPDATE có điều kiện không lật được dòng nào.
+      givenShop('PENDING');
+      prisma.shop.updateMany.mockResolvedValue({ count: 0 });
+      await expect(
+        service.updateShopStatus(ADMIN_ID, SHOP_ID, { status: 'APPROVED' }),
+      ).rejects.toBeDefined();
+
+      // Shop không tồn tại.
+      prisma.shop.findUnique.mockResolvedValue(null);
+      await expect(
+        service.updateShopStatus(ADMIN_ID, SHOP_ID, { status: 'APPROVED' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(mailService.sendShopStatusChanged).not.toHaveBeenCalled();
+    });
+
+    it('không đọc được chủ shop (null): không gửi, không sập, vẫn trả shop', async () => {
+      givenShop('PENDING', null);
+
+      const result = await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+        status: 'APPROVED',
+      });
+
+      expect(result.id).toBe(SHOP_ID);
+      expect(mailService.sendShopStatusChanged).not.toHaveBeenCalled();
     });
   });
 });

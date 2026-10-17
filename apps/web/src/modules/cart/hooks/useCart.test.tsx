@@ -22,6 +22,8 @@ const USER = {
   name: 'A',
   role: 'USER' as const,
   emailVerifiedAt: null,
+  locale: 'vi' as const,
+  hasPassword: true,
 };
 
 function cartView(overrides: Partial<CartView> = {}): CartView {

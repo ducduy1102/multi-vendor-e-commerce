@@ -217,6 +217,21 @@ describe('product.service', () => {
     expect(new URL(calledUrl).searchParams.get('q')).toBe('áo thun');
   });
 
+  it('listProducts gửi shopSlug khi có (trang shop công khai, Week9.md 6.3) và không gửi khi vắng', async () => {
+    mockFetchOnce({ success: true, data: { items: [], total: 0, page: 1, limit: 12 } });
+    await listProducts({ shopSlug: 'my-shop', sort: 'rating', page: 2 });
+
+    const withSlug = new URL((fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string);
+    expect(withSlug.searchParams.get('shopSlug')).toBe('my-shop');
+    expect(withSlug.searchParams.get('sort')).toBe('rating');
+    expect(withSlug.searchParams.get('page')).toBe('2');
+
+    mockFetchOnce({ success: true, data: { items: [], total: 0, page: 1, limit: 12 } });
+    await listProducts({});
+    const without = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(without).not.toContain('shopSlug');
+  });
+
   it('listProducts append nhiều lần cho attributeValues[] (không ghi đè, mỗi giá trị 1 param riêng)', async () => {
     mockFetchOnce({ success: true, data: { items: [], total: 0, page: 1, limit: 12 } });
 

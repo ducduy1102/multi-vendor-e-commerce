@@ -35,6 +35,15 @@ describe('LoginForm', () => {
     );
   });
 
+  it('có link "Quên mật khẩu?" trỏ /forgot-password, không phải nút gửi form', () => {
+    render(withIntl(<LoginForm onSubmit={vi.fn()} />));
+
+    expect(screen.getByRole('link', { name: 'Quên mật khẩu?' })).toHaveAttribute(
+      'href',
+      '/forgot-password',
+    );
+  });
+
   it('disables submit button while isSubmitting', () => {
     render(withIntl(<LoginForm onSubmit={vi.fn()} isSubmitting />));
 

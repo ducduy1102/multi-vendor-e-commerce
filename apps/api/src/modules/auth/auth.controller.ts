@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Req,
   Res,
@@ -34,8 +35,24 @@ import {
   refreshTokenCookieOptions,
 } from './auth.constants';
 import { AuthService, type TokenPair } from './auth.service';
+import {
+  changePasswordSchema,
+  type ChangePasswordDto,
+} from './dto/change-password.dto';
+import {
+  forgotPasswordSchema,
+  type ForgotPasswordDto,
+} from './dto/forgot-password.dto';
 import { loginSchema, type LoginDto } from './dto/login.dto';
 import { registerSchema, type RegisterDto } from './dto/register.dto';
+import {
+  resetPasswordSchema,
+  type ResetPasswordDto,
+} from './dto/reset-password.dto';
+import {
+  updateProfileSchema,
+  type UpdateProfileDto,
+} from './dto/update-profile.dto';
 import { verifyEmailSchema, type VerifyEmailDto } from './dto/verify-email.dto';
 import type { GoogleProfile } from './types/google-profile.type';
 import type { AuthenticatedUser } from './types/jwt-payload.type';
@@ -48,9 +65,9 @@ const USER_EXAMPLE = {
   email: 'user@example.com',
   name: 'Nguyen Van A',
   role: 'USER',
-  accountStatus: 'ACTIVE',
-  createdAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: '2026-01-01T00:00:00.000Z',
+  emailVerifiedAt: null,
+  locale: 'vi',
+  hasPassword: true,
 };
 
 @ApiTags('auth')
@@ -68,6 +85,7 @@ export class AuthController {
         email: 'user@example.com',
         password: 'password123',
         name: 'Nguyen Van A',
+        locale: 'vi',
       },
     },
   })
@@ -78,7 +96,8 @@ export class AuthController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Email đã được sử dụng, hoặc dữ liệu không hợp lệ',
+    description:
+      'Email đã được sử dụng, hoặc dữ liệu không hợp lệ (tên rỗng/quá 100 ký tự/có ký tự < > hoặc ký tự điều khiển, mật khẩu < 8 ký tự hoặc > 72 byte, locale ngoài vi/en)',
   })
   register(@Body(new ZodValidationPipe(registerSchema)) dto: RegisterDto) {
     return this.authService.register(dto);
@@ -322,6 +341,184 @@ export class AuthController {
   })
   resendVerification(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.resendVerification(user.userId);
+  }
+
+  // Hồ sơ (Week9.md 1.11): chỉ tên và ngôn ngữ email. Email/role/accountStatus KHÔNG có đường vào (schema
+  // bỏ field lạ, service chỉ đọc 2 field đã parse).
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @ApiOperation({ summary: 'Sửa hồ sơ: tên và ngôn ngữ email' })
+  @ApiBody({ schema: { example: { name: 'Nguyen Van B', locale: 'en' } } })
+  @ApiResponse({
+    status: 200,
+    description: 'Đã cập nhật, trả user mới',
+    schema: {
+      example: {
+        success: true,
+        data: { user: { ...USER_EXAMPLE, name: 'Nguyen Van B', locale: 'en' } },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Dữ liệu không hợp lệ (tên rỗng/quá dài/có ký tự không cho phép, locale lạ, hoặc không có field nào)',
+  })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
+  updateProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(updateProfileSchema)) dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(user.userId, dto);
+  }
+
+  // Đổi mật khẩu khi đã đăng nhập: cấp lại cặp token cho phiên HIỆN TẠI (set cookie mới), mọi refresh token
+  // cũ ở thiết bị khác chết.
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @ApiOperation({
+    summary:
+      'Đổi mật khẩu (cần mật khẩu hiện tại) — cấp lại token cho phiên hiện tại, thu hồi refresh token cũ',
+  })
+  @ApiBody({
+    schema: {
+      example: {
+        currentPassword: 'old-password-1',
+        newPassword: 'new-password-2',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Đã đổi mật khẩu, cookie token được set lại',
+    schema: {
+      example: { success: true, data: { message: 'Đã đổi mật khẩu' } },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Dữ liệu không hợp lệ (mật khẩu mới <8 ký tự, >72 byte, hoặc trùng mật khẩu cũ), hoặc có mã: CURRENT_PASSWORD_INCORRECT (sai mật khẩu hiện tại), PASSWORD_NOT_SET (tài khoản chỉ đăng nhập Google, chưa có mật khẩu)',
+    examples: {
+      validation: {
+        summary: 'Dữ liệu không hợp lệ (không có code)',
+        value: {
+          success: false,
+          data: null,
+          message: 'newPassword: auth.validationNewPasswordSame',
+        },
+      },
+      currentPasswordIncorrect: {
+        summary: 'CURRENT_PASSWORD_INCORRECT',
+        value: {
+          success: false,
+          data: null,
+          message: 'The current password is incorrect',
+          code: 'CURRENT_PASSWORD_INCORRECT',
+        },
+      },
+      passwordNotSet: {
+        summary: 'PASSWORD_NOT_SET',
+        value: {
+          success: false,
+          data: null,
+          message:
+            'This account has no password yet; use the forgot-password flow to set one',
+          code: 'PASSWORD_NOT_SET',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(changePasswordSchema)) dto: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { accessToken, refreshToken, ...rest } =
+      await this.authService.changePassword(user.userId, dto);
+    this.setTokenCookies(res, { accessToken, refreshToken });
+    return rest;
+  }
+
+  // CÔNG KHAI — luôn 200 với cùng một nội dung (xem AuthService.forgotPassword).
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Quên mật khẩu — gửi email đặt lại nếu email có tài khoản; phản hồi luôn giống nhau',
+  })
+  @ApiBody({ schema: { example: { email: 'user@example.com' } } })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Luôn trả cùng nội dung dù email có tồn tại, tài khoản bị khoá hay đang trong thời gian chờ gửi lại',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          message:
+            'Nếu email này có tài khoản, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Email không đúng định dạng' })
+  forgotPassword(
+    @Body(new ZodValidationPipe(forgotPasswordSchema)) dto: ForgotPasswordDto,
+  ) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  // CÔNG KHAI — xác thực bằng token trong email. Không tự đăng nhập: FE chuyển sang /login.
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Đặt lại mật khẩu bằng token trong email (dùng một lần) — thu hồi mọi refresh token',
+  })
+  @ApiBody({
+    schema: {
+      example: { token: 'a1b2c3...', newPassword: 'new-password-2' },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: { success: true, data: { message: 'Đã đặt lại mật khẩu' } },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Dữ liệu không hợp lệ (không có code), hoặc RESET_TOKEN_INVALID: token sai / hết hạn / đã dùng / tài khoản không còn hoạt động',
+    examples: {
+      validation: {
+        summary: 'Dữ liệu không hợp lệ (không có code)',
+        value: {
+          success: false,
+          data: null,
+          message: 'newPassword: auth.validationPasswordMin',
+        },
+      },
+      resetTokenInvalid: {
+        summary: 'RESET_TOKEN_INVALID',
+        value: {
+          success: false,
+          data: null,
+          message: 'The password reset link is invalid or has expired',
+          code: 'RESET_TOKEN_INVALID',
+        },
+      },
+    },
+  })
+  resetPassword(
+    @Body(new ZodValidationPipe(resetPasswordSchema)) dto: ResetPasswordDto,
+  ) {
+    return this.authService.resetPassword(dto);
   }
 
   // accessToken/refreshToken không đưa vào response body (interceptor sẽ bọc

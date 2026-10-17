@@ -677,4 +677,169 @@ describe('AdminController (HTTP thật)', () => {
       });
     });
   });
+
+  // --- Email báo chủ shop khi Admin đổi trạng thái (Week9.md 1.13/5.6) -------------------------------
+
+  describe('email báo chủ shop', () => {
+    let sellerEmail: string;
+
+    beforeAll(async () => {
+      const row = await prisma.user.findUniqueOrThrow({
+        where: { id: sellerId },
+        select: { email: true },
+      });
+      sellerEmail = row.email;
+    });
+
+    beforeEach(() => fakeMail.reset());
+
+    const mailsToSeller = () =>
+      fakeMail.sent.filter((mail) => mail.to === sellerEmail);
+
+    const shopName = async (shopId: string) =>
+      (
+        await prisma.shop.findUniqueOrThrow({
+          where: { id: shopId },
+          select: { name: true },
+        })
+      ).name;
+
+    it('duyệt: chủ shop nhận đúng 1 email "đã được duyệt" (tiếng Việt, link vào quản lý sản phẩm)', async () => {
+      const shop = await createShop(sellerId, 'PENDING');
+
+      await patchStatus(shop.shopId, { status: 'APPROVED' }).expect(200);
+
+      const mails = mailsToSeller();
+      expect(mails).toHaveLength(1);
+      expect(mails[0].subject).toBe(
+        `Shop ${await shopName(shop.shopId)} đã được duyệt`,
+      );
+      expect(mails[0].html).toContain('đã được duyệt');
+      expect(mails[0].html).toContain('/seller/products');
+      expect(fakeMail.sent).toHaveLength(1);
+    });
+
+    it('từ chối kèm lý do: email có lý do, được escape (Admin gõ HTML cũng không chèn được thẻ/link)', async () => {
+      const shop = await createShop(sellerId, 'PENDING');
+
+      await patchStatus(shop.shopId, {
+        status: 'REJECTED',
+        reason:
+          'Thiếu giấy phép <a href="https://evil.example">bấm vào đây</a>',
+      }).expect(200);
+
+      const [mail] = mailsToSeller();
+      expect(mail.subject).toContain('chưa được duyệt');
+      expect(mail.html).toContain('Thiếu giấy phép');
+      expect(mail.html).not.toContain('href="https://evil.example"');
+      expect(mail.html).toContain(
+        '&lt;a href=&quot;https://evil.example&quot;',
+      );
+      expect(mail.html).toContain('/seller/shop');
+    });
+
+    it('khoá rồi mở khoá: 2 email khác loại, lý do chỉ có ở email khoá', async () => {
+      const shop = await createShop(sellerId, 'APPROVED');
+
+      await patchStatus(shop.shopId, {
+        status: 'SUSPENDED',
+        reason: 'Bán hàng cấm',
+      }).expect(200);
+      await patchStatus(shop.shopId, { status: 'APPROVED' }).expect(200);
+
+      const mails = mailsToSeller();
+      expect(mails).toHaveLength(2);
+      expect(mails[0].subject).toContain('tạm khoá');
+      expect(mails[0].html).toContain('Bán hàng cấm');
+      expect(mails[1].subject).toContain('đã được mở khoá');
+      expect(mails[1].html).not.toContain('Bán hàng cấm');
+    });
+
+    it('theo User.locale của CHỦ SHOP (đọc từ DB thật): en ⇒ email tiếng Anh, link có /en', async () => {
+      const shop = await createShop(sellerId, 'PENDING');
+      await prisma.user.update({
+        where: { id: sellerId },
+        data: { locale: 'en' },
+      });
+
+      try {
+        await patchStatus(shop.shopId, { status: 'APPROVED' }).expect(200);
+      } finally {
+        await prisma.user.update({
+          where: { id: sellerId },
+          data: { locale: 'vi' },
+        });
+      }
+
+      const [mail] = mailsToSeller();
+      expect(mail.subject).toBe(
+        `Your shop ${await shopName(shop.shopId)} has been approved`,
+      );
+      expect(mail.html).toContain('/en/seller/products');
+      expect(mail.html).not.toContain('đã được duyệt');
+    });
+
+    it('mail lỗi (Resend down): PATCH vẫn 200 và trạng thái shop đã đổi thật', async () => {
+      const shop = await createShop(sellerId, 'PENDING');
+      fakeMail.failWith(new Error('Resend down'));
+
+      const res = await patchStatus(shop.shopId, {
+        status: 'REJECTED',
+        reason: 'Thiếu giấy tờ',
+      }).expect(200);
+
+      expect((body(res) as { shop: { status: string } }).shop.status).toBe(
+        'REJECTED',
+      );
+      expect(await statusOf(shop.shopId)).toMatchObject({
+        status: 'REJECTED',
+        statusReason: 'Thiếu giấy tờ',
+      });
+      expect(fakeMail.sent).toHaveLength(0);
+    });
+
+    it('cạnh sai (409) hoặc body sai (400) hoặc shop không có (404): KHÔNG gửi email, trạng thái không đổi', async () => {
+      const shop = await createShop(sellerId, 'REJECTED');
+
+      await patchStatus(shop.shopId, { status: 'APPROVED' }).expect(409);
+      await patchStatus(shop.shopId, { status: 'SUSPENDED' }).expect(400);
+      await patchStatus('khong-ton-tai', { status: 'APPROVED' }).expect(404);
+
+      expect(await statusOf(shop.shopId)).toMatchObject({ status: 'REJECTED' });
+      expect(fakeMail.sent).toHaveLength(0);
+    });
+
+    it('chủ shop "gửi duyệt lại" (REJECTED → PENDING) KHÔNG gửi email nào (không phải việc của Admin)', async () => {
+      const shop = await createShop(sellerId, 'REJECTED');
+
+      await seller
+        .post(`/api/v1/shops/${shop.shopId}/resubmit`)
+        .send({})
+        .expect(200);
+
+      expect(await statusOf(shop.shopId)).toMatchObject({ status: 'PENDING' });
+      expect(fakeMail.sent).toHaveLength(0);
+    });
+
+    it('race: 2 Admin duyệt và từ chối CÙNG 1 shop đồng thời ⇒ đúng 1 bên thắng và đúng 1 email, khớp bên thắng', async () => {
+      const shop = await createShop(sellerId, 'PENDING');
+
+      const results = await Promise.all([
+        patchStatus(shop.shopId, { status: 'APPROVED' }),
+        patchStatus(shop.shopId, { status: 'REJECTED', reason: 'Từ chối' }),
+      ]);
+
+      const winner = results.find((r) => r.status === 200)!;
+      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+      const finalStatus = (await statusOf(shop.shopId)).status;
+      expect(finalStatus).toBe(
+        (body(winner) as { shop: { status: string } }).shop.status,
+      );
+      const mails = mailsToSeller();
+      expect(mails).toHaveLength(1);
+      expect(mails[0].subject).toContain(
+        finalStatus === 'APPROVED' ? 'đã được duyệt' : 'chưa được duyệt',
+      );
+    });
+  });
 });

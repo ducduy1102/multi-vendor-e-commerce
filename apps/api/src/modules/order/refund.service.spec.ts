@@ -80,7 +80,10 @@ describe('RefundService', () => {
   let gateway: { refund: jest.Mock };
   let paymentGateway: { get: jest.Mock };
   let refundRequestService: { transition: jest.Mock };
-  let orderEmailService: { notifyCancelled: jest.Mock };
+  let orderEmailService: {
+    notifyCancelled: jest.Mock;
+    notifyRefunded: jest.Mock;
+  };
 
   const gatewayResult = (result: Partial<RefundResult>) =>
     gateway.refund.mockResolvedValue({
@@ -211,6 +214,7 @@ describe('RefundService', () => {
     };
     orderEmailService = {
       notifyCancelled: jest.fn().mockResolvedValue(undefined),
+      notifyRefunded: jest.fn().mockResolvedValue(undefined),
     };
 
     service = new RefundService(
@@ -1011,10 +1015,53 @@ describe('RefundService', () => {
       expect(result.refund?.status).toBe('SUCCEEDED');
     });
 
-    it('KHÔNG gửi email "đơn bị hủy" (đơn trả hàng không phải đơn bị hủy; email hoàn tiền: 5.3)', async () => {
+    it('KHÔNG gửi email "đơn bị hủy" (đơn trả hàng không phải đơn bị hủy) mà gửi email "đã duyệt trả hàng"', async () => {
       await service.refundReturnedOrder(ADMIN, 'o1');
 
       expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
+      expect(orderEmailService.notifyRefunded).toHaveBeenCalledTimes(1);
+    });
+
+    it('đơn online: email mang số tiền của khoản hoàn qua cổng, gửi SAU khi cổng đã được gọi', async () => {
+      const result = await service.refundReturnedOrder(ADMIN, 'o1');
+
+      expect(orderEmailService.notifyRefunded).toHaveBeenCalledWith(
+        'o1',
+        Number(result.refund?.amount),
+      );
+      expect(gateway.refund.mock.invocationCallOrder[0]).toBeLessThan(
+        orderEmailService.notifyRefunded.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('đơn COD: không có khoản hoàn qua cổng nên email nhận amount null (template dùng tổng đơn, shop hoàn tiền mặt)', async () => {
+      prisma.order.findUnique.mockResolvedValue(
+        orderRow({
+          status: 'COMPLETED',
+          checkoutGroup: {
+            payments: [paymentRow({ method: 'COD', status: 'SUCCESS' })],
+          },
+        }),
+      );
+      tx.order.findMany.mockResolvedValue([
+        { status: 'REFUNDED', discountAmount: D(0) },
+      ]);
+
+      await service.refundReturnedOrder(SELLER, 'o1');
+
+      expect(orderEmailService.notifyRefunded).toHaveBeenCalledWith('o1', null);
+    });
+
+    it('không gửi email khi duyệt thất bại (đơn không còn COMPLETED)', async () => {
+      prisma.order.findUnique.mockResolvedValue(
+        orderRow({ status: 'REFUNDED' }),
+      );
+
+      await expect(
+        service.refundReturnedOrder(ADMIN, 'o1'),
+      ).rejects.toBeDefined();
+
+      expect(orderEmailService.notifyRefunded).not.toHaveBeenCalled();
     });
 
     it('COD: chỉ COMPLETED → REFUNDED + chốt Payment COD (hoàn tiền mặt ngoài hệ thống), không có khoản hoàn qua cổng', async () => {

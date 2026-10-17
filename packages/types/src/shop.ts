@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isSafeMultilineText, isSafeName } from './text-safety';
 
 export const shopStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED']);
 export type ShopStatus = z.infer<typeof shopStatusSchema>;
@@ -62,11 +63,30 @@ export function isShopEditable(status: ShopStatus): boolean {
   return SHOP_EDITABLE_STATUSES.includes(status);
 }
 
+// Giới hạn độ dài (Week9.md 5.2): các field này đi thẳng vào cột TEXT không giới hạn, nên không chặn ở đây
+// thì một body 100KB là một dòng 100KB trong DB (và trong mọi email/trang public hiển thị nó).
+// Slug dài hơn tên một chút vì BE nối hậu tố khi trùng (xem ShopService.createWithGeneratedSlug).
+export const SHOP_NAME_MAX_LENGTH = 100;
+export const SHOP_SLUG_MAX_LENGTH = 150;
+export const SHOP_DESCRIPTION_MAX_LENGTH = 2000;
+export const SHOP_URL_MAX_LENGTH = 2048;
+
+export const SHOP_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+// Slug KHÔNG được dùng cho shop: trùng một đoạn đường dẫn cố định dưới `/shops/`. `GET /shops/me` là shop của
+// chính user (khai báo trước `GET /shops/:slug`), nên một shop tên "Me" mà lấy slug `me` sẽ không bao giờ mở
+// được trang công khai của nó. Tên shop sinh ra slug này được tự đổi sang hậu tố (`me-2`), slug tự nhập thì bị từ chối.
+export const SHOP_RESERVED_SLUGS: readonly string[] = ['me'];
+
 const slugSchema = z
   .string()
   .trim()
   .min(1, 'shop.validationSlugRequired')
-  .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'shop.validationSlugFormat');
+  .max(SHOP_SLUG_MAX_LENGTH, 'shop.validationSlugTooLong')
+  .regex(SHOP_SLUG_PATTERN, 'shop.validationSlugFormat');
+
+// Dùng cho tham số đường dẫn `GET /shops/:slug` (công khai).
+export const shopSlugSchema = slugSchema;
 
 // Input HTML bỏ trống gửi lên chuỗi rỗng "" (React Hook Form), không phải
 // undefined — coi "" như chưa nhập cho mọi field optional dạng string, để
@@ -74,33 +94,45 @@ const slugSchema = z
 // ở cuối (không phải z.preprocess ở đầu) để giữ nguyên input type "string |
 // undefined" cho zodResolver — z.preprocess nhận input "unknown", làm
 // useForm<CreateShopInput>() báo lỗi type không khớp resolver.
-const optionalTrimmedString = () =>
+const optionalDescriptionSchema = () =>
   z
     .string()
     .trim()
+    .max(SHOP_DESCRIPTION_MAX_LENGTH, 'shop.validationDescriptionTooLong')
+    .refine(isSafeMultilineText, 'shop.validationDescriptionInvalid')
     .optional()
     .transform((val) => (val === '' ? undefined : val));
 
-// .url() không chain được sau .optional() nên validate URL bằng .refine()
-// (tái dùng z.string().url() nội bộ, không tự viết lại regex) — "" hoặc
-// undefined đều coi là hợp lệ (chưa nhập), y hệt .url() sẽ từ chối "" nếu
-// chain trực tiếp dù field optional.
+// Logo/banner là URL tự do hiển thị công khai ở trang shop (Week9.md 1.10). .url() của Zod nhận MỌI scheme
+// (`javascript:`, `data:`, `file:`...), nên phải chốt thêm `https://`: logo/banner thật luôn là link
+// Cloudinary (https), còn scheme khác chỉ có nghĩa là tấn công (XSS qua href/img, nội dung hỗn hợp). Không
+// import `URL` ở đây vì `lib` của package không có DOM. .url() không chain được sau .optional() nên validate
+// bằng .refine() — "" hoặc undefined đều coi là hợp lệ (chưa nhập).
+const HTTPS_URL = /^https:\/\//i;
 const optionalUrlSchema = (message: string) =>
   z
     .string()
     .trim()
+    .max(SHOP_URL_MAX_LENGTH, message)
     .optional()
-    .refine((val) => !val || z.string().url().safeParse(val).success, {
+    .refine((val) => !val || (HTTPS_URL.test(val) && z.string().url().safeParse(val).success), {
       message,
     })
     .transform((val) => (val === '' ? undefined : val));
 
 export const createShopSchema = z.object({
-  name: z.string().trim().min(1, 'shop.validationNameRequired'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'shop.validationNameRequired')
+    .max(SHOP_NAME_MAX_LENGTH, 'shop.validationNameTooLong')
+    .refine(isSafeName, 'shop.validationNameInvalid'),
   // Bỏ trống thì BE tự sinh slug từ name (xem ShopService.createShop, Week3.md
   // Bước 2.3) — nếu người dùng tự nhập, vẫn phải đúng định dạng slug.
-  slug: slugSchema.optional(),
-  description: optionalTrimmedString(),
+  slug: slugSchema
+    .refine((value) => !SHOP_RESERVED_SLUGS.includes(value), 'shop.validationSlugReserved')
+    .optional(),
+  description: optionalDescriptionSchema(),
   logoUrl: optionalUrlSchema('shop.validationLogoUrlInvalid'),
   bannerUrl: optionalUrlSchema('shop.validationBannerUrlInvalid'),
 });
@@ -134,3 +166,23 @@ export const shopSchema = z.object({
   updatedAt: z.string(),
 });
 export type Shop = z.infer<typeof shopSchema>;
+
+// Response `GET /shops/:slug` (công khai — Week9.md 1.10): chỉ shop APPROVED, KHÔNG có thông tin chủ shop
+// (ownerId, email), status hay statusReason. Khác `shopSchema` ở trên (chủ shop/Admin) — tách schema riêng
+// thay vì `shopSchema.pick`: hợp đồng công khai là danh sách field khai tường minh, thêm field nội bộ vào Shop
+// sau này không tự thành một phần của trang công khai (BE mapper cũng liệt kê tường minh, không spread).
+// `avgRating`/`reviewCount` là điểm gộp của các sản phẩm PUBLISHED của shop (BE tính, không có cột trên Shop);
+// 0/0 khi chưa có đánh giá nào.
+export const publicShopSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  logoUrl: z.string().nullable(),
+  bannerUrl: z.string().nullable(),
+  description: z.string().nullable(),
+  createdAt: z.string(),
+  productCount: z.number().int().nonnegative(),
+  avgRating: z.number().min(0).max(5),
+  reviewCount: z.number().int().nonnegative(),
+});
+export type PublicShop = z.infer<typeof publicShopSchema>;

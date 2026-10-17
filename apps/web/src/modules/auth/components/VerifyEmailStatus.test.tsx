@@ -57,6 +57,8 @@ describe('VerifyEmailStatus', () => {
       name: 'Nguyen Van A',
       role: 'USER',
       emailVerifiedAt: null,
+      locale: 'vi',
+      hasPassword: true,
     });
 
     render(withIntl(<VerifyEmailStatus token="expired-token" />));

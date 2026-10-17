@@ -14,6 +14,7 @@ export const SAFE_NEXT_PATH_ALLOWED_PREFIXES: readonly string[] = [
   '/orders',
   '/products',
   '/admin',
+  '/account',
 ];
 
 export const SAFE_NEXT_PATH_MAX_LENGTH = 256;
