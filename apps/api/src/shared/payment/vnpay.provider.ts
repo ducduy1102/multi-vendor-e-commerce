@@ -246,7 +246,9 @@ function resolveOutcome(
   return 'PENDING';
 }
 
-// vnp_IpAddr: Alphanumeric[7,45]. Sau proxy phải bật trust proxy thì req.ip mới là IP khách (Tuần 13).
+// vnp_IpAddr: Alphanumeric[7,45]. Hiện chưa luồng nào truyền `clientIp` (checkout/payment.service không đọc
+// req.ip) nên luôn là 127.0.0.1 — sandbox chấp nhận. Khi nối req.ip vào createPayment, cần ENV TRUST_PROXY
+// (main.ts) để nó là IP khách chứ không phải IP proxy của nền tảng deploy.
 function normalizeClientIp(ip: string | undefined): string {
   const cleaned = (ip ?? '').trim().replace(/^::ffff:/i, '');
   if (cleaned === '::1') return DEFAULT_CLIENT_IP;
