@@ -1,7 +1,8 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
+import { routing } from '@/i18n/routing';
 import { Button } from '@/shared/components/ui/button';
 import { API_BASE_URL, API_PREFIX } from '@/shared/lib/api-client';
 
@@ -29,8 +30,16 @@ interface GoogleLoginButtonProps {
 
 export function GoogleLoginButton({ label, next }: GoogleLoginButtonProps) {
   const t = useTranslations('auth');
+  const locale = useLocale();
   const googleAuthUrl = `${API_BASE_URL}${API_PREFIX}/auth/google`;
-  const href = next ? `${googleAuthUrl}?next=${encodeURIComponent(next)}` : googleAuthUrl;
+  // Ngôn ngữ của trang này đi cùng sang BE để sau khi đăng nhập (hoặc lỗi) BE redirect về đúng `/en/...` —
+  // FE đặt `localeDetection: false` (Week10.md 2.3) nên URL không prefix luôn là tiếng Việt, không còn cookie
+  // nhớ ngôn ngữ. Ngôn ngữ mặc định (vi) không cần gửi: BE coi thiếu `locale` là vi.
+  const params = new URLSearchParams();
+  if (next) params.set('next', next);
+  if (locale !== routing.defaultLocale) params.set('locale', locale);
+  const query = params.toString();
+  const href = query ? `${googleAuthUrl}?${query}` : googleAuthUrl;
 
   return (
     <Button
