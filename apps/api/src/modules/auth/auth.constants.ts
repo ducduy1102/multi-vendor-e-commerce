@@ -1,4 +1,6 @@
 import type { CookieOptions } from 'express';
+import { frontendUrl } from '../../shared/mail/frontend-url';
+import type { MailLocale } from '../../shared/mail/mail-locale';
 import { getFrontendUrl } from '../../shared/utils/frontend-url';
 import { readPositiveInt } from '../../shared/utils/read-positive-int';
 
@@ -73,16 +75,21 @@ export function readPasswordResetTtlMinutes(): number {
 }
 
 // Đích redirect sau Google OAuth callback. `next` phải là kết quả của safeNextPath (đã kiểm) hoặc
-// null; không có next thì về trang chủ như trước khi có tính năng này.
-export function googleSuccessRedirectUrl(next: string | null): string {
-  return `${getFrontendUrl()}${next ?? ''}`;
+// null; không có next thì về trang chủ. `locale` là ngôn ngữ của trang người dùng đã bấm nút Google (đi vòng
+// qua `state`): FE không còn nhớ ngôn ngữ qua cookie (Week10.md 2.3) nên URL phải tự mang prefix `/en`.
+export function googleSuccessRedirectUrl(
+  next: string | null,
+  locale: MailLocale,
+): string {
+  return frontendUrl(next ?? '/', locale);
 }
 
 // Nhánh lỗi giữ lại next để người dùng đăng nhập lại bằng cách khác vẫn quay về đúng chỗ.
 export function googleFailureRedirectUrl(
   reason: string,
   next: string | null,
+  locale: MailLocale,
 ): string {
   const nextParam = next ? `&next=${encodeURIComponent(next)}` : '';
-  return `${getFrontendUrl()}/login?error=${reason}${nextParam}`;
+  return frontendUrl(`/login?error=${reason}${nextParam}`, locale);
 }

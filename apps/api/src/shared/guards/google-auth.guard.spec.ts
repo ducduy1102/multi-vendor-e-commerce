@@ -14,7 +14,7 @@ describe('GoogleAuthGuard.getAuthenticateOptions', () => {
     expect(
       guard.getAuthenticateOptions(contextWithQuery({ next: '/checkout' })),
     ).toEqual({
-      state: '/checkout',
+      state: 'n=%2Fcheckout',
     });
   });
 
@@ -23,11 +23,52 @@ describe('GoogleAuthGuard.getAuthenticateOptions', () => {
       guard.getAuthenticateOptions(
         contextWithQuery({ next: '/cart?voucherCode=SALE10' }),
       ),
-    ).toEqual({ state: '/cart?voucherCode=SALE10' });
+    ).toEqual({ state: 'n=%2Fcart%3FvoucherCode%3DSALE10' });
   });
 
-  it('không có next — hành vi cũ (không truyền option nào)', () => {
+  it('không có next và không có locale — hành vi cũ (không truyền option nào)', () => {
     expect(guard.getAuthenticateOptions(contextWithQuery({}))).toBeUndefined();
+  });
+
+  // Week10.md 2.3: ngôn ngữ của trang bấm nút đi vòng qua Google để callback redirect về đúng prefix.
+  describe('locale', () => {
+    it('chỉ có locale=en — state mang ngôn ngữ', () => {
+      expect(
+        guard.getAuthenticateOptions(contextWithQuery({ locale: 'en' })),
+      ).toEqual({ state: 'l=en' });
+    });
+
+    it('next + locale=en — mang cả hai', () => {
+      expect(
+        guard.getAuthenticateOptions(
+          contextWithQuery({ next: '/checkout', locale: 'en' }),
+        ),
+      ).toEqual({ state: 'n=%2Fcheckout&l=en' });
+    });
+
+    it('locale=vi (mặc định) — không thêm gì vào state', () => {
+      expect(
+        guard.getAuthenticateOptions(
+          contextWithQuery({ next: '/checkout', locale: 'vi' }),
+        ),
+      ).toEqual({ state: 'n=%2Fcheckout' });
+      expect(
+        guard.getAuthenticateOptions(contextWithQuery({ locale: 'vi' })),
+      ).toBeUndefined();
+    });
+
+    it.each([
+      ['ngôn ngữ lạ', 'fr'],
+      ['chèn đường dẫn', '/en'],
+      ['URL', 'https://evil.com'],
+      ['mảng', ['en', 'vi']],
+      ['object', { a: 'en' }],
+      ['chuỗi rỗng', ''],
+    ])('locale bẩn (%s) bị bỏ, không lọt vào state', (_label, locale) => {
+      expect(
+        guard.getAuthenticateOptions(contextWithQuery({ locale })),
+      ).toBeUndefined();
+    });
   });
 
   it.each([
