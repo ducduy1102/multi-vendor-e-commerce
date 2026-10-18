@@ -312,7 +312,27 @@ export class AuthController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Token không hợp lệ hoặc đã hết hạn',
+    description:
+      'Dữ liệu không hợp lệ (không có code), hoặc VERIFY_TOKEN_INVALID: token sai / hết hạn / đã dùng',
+    examples: {
+      validation: {
+        summary: 'Dữ liệu không hợp lệ (không có code)',
+        value: {
+          success: false,
+          data: null,
+          message: 'token: auth.validationTokenInvalid',
+        },
+      },
+      verifyTokenInvalid: {
+        summary: 'VERIFY_TOKEN_INVALID',
+        value: {
+          success: false,
+          data: null,
+          message: 'The email verification link is invalid or has expired',
+          code: 'VERIFY_TOKEN_INVALID',
+        },
+      },
+    },
   })
   verifyEmail(
     @Body(new ZodValidationPipe(verifyEmailSchema)) dto: VerifyEmailDto,
@@ -334,11 +354,31 @@ export class AuthController {
       },
     },
   })
-  @ApiResponse({ status: 400, description: 'Email đã được xác thực' })
+  @ApiResponse({
+    status: 400,
+    description: 'EMAIL_ALREADY_VERIFIED: email đã được xác thực',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'The email address is already verified',
+        code: 'EMAIL_ALREADY_VERIFIED',
+      },
+    },
+  })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({
     status: 429,
-    description: 'Gửi quá nhanh, vui lòng đợi rồi thử lại',
+    description:
+      'VERIFICATION_RESEND_TOO_SOON: gửi quá nhanh, còn trong thời gian chờ giữa hai lần gửi',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'Please wait before requesting another verification email',
+        code: 'VERIFICATION_RESEND_TOO_SOON',
+      },
+    },
   })
   resendVerification(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.resendVerification(user.userId);

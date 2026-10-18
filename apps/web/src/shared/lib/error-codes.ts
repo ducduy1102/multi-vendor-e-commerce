@@ -23,6 +23,10 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   CURRENT_PASSWORD_INCORRECT: 'auth.errorCurrentPasswordIncorrect',
   PASSWORD_NOT_SET: 'auth.errorPasswordNotSet',
   RESET_TOKEN_INVALID: 'auth.errorResetTokenInvalid',
+  // Xác thực email (Week10.md 2.2) — dùng lại key đã có ở trang /verify-email và nút gửi lại.
+  VERIFY_TOKEN_INVALID: 'auth.verifyEmailInvalidOrExpired',
+  EMAIL_ALREADY_VERIFIED: 'auth.resendVerificationAlreadyVerified',
+  VERIFICATION_RESEND_TOO_SOON: 'auth.resendVerificationTooFast',
   // Voucher (áp mã ở giỏ hàng) — dùng lại đúng 7 key đã có từ Tuần 6.
   VOUCHER_NOT_FOUND: 'cart.voucherNotFound',
   VOUCHER_INACTIVE: 'cart.voucherInactive',

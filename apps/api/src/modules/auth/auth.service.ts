@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  HttpException,
   HttpStatus,
   Injectable,
   Logger,
@@ -114,11 +113,17 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { emailVerificationTokenHash: tokenHash },
     });
-    if (!user?.emailVerificationExpiresAt) {
-      throw new BadRequestException('Token xác thực không hợp lệ');
-    }
-    if (user.emailVerificationExpiresAt.getTime() < Date.now()) {
-      throw new BadRequestException('Token xác thực đã hết hạn');
+    // Token không tồn tại (sai / đã dùng — hash bị xoá sau khi xác thực) và token hết hạn cùng MỘT mã, để
+    // không lộ token từng tồn tại hay không; FE chỉ cần biết "link này không dùng được, xin link mới".
+    if (
+      !user?.emailVerificationExpiresAt ||
+      user.emailVerificationExpiresAt.getTime() < Date.now()
+    ) {
+      throw new AppException(
+        400,
+        'VERIFY_TOKEN_INVALID',
+        'The email verification link is invalid or has expired',
+      );
     }
 
     await this.prisma.user.update({
@@ -141,16 +146,21 @@ export class AuthService {
       throw new UnauthorizedException();
     }
     if (user.emailVerifiedAt) {
-      throw new BadRequestException('Email đã được xác thực');
+      throw new AppException(
+        400,
+        'EMAIL_ALREADY_VERIFIED',
+        'The email address is already verified',
+      );
     }
     if (
       user.emailVerificationSentAt &&
       Date.now() - user.emailVerificationSentAt.getTime() <
         EMAIL_VERIFICATION_RESEND_COOLDOWN_MS
     ) {
-      throw new HttpException(
-        'Vui lòng đợi trước khi gửi lại email xác thực',
+      throw new AppException(
         HttpStatus.TOO_MANY_REQUESTS,
+        'VERIFICATION_RESEND_TOO_SOON',
+        'Please wait before requesting another verification email',
       );
     }
 

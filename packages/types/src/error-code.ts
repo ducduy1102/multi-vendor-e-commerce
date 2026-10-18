@@ -23,6 +23,13 @@ export const SERVER_ERROR_CODES = [
   'CURRENT_PASSWORD_INCORRECT',
   'PASSWORD_NOT_SET',
   'RESET_TOKEN_INVALID',
+  // Xác thực email. VERIFY_TOKEN_INVALID: token sai / đã hết hạn / đã dùng — MỘT mã cho cả ca (cùng tinh thần
+  // RESET_TOKEN_INVALID, không lộ token từng tồn tại hay không); EMAIL_ALREADY_VERIFIED: gửi lại email xác
+  // thực cho tài khoản đã xác thực; VERIFICATION_RESEND_TOO_SOON (429): còn trong thời gian chờ giữa hai lần
+  // gửi lại.
+  'VERIFY_TOKEN_INVALID',
+  'EMAIL_ALREADY_VERIFIED',
+  'VERIFICATION_RESEND_TOO_SOON',
   // Voucher
   'VOUCHER_NOT_FOUND',
   'VOUCHER_INACTIVE',

@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
+import { useIsHydrated } from '@/shared/hooks/useIsHydrated';
 import { useValidationMessage } from '@/shared/hooks/useValidationMessage';
 
 import { registerFormSchema } from '../schemas/auth.schema';
@@ -22,6 +23,9 @@ interface RegisterFormProps {
 export function RegisterForm({ onSubmit, isSubmitting }: RegisterFormProps) {
   const t = useTranslations('auth');
   const tv = useValidationMessage();
+  // Nút gửi bị khoá tới khi hydrate xong, và form khai method="post" làm lưới an toàn: bấm trước hydrate
+  // thì trình duyệt tự gửi form theo kiểu GET và email/mật khẩu lên thẳng URL (Week10.md 2.2).
+  const isHydrated = useIsHydrated();
   const {
     register,
     handleSubmit,
@@ -31,7 +35,12 @@ export function RegisterForm({ onSubmit, isSubmitting }: RegisterFormProps) {
   });
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
+    <form
+      method="post"
+      onSubmit={handleSubmit(onSubmit)}
+      noValidate
+      className="flex flex-col gap-4"
+    >
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="register-name">{t('registerNameLabel')}</Label>
         <Input
@@ -84,7 +93,7 @@ export function RegisterForm({ onSubmit, isSubmitting }: RegisterFormProps) {
         )}
       </div>
 
-      <Button type="submit" disabled={isSubmitting} className="mt-2">
+      <Button type="submit" disabled={isSubmitting || !isHydrated} className="mt-2">
         {isSubmitting ? t('registerSubmitting') : t('registerSubmit')}
       </Button>
     </form>

@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
 import { MailService } from '../../shared/mail/mail.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { expectAppException } from '../../shared/testing/expect-app-exception';
 import { EMAIL_VERIFICATION_RESEND_COOLDOWN_MS } from './auth.constants';
 import { AuthService, FORGOT_PASSWORD_MESSAGE } from './auth.service';
 
@@ -671,16 +672,17 @@ describe('AuthService', () => {
       expect(updateArgs.data.emailVerificationExpiresAt).toBeNull();
     });
 
-    it('báo lỗi 400 nếu token không khớp user nào', async () => {
+    it('token không khớp user nào ⇒ 400 VERIFY_TOKEN_INVALID', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.verifyEmail('token-khong-ton-tai'),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await expectAppException(service.verifyEmail('token-khong-ton-tai'), {
+        status: 400,
+        code: 'VERIFY_TOKEN_INVALID',
+      });
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
-    it('báo lỗi 400 nếu token đã hết hạn', async () => {
+    it('token đã hết hạn ⇒ CÙNG mã VERIFY_TOKEN_INVALID với token sai (không lộ token từng tồn tại hay không)', async () => {
       prisma.user.findUnique.mockResolvedValue({
         ...baseUser,
         emailVerificationTokenHash: createHash('sha256')
@@ -689,27 +691,45 @@ describe('AuthService', () => {
         emailVerificationExpiresAt: new Date(Date.now() - 1000),
       });
 
-      await expect(
-        service.verifyEmail('expired-raw-token'),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await expectAppException(service.verifyEmail('expired-raw-token'), {
+        status: 400,
+        code: 'VERIFY_TOKEN_INVALID',
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('user khớp hash nhưng không có hạn (dữ liệu hỏng) ⇒ coi như token không hợp lệ, không xác thực', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        emailVerificationTokenHash: createHash('sha256')
+          .update('no-expiry-token')
+          .digest('hex'),
+        emailVerificationExpiresAt: null,
+      });
+
+      await expectAppException(service.verifyEmail('no-expiry-token'), {
+        status: 400,
+        code: 'VERIFY_TOKEN_INVALID',
+      });
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });
 
   describe('resendVerification', () => {
-    it('báo lỗi 400 nếu email đã được xác thực', async () => {
+    it('email đã được xác thực ⇒ 400 EMAIL_ALREADY_VERIFIED', async () => {
       prisma.user.findUnique.mockResolvedValue({
         ...baseUser,
         emailVerifiedAt: new Date(),
       });
 
-      await expect(
-        service.resendVerification(baseUser.id),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await expectAppException(service.resendVerification(baseUser.id), {
+        status: 400,
+        code: 'EMAIL_ALREADY_VERIFIED',
+      });
       expect(mailService.sendVerificationEmail).not.toHaveBeenCalled();
     });
 
-    it('báo lỗi 429 nếu gửi lại quá nhanh (còn trong cooldown)', async () => {
+    it('gửi lại quá nhanh (còn trong cooldown) ⇒ 429 VERIFICATION_RESEND_TOO_SOON', async () => {
       prisma.user.findUnique.mockResolvedValue({
         ...baseUser,
         emailVerificationSentAt: new Date(
@@ -717,9 +737,10 @@ describe('AuthService', () => {
         ),
       });
 
-      await expect(
-        service.resendVerification(baseUser.id),
-      ).rejects.toMatchObject({ status: 429 });
+      await expectAppException(service.resendVerification(baseUser.id), {
+        status: 429,
+        code: 'VERIFICATION_RESEND_TOO_SOON',
+      });
       expect(mailService.sendVerificationEmail).not.toHaveBeenCalled();
     });
 

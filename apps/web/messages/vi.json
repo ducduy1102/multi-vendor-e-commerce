@@ -117,10 +117,15 @@
     "verifyEmailLogin": "Đăng nhập",
     "verifyEmailLoginToResend": "Đăng nhập để gửi lại email xác thực",
     "verifyEmailGenericError": "Xác thực email thất bại, vui lòng thử lại",
+    "verifyEmailSuccess": "Xác thực email thành công",
+    "verifyEmailInvalidOrExpired": "Liên kết xác thực không hợp lệ hoặc đã hết hạn.",
 
     "resendVerificationSubmit": "Gửi lại email xác thực",
     "resendVerificationSubmitting": "Đang gửi...",
     "resendVerificationGenericError": "Gửi lại email xác thực thất bại, vui lòng thử lại",
+    "resendVerificationSuccess": "Đã gửi lại email xác thực",
+    "resendVerificationAlreadyVerified": "Email của bạn đã được xác thực",
+    "resendVerificationTooFast": "Vui lòng đợi một lát rồi thử gửi lại",
 
     "emailVerificationBannerMessage": "Email của bạn chưa được xác thực."
   },
