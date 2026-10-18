@@ -8,6 +8,7 @@ import {
   Post,
   Req,
   Res,
+  UseFilters,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -36,6 +37,7 @@ import {
   refreshTokenCookieOptions,
 } from './auth.constants';
 import { AuthService, type TokenPair } from './auth.service';
+import { ClearSessionCookiesFilter } from './clear-session-cookies.filter';
 import {
   changePasswordSchema,
   type ChangePasswordDto,
@@ -158,6 +160,8 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @UseGuards(RefreshTokenGuard)
+  // Bị từ chối mà request có gửi cookie refresh_token ⇒ 401 kèm lệnh xoá cả 2 cookie phiên (xem filter).
+  @UseFilters(ClearSessionCookiesFilter)
   @ApiCookieAuth(REFRESH_TOKEN_COOKIE)
   @ApiOperation({ summary: 'Làm mới access/refresh token, rotate cả 2 cookie' })
   @ApiResponse({
@@ -169,7 +173,8 @@ export class AuthController {
   })
   @ApiResponse({
     status: 401,
-    description: 'refresh_token không hợp lệ hoặc hết hạn',
+    description:
+      'refresh_token không hợp lệ, hết hạn, đã xoay hoặc đã thu hồi. Nếu request có gửi cookie refresh_token thì response kèm Set-Cookie xoá cả access_token lẫn refresh_token; không có cookie thì không đụng tới cookie nào',
   })
   async refresh(
     @CurrentUser() user: AuthenticatedUser & { refreshToken: string },

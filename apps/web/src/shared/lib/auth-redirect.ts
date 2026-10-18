@@ -1,5 +1,7 @@
 import { safeNextPath } from '@ecommerce/types';
 
+import { readJwtRole } from './read-jwt-role';
+
 // Route chỉ dành cho guest — đã đăng nhập mà ghé vào thì đẩy đi chỗ khác.
 const GUEST_ONLY_PATHS = ['/login', '/register'];
 
@@ -43,10 +45,39 @@ export interface AuthRedirectInput {
   // GUEST_ONLY_PATHS/PROTECTED_PATH_PREFIXES không phụ thuộc locale hiện tại).
   pathname: string;
   search: string;
+  // HAI vị từ khác nhau (Week10.md 2.1) vì access_token chỉ sống 15 phút còn refresh_token 7 ngày:
+  // - `isAuthenticated`: có access_token, tức "đã đăng nhập thật". Chỉ dùng cho route CHỈ DÀNH CHO KHÁCH
+  //   (/login, /register). Dùng vị từ rộng hơn ở đây thì người còn refresh cookie cũ/đã bị thu hồi (sống
+  //   tới 7 ngày) sẽ bị đẩy khỏi /login mãi và không đăng nhập lại được.
   isAuthenticated: boolean;
-  // Role đọc từ cookie access_token (readJwtRole) — null/thiếu = không đọc được, coi như không phải
-  // ADMIN. Chỉ cần cho route /admin/*.
+  // - `hasSessionTrace`: có access_token HOẶC refresh_token, tức "còn dấu vết phiên". Dùng cho route CẦN
+  //   đăng nhập và /admin/*: người chỉ còn refresh token phải được vào để client kịp gia hạn, thay vì bị
+  //   đẩy ra /login trước. Không truyền ⇒ bằng `isAuthenticated`.
+  hasSessionTrace?: boolean;
+  // Role đọc từ cookie (readJwtRole, access_token hoặc refresh_token — cùng payload) — null/thiếu =
+  // không đọc được, coi như không phải ADMIN. Chỉ cần cho route /admin/*.
   role?: string | null;
+}
+
+export interface SessionCookies {
+  accessToken?: string;
+  refreshToken?: string;
+}
+
+// Suy hai vị từ và role từ giá trị cookie thô — hàm thuần để proxy.ts chỉ còn là lớp nối với
+// NextRequest/NextResponse. Cookie rỗng coi như không có. Role ưu tiên access_token, rơi về
+// refresh_token khi access_token đã hết hạn/biến mất (cả hai JWT cùng payload `{ sub, role }`).
+export function readSessionState({ accessToken, refreshToken }: SessionCookies): {
+  isAuthenticated: boolean;
+  hasSessionTrace: boolean;
+  role: string | null;
+} {
+  const isAuthenticated = Boolean(accessToken);
+  return {
+    isAuthenticated,
+    hasSessionTrace: isAuthenticated || Boolean(refreshToken),
+    role: readJwtRole(accessToken) ?? readJwtRole(refreshToken),
+  };
 }
 
 // Quyết định THUẦN cho proxy.ts (Week7.md 3.2) — tách khỏi NextRequest/NextResponse để unit test
@@ -57,6 +88,7 @@ export function decideAuthRedirect({
   pathname,
   search,
   isAuthenticated,
+  hasSessionTrace = isAuthenticated,
   role,
 }: AuthRedirectInput): string | null {
   if (isAuthenticated && GUEST_ONLY_PATHS.includes(pathname)) {
@@ -64,7 +96,7 @@ export function decideAuthRedirect({
     return requestedNext ?? '/';
   }
 
-  if (!isAuthenticated && isProtectedPath(pathname)) {
+  if (!hasSessionTrace && isProtectedPath(pathname)) {
     // Đích quay lại sau khi login — validate lại bằng chính hàm dùng ở BE (packages/types),
     // dù về lý thuyết pathname luôn khớp allow-list vì nó chính là PROTECTED_PATH_PREFIXES.
     const next = safeNextPath(`${pathname}${search}`);
@@ -72,7 +104,7 @@ export function decideAuthRedirect({
   }
 
   // Về "/" thay vì 403/404 riêng để không lộ route quản trị tồn tại cho người không có quyền.
-  if (isAuthenticated && matchesPrefix(pathname, ADMIN_PATH_PREFIX) && role !== ADMIN_ROLE) {
+  if (hasSessionTrace && matchesPrefix(pathname, ADMIN_PATH_PREFIX) && role !== ADMIN_ROLE) {
     return '/';
   }
 

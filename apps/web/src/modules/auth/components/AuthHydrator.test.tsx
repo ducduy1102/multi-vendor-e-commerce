@@ -1,5 +1,7 @@
 import { render, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { refreshSession } from '@/shared/lib/session-refresh';
 
 import { useAuthStore } from '../store/auth.store';
 import { AuthHydrator } from './AuthHydrator';
@@ -7,6 +9,22 @@ import { AuthHydrator } from './AuthHydrator';
 vi.mock('../services/auth.service', () => ({
   me: vi.fn(),
 }));
+
+// Router/pathname của next-intl cần provider + Next router thật — thay bằng bản giả đủ cho hành vi cần kiểm
+// (điều hướng khi mất phiên). `usePathname` của next-intl trả đường dẫn ĐÃ bỏ prefix locale.
+const navigation = vi.hoisted(() => ({
+  pathname: '/',
+  replace: vi.fn(),
+  refresh: vi.fn(),
+  router: null as unknown as { replace: () => void; refresh: () => void },
+}));
+vi.mock('@/i18n/navigation', () => {
+  navigation.router = { replace: navigation.replace, refresh: navigation.refresh };
+  return {
+    useRouter: () => navigation.router,
+    usePathname: () => navigation.pathname,
+  };
+});
 
 const mockUser = {
   id: 'user-1',
@@ -19,6 +37,11 @@ const mockUser = {
 };
 
 describe('AuthHydrator', () => {
+  beforeEach(() => {
+    navigation.pathname = '/';
+    window.history.pushState({}, '', '/');
+  });
+
   afterEach(() => {
     useAuthStore.getState().clearUser();
     useAuthStore.getState().setIsHydrating(true);
@@ -78,5 +101,75 @@ describe('AuthHydrator', () => {
     render(<AuthHydrator />);
 
     await waitFor(() => expect(useAuthStore.getState().isHydrating).toBe(false));
+  });
+
+  // Mất phiên = lần gia hạn bị BE từ chối (Week10.md 2.1). Giả lập bằng chính module gia hạn thật: handler
+  // do AuthHydrator đăng ký sẽ được gọi khi callRefresh trả 'rejected'.
+  describe('mất phiên (gia hạn bị từ chối)', () => {
+    async function renderSignedIn() {
+      const { me } = await import('../services/auth.service');
+      vi.mocked(me).mockResolvedValue(mockUser);
+      const view = render(<AuthHydrator />);
+      await waitFor(() => expect(useAuthStore.getState().user).toEqual(mockUser));
+      return view;
+    }
+
+    const loseSession = () => refreshSession(() => Promise.resolve('rejected'));
+
+    it('xoá user khỏi store và đưa về /login?next=<trang hiện tại> khi đang ở route cần đăng nhập', async () => {
+      navigation.pathname = '/orders';
+      await renderSignedIn();
+
+      await loseSession();
+
+      expect(useAuthStore.getState().user).toBeNull();
+      expect(navigation.replace).toHaveBeenCalledTimes(1);
+      expect(navigation.replace).toHaveBeenCalledWith('/login?next=%2Forders');
+      expect(navigation.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('giữ cả query của trang hiện tại trong ?next= (đăng nhập xong quay lại đúng tab/trang)', async () => {
+      navigation.pathname = '/orders';
+      window.history.pushState({}, '', '/orders?tab=pending');
+      await renderSignedIn();
+
+      await loseSession();
+
+      expect(navigation.replace).toHaveBeenCalledWith(
+        `/login?next=${encodeURIComponent('/orders?tab=pending')}`,
+      );
+    });
+
+    it('đang ở trang công khai -> chỉ xoá user, KHÔNG điều hướng (khách vẫn xem sản phẩm bình thường)', async () => {
+      navigation.pathname = '/products';
+      await renderSignedIn();
+
+      await loseSession();
+
+      expect(useAuthStore.getState().user).toBeNull();
+      expect(navigation.replace).not.toHaveBeenCalled();
+    });
+
+    it('dùng đường dẫn HIỆN TẠI lúc mất phiên, không phải lúc mount', async () => {
+      navigation.pathname = '/products';
+      const { rerender } = await renderSignedIn();
+
+      navigation.pathname = '/seller/products';
+      rerender(<AuthHydrator />);
+      await loseSession();
+
+      expect(navigation.replace).toHaveBeenCalledWith('/login?next=%2Fseller%2Fproducts');
+    });
+
+    it('gỡ component thì gỡ luôn handler (không điều hướng/xoá store sau khi đã unmount)', async () => {
+      navigation.pathname = '/orders';
+      const { unmount } = await renderSignedIn();
+
+      unmount();
+      await loseSession();
+
+      expect(useAuthStore.getState().user).toEqual(mockUser);
+      expect(navigation.replace).not.toHaveBeenCalled();
+    });
   });
 });

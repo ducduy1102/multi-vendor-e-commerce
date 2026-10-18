@@ -2,12 +2,12 @@ import createIntlMiddleware from 'next-intl/middleware';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { routing } from '@/i18n/routing';
-import { decideAuthRedirect } from '@/shared/lib/auth-redirect';
-import { readJwtRole } from '@/shared/lib/read-jwt-role';
+import { decideAuthRedirect, readSessionState } from '@/shared/lib/auth-redirect';
 
-// Tên cookie phải khớp ACCESS_TOKEN_COOKIE ở
+// Tên cookie phải khớp ACCESS_TOKEN_COOKIE/REFRESH_TOKEN_COOKIE ở
 // apps/api/src/modules/auth/auth.constants.ts.
 const ACCESS_TOKEN_COOKIE = 'access_token';
+const REFRESH_TOKEN_COOKIE = 'refresh_token';
 
 const intlMiddleware = createIntlMiddleware(routing);
 
@@ -35,26 +35,30 @@ function withLocalePrefix(prefix: string, path: string): string {
   return `${prefix}${path}`;
 }
 
-// Chặn route dành cho guest (login/register) khi đã có session — quay lại
+// Chặn route dành cho guest (login/register) khi đã có access_token — quay lại
 // đúng `?next=` nếu có (Week7.md 1.2/3.2); chặn route cần đăng nhập
-// (/seller/*, /wishlist, /checkout, /orders, /account/*, /admin/*) khi chưa có session, giữ
-// lại đích tới qua `?next=` để quay lại sau khi login. Riêng /admin/* còn đẩy
+// (/seller/*, /wishlist, /checkout, /orders, /account/*, /admin/*) khi KHÔNG còn dấu vết phiên
+// (không access_token lẫn refresh_token), giữ lại đích tới qua `?next=` để quay lại sau khi login.
+// Hai vị từ khác nhau có chủ đích (Week10.md 2.1): access_token chỉ sống 15 phút, refresh_token 7 ngày —
+// người chỉ còn refresh_token phải vào được route cần đăng nhập để client kịp gia hạn phiên, nhưng
+// refresh_token cũ/đã thu hồi KHÔNG được chặn họ khỏi /login. Riêng /admin/* còn đẩy
 // người KHÔNG phải ADMIN về "/" — role đọc từ payload JWT KHÔNG verify chữ ký
 // (readJwtRole), chỉ để điều hướng; quyền thật nằm ở RolesGuard của BE
 // (Week8.md 1.8). Quyết định redirect nằm ở hàm thuần
 // decideAuthRedirect (shared/lib/auth-redirect.ts) để unit test được —
 // proxy() chỉ nối hàm đó với NextRequest/NextResponse, tự gắn lại locale.
 export function proxy(request: NextRequest) {
-  const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
-  const isAuthenticated = request.cookies.has(ACCESS_TOKEN_COOKIE);
+  const session = readSessionState({
+    accessToken: request.cookies.get(ACCESS_TOKEN_COOKIE)?.value,
+    refreshToken: request.cookies.get(REFRESH_TOKEN_COOKIE)?.value,
+  });
   const localePrefix = detectLocalePrefix(request.nextUrl.pathname);
   const pathWithoutLocale = stripLocalePrefix(request.nextUrl.pathname);
 
   const redirectTo = decideAuthRedirect({
     pathname: pathWithoutLocale,
     search: request.nextUrl.search,
-    isAuthenticated,
-    role: readJwtRole(accessToken),
+    ...session,
   });
   if (redirectTo) {
     return NextResponse.redirect(new URL(withLocalePrefix(localePrefix, redirectTo), request.url));

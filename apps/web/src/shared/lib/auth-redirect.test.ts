@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { decideAuthRedirect, PROTECTED_PATH_PREFIXES } from './auth-redirect';
+import { decideAuthRedirect, PROTECTED_PATH_PREFIXES, readSessionState } from './auth-redirect';
 
 describe('decideAuthRedirect', () => {
   describe('guest vào route cần đăng nhập', () => {
@@ -255,6 +255,149 @@ describe('decideAuthRedirect', () => {
 
     it('/ -> không redirect', () => {
       expect(decideAuthRedirect({ pathname: '/', search: '', isAuthenticated: true })).toBeNull();
+    });
+  });
+});
+
+// Hai vị từ phiên (Week10.md 2.1): access_token (15 phút) quyết định "đã đăng nhập thật" cho route CHỈ DÀNH
+// CHO KHÁCH; access_token HOẶC refresh_token (7 ngày) quyết định "còn dấu vết phiên" cho route CẦN ĐĂNG NHẬP.
+describe('decideAuthRedirect — hai vị từ phiên', () => {
+  describe('chỉ còn refresh_token (access_token đã hết hạn và bị trình duyệt xoá)', () => {
+    const refreshOnly = { isAuthenticated: false, hasSessionTrace: true };
+
+    it.each(PROTECTED_PATH_PREFIXES.filter((prefix) => prefix !== '/admin'))(
+      '%s -> KHÔNG redirect (để client kịp gia hạn phiên thay vì bị đẩy ra /login)',
+      (prefix) => {
+        expect(
+          decideAuthRedirect({ pathname: prefix, search: '', role: 'USER', ...refreshOnly }),
+        ).toBeNull();
+      },
+    );
+
+    it('/orders và /seller/products -> được vào', () => {
+      expect(decideAuthRedirect({ pathname: '/orders', search: '', ...refreshOnly })).toBeNull();
+      expect(
+        decideAuthRedirect({ pathname: '/seller/products', search: '', ...refreshOnly }),
+      ).toBeNull();
+    });
+
+    it('refresh_token của ADMIN -> vào được /admin/* (role đọc từ refresh_token)', () => {
+      expect(
+        decideAuthRedirect({
+          pathname: '/admin/shops',
+          search: '',
+          role: 'ADMIN',
+          ...refreshOnly,
+        }),
+      ).toBeNull();
+    });
+
+    it('refresh_token của USER -> /admin/* vẫn bị đẩy về "/"', () => {
+      expect(
+        decideAuthRedirect({
+          pathname: '/admin/shops',
+          search: '',
+          role: 'USER',
+          ...refreshOnly,
+        }),
+      ).toBe('/');
+    });
+
+    it('refresh_token không đọc được role -> /admin/* về "/" (không mặc định cho vào)', () => {
+      expect(
+        decideAuthRedirect({ pathname: '/admin', search: '', role: null, ...refreshOnly }),
+      ).toBe('/');
+    });
+
+    it.each(['/login', '/register'])(
+      'refresh_token cũ/đã thu hồi + KHÔNG có access_token -> %s vẫn vào được (không bị đẩy đi mãi, không khoá người dùng khỏi đăng nhập lại)',
+      (pathname) => {
+        expect(decideAuthRedirect({ pathname, search: '', ...refreshOnly })).toBeNull();
+        expect(
+          decideAuthRedirect({
+            pathname,
+            search: `?next=${encodeURIComponent('/orders')}`,
+            ...refreshOnly,
+          }),
+        ).toBeNull();
+      },
+    );
+  });
+
+  describe('không có cookie nào', () => {
+    it('route cần đăng nhập -> /login?next=', () => {
+      expect(
+        decideAuthRedirect({
+          pathname: '/orders',
+          search: '',
+          isAuthenticated: false,
+          hasSessionTrace: false,
+        }),
+      ).toBe('/login?next=%2Forders');
+    });
+  });
+
+  describe('có access_token', () => {
+    it('không truyền hasSessionTrace -> mặc định bằng isAuthenticated (tương thích ngược)', () => {
+      expect(
+        decideAuthRedirect({ pathname: '/orders', search: '', isAuthenticated: true }),
+      ).toBeNull();
+      expect(decideAuthRedirect({ pathname: '/login', search: '', isAuthenticated: true })).toBe(
+        '/',
+      );
+    });
+  });
+});
+
+describe('readSessionState', () => {
+  // JWT giả chỉ cần payload đọc được: header.payload.signature, payload là base64url của { sub, role }.
+  const jwtWithRole = (role: string) =>
+    `h.${btoa(JSON.stringify({ sub: 'u1', role }))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')}.s`;
+
+  it('không cookie nào -> không đăng nhập, không dấu vết, không role', () => {
+    expect(readSessionState({})).toEqual({
+      isAuthenticated: false,
+      hasSessionTrace: false,
+      role: null,
+    });
+  });
+
+  it('chỉ access_token -> đăng nhập + có dấu vết, role từ access_token', () => {
+    expect(readSessionState({ accessToken: jwtWithRole('ADMIN') })).toEqual({
+      isAuthenticated: true,
+      hasSessionTrace: true,
+      role: 'ADMIN',
+    });
+  });
+
+  it('chỉ refresh_token -> KHÔNG coi là đăng nhập thật nhưng còn dấu vết; role đọc từ refresh_token', () => {
+    expect(readSessionState({ refreshToken: jwtWithRole('SELLER') })).toEqual({
+      isAuthenticated: false,
+      hasSessionTrace: true,
+      role: 'SELLER',
+    });
+  });
+
+  it('có cả hai -> role ưu tiên access_token', () => {
+    expect(
+      readSessionState({ accessToken: jwtWithRole('ADMIN'), refreshToken: jwtWithRole('USER') }),
+    ).toMatchObject({ role: 'ADMIN' });
+  });
+
+  it('access_token hỏng -> rơi về role của refresh_token', () => {
+    expect(
+      readSessionState({ accessToken: 'khong-phai-jwt', refreshToken: jwtWithRole('ADMIN') }),
+    ).toMatchObject({ isAuthenticated: true, role: 'ADMIN' });
+  });
+
+  it('cookie rỗng coi như không có', () => {
+    expect(readSessionState({ accessToken: '', refreshToken: '' })).toEqual({
+      isAuthenticated: false,
+      hasSessionTrace: false,
+      role: null,
     });
   });
 });
