@@ -117,10 +117,15 @@
     "verifyEmailLogin": "Log in",
     "verifyEmailLoginToResend": "Log in to resend the verification email",
     "verifyEmailGenericError": "Email verification failed, please try again",
+    "verifyEmailSuccess": "Email verified successfully",
+    "verifyEmailInvalidOrExpired": "This verification link is invalid or has expired.",
 
     "resendVerificationSubmit": "Resend verification email",
     "resendVerificationSubmitting": "Sending...",
     "resendVerificationGenericError": "Failed to resend verification email, please try again",
+    "resendVerificationSuccess": "Verification email sent again",
+    "resendVerificationAlreadyVerified": "Your email is already verified",
+    "resendVerificationTooFast": "Please wait a moment before requesting another email",
 
     "emailVerificationBannerMessage": "Your email hasn't been verified yet."
   },
