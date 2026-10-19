@@ -6,14 +6,26 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, ShopStatus } from '@prisma/client';
+import type { ZodTypeAny, z } from 'zod';
 import {
   chatMessageContentSchema,
+  conversationListQuerySchema,
+  messageListQuerySchema,
   REALTIME_EVENTS,
+  type ChatCounterpart,
+  type ChatLastMessage,
   type ChatMessage,
   type ChatMessageEvent,
+  type ChatReadPayload,
   type ChatRole,
+  type ConversationList,
+  type ConversationListQuery,
   type ConversationSummary,
+  type MarkReadResult,
+  type MessageList,
+  type MessageListQuery,
   type SendMessageInput,
+  type UnreadCount,
 } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
@@ -34,13 +46,25 @@ import {
   type ChatShopInfo,
 } from './chat-directory';
 import { toPreview } from './chat-preview';
+import {
+  decodeChatCursor,
+  encodeChatCursor,
+  type ChatCursor,
+} from './chat-cursor';
+import {
+  countUnreadMessages,
+  findConversationDigests,
+  type ConversationDigest,
+} from './chat-queries';
 
-// Chỉ những cột dùng để dựng ConversationSummary — không kéo cả hàng.
+// Chỉ những cột dùng để dựng ConversationSummary và để đánh dấu đã đọc — không kéo cả hàng.
 const CONVERSATION_SELECT = {
   id: true,
   buyerId: true,
   shopId: true,
+  createdAt: true,
   buyerLastReadAt: true,
+  shopLastReadAt: true,
   lastMessageAt: true,
 } satisfies Prisma.ConversationSelect;
 type ConversationRow = Prisma.ConversationGetPayload<{
@@ -66,6 +90,21 @@ export type ChatActor =
   | { kind: 'BUYER'; userId: string }
   | { kind: 'SHOP'; userId: string; shopId: string };
 
+// Hộp thư đang xem: tập hội thoại cần liệt kê. Chủ shop mang theo ChatShopInfo đã xác nhận (đã kiểm sở hữu).
+type Inbox =
+  | { role: 'BUYER'; where: Prisma.ConversationWhereInput }
+  | {
+      role: 'SHOP';
+      where: Prisma.ConversationWhereInput;
+      shop: ChatShopInfo;
+    };
+
+// Đối phương của một hội thoại trong mắt người xem, và hội thoại có đang chỉ đọc không (shop không còn APPROVED).
+interface ConversationParty {
+  counterpart: ChatCounterpart;
+  isReadOnly: boolean;
+}
+
 export interface SendMessageResult {
   message: ChatMessage;
   // true = gửi lại một tin ĐÃ được nhận (cùng clientMessageId): trả tin cũ, không ghi và không đẩy lại. Controller
@@ -75,7 +114,7 @@ export interface SendMessageResult {
 
 // Nghiệp vụ chat (Week10.md Bước 4). Module `chat` KHÔNG import module nghiệp vụ nào khác
 // (module-boundaries.spec.ts): thông tin shop đi qua cổng ChatDirectory, còn bảng của chính chat đọc/ghi thẳng
-// bằng Prisma với `select` hẹp. Hiện có: mở hội thoại (4.3), gửi tin (4.4); đọc ở 4.5.
+// bằng Prisma với `select` hẹp. Hiện có: mở hội thoại (4.3), gửi tin (4.4), đọc/đánh dấu đã đọc (4.5).
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -208,6 +247,285 @@ export class ChatService {
     };
   }
 
+  // Danh sách hội thoại của MỘT phía (Week10.md 4.5): người mua xem các shop mình đã nhắn, chủ shop xem những người
+  // đã nhắn shop mình (`actor.shopId`, được xác nhận lại với DB). Chỉ hội thoại ĐÃ có tin, tin mới nhất trước,
+  // phân trang theo con trỏ (lastMessageAt, id). Tin cuối và số chưa đọc của cả trang lấy bằng MỘT truy vấn nhóm,
+  // thông tin đối phương bằng MỘT lượt tra danh bạ — số truy vấn không phụ thuộc số hội thoại. Hội thoại của shop
+  // đã bị khoá vẫn hiện (`isReadOnly`) để người mua đọc lại lịch sử.
+  async listConversations(
+    actor: ChatActor,
+    input: ConversationListQuery,
+  ): Promise<ConversationList> {
+    const query = this.parseQuery(conversationListQuerySchema, input);
+    const cursor = this.decodeCursor(query.before);
+    const inbox = await this.resolveInbox(actor);
+
+    const rows = await this.prisma.conversation.findMany({
+      where: {
+        ...inbox.where,
+        lastMessageAt: { not: null },
+        ...(cursor
+          ? {
+              OR: [
+                { lastMessageAt: { lt: cursor.at } },
+                { lastMessageAt: cursor.at, id: { lt: cursor.id } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ lastMessageAt: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
+      select: CONVERSATION_SELECT,
+    });
+    const hasMore = rows.length > query.limit;
+    const page = rows.slice(0, query.limit);
+    if (page.length === 0) return { items: [], nextCursor: null };
+
+    const [digests, parties] = await Promise.all([
+      findConversationDigests(
+        this.prisma,
+        page.map((conversation) => conversation.id),
+        inbox.role,
+      ),
+      this.loadParties(inbox, page),
+    ]);
+    const digestById = new Map(digests.map((d) => [d.conversationId, d]));
+
+    const items: ConversationSummary[] = [];
+    for (const conversation of page) {
+      const digest = digestById.get(conversation.id);
+      const party = parties.get(conversation.id);
+      // Không thể xảy ra (hội thoại có `lastMessageAt` thì có tin, shop/người dùng không bị xoá riêng lẻ), nhưng
+      // một dòng thiếu dữ liệu không được làm hỏng cả trang.
+      if (!digest || !party || !conversation.lastMessageAt) continue;
+      items.push({
+        id: conversation.id,
+        shopId: conversation.shopId,
+        counterpart: party.counterpart,
+        lastMessage: this.toLastMessage(digest, conversation.buyerId),
+        lastMessageAt: conversation.lastMessageAt.toISOString(),
+        unreadCount: digest.unreadCount,
+        isReadOnly: party.isReadOnly,
+      });
+    }
+
+    const last = page[page.length - 1];
+    return {
+      items,
+      nextCursor:
+        hasMore && last?.lastMessageAt
+          ? encodeChatCursor({ at: last.lastMessageAt, id: last.id })
+          : null,
+    };
+  }
+
+  // Một trang tin của hội thoại, MỚI NHẤT trước; `nextCursor` = con trỏ của tin cuối trang (null = hết). Cho phép
+  // cả khi shop không còn APPROVED (chế độ chỉ đọc). Không phải thành viên ⇒ 404. `clientMessageId` chỉ có trên
+  // tin do chính người xem gửi (để đối chiếu tin tạm sau khi tải lại trang).
+  async listMessages(
+    actor: ChatActor,
+    conversationId: string,
+    input: MessageListQuery,
+  ): Promise<MessageList> {
+    const query = this.parseQuery(messageListQuerySchema, input);
+    const cursor = this.decodeCursor(query.before);
+    const { conversation } = await this.requireParticipant(
+      actor,
+      conversationId,
+    );
+
+    const rows = await this.prisma.message.findMany({
+      where: {
+        conversationId: conversation.id,
+        ...(cursor
+          ? {
+              OR: [
+                { createdAt: { lt: cursor.at } },
+                { createdAt: cursor.at, id: { lt: cursor.id } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
+      select: MESSAGE_SELECT,
+    });
+    const hasMore = rows.length > query.limit;
+    const page = rows.slice(0, query.limit);
+    const last = page[page.length - 1];
+
+    return {
+      items: page.map((row) =>
+        this.toChatMessage(
+          row,
+          conversation.buyerId,
+          row.senderId === actor.userId,
+        ),
+      ),
+      nextCursor:
+        hasMore && last
+          ? encodeChatCursor({ at: last.createdAt, id: last.id })
+          : null,
+    };
+  }
+
+  // Đánh dấu "đã đọc tới" tin mới nhất của hội thoại (Week10.md 4.5, D7). Mốc là `lastMessageAt` của hội thoại,
+  // KHÔNG phải "bây giờ". `created_at` của tin do query engine của Prisma đóng dấu trong tiến trình API ngay khi
+  // bắt đầu request (không phải DB đặt), nên mốc "bây giờ" có hai kẽ hở: (1) giữa lúc đóng dấu và lúc commit có
+  // khoảng trễ — một tin đã đóng dấu nhưng chưa commit sẽ hiện ra sau với `createdAt` nhỏ hơn mốc và bị coi là đã
+  // đọc dù người dùng chưa thấy; (2) chạy nhiều instance thì đồng hồ mỗi nơi lệch nhau. `lastMessageAt` không bao
+  // giờ vượt tin mới nhất đã commit nên không "ăn" tin nào chưa tới. Mốc CHỈ TĂNG: UPDATE có điều kiện
+  // (NULL hoặc cũ hơn) nên gọi lại, gọi đồng thời hay gọi sau khi đã đọc xa hơn đều không bao giờ làm mốc lùi.
+  // `chat:read` chỉ được đẩy khi mốc THẬT SỰ nhích lên và chỉ tới ĐÚNG đối phương (suy ra từ DB): gọi lặp không
+  // spam, và hội thoại chưa có tin (đối phương chưa hề thấy nó tồn tại) không lộ gì.
+  async markRead(
+    actor: ChatActor,
+    conversationId: string,
+  ): Promise<MarkReadResult> {
+    const { conversation, shop, role } = await this.requireParticipant(
+      actor,
+      conversationId,
+    );
+    const current =
+      role === 'BUYER'
+        ? conversation.buyerLastReadAt
+        : conversation.shopLastReadAt;
+    const target = conversation.lastMessageAt;
+    if (!target) {
+      return { readAt: (current ?? conversation.createdAt).toISOString() };
+    }
+
+    const advanced = await this.advanceReadMark(
+      this.prisma,
+      conversation.id,
+      role,
+      target,
+    );
+    const readAt = current && current > target ? current : target;
+    if (advanced) {
+      await this.publishRead(
+        role === 'BUYER' ? shop.ownerId : conversation.buyerId,
+        { conversationId: conversation.id, readAt: target.toISOString() },
+      );
+    }
+    return { readAt: readAt.toISOString() };
+  }
+
+  // Tổng số tin chưa đọc cho huy hiệu — mỗi vai một con số (người mua: mọi hội thoại của mình; chủ shop: mọi hội
+  // thoại của shop). Đếm bằng truy vấn so với mốc đã đọc, không có bộ đếm phi chuẩn hoá (D7).
+  async unreadCount(actor: ChatActor): Promise<UnreadCount> {
+    if (actor.kind === 'BUYER') {
+      return {
+        unreadCount: await countUnreadMessages(this.prisma, {
+          viewer: 'BUYER',
+          userId: actor.userId,
+        }),
+      };
+    }
+    const shop = await this.requireOwnedShop(actor);
+    return {
+      unreadCount: await countUnreadMessages(this.prisma, {
+        viewer: 'SHOP',
+        shopId: shop.id,
+      }),
+    };
+  }
+
+  private parseQuery<S extends ZodTypeAny>(
+    schema: S,
+    input: unknown,
+  ): z.output<S> {
+    const parsed = schema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException(
+        parsed.error.issues[0]?.message ?? 'Invalid query',
+      );
+    }
+    return parsed.data as z.output<S>;
+  }
+
+  private decodeCursor(before: string | undefined): ChatCursor | null {
+    if (before === undefined) return null;
+    const cursor = decodeChatCursor(before);
+    if (!cursor) throw new BadRequestException('Invalid cursor');
+    return cursor;
+  }
+
+  // Chủ shop xem hộp thư của shop `actor.shopId`: kiểm lại với DB rằng shop có thật VÀ người gọi là chủ hiện tại
+  // (guard ở controller đã kiểm, service không tin). Không phải ⇒ 404. KHÔNG đòi shop APPROVED — shop bị khoá vẫn
+  // đọc được hộp thư của mình ở chế độ chỉ đọc.
+  private async requireOwnedShop(
+    actor: Extract<ChatActor, { kind: 'SHOP' }>,
+  ): Promise<ChatShopInfo> {
+    const shop = await this.directory.getShopForChat(actor.shopId);
+    if (!shop || shop.ownerId !== actor.userId) {
+      throw new NotFoundException('Shop not found');
+    }
+    return shop;
+  }
+
+  private async resolveInbox(actor: ChatActor): Promise<Inbox> {
+    if (actor.kind === 'BUYER') {
+      return { role: 'BUYER', where: { buyerId: actor.userId } };
+    }
+    const shop = await this.requireOwnedShop(actor);
+    return { role: 'SHOP', where: { shopId: shop.id }, shop };
+  }
+
+  // Đối phương và trạng thái chỉ đọc của từng hội thoại trong trang, bằng MỘT lượt tra danh bạ. Người mua thấy
+  // tên + logo shop; chủ shop thấy tên người mua (không logo — người dùng chưa có ảnh đại diện).
+  private async loadParties(
+    inbox: Inbox,
+    page: ConversationRow[],
+  ): Promise<Map<string, ConversationParty>> {
+    const parties = new Map<string, ConversationParty>();
+    if (inbox.role === 'SHOP') {
+      const buyers = new Map(
+        (
+          await this.directory.getUserDisplay(
+            page.map((conversation) => conversation.buyerId),
+          )
+        ).map((user) => [user.id, user]),
+      );
+      for (const conversation of page) {
+        const buyer = buyers.get(conversation.buyerId);
+        if (!buyer) continue;
+        parties.set(conversation.id, {
+          counterpart: { name: buyer.name, logoUrl: null },
+          isReadOnly: inbox.shop.status !== ShopStatus.APPROVED,
+        });
+      }
+      return parties;
+    }
+    const shops = new Map(
+      (
+        await this.directory.getShopsForChat(
+          page.map((conversation) => conversation.shopId),
+        )
+      ).map((shop) => [shop.id, shop]),
+    );
+    for (const conversation of page) {
+      const shop = shops.get(conversation.shopId);
+      if (!shop) continue;
+      parties.set(conversation.id, {
+        counterpart: { name: shop.name, logoUrl: shop.logoUrl },
+        isReadOnly: shop.status !== ShopStatus.APPROVED,
+      });
+    }
+    return parties;
+  }
+
+  private toLastMessage(
+    digest: ConversationDigest,
+    buyerId: string,
+  ): ChatLastMessage {
+    return {
+      content: toPreview(digest.content),
+      senderRole: roleOf(digest.senderId, buyerId),
+      createdAt: digest.createdAt.toISOString(),
+    };
+  }
+
   private parseContent(raw: string): string {
     const parsed = chatMessageContentSchema.safeParse(raw);
     if (!parsed.success) {
@@ -326,22 +644,55 @@ export class ChatService {
       },
       data: { lastMessageAt: at },
     });
-    if (role === 'BUYER') {
-      await tx.conversation.updateMany({
-        where: {
-          id: conversationId,
-          OR: [{ buyerLastReadAt: null }, { buyerLastReadAt: { lt: at } }],
-        },
-        data: { buyerLastReadAt: at },
-      });
-    } else {
-      await tx.conversation.updateMany({
-        where: {
-          id: conversationId,
-          OR: [{ shopLastReadAt: null }, { shopLastReadAt: { lt: at } }],
-        },
-        data: { shopLastReadAt: at },
-      });
+    await this.advanceReadMark(tx, conversationId, role, at);
+  }
+
+  // Đưa mốc "đã đọc tới" của một phía lên `at` — CHỈ TĂNG: UPDATE có điều kiện (mốc NULL hoặc cũ hơn), không
+  // đọc-rồi-ghi, nên hai lần gọi đồng thời hay một lần gọi muộn không bao giờ làm mốc lùi. Trả về mốc có thực sự
+  // nhích lên không (false = đã ở mức đó hoặc cao hơn).
+  private async advanceReadMark(
+    client: Prisma.TransactionClient,
+    conversationId: string,
+    role: ChatRole,
+    at: Date,
+  ): Promise<boolean> {
+    const result =
+      role === 'BUYER'
+        ? await client.conversation.updateMany({
+            where: {
+              id: conversationId,
+              OR: [{ buyerLastReadAt: null }, { buyerLastReadAt: { lt: at } }],
+            },
+            data: { buyerLastReadAt: at },
+          })
+        : await client.conversation.updateMany({
+            where: {
+              id: conversationId,
+              OR: [{ shopLastReadAt: null }, { shopLastReadAt: { lt: at } }],
+            },
+            data: { shopLastReadAt: at },
+          });
+    return result.count > 0;
+  }
+
+  // Đẩy `chat:read` tới ĐÚNG đối phương (id suy ra từ DB, không từ client). Payload chỉ có id hội thoại và mốc thời
+  // gian — không nội dung, không tên. Chạy SAU khi mốc đã ghi và KHÔNG BAO GIỜ ném (rules/backend.md mục 4).
+  private async publishRead(
+    recipientId: string,
+    payload: ChatReadPayload,
+  ): Promise<void> {
+    try {
+      await this.realtime.emitToUser(
+        recipientId,
+        REALTIME_EVENTS.chatRead,
+        payload,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Pushing chat read mark for conversation ${payload.conversationId} failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
