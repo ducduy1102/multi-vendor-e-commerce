@@ -37,7 +37,16 @@ export type RealtimeMiddleware = (
   next: (error?: Error) => void,
 ) => void;
 
+// Một nhóm socket (phòng) mà server có thể phát tới, liệt kê hoặc ngắt — khớp BroadcastOperator của socket.io.
+export interface RealtimeRoom {
+  emit(event: string, ...args: unknown[]): unknown;
+  fetchSockets(): Promise<RealtimeSocketHandle[]>;
+  // Với adapter trong bộ nhớ trả void; với adapter nhiều instance có thể trả Promise nên nơi gọi `await`.
+  disconnectSockets(close?: boolean): unknown;
+}
+
 export interface RealtimeServer {
   use(middleware: RealtimeMiddleware): unknown;
-  in(room: string): { fetchSockets(): Promise<RealtimeSocketHandle[]> };
+  in(room: string): RealtimeRoom;
+  to(room: string): RealtimeRoom;
 }

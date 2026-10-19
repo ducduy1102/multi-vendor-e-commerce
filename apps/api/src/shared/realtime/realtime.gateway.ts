@@ -6,12 +6,13 @@ import {
   type OnGatewayDisconnect,
   type OnGatewayInit,
 } from '@nestjs/websockets';
-import { REALTIME_EVENTS } from '@ecommerce/types';
+import { REALTIME_EVENTS, type RealtimeEventName } from '@ecommerce/types';
 import {
   authenticateHandshake,
   type HandshakeAuthResult,
 } from './authenticate-handshake';
 import { RealtimeAccessService } from './realtime-access.service';
+import type { RealtimeEmitter } from './realtime-emitter';
 import {
   REALTIME_CONNECT_TIMEOUT_MS,
   REALTIME_MAX_HTTP_BUFFER_BYTES,
@@ -54,7 +55,8 @@ export class RealtimeGateway
     OnGatewayInit,
     OnGatewayConnection,
     OnGatewayDisconnect,
-    OnModuleDestroy
+    OnModuleDestroy,
+    RealtimeEmitter
 {
   private readonly logger = new Logger(RealtimeGateway.name);
   private readonly expiryTimers = new Map<string, NodeJS.Timeout>();
@@ -100,6 +102,42 @@ export class RealtimeGateway
 
   handleDisconnect(client: RealtimeSocket): void {
     this.clearExpiry(client.id);
+  }
+
+  // --- RealtimeEmitter (cổng cho các service nghiệp vụ, được cấp qua token REALTIME_EMITTER) ---
+  // Best-effort theo đúng hợp đồng của giao diện: không bao giờ reject. `server` chỉ được Nest gán khi ứng
+  // dụng HTTP đã khởi tạo (Nest bỏ qua gateway ở ngữ cảnh không có HTTP như nhiều integration test, hay trước
+  // `app.init()`) — lúc đó không có ai để gửi tới, không phải lỗi.
+  emitToUser(
+    userId: string,
+    event: RealtimeEventName,
+    payload?: unknown,
+  ): Promise<void> {
+    // Phát với adapter trong bộ nhớ là đồng bộ; giao diện trả Promise để bản cài đặt từ xa sau này dùng được.
+    if (!this.server) return Promise.resolve();
+    try {
+      const room = this.server.to(userRoom(userId));
+      // Không gửi tham số thừa khi sự kiện không có payload (vd auth:expired).
+      if (payload === undefined) room.emit(event);
+      else room.emit(event, payload);
+    } catch (error) {
+      // Chỉ log tên sự kiện và id — không bao giờ log payload (có thể chứa dữ liệu của người dùng).
+      this.logger.error(
+        `Realtime emit "${event}" failed for user ${userId}: ${errorMessage(error)}`,
+      );
+    }
+    return Promise.resolve();
+  }
+
+  async disconnectUser(userId: string): Promise<void> {
+    if (!this.server) return;
+    try {
+      await this.server.in(userRoom(userId)).disconnectSockets(true);
+    } catch (error) {
+      this.logger.error(
+        `Realtime disconnect failed for user ${userId}: ${errorMessage(error)}`,
+      );
+    }
   }
 
   onModuleDestroy(): void {

@@ -73,7 +73,12 @@ describe('RealtimeGateway', () => {
   let access: RealtimeAccessService;
   let authenticator: { verifyToken: jest.Mock; isUserActive: jest.Mock };
   let fetchSockets: jest.Mock;
-  let server: { use: jest.Mock; in: jest.Mock };
+  let room: {
+    emit: jest.Mock;
+    fetchSockets: jest.Mock;
+    disconnectSockets: jest.Mock;
+  };
+  let server: { use: jest.Mock; in: jest.Mock; to: jest.Mock };
   let gateway: RealtimeGateway;
   let middleware: RealtimeMiddleware;
   let errorLog: jest.SpyInstance;
@@ -96,9 +101,11 @@ describe('RealtimeGateway', () => {
       isUserActive: jest.fn().mockResolvedValue(true),
     };
     fetchSockets = jest.fn().mockResolvedValue([]);
+    room = { emit: jest.fn(), fetchSockets, disconnectSockets: jest.fn() };
     server = {
       use: jest.fn(),
-      in: jest.fn().mockReturnValue({ fetchSockets }),
+      in: jest.fn().mockReturnValue(room),
+      to: jest.fn().mockReturnValue(room),
     };
     gateway = new RealtimeGateway(access, authenticator);
     // Nest gán `server` qua @WebSocketServer(); trong test gán thẳng.
@@ -109,8 +116,10 @@ describe('RealtimeGateway', () => {
 
   afterEach(() => {
     gateway.onModuleDestroy();
-    jest.useRealTimers();
+    // Gỡ spy TRƯỚC khi trả đồng hồ thật: spy trên setTimeout được dựng lúc đồng hồ giả đang chạy, nên gỡ sau sẽ
+    // đặt lại chính bản setTimeout GIẢ lên global và làm các test dùng setTimeout thật ở sau treo.
     jest.restoreAllMocks();
+    jest.useRealTimers();
     for (const [name, value] of Object.entries(originalEnv)) {
       if (value === undefined) delete process.env[name];
       else process.env[name] = value;
@@ -437,6 +446,121 @@ describe('RealtimeGateway', () => {
       jest.advanceTimersByTime(120_000);
 
       expect(client.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cổng phát sự kiện (RealtimeEmitter)', () => {
+    const PAYLOAD = {
+      conversationId: '2c6f6d3a-8d4b-4f55-9a52-0d9a2b6a7c11',
+      readAt: '2030-01-01T00:00:00.000Z',
+    };
+
+    describe('emitToUser', () => {
+      it('phát đúng sự kiện + payload tới ĐÚNG phòng của người dùng đó, không phòng nào khác', async () => {
+        await gateway.emitToUser('user-1', REALTIME_EVENTS.chatRead, PAYLOAD);
+
+        expect(server.to).toHaveBeenCalledTimes(1);
+        expect(server.to).toHaveBeenCalledWith('user:user-1');
+        expect(room.emit).toHaveBeenCalledTimes(1);
+        expect(room.emit).toHaveBeenCalledWith(
+          REALTIME_EVENTS.chatRead,
+          PAYLOAD,
+        );
+        expect(server.in).not.toHaveBeenCalled();
+      });
+
+      it('người nhận khác ⇒ phòng khác (không bao giờ quảng bá toàn bộ)', async () => {
+        await gateway.emitToUser('user-2', REALTIME_EVENTS.notificationNew, {});
+
+        expect(server.to).toHaveBeenCalledWith('user:user-2');
+        expect(server.to).not.toHaveBeenCalledWith('user:user-1');
+      });
+
+      it('sự kiện không có payload thì không gửi tham số thừa', async () => {
+        await gateway.emitToUser('user-1', REALTIME_EVENTS.authExpired);
+
+        expect(room.emit).toHaveBeenCalledWith(REALTIME_EVENTS.authExpired);
+        expect(room.emit.mock.calls[0]).toHaveLength(1);
+      });
+
+      it('chưa có server Socket.io (ngữ cảnh không có HTTP, hoặc trước app.init) ⇒ không làm gì, không ném', async () => {
+        const detached = new RealtimeGateway(access, authenticator);
+
+        await expect(
+          detached.emitToUser('user-1', REALTIME_EVENTS.chatRead, PAYLOAD),
+        ).resolves.toBeUndefined();
+      });
+
+      it('phát lỗi ⇒ KHÔNG reject; chỉ log tên sự kiện + id, không bao giờ log payload', async () => {
+        room.emit.mockImplementation(() => {
+          throw new Error('adapter broke');
+        });
+
+        await expect(
+          gateway.emitToUser('user-1', REALTIME_EVENTS.chatRead, {
+            secret: 'noi-dung-rieng-tu',
+          }),
+        ).resolves.toBeUndefined();
+
+        expect(errorLog).toHaveBeenCalledTimes(1);
+        const logged = JSON.stringify(errorLog.mock.calls);
+        expect(logged).toContain('chat:read');
+        expect(logged).toContain('user-1');
+        expect(logged).toContain('adapter broke');
+        expect(logged).not.toContain('noi-dung-rieng-tu');
+      });
+    });
+
+    describe('disconnectUser', () => {
+      it('đóng mọi kết nối trong phòng của đúng người dùng đó', async () => {
+        await gateway.disconnectUser('user-1');
+
+        expect(server.in).toHaveBeenCalledTimes(1);
+        expect(server.in).toHaveBeenCalledWith('user:user-1');
+        expect(room.disconnectSockets).toHaveBeenCalledTimes(1);
+        expect(room.disconnectSockets).toHaveBeenCalledWith(true);
+        expect(server.to).not.toHaveBeenCalled();
+      });
+
+      it('chờ adapter bất đồng bộ (nhiều instance) hoàn tất rồi mới resolve', async () => {
+        let finished = false;
+        room.disconnectSockets.mockReturnValue(
+          new Promise<void>((resolve) =>
+            setTimeout(() => {
+              finished = true;
+              resolve();
+            }, 10),
+          ),
+        );
+
+        await gateway.disconnectUser('user-1');
+
+        expect(finished).toBe(true);
+      });
+
+      it('chưa có server ⇒ không làm gì, không ném', async () => {
+        const detached = new RealtimeGateway(access, authenticator);
+
+        await expect(
+          detached.disconnectUser('user-1'),
+        ).resolves.toBeUndefined();
+      });
+
+      it('ngắt lỗi (đồng bộ hoặc bất đồng bộ) ⇒ KHÔNG reject, chỉ log id', async () => {
+        room.disconnectSockets.mockImplementationOnce(() => {
+          throw new Error('sync boom');
+        });
+        await expect(gateway.disconnectUser('user-1')).resolves.toBeUndefined();
+
+        room.disconnectSockets.mockRejectedValueOnce(new Error('async boom'));
+        await expect(gateway.disconnectUser('user-1')).resolves.toBeUndefined();
+
+        expect(errorLog).toHaveBeenCalledTimes(2);
+        const logged = JSON.stringify(errorLog.mock.calls);
+        expect(logged).toContain('user-1');
+        expect(logged).toContain('sync boom');
+        expect(logged).toContain('async boom');
+      });
     });
   });
 });
