@@ -13,6 +13,7 @@ describe('AllExceptionsFilter', () => {
   let filter: AllExceptionsFilter;
   let status: jest.Mock;
   let json: jest.Mock;
+  let logged: jest.SpyInstance;
 
   const catchWith = (exception: unknown) => {
     const host = {
@@ -29,7 +30,9 @@ describe('AllExceptionsFilter', () => {
     filter = new AllExceptionsFilter();
     json = jest.fn();
     status = jest.fn(() => ({ json }));
-    jest.spyOn(filter['logger'], 'error').mockImplementation(() => undefined);
+    logged = jest
+      .spyOn(filter['logger'], 'error')
+      .mockImplementation(() => undefined);
   });
 
   describe('lỗi KHÔNG có mã — body y hệt cũ (không có key code/details)', () => {
@@ -132,5 +135,102 @@ describe('AllExceptionsFilter', () => {
     const { body } = catchWith(new ConflictException('SKU already exists'));
 
     expect(body[0]).not.toHaveProperty('code');
+  });
+
+  // Lỗi 4xx của thư viện HTTP (body-parser...) là đối tượng kiểu `http-errors`, không phải HttpException.
+  describe('lỗi 4xx kiểu http-errors (ném ra ngoài Nest)', () => {
+    const httpError = (props: Record<string, unknown>, message = 'boom') =>
+      Object.assign(new Error(message), props);
+    const GENERIC = 'Đã có lỗi xảy ra, vui lòng thử lại sau';
+
+    it('body quá lớn (413, expose) ⇒ đúng status và thông điệp của thư viện, body đúng hình, KHÔNG log', () => {
+      const { status: s, body } = catchWith(
+        httpError(
+          {
+            status: 413,
+            statusCode: 413,
+            expose: true,
+            type: 'entity.too.large',
+          },
+          'request entity too large',
+        ),
+      );
+
+      expect(s).toEqual([413]);
+      expect(body).toStrictEqual([
+        { success: false, data: null, message: 'request entity too large' },
+      ]);
+      expect(logged).not.toHaveBeenCalled();
+    });
+
+    it('chỉ có `status` hoặc chỉ có `statusCode` đều nhận; có cả hai thì ưu tiên `statusCode`', () => {
+      expect(
+        catchWith(httpError({ status: 415, expose: true })).status,
+      ).toEqual([415]);
+      jest.clearAllMocks();
+      expect(
+        catchWith(httpError({ statusCode: 400, expose: true })).status,
+      ).toEqual([400]);
+      jest.clearAllMocks();
+      expect(
+        catchWith(httpError({ statusCode: 413, status: 400, expose: true }))
+          .status,
+      ).toEqual([413]);
+    });
+
+    it.each([
+      ['không có expose', { status: 413 }],
+      ['expose = false', { status: 413, expose: false }],
+      ['expose là chuỗi "true"', { status: 413, expose: 'true' }],
+      ['status 5xx', { status: 503, expose: true }],
+      ['status 399', { status: 399, expose: true }],
+      ['status 600', { status: 600, expose: true }],
+      ['status là chuỗi', { status: '413', expose: true }],
+      ['status thập phân', { status: 413.5, expose: true }],
+      ['status NaN', { status: NaN, expose: true }],
+      ['không có status', { expose: true }],
+    ])(
+      '%s ⇒ vẫn là lỗi hệ thống 500, thông điệp chung, có log (không lộ thông điệp gốc)',
+      (_name, props) => {
+        const { status: s, body } = catchWith(
+          httpError(props, 'chi tiết nội bộ'),
+        );
+
+        expect(s).toEqual([500]);
+        expect(body).toStrictEqual([
+          { success: false, data: null, message: GENERIC },
+        ]);
+        expect(logged).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('lỗi của HTTP client gọi dịch vụ ngoài (có status 4xx nhưng không có expose) KHÔNG bị đưa thông điệp ra response', () => {
+      const upstream = httpError(
+        { status: 401, response: { data: 'api key sk_live_123 invalid' } },
+        'Request failed with status code 401: api key sk_live_123 invalid',
+      );
+
+      const { status: s, body } = catchWith(upstream);
+
+      expect(s).toEqual([500]);
+      expect(JSON.stringify(body)).not.toContain('sk_live_123');
+    });
+
+    it('message không phải chuỗi ⇒ 500 chung', () => {
+      const { status: s } = catchWith({
+        status: 413,
+        expose: true,
+        message: 42,
+      });
+
+      expect(s).toEqual([500]);
+    });
+
+    it('giá trị không phải object (chuỗi, null, undefined) ⇒ 500 chung, không ném', () => {
+      for (const value of ['lỗi', null, undefined, 413]) {
+        jest.clearAllMocks();
+        expect(catchWith(value).status).toEqual([500]);
+      }
+    });
   });
 });
