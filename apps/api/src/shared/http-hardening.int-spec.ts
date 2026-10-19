@@ -57,7 +57,9 @@ describe('Bảo vệ tầng HTTP (HTTP thật)', () => {
     app.use(cookieParser());
     app.useGlobalInterceptors(new TransformResponseInterceptor());
     app.useGlobalFilters(new AllExceptionsFilter());
-    await app.init();
+    // Listen một lần (cổng ngẫu nhiên): supertest với server chưa listen tự mở/đóng server theo từng request và có thể
+    // gây `read ECONNRESET` ngẫu nhiên ở CI Linux (xem chat.controller.int-spec.ts).
+    await app.listen(0);
   });
 
   afterEach(() => jest.restoreAllMocks());

@@ -183,7 +183,12 @@ describe('Chat controllers (HTTP thật)', () => {
     app.use(cookieParser());
     app.useGlobalInterceptors(new TransformResponseInterceptor());
     app.useGlobalFilters(new AllExceptionsFilter());
-    await app.init();
+    // LISTEN MỘT LẦN (cổng ngẫu nhiên) thay vì `init()`: với server chưa listen, supertest tự listen(0) rồi close() sau
+    // MỖI request, nên các request song song (Promise.all) và các request nối tiếp qua agent keep-alive có thể gặp
+    // `read ECONNRESET` khi một request kết thúc đóng server/kết nối đang rảnh ngay lúc request khác dùng lại nó
+    // (đã đỏ một lần ở CI Linux, không tái hiện được trên máy dev). Server nghe suốt vòng đời test thì không còn đóng
+    // mở giữa chừng. Các test e2e của dự án cũng dùng `listen(0)`.
+    await app.listen(0);
 
     guest = newAgent();
     buyer1 = await register('buyer1', true);
