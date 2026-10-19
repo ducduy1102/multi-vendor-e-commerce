@@ -1,4 +1,8 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { AccountStatus, OAuthProvider, Prisma, Role } from '@prisma/client';
@@ -6,7 +10,12 @@ import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
 import { MailService } from '../../shared/mail/mail.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { REALTIME_EMITTER } from '../../shared/realtime/realtime-emitter';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
+import {
+  createFakeRealtimeEmitter,
+  type FakeRealtimeEmitter,
+} from '../../shared/testing/fake-realtime-emitter';
 import { EMAIL_VERIFICATION_RESEND_COOLDOWN_MS } from './auth.constants';
 import { AuthService, FORGOT_PASSWORD_MESSAGE } from './auth.service';
 
@@ -45,6 +54,7 @@ describe('AuthService', () => {
       create: jest.Mock;
     };
   };
+  let realtime: FakeRealtimeEmitter;
   let mailService: {
     sendVerificationEmail: jest.Mock;
     sendPasswordReset: jest.Mock;
@@ -94,12 +104,15 @@ describe('AuthService', () => {
       sendPasswordChanged: jest.fn().mockResolvedValue(undefined),
     };
 
+    realtime = createFakeRealtimeEmitter();
+
     const moduleRef = await Test.createTestingModule({
       imports: [JwtModule.register({})],
       providers: [
         AuthService,
         { provide: PrismaService, useValue: prisma },
         { provide: MailService, useValue: mailService },
+        { provide: REALTIME_EMITTER, useValue: realtime },
       ],
     }).compile();
 
@@ -1225,6 +1238,198 @@ describe('AuthService', () => {
       await expect(
         service.resetPassword({ token: TOKEN, newPassword: 'new-password-2' }),
       ).resolves.toMatchObject({ message: expect.any(String) as string });
+    });
+  });
+
+  // Thu hồi phiên ⇒ ngắt mọi kết nối real-time của người dùng (Week10.md 3.3). Best-effort: lỗi đẩy không được
+  // làm hỏng đăng xuất/đổi/đặt lại mật khẩu, và chỉ ngắt SAU KHI DB đã ghi xong.
+  describe('ngắt kết nối real-time khi thu hồi phiên', () => {
+    const OLD = 'old-password-1';
+    const TOKEN = 'a'.repeat(64);
+    const TOKEN_HASH = createHash('sha256').update(TOKEN).digest('hex');
+    let errorLog: jest.SpyInstance;
+
+    beforeEach(() => {
+      errorLog = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => {});
+      prisma.user.update.mockResolvedValue({});
+      prisma.user.updateMany.mockResolvedValue({ count: 1 });
+      mailService.sendPasswordChanged.mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      errorLog.mockRestore();
+    });
+
+    const arrangeChange = async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        passwordHash: await bcrypt.hash(OLD, 4),
+      });
+    };
+    const change = (currentPassword = OLD) =>
+      service.changePassword('user-1', {
+        currentPassword,
+        newPassword: 'new-password-2',
+      });
+    const arrangeReset = (overrides: Record<string, unknown> = {}) => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        passwordResetTokenHash: TOKEN_HASH,
+        passwordResetExpiresAt: new Date(Date.now() + 30 * 60_000),
+        ...overrides,
+      });
+    };
+    const reset = () =>
+      service.resetPassword({ token: TOKEN, newPassword: 'new-password-2' });
+
+    describe('logout', () => {
+      it('ngắt kết nối của đúng người dùng đó, SAU khi đã xoá refresh token trong DB', async () => {
+        const order: string[] = [];
+        prisma.user.update.mockImplementation(() => {
+          order.push('db');
+          return Promise.resolve({});
+        });
+        jest.spyOn(realtime, 'disconnectUser').mockImplementation((id) => {
+          order.push(`disconnect:${id}`);
+          return Promise.resolve();
+        });
+
+        await service.logout('user-1');
+
+        expect(order).toEqual(['db', 'disconnect:user-1']);
+      });
+
+      it('DB lỗi ⇒ ném lỗi và KHÔNG ngắt kết nối (phiên chưa thật sự bị thu hồi)', async () => {
+        prisma.user.update.mockRejectedValue(new Error('db down'));
+
+        await expect(service.logout('user-1')).rejects.toThrow('db down');
+
+        expect(realtime.disconnected).toEqual([]);
+      });
+
+      it('đẩy real-time lỗi ⇒ đăng xuất VẪN thành công, chỉ log id', async () => {
+        realtime.failWith(new Error('socket down'));
+
+        await expect(service.logout('user-1')).resolves.toBeUndefined();
+
+        expect(errorLog).toHaveBeenCalledTimes(1);
+        const logged = JSON.stringify(errorLog.mock.calls);
+        expect(logged).toContain('user-1');
+        expect(logged).toContain('socket down');
+      });
+    });
+
+    describe('changePassword', () => {
+      it('thành công ⇒ ngắt mọi kết nối của người dùng, vẫn cấp token mới cho phiên hiện tại và gửi mail', async () => {
+        await arrangeChange();
+
+        const result = await change();
+
+        expect(realtime.disconnected).toEqual(['user-1']);
+        expect(result.accessToken).toEqual(expect.any(String));
+        expect(mailService.sendPasswordChanged).toHaveBeenCalledTimes(1);
+      });
+
+      it('sai mật khẩu hiện tại ⇒ KHÔNG ngắt kết nối của ai', async () => {
+        await arrangeChange();
+
+        await expect(change('wrong')).rejects.toMatchObject({
+          code: 'CURRENT_PASSWORD_INCORRECT',
+        });
+
+        expect(realtime.disconnected).toEqual([]);
+      });
+
+      it('tài khoản chưa có mật khẩu / mật khẩu bị đổi giữa chừng (count = 0) ⇒ KHÔNG ngắt', async () => {
+        prisma.user.findUnique.mockResolvedValue({
+          ...baseUser,
+          passwordHash: null,
+        });
+        await expect(change()).rejects.toMatchObject({
+          code: 'PASSWORD_NOT_SET',
+        });
+
+        await arrangeChange();
+        prisma.user.updateMany.mockResolvedValue({ count: 0 });
+        await expect(change()).rejects.toMatchObject({
+          code: 'CURRENT_PASSWORD_INCORRECT',
+        });
+
+        expect(realtime.disconnected).toEqual([]);
+      });
+
+      it('đẩy real-time lỗi ⇒ đổi mật khẩu VẪN thành công, vẫn có token và vẫn gửi mail', async () => {
+        await arrangeChange();
+        realtime.failWith();
+
+        const result = await change();
+
+        expect(result.accessToken).toEqual(expect.any(String));
+        expect(result.refreshToken).toEqual(expect.any(String));
+        expect(mailService.sendPasswordChanged).toHaveBeenCalledTimes(1);
+        expect(errorLog).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('resetPassword', () => {
+      it('thành công ⇒ ngắt mọi kết nối của chủ tài khoản (id lấy từ DB, không từ client) và vẫn gửi mail', async () => {
+        arrangeReset();
+
+        await reset();
+
+        expect(realtime.disconnected).toEqual(['user-1']);
+        expect(mailService.sendPasswordChanged).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        [
+          'không tìm thấy token',
+          () => prisma.user.findUnique.mockResolvedValue(null),
+        ],
+        [
+          'token hết hạn',
+          () =>
+            arrangeReset({
+              passwordResetExpiresAt: new Date(Date.now() - 1000),
+            }),
+        ],
+        [
+          'tài khoản không còn ACTIVE',
+          () => arrangeReset({ accountStatus: AccountStatus.SUSPENDED }),
+        ],
+        [
+          'token đã bị dùng giữa chừng (count = 0)',
+          () => {
+            arrangeReset();
+            prisma.user.updateMany.mockResolvedValue({ count: 0 });
+          },
+        ],
+      ])(
+        '%s ⇒ RESET_TOKEN_INVALID và KHÔNG ngắt kết nối của ai',
+        async (_name, arrange) => {
+          arrange();
+
+          await expect(reset()).rejects.toMatchObject({
+            code: 'RESET_TOKEN_INVALID',
+          });
+
+          expect(realtime.disconnected).toEqual([]);
+        },
+      );
+
+      it('đẩy real-time lỗi ⇒ đặt lại mật khẩu VẪN thành công và vẫn gửi mail', async () => {
+        arrangeReset();
+        realtime.failWith();
+
+        await expect(reset()).resolves.toMatchObject({
+          message: expect.any(String) as string,
+        });
+
+        expect(mailService.sendPasswordChanged).toHaveBeenCalledTimes(1);
+        expect(errorLog).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });
