@@ -1,7 +1,12 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { PrismaClient, type ShopStatus } from '@prisma/client';
+import {
+  AccountStatus,
+  Prisma,
+  PrismaClient,
+  type ShopStatus,
+} from '@prisma/client';
 import cookieParser from 'cookie-parser';
 import { randomUUID } from 'crypto';
 import request from 'supertest';
@@ -17,6 +22,7 @@ import { AppModule } from '../../app.module';
 import { AllExceptionsFilter } from '../../shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from '../../shared/interceptors/transform-response.interceptor';
 import { MAIL_PROVIDER } from '../../shared/mail/mail-provider.interface';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 import { REALTIME_EMITTER } from '../../shared/realtime/realtime-emitter';
 import { cleanupByTag } from '../../shared/testing/db-fixtures';
 import { createFakeMail } from '../../shared/testing/fake-mail';
@@ -63,6 +69,8 @@ describe('Chat controllers (HTTP thật)', () => {
     agent: Agent;
     userId: string;
     email: string;
+    // Giá trị các cookie phiên (access/refresh) — để khẳng định chúng không bao giờ xuất hiện trong log.
+    tokens: string[];
   }
 
   // Ghi lại mọi status đã thấy trên từng route (theo khuôn đường dẫn Swagger) và mọi body trả về, để đối chiếu với
@@ -106,15 +114,20 @@ describe('Chat controllers (HTTP thật)', () => {
         data: { emailVerifiedAt: new Date() },
       });
     }
-    await agent
+    const login = await agent
       .post('/api/v1/auth/login')
       .send({ email, password: 'password123' })
       .expect(200);
+    const tokens = (
+      (login.headers['set-cookie'] as unknown as string[] | undefined) ?? []
+    )
+      .map((cookie) => cookie.split(';')[0].split('=').slice(1).join('='))
+      .filter((value) => value.length > 20);
     const user = await prisma.user.findUniqueOrThrow({
       where: { email },
       select: { id: true },
     });
-    return { agent, userId: user.id, email };
+    return { agent, userId: user.id, email, tokens };
   }
 
   async function createShop(
@@ -1118,6 +1131,317 @@ describe('Chat controllers (HTTP thật)', () => {
 
       expect(blocked.status).toBe(429);
       expect(envelope(blocked).code).toBe('CHAT_RATE_LIMITED');
+    });
+  });
+
+  describe('bảo mật bổ sung (Week10.md 4.8)', () => {
+    let secBuyer: Account;
+    let secSeller: Account;
+    let secShop: string;
+    let secConversation: string;
+
+    beforeAll(async () => {
+      secBuyer = await register('secBuyer', true);
+      secSeller = await register('secSeller', true);
+      secShop = await createShop(secSeller.userId, 'sec', 'APPROVED');
+      const open = await call(
+        secBuyer.agent,
+        'post',
+        '/conversations',
+        {},
+        { body: { shopId: secShop } },
+      );
+      secConversation = strictSummary.parse(dataOf(open)).id;
+    });
+
+    describe('đường dẫn shop: chỉ chủ shop mới vào được, kể cả route danh sách và huy hiệu', () => {
+      it.each([
+        ['danh sách', '/shops/{shopId}/conversations'],
+        ['huy hiệu', '/shops/{shopId}/conversations/unread-count'],
+      ])(
+        '%s: chủ shop khác và người mua đi vào shop của người khác ⇒ 403',
+        async (_name, template) => {
+          const responses = await Promise.all([
+            call(sellerB.agent, 'get', template, { shopId: secShop }),
+            call(buyer1.agent, 'get', template, { shopId: secShop }),
+            call(secBuyer.agent, 'get', template, { shopId: secShop }),
+          ]);
+
+          expect(responses.map((r) => r.status)).toEqual([403, 403, 403]);
+          for (const res of responses) {
+            expect(envelope(res)).toMatchObject({ success: false, data: null });
+          }
+        },
+      );
+
+      it('shop không tồn tại ⇒ 404 cho cả danh sách lẫn huy hiệu', async () => {
+        const list = await call(
+          secSeller.agent,
+          'get',
+          '/shops/{shopId}/conversations',
+          { shopId: randomUUID() },
+        );
+        const unread = await call(
+          secSeller.agent,
+          'get',
+          '/shops/{shopId}/conversations/unread-count',
+          { shopId: randomUUID() },
+        );
+
+        expect([list.status, unread.status]).toEqual([404, 404]);
+      });
+    });
+
+    describe('không có "oracle" dò hội thoại', () => {
+      // Hội thoại CÓ THẬT nhưng không phải của mình, hội thoại không tồn tại và id rác phải cho CÙNG một phản hồi
+      // (status + body), nếu không kẻ tấn công dò ra id hội thoại nào có thật.
+      it('người mua: hội thoại của người khác ⇔ không tồn tại ⇔ id rác — cùng status và cùng body ở cả 3 route', async () => {
+        const routes: ['get' | 'post', string, unknown?][] = [
+          ['get', '/conversations/{id}/messages'],
+          ['post', '/conversations/{id}/messages', sendBody('dò')],
+          ['post', '/conversations/{id}/read'],
+        ];
+        for (const [method, template, body] of routes) {
+          const ids = [
+            secConversation,
+            randomUUID(),
+            'khong-phai-uuid',
+            "' OR 1=1 --",
+          ];
+          const responses = await Promise.all(
+            ids.map((id) =>
+              call(buyer2.agent, method, template, { id }, { body }),
+            ),
+          );
+
+          expect(responses.map((r) => r.status)).toEqual([404, 404, 404, 404]);
+          expect(
+            new Set(responses.map((r) => JSON.stringify(r.body))).size,
+          ).toBe(1);
+        }
+      });
+
+      it('chủ shop: hội thoại của shop khác ⇔ không tồn tại ⇔ id rác — cùng status và cùng body', async () => {
+        const template = '/shops/{shopId}/conversations/{id}/messages';
+        const ids = [secConversation, randomUUID(), 'khong-phai-uuid'];
+
+        const responses = await Promise.all(
+          ids.map((id) =>
+            call(sellerB.agent, 'get', template, { shopId: shopB, id }),
+          ),
+        );
+
+        expect(responses.map((r) => r.status)).toEqual([404, 404, 404]);
+        expect(new Set(responses.map((r) => JSON.stringify(r.body))).size).toBe(
+          1,
+        );
+      });
+    });
+
+    describe('tài khoản không còn hoạt động', () => {
+      it('JWT còn hạn nhưng tài khoản bị khoá ⇒ 401 ACCOUNT_NOT_ACTIVE ở MỌI route chat (cả hai đường dẫn)', async () => {
+        const lockedBuyer = await register('lockedBuyer', true);
+        const lockedOwner = await register('lockedOwner', true);
+        const lockedShop = await createShop(
+          lockedOwner.userId,
+          'locked',
+          'APPROVED',
+        );
+        await prisma.user.updateMany({
+          where: { id: { in: [lockedBuyer.userId, lockedOwner.userId] } },
+          data: { accountStatus: AccountStatus.SUSPENDED },
+        });
+        const params = { id: secConversation, shopId: lockedShop };
+
+        const responses = await Promise.all(
+          ROUTES.map(([method, template]) =>
+            call(
+              template.startsWith('/shops')
+                ? lockedOwner.agent
+                : lockedBuyer.agent,
+              method,
+              template,
+              params,
+              { body: method === 'post' ? sendBody() : undefined },
+            ),
+          ),
+        );
+
+        expect(responses.map((r) => r.status)).toEqual(ROUTES.map(() => 401));
+        expect(responses.map((r) => envelope(r).code)).toEqual(
+          ROUTES.map(() => 'ACCOUNT_NOT_ACTIVE'),
+        );
+      });
+    });
+
+    describe('nội dung tin là chữ thuần', () => {
+      const XSS =
+        '<script>alert(1)</script><img src=x onerror=alert(2)> "quote" & ' +
+        "'single'";
+
+      it('<script>, <img onerror>, dấu nháy được lưu và trả về NGUYÊN VĂN, response luôn là JSON (không bao giờ HTML)', async () => {
+        const sent = await call(
+          secBuyer.agent,
+          'post',
+          '/conversations/{id}/messages',
+          { id: secConversation },
+          { body: sendBody(XSS) },
+        );
+        const read = await call(
+          secSeller.agent,
+          'get',
+          '/shops/{shopId}/conversations/{id}/messages',
+          { shopId: secShop, id: secConversation },
+        );
+
+        expect(sent.status).toBe(201);
+        expect(strictMessage.parse(dataOf(sent)).content).toBe(XSS);
+        expect(sent.headers['content-type']).toMatch(/^application\/json/);
+        expect(read.headers['content-type']).toMatch(/^application\/json/);
+        expect(
+          messageList.parse(dataOf(read)).items.map((m) => m.content),
+        ).toContain(XSS);
+        const row = await prisma.message.findFirstOrThrow({
+          where: { conversationId: secConversation, content: XSS },
+        });
+        expect(row.content).toBe(XSS);
+      });
+    });
+
+    describe('body bất thường', () => {
+      const url = () => `/api/v1/conversations/${secConversation}/messages`;
+
+      // Cố ý KHÔNG dùng call(): các lỗi này xảy ra ở tầng parse body, trước khi tới route, nên không thuộc phần
+      // tài liệu Swagger của route.
+      it('body quá lớn (413), JSON hỏng (400) hoặc dạng text/plain (415) ⇒ bị từ chối, không ghi tin nào, server vẫn sống', async () => {
+        const before = await messageCount(secConversation);
+
+        const huge = await secBuyer.agent.post(url()).send({
+          content: 'a'.repeat(300_000),
+          clientMessageId: randomUUID(),
+        });
+        const broken = await secBuyer.agent
+          .post(url())
+          .set('Content-Type', 'application/json')
+          .send('{"content": ');
+        const plain = await secBuyer.agent
+          .post(url())
+          .set('Content-Type', 'text/plain')
+          .send(JSON.stringify(sendBody()));
+
+        expect(huge.status).toBe(413);
+        expect(broken.status).toBe(400);
+        expect(plain.status).toBe(415);
+        expect(await messageCount(secConversation)).toBe(before);
+        const alive = await call(
+          secBuyer.agent,
+          'get',
+          '/conversations/unread-count',
+        );
+        expect(alive.status).toBe(200);
+      });
+    });
+
+    describe('log không bao giờ chứa nội dung tin, token, cookie hay email', () => {
+      it('quét MỌI đường ghi log (Logger + stdout/stderr) trong cả luồng thường lẫn khi có lỗi', async () => {
+        const canary = `CANARY-${randomUUID()}`;
+        const captured: string[] = [];
+        const restores: (() => void)[] = [];
+        const capture = (chunk: unknown) => {
+          captured.push(
+            typeof chunk === 'string' ? chunk : JSON.stringify(chunk),
+          );
+        };
+        for (const stream of [process.stdout, process.stderr]) {
+          const spy = jest
+            .spyOn(stream, 'write')
+            .mockImplementation((chunk: unknown) => {
+              capture(chunk);
+              return true;
+            });
+          restores.push(() => spy.mockRestore());
+        }
+        for (const level of [
+          'log',
+          'error',
+          'warn',
+          'debug',
+          'verbose',
+          'fatal',
+        ] as const) {
+          const spy = jest
+            .spyOn(Logger.prototype, level)
+            .mockImplementation((...args: unknown[]) => {
+              capture(args);
+            });
+          restores.push(() => spy.mockRestore());
+        }
+        const prismaService = app.get(PrismaService);
+        const url = `/api/v1/conversations/${secConversation}/messages`;
+        const raw = (message: string) =>
+          secBuyer.agent
+            .post(url)
+            .send({ content: message, clientMessageId: randomUUID() });
+
+        try {
+          // 1. luồng thường
+          await raw(`${canary} người mua`);
+          await call(
+            secSeller.agent,
+            'post',
+            '/shops/{shopId}/conversations/{id}/messages',
+            { shopId: secShop, id: secConversation },
+            { body: sendBody(`${canary} chủ shop`) },
+          );
+          await call(secBuyer.agent, 'post', '/conversations/{id}/read', {
+            id: secConversation,
+          });
+          await call(secBuyer.agent, 'get', '/conversations/{id}/messages', {
+            id: secConversation,
+          });
+          // 2. sai dữ liệu: nội dung quá dài chứa canary
+          await raw(`${canary}${'x'.repeat(1001)}`);
+          // 3. cổng real-time hỏng sau khi đã ghi
+          realtime.failWith(new Error('socket down'));
+          await raw(`${canary} khi đẩy lỗi`);
+          realtime.reset();
+          // 4. lỗi kiểm tra tham số của Prisma mang NGUYÊN giá trị đã ghi (kể cả nội dung tin)
+          jest
+            .spyOn(prismaService, '$transaction')
+            .mockRejectedValueOnce(
+              new Prisma.PrismaClientValidationError(
+                `Invalid invocation: data: { content: "${canary}" }`,
+                { clientVersion: 'test' },
+              ),
+            );
+          const leaky = await raw(`${canary} lỗi Prisma`);
+          // 5. lỗi hạ tầng bất kỳ
+          jest
+            .spyOn(prismaService, '$transaction')
+            .mockRejectedValueOnce(new Error('db down'));
+          const down = await raw(`${canary} DB sập`);
+
+          expect(leaky.status).toBe(500);
+          expect(down.status).toBe(500);
+          expect(JSON.stringify([leaky.body, down.body])).not.toContain(canary);
+        } finally {
+          jest.restoreAllMocks();
+          restores.forEach((restore) => restore());
+        }
+
+        const logs = captured.join('\n');
+        // Không phải test rỗng: các lỗi cố ý ở trên PHẢI đã để lại dấu vết trong log...
+        expect(logs).toContain('socket down');
+        expect(logs).toContain('db down');
+        expect(logs).toContain('details omitted');
+        // ...nhưng không có nội dung tin, token, cookie hay email.
+        expect(logs).not.toContain(canary);
+        for (const account of [secBuyer, secSeller]) {
+          for (const token of account.tokens) expect(logs).not.toContain(token);
+          expect(logs).not.toContain(account.email);
+        }
+        expect(logs).not.toMatch(/access_token=|refresh_token=/);
+      });
     });
   });
 
