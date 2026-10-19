@@ -58,7 +58,7 @@ export async function createShopWithProduct(prisma: PrismaClient, tag: string) {
     },
     select: { id: true },
   });
-  return { shopId: shop.id, productId: product.id };
+  return { shopId: shop.id, productId: product.id, ownerId: owner.id };
 }
 
 export async function createVariant(
@@ -298,6 +298,17 @@ export async function cleanupByTag(prisma: PrismaClient, tag: string) {
   await prisma.checkoutGroup.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.voucher.deleteMany({
     where: { code: { startsWith: tag.toUpperCase() } },
+  });
+  // Chat (Tuần 10): Message.sender → User là RESTRICT (không cascade) nên phải xoá tin TRƯỚC khi xoá người dùng;
+  // Conversation thì tự cascade theo buyer/shop.
+  await prisma.message.deleteMany({
+    where: {
+      OR: [
+        { senderId: { in: userIds } },
+        { conversation: { buyerId: { in: userIds } } },
+        { conversation: { shop: { slug: { startsWith: tag } } } },
+      ],
+    },
   });
   // Xoá shop kéo theo product/variant (onDelete: Cascade).
   await prisma.shop.deleteMany({ where: { slug: { startsWith: tag } } });
