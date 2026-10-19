@@ -85,6 +85,9 @@ export const SERVER_ERROR_CODES = [
   // Sửa thông tin shop khi trạng thái không cho phép (PENDING đang chờ duyệt, SUSPENDED đang bị khoá) —
   // details.status cho FE giải thích đúng lý do.
   'SHOP_EDIT_NOT_ALLOWED',
+  // Sản phẩm: một biến thể có nhiều ảnh hơn PRODUCT_VARIANT_MAX_IMAGES (Week10.md 2.4). Giao diện đã chặn từ
+  // trước nên chỉ gặp khi gọi API thẳng; biến thể cũ ĐÃ vượt trần mà không thêm ảnh thì không bị lỗi này.
+  'PRODUCT_IMAGES_LIMIT_EXCEEDED',
 ] as const;
 export type ServerErrorCode = (typeof SERVER_ERROR_CODES)[number];
 

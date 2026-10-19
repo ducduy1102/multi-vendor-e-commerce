@@ -1,11 +1,19 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
+import { PrismaClient, type UserLocale } from '@prisma/client';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../app.module';
 import { AllExceptionsFilter } from '../../shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from '../../shared/interceptors/transform-response.interceptor';
 import { MockPaymentProvider } from '../../shared/payment/mock-payment.provider';
+import {
+  cleanupByTag,
+  createCheckoutGroup,
+  createUser,
+} from '../../shared/testing/db-fixtures';
+
+const TAG = 'it-ordctl-';
 
 // Integration test qua HTTP THẬT (supertest, cần Postgres đang chạy) — chứng minh cái mà unit test
 // gọi thẳng service KHÔNG chứng minh được: endpoint IPN của VNPay trả đúng {RspCode, Message} Ở MỨC
@@ -127,6 +135,64 @@ describe('OrderController — payment gateway endpoints (HTTP thật)', () => {
 
       expect(res.status).toBe(302);
       expect(res.headers.location).toContain('/checkout/result');
+    });
+
+    // Week10.md 2.3: FE `localeDetection: false` — URL không prefix luôn là tiếng Việt, không còn cookie đưa
+    // người mua tiếng Anh về `/en`. Redirect từ cổng thanh toán phải tự mang prefix theo User.locale của người mua.
+    // outcome=PENDING đi qua confirmPayment thật nhưng không đổi dữ liệu mà vẫn trả checkoutGroupId.
+    describe('redirect về FE mang đúng prefix ngôn ngữ của người mua', () => {
+      const prisma = new PrismaClient();
+
+      beforeAll(async () => {
+        await cleanupByTag(prisma, TAG);
+      });
+
+      afterAll(async () => {
+        await cleanupByTag(prisma, TAG);
+        await prisma.$disconnect();
+      });
+
+      async function redirectFor(locale: UserLocale) {
+        const user = await createUser(prisma, TAG, { locale });
+        const group = await createCheckoutGroup(prisma, user.id);
+        const txnRef = `ITORD${locale.toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
+        await prisma.payment.create({
+          data: {
+            checkoutGroupId: group.id,
+            method: 'VNPAY',
+            amount: 50_000,
+            txnRef,
+            expiresAt: new Date(Date.now() + 15 * 60_000),
+          },
+        });
+        const path = await signedPayPath(txnRef);
+
+        const res = await request(app.getHttpServer()).get(
+          `${path}&outcome=PENDING`,
+        );
+
+        expect(res.status).toBe(302);
+        const location = new URL(res.headers.location);
+        return {
+          groupId: group.id,
+          pathname: location.pathname,
+          search: location.search,
+        };
+      }
+
+      it('người mua en — /en/checkout/result?groupId=…', async () => {
+        const { groupId, pathname, search } = await redirectFor('en');
+
+        expect(pathname).toBe('/en/checkout/result');
+        expect(search).toBe(`?groupId=${groupId}`);
+      });
+
+      it('người mua vi — không prefix (/checkout/result?groupId=…)', async () => {
+        const { groupId, pathname, search } = await redirectFor('vi');
+
+        expect(pathname).toBe('/checkout/result');
+        expect(search).toBe(`?groupId=${groupId}`);
+      });
     });
 
     it('sig sai — 404, không xử lý dù có outcome hợp lệ', async () => {

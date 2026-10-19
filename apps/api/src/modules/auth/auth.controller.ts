@@ -19,7 +19,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { safeNextPath } from '@ecommerce/types';
+import { decodeOAuthState } from '../../shared/utils/oauth-state';
 import type { Request, Response } from 'express';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { AppException } from '../../shared/exceptions/app.exception';
@@ -226,6 +226,14 @@ export class AuthController {
       'Đường dẫn nội bộ (không kèm locale, thuộc allow-list như /checkout) để quay lại sau khi đăng nhập; giá trị không hợp lệ bị bỏ qua',
     example: '/checkout',
   })
+  @ApiQuery({
+    name: 'locale',
+    required: false,
+    enum: ['vi', 'en'],
+    description:
+      'Ngôn ngữ của trang người dùng bấm nút: sau khi đăng nhập (hoặc lỗi) BE redirect về FE với đúng prefix ngôn ngữ (en → /en/...); giá trị lạ bị bỏ qua, mặc định vi (không prefix)',
+    example: 'en',
+  })
   @ApiResponse({
     status: 302,
     description: 'Redirect sang trang đăng nhập Google',
@@ -251,20 +259,20 @@ export class AuthController {
     @Req() req: Request & { user: GoogleProfile },
     @Res() res: Response,
   ): Promise<void> {
-    // `state` đã đi vòng qua trình duyệt và Google nên KHÔNG tin — kiểm lại; không có/không hợp
-    // lệ thì giữ hành vi cũ (redirect về trang chủ).
-    const next = safeNextPath(req.query.state);
+    // `state` (đích `next` + ngôn ngữ của trang bấm nút) đã đi vòng qua trình duyệt và Google nên KHÔNG tin
+    // — decodeOAuthState kiểm lại từng giá trị; không có/không hợp lệ thì giữ hành vi cũ (trang chủ, vi).
+    const { next, locale } = decodeOAuthState(req.query.state);
     try {
       const { accessToken, refreshToken } =
         await this.authService.loginWithGoogle(req.user);
       this.setTokenCookies(res, { accessToken, refreshToken });
-      res.redirect(googleSuccessRedirectUrl(next));
+      res.redirect(googleSuccessRedirectUrl(next, locale));
     } catch (error) {
       const reason =
         error instanceof AppException && error.code === 'ACCOUNT_NOT_ACTIVE'
           ? 'account_not_active'
           : 'google_login_failed';
-      res.redirect(googleFailureRedirectUrl(reason, next));
+      res.redirect(googleFailureRedirectUrl(reason, next, locale));
     }
   }
 

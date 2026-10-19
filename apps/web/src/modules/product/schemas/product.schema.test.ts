@@ -1,4 +1,4 @@
-import { validationMessage } from '@ecommerce/types';
+import { PRODUCT_VARIANT_MAX_IMAGES, validationMessage } from '@ecommerce/types';
 import { describe, expect, it } from 'vitest';
 
 import { createProductSchema, updateProductSchema } from './product.schema';
@@ -162,41 +162,48 @@ describe('createProductSchema', () => {
     expect(negativePrice.success).toBe(false);
     expect(negativeStock.success).toBe(false);
   });
-});
 
-describe('updateProductSchema', () => {
-  it('passes with an empty object (partial update, giữ nguyên variant hiện có)', () => {
-    const result = updateProductSchema.safeParse({});
-    expect(result.success).toBe(true);
-  });
-
-  it('passes when chỉ gửi field cơ bản (name/status), không đụng attributes/variants', () => {
-    const result = updateProductSchema.safeParse({ name: 'Tên mới', status: 'PUBLISHED' });
-    expect(result.success).toBe(true);
-  });
-
-  it('fails when chỉ gửi attributes mà không gửi variants (hoặc ngược lại)', () => {
-    const onlyAttributes = updateProductSchema.safeParse({
-      attributes: [{ name: 'Màu sắc', values: [{ value: 'Đỏ' }] }],
-    });
-    const onlyVariants = updateProductSchema.safeParse({
-      variants: [{ sku: 'AT-1', price: 100000, stock: 10, attributeValues: [] }],
-    });
-
-    expect(onlyAttributes.success).toBe(false);
-    if (!onlyAttributes.success) {
-      expect(onlyAttributes.error.issues[0].message).toBe(
-        'product.validationAttributesVariantsTogether',
+  // Week10.md 2.4: trần số ảnh mỗi biến thể được ép ở ProductService (API), KHÔNG ở schema Zod này. Lý do: luật là
+  // "không được THÊM ảnh vượt trần" — biến thể cũ đã vượt trần vẫn phải lưu được nếu không tăng thêm, mà schema
+  // dùng chung chỉ nhìn một payload nên không biết số ảnh hiện có. Test khoá lại để ai thêm .max() vào schema
+  // (làm hỏng việc sửa sản phẩm cũ) bị bắt ngay.
+  describe('số ảnh mỗi biến thể', () => {
+    const imageUrls = (count: number) =>
+      Array.from(
+        { length: count },
+        (_, i) => `https://res.cloudinary.com/demo/image/upload/${i}.webp`,
       );
-    }
-    expect(onlyVariants.success).toBe(false);
-  });
-
-  it('passes when gửi cả attributes lẫn variants cùng lúc', () => {
-    const result = updateProductSchema.safeParse({
-      attributes: validPayload.attributes,
-      variants: validPayload.variants,
+    const withImages = (images: string[]) => ({
+      ...validPayload,
+      variants: [{ ...validPayload.variants[0], images }],
     });
-    expect(result.success).toBe(true);
+
+    it('đúng trần và vượt trần đều qua schema (trần ép ở ProductService, có grandfather cho dữ liệu cũ)', () => {
+      for (const count of [0, PRODUCT_VARIANT_MAX_IMAGES, PRODUCT_VARIANT_MAX_IMAGES + 3]) {
+        expect(createProductSchema.safeParse(withImages(imageUrls(count))).success).toBe(true);
+      }
+    });
+
+    it('updateProductSchema cũng không giới hạn số ảnh (sản phẩm cũ đang vượt trần vẫn lưu được)', () => {
+      const result = updateProductSchema.safeParse({
+        attributes: validPayload.attributes,
+        variants: [
+          { ...validPayload.variants[0], images: imageUrls(PRODUCT_VARIANT_MAX_IMAGES + 3) },
+          validPayload.variants[1],
+        ],
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('URL ảnh vẫn phải hợp lệ', () => {
+      const result = createProductSchema.safeParse(withImages(['khong-phai-url']));
+
+      expect(result.success).toBe(false);
+    });
+
+    it('không gửi images: mặc định mảng rỗng, vẫn hợp lệ', () => {
+      expect(createProductSchema.safeParse(validPayload).success).toBe(true);
+    });
   });
 });

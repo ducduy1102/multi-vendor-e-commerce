@@ -2,6 +2,33 @@ import { z, type RefinementCtx } from 'zod';
 import { SHOP_SLUG_MAX_LENGTH } from './shop';
 import { validationMessage } from './validation-message';
 
+// --- Ảnh sản phẩm: upload thẳng lên Cloudinary (Week10.md 2.4) ----------------------------------------------
+// Mọi hằng số ở đây dùng chung cho BE (ký) và FE (nén + gửi) — định nghĩa MỘT lần để hai phía không lệch nhau.
+
+// Thư mục đích trên Cloudinary. Là param ĐÃ KÝ: BE ký và FE gửi đúng chuỗi này, sai một ký tự là Cloudinary từ
+// chối vì chữ ký không khớp (response ký không trả kèm param đã ký nên không lấy động được — rules/backend.md
+// mục 6, "upload ảnh").
+export const CLOUDINARY_UPLOAD_FOLDER = 'multi-vendor-ecommerce';
+
+// Cạnh dài tối đa (px) của ảnh lưu trên Cloudinary. FE thu nhỏ ảnh về cỡ này TRƯỚC khi tải lên; BE ký thêm một
+// incoming transformation cùng cỡ để dù client bỏ qua bước nén vẫn không lưu được ảnh lớn hơn.
+export const PRODUCT_IMAGE_MAX_EDGE = 1600;
+
+// Incoming transformation chạy NGAY khi Cloudinary nhận ảnh, trước khi lưu: `c_limit` chỉ thu nhỏ (không bao
+// giờ phóng to, giữ tỉ lệ) vào khung MAX_EDGE × MAX_EDGE; `q_auto`/`f_auto` để Cloudinary chọn chất lượng và
+// định dạng nhỏ nhất. Là param ĐÃ KÝ — cùng ràng buộc "khớp từng ký tự" như thư mục ở trên.
+export const CLOUDINARY_INCOMING_TRANSFORMATION = `c_limit,w_${PRODUCT_IMAGE_MAX_EDGE},h_${PRODUCT_IMAGE_MAX_EDGE},q_auto,f_auto`;
+
+// Giới hạn ảnh người bán được chọn: định dạng, dung lượng file GỐC (trước khi nén), và số ảnh mỗi biến thể.
+export const PRODUCT_IMAGE_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const PRODUCT_IMAGE_MAX_SOURCE_BYTES = 10 * 1024 * 1024;
+
+// Số ảnh tối đa MỖI BIẾN THỂ. Các sàn đặt trần ở mức 8–9 ảnh cho mỗi sản phẩm (Shopee 9; Jumia, Falabella 8;
+// eBay 12 ảnh cho mỗi biến thể) — ở đây ảnh gắn ở cấp biến thể nên 9 đã rộng hơn mặt bằng chung. Được ép ở
+// ProductService (không ở schema Zod): luật là "không được THÊM ảnh vượt trần", sản phẩm cũ đang vượt trần vẫn
+// sửa/lưu được bình thường miễn không tăng thêm — Zod không biết trạng thái cũ nên không diễn tả được luật đó.
+export const PRODUCT_VARIANT_MAX_IMAGES = 9;
+
 export const productStatusSchema = z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']);
 export type ProductStatus = z.infer<typeof productStatusSchema>;
 
@@ -47,6 +74,9 @@ const productVariantInputSchema = z.object({
   price: z.number().positive('product.validationPricePositive'),
   stock: z.number().int().nonnegative('product.validationStockInvalid'),
   attributeValues: z.array(z.string().trim().min(1)).default([]),
+  // Trần PRODUCT_VARIANT_MAX_IMAGES KHÔNG ép ở đây mà ở ProductService (xem chú thích ở hằng số): schema này
+  // dùng chung cho cả tạo lẫn sửa nhưng chỉ ProductService biết số ảnh hiện có để cho sản phẩm cũ đã vượt trần
+  // vẫn lưu được.
   images: z.array(z.string().trim().url('product.validationImageUrlInvalid')).default([]),
 });
 

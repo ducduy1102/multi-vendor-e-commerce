@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { Link } from '@/i18n/navigation';
 import { ResetPasswordFormContainer } from '@/modules/auth';
-import { AuthCard } from '@/shared/components/AuthCard';
+import { AuthPageLayout } from '@/shared/components/AuthPageLayout';
 import { ChotMark } from '@/shared/components/ChotMark';
 
 // Token đặt lại mật khẩu nằm trong query string của URL này: `no-referrer` để tài nguyên/liên kết ngoài tải
@@ -26,15 +26,13 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
   ]);
 
   return (
-    <div className="flex flex-1 items-center justify-center px-4 py-16">
-      <AuthCard>
-        <Link href="/" className="mb-6 flex items-center justify-center gap-1.5">
-          <ChotMark className="size-7 shrink-0" />
-          <span className="font-semibold text-brand">{tHeader('siteName')}</span>
-        </Link>
-        <h1 className="mb-6 text-xl font-semibold">{t('resetPasswordTitle')}</h1>
-        <ResetPasswordFormContainer token={typeof token === 'string' ? token : null} />
-      </AuthCard>
-    </div>
+    <AuthPageLayout localeQuery={typeof token === 'string' ? { token } : undefined}>
+      <Link href="/" className="mb-6 flex items-center justify-center gap-1.5">
+        <ChotMark className="size-7 shrink-0" />
+        <span className="font-semibold text-brand">{tHeader('siteName')}</span>
+      </Link>
+      <h1 className="mb-6 text-xl font-semibold">{t('resetPasswordTitle')}</h1>
+      <ResetPasswordFormContainer token={typeof token === 'string' ? token : null} />
+    </AuthPageLayout>
   );
 }

@@ -203,6 +203,18 @@ describe('frontendUrl', () => {
     );
   });
 
+  // Week10.md 2.3: dùng cho cả redirect về trang chủ sau Google OAuth — `/en/` sẽ bị Next.js 308 về `/en`.
+  it('trang chủ "/": vi = chính base, en = base/en (không có dấu / thừa)', () => {
+    expect(frontendUrl('/', 'vi')).toBe('https://app.example.com');
+    expect(frontendUrl('/', 'en')).toBe('https://app.example.com/en');
+    process.env.FRONTEND_URL = 'https://app.example.com///';
+    expect(frontendUrl('/', 'en')).toBe('https://app.example.com/en');
+  });
+
+  it('path dạng "/?x=1" không bị coi là trang chủ trần (giữ nguyên query)', () => {
+    expect(frontendUrl('/?x=1', 'en')).toBe('https://app.example.com/en/?x=1');
+  });
+
   it('giữ nguyên query, chịu được base có dấu / cuối và path thiếu dấu / đầu', () => {
     process.env.FRONTEND_URL = 'https://app.example.com///';
     expect(frontendUrl('verify-email?token=a%2Fb', 'en')).toBe(

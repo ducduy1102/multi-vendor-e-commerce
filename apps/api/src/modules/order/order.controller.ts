@@ -13,6 +13,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
+import { frontendUrl } from '../../shared/mail/frontend-url';
 import { getFrontendUrl } from '../../shared/utils/frontend-url';
 import {
   isMockPaymentEnabled,
@@ -87,7 +88,7 @@ export class OrderController {
       if (!checkoutGroupId) {
         return this.redirectToResultError(res);
       }
-      return this.redirectToResultSuccess(res, checkoutGroupId);
+      return await this.redirectToResultSuccess(res, checkoutGroupId);
     } catch (error) {
       this.logger.error('Unexpected error handling VNPay return', error);
       return this.redirectToResultError(res);
@@ -177,13 +178,18 @@ export class OrderController {
   }
 
   // Không chuyển tiếp/phản chiếu bất kỳ tham số nào của cổng (chống XSS phản chiếu + rò rỉ mã giao
-  // dịch, 1.10) — groupId lấy từ DB theo txnRef, không từ query của trình duyệt.
-  private redirectToResultSuccess(
+  // dịch, 1.10) — groupId lấy từ DB theo txnRef, không từ query của trình duyệt. Trang kết quả mang prefix ngôn
+  // ngữ của người mua (Week10.md 2.3): URL không prefix luôn là tiếng Việt, FE không còn nhớ ngôn ngữ qua cookie.
+  private async redirectToResultSuccess(
     res: Response,
     checkoutGroupId: string,
-  ): void {
+  ): Promise<void> {
+    const locale = await this.paymentService.findBuyerLocale(checkoutGroupId);
     res.redirect(
-      `${getFrontendUrl()}/checkout/result?groupId=${encodeURIComponent(checkoutGroupId)}`,
+      frontendUrl(
+        `/checkout/result?groupId=${encodeURIComponent(checkoutGroupId)}`,
+        locale,
+      ),
     );
   }
 

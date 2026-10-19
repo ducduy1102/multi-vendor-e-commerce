@@ -121,4 +121,92 @@ describe('AuthController.googleCallback', () => {
       );
     });
   });
+
+  // Week10.md 2.3: FE `localeDetection: false` — URL không prefix luôn là tiếng Việt, không còn cookie đưa
+  // người dùng tiếng Anh về `/en`. Ngôn ngữ của trang bấm nút Google đi vòng qua `state` và quyết định prefix.
+  describe('ngôn ngữ đi vòng qua state (Week10.md 2.3)', () => {
+    const state = (next: string | null, locale: string | null) => {
+      const params = new URLSearchParams();
+      if (next) params.set('n', next);
+      if (locale) params.set('l', locale);
+      return params.toString();
+    };
+
+    it('thành công, en, không next — về /en (không có dấu / thừa)', async () => {
+      await callback({ state: state(null, 'en') });
+
+      expect(res.redirect).toHaveBeenCalledWith(`${FRONTEND}/en`);
+    });
+
+    it('thành công, en + next — /en/<next> giữ nguyên query', async () => {
+      await callback({ state: state('/cart?voucherCode=SALE10', 'en') });
+
+      expect(res.redirect).toHaveBeenCalledWith(
+        `${FRONTEND}/en/cart?voucherCode=SALE10`,
+      );
+    });
+
+    it('thành công, vi + next — không prefix', async () => {
+      await callback({ state: state('/checkout', 'vi') });
+
+      expect(res.redirect).toHaveBeenCalledWith(`${FRONTEND}/checkout`);
+    });
+
+    it('lỗi, en — /en/login?error=... giữ next đã encode', async () => {
+      authService.loginWithGoogle.mockRejectedValue(new Error('boom'));
+
+      await callback({ state: state('/checkout', 'en') });
+
+      expect(res.redirect).toHaveBeenCalledWith(
+        `${FRONTEND}/en/login?error=google_login_failed&next=${encodeURIComponent('/checkout')}`,
+      );
+    });
+
+    it('tài khoản bị khoá, en — /en/login?error=account_not_active', async () => {
+      authService.loginWithGoogle.mockRejectedValue(
+        new AppException(401, 'ACCOUNT_NOT_ACTIVE', 'ACCOUNT_NOT_ACTIVE'),
+      );
+
+      await callback({ state: state(null, 'en') });
+
+      expect(res.redirect).toHaveBeenCalledWith(
+        `${FRONTEND}/en/login?error=account_not_active`,
+      );
+    });
+
+    it.each([
+      ['ngôn ngữ lạ', 'fr'],
+      ['thử chèn đường dẫn', '/../evil'],
+      ['chèn URL', 'https://evil.com'],
+      ['chuỗi rỗng', ''],
+    ])(
+      'locale bẩn (%s) — rơi về mặc định vi, không bao giờ lọt vào URL redirect',
+      async (_label, locale) => {
+        await callback({ state: state('/checkout', locale) });
+
+        expect(res.redirect).toHaveBeenCalledTimes(1);
+        expect(res.redirect).toHaveBeenCalledWith(`${FRONTEND}/checkout`);
+      },
+    );
+
+    it('state là mảng/object — bỏ qua cả hai giá trị, về trang chủ (vi)', async () => {
+      await callback({ state: ['n=%2Fcheckout&l=en', 'l=en'] });
+      await callback({ state: { l: 'en' } });
+
+      expect(res.redirect).toHaveBeenNthCalledWith(1, FRONTEND);
+      expect(res.redirect).toHaveBeenNthCalledWith(2, FRONTEND);
+    });
+
+    it('next bẩn nhưng locale hợp lệ — bỏ next, vẫn giữ ngôn ngữ', async () => {
+      await callback({ state: state('//evil.com', 'en') });
+
+      expect(res.redirect).toHaveBeenCalledWith(`${FRONTEND}/en`);
+    });
+
+    it('định dạng CŨ (state = next thuần) vẫn chạy: phiên OAuth đang dở lúc deploy không hỏng', async () => {
+      await callback({ state: '/checkout' });
+
+      expect(res.redirect).toHaveBeenCalledWith(`${FRONTEND}/checkout`);
+    });
+  });
 });

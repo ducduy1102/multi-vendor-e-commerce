@@ -3,13 +3,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { PRODUCT_VARIANT_MAX_IMAGES } from '@ecommerce/types';
 import { Prisma } from '@prisma/client';
+import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { availableStock } from '../../shared/utils/available-stock';
 import { slugify } from '../../shared/utils/slugify';
 import type { CreateProductDto } from './dto/create-product.dto';
 import type { ListProductsQueryDto } from './dto/list-products-query.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
+import { ProductImageCleanupService } from './product-image-cleanup.service';
 
 // Đủ thử slug, slug-2 .. slug-20 trước khi coi là bế tắc — cùng ngưỡng đã
 // dùng ở ShopService.createShop. Product không có slug do người dùng tự
@@ -226,7 +229,28 @@ export type ProductDetailSummary = ProductSummary & {
 
 @Injectable()
 export class ProductService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly imageCleanup: ProductImageCleanupService,
+  ) {}
+
+  // Trần số ảnh mỗi biến thể (Week10.md 2.4). Luật là "không được THÊM ảnh vượt trần", không phải "không được
+  // có quá trần": biến thể ĐÃ có sẵn nhiều ảnh hơn trần (dữ liệu từ trước khi có giới hạn) vẫn lưu được miễn số
+  // ảnh không tăng — giống cách các sàn xử lý khi siết quy định, không khoá sản phẩm cũ cho tới khi người bán
+  // sửa ảnh. Biến thể mới thì existingCount = 0 nên bị chặn đúng trần.
+  private assertImageLimit(
+    sku: string,
+    nextCount: number,
+    existingCount: number,
+  ): void {
+    if (nextCount > PRODUCT_VARIANT_MAX_IMAGES && nextCount > existingCount) {
+      throw new AppException(
+        400,
+        'PRODUCT_IMAGES_LIMIT_EXCEEDED',
+        `Variant ${sku} has ${nextCount} images, the limit is ${PRODUCT_VARIANT_MAX_IMAGES}`,
+      );
+    }
+  }
 
   // shopId đã được ShopOwnerGuard xác nhận đúng chủ trước khi vào đây — không
   // check lại ownership trong service (tránh double-check dư thừa, cùng lý do
@@ -235,6 +259,9 @@ export class ProductService {
     shopId: string,
     dto: CreateProductDto,
   ): Promise<ProductSummary> {
+    for (const variant of dto.variants) {
+      this.assertImageLimit(variant.sku, variant.images.length, 0);
+    }
     const baseSlug = slugify(dto.name);
 
     for (let attempt = 0; attempt < MAX_GENERATED_SLUG_ATTEMPTS; attempt++) {
@@ -378,8 +405,12 @@ export class ProductService {
     productId: string,
     dto: UpdateProductDto,
   ): Promise<ProductSummary> {
+    // Ảnh bị gỡ khỏi DB trong lần sửa này — chỉ dọn trên Cloudinary SAU khi giao dịch đã commit (nếu rollback thì
+    // DB vẫn còn tham chiếu, xoá tệp là vỡ ảnh).
+    let removedImageUrls: string[] = [];
+    let summary: ProductSummary;
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      summary = await this.prisma.$transaction(async (tx) => {
         await tx.product.update({
           where: { id: productId },
           data: {
@@ -391,7 +422,7 @@ export class ProductService {
         });
 
         if (dto.attributes && dto.variants) {
-          await this.reconcileAttributesAndVariants(
+          removedImageUrls = await this.reconcileAttributesAndVariants(
             tx,
             shopId,
             productId,
@@ -412,6 +443,10 @@ export class ProductService {
       }
       throw error;
     }
+
+    // Không bao giờ ném (xem ProductImageCleanupService): lỗi chỉ để lại ảnh mồ côi, việc sửa đã xong.
+    await this.imageCleanup.deleteUnreferenced(removedImageUrls);
+    return summary;
   }
 
   // "Xoá" Product = update status = ARCHIVED, không prisma.delete (đúng
@@ -692,7 +727,8 @@ export class ProductService {
     productId: string,
     attributes: UpdateProductDto['attributes'] & object,
     variants: UpdateProductDto['variants'] & object,
-  ): Promise<void> {
+  ): Promise<string[]> {
+    const removedImageUrls: string[] = [];
     const attributeValueIdsByPosition: Map<string, string>[] = [];
     for (let position = 0; position < attributes.length; position++) {
       const attribute = attributes[position];
@@ -767,12 +803,21 @@ export class ProductService {
 
     const existingVariants = await tx.productVariant.findMany({
       where: { productId },
-      select: { id: true, sku: true },
+      select: { id: true, sku: true, _count: { select: { images: true } } },
     });
     const existingVariantBySku = new Map(
       existingVariants.map((variant) => [variant.sku, variant]),
     );
     const payloadSkus = new Set(variants.map((variant) => variant.sku));
+
+    // Kiểm trần ảnh của MỌI biến thể trước khi ghi bất kỳ ảnh nào.
+    for (const variant of variants) {
+      this.assertImageLimit(
+        variant.sku,
+        variant.images.length,
+        existingVariantBySku.get(variant.sku)?._count.images ?? 0,
+      );
+    }
 
     for (const variant of variants) {
       const attributeValueIds = this.resolveAttributeValueIds(
@@ -818,7 +863,9 @@ export class ProductService {
           );
         }
         // Variant đã có sẵn — reconcile ảnh theo url (Week5.md Bước 2.12).
-        await this.reconcileVariantImages(tx, variantId, variant.images);
+        removedImageUrls.push(
+          ...(await this.reconcileVariantImages(tx, variantId, variant.images)),
+        );
       } else if (variant.images.length > 0) {
         // Variant mới tạo, chắc chắn chưa có ảnh nào — tạo thẳng, không cần
         // fetch/diff như reconcileVariantImages.
@@ -854,6 +901,19 @@ export class ProductService {
           where: { id: existing.id },
           data: { isActive: false },
         });
+        // Ảnh của biến thể đã gỡ: không còn chỗ nào hiển thị (trang công khai chỉ đọc biến thể đang hoạt
+        // động; lịch sử đơn dùng ảnh CHỤP LẠI trong order_items, không đọc bảng này) — xoá dòng và dọn tệp
+        // trên Cloudinary (chỉ khi không còn nơi nào tham chiếu, xem ProductImageCleanupService).
+        const staleImages = await tx.productImage.findMany({
+          where: { variantId: existing.id },
+          select: { url: true },
+        });
+        if (staleImages.length > 0) {
+          await tx.productImage.deleteMany({
+            where: { variantId: existing.id },
+          });
+          removedImageUrls.push(...staleImages.map((image) => image.url));
+        }
       }
     }
 
@@ -864,6 +924,7 @@ export class ProductService {
       where: { id: productId },
       data: { minPrice, maxPrice },
     });
+    return removedImageUrls;
   }
 
   // Reconcile ảnh của 1 variant theo khoá tự nhiên (url) — KHÁC soft-delete
@@ -871,11 +932,16 @@ export class ProductService {
   // cần giữ lịch sử, nên ảnh không còn trong payload bị xoá hẳn (Week5.md
   // Bước 1.3/2.12). Ảnh còn trong payload giữ nguyên id (chỉ update lại
   // position nếu thứ tự đổi), ảnh mới thì tạo.
+  //
+  // Trả về URL của các ảnh VỪA BỊ GỠ để nơi gọi dọn tệp trên Cloudinary SAU khi commit. Câu "không có FK nào
+  // khác tham chiếu" ở trên chỉ đúng với bảng product_images: URL còn được chép NGUYÊN VĂN vào
+  // order_items.image_url (ảnh chụp lại lúc mua) nên tệp thật chưa chắc đã vô chủ — việc quyết định có xoá tệp
+  // hay không thuộc ProductImageCleanupService.
   private async reconcileVariantImages(
     tx: Prisma.TransactionClient,
     variantId: string,
     urls: string[],
-  ): Promise<void> {
+  ): Promise<string[]> {
     const existingImages = await tx.productImage.findMany({
       where: { variantId },
       select: { id: true, url: true, position: true },
@@ -898,14 +964,15 @@ export class ProductService {
       }
     }
 
-    const staleImageIds = existingImages
-      .filter((image) => !payloadUrls.has(image.url))
-      .map((image) => image.id);
-    if (staleImageIds.length > 0) {
+    const staleImages = existingImages.filter(
+      (image) => !payloadUrls.has(image.url),
+    );
+    if (staleImages.length > 0) {
       await tx.productImage.deleteMany({
-        where: { id: { in: staleImageIds } },
+        where: { id: { in: staleImages.map((image) => image.id) } },
       });
     }
+    return staleImages.map((image) => image.url);
   }
 
   // Denormalize minPrice/maxPrice lên Product từ tập variant ACTIVE hiện tại

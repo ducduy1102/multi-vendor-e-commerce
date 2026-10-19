@@ -1,7 +1,9 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { expectAppException } from '../../shared/testing/expect-app-exception';
 import type { CreateProductDto } from './dto/create-product.dto';
+import type { ProductImageCleanupService } from './product-image-cleanup.service';
 import { ProductService } from './product.service';
 
 function p2002(
@@ -42,6 +44,7 @@ const baseDto: CreateProductDto = {
 
 describe('ProductService', () => {
   let service: ProductService;
+  let imageCleanup: { deleteUnreferenced: jest.Mock };
   let prisma: {
     product: {
       findUnique: jest.Mock;
@@ -145,7 +148,13 @@ describe('ProductService', () => {
       // hợp lệ).
       $queryRaw: jest.fn().mockResolvedValue([]),
     };
-    service = new ProductService(prisma as unknown as PrismaService);
+    imageCleanup = {
+      deleteUnreferenced: jest.fn().mockResolvedValue(undefined),
+    };
+    service = new ProductService(
+      prisma as unknown as PrismaService,
+      imageCleanup as unknown as ProductImageCleanupService,
+    );
   });
 
   function mockLoadedProduct(overrides: Record<string, unknown> = {}) {
@@ -774,8 +783,8 @@ describe('ProductService', () => {
 
     it('reconcile variant: update khớp sku, tạo mới sku lạ, soft-delete sku bị bỏ và giữ nguyên link cũ', async () => {
       prisma.productVariant.findMany.mockResolvedValue([
-        { id: 'variant-keep', sku: 'KEEP' },
-        { id: 'variant-drop', sku: 'DROP' },
+        { id: 'variant-keep', sku: 'KEEP', _count: { images: 0 } },
+        { id: 'variant-drop', sku: 'DROP', _count: { images: 0 } },
       ]);
       mockLoadedProduct();
 
@@ -843,7 +852,7 @@ describe('ProductService', () => {
     // soft-delete của variant: ảnh không còn trong payload bị xoá hẳn row.
     it('reconcile ảnh: giữ ảnh còn trong payload, thêm ảnh mới, xoá hẳn ảnh mất trong payload', async () => {
       prisma.productVariant.findMany.mockResolvedValue([
-        { id: 'variant-keep', sku: 'KEEP' },
+        { id: 'variant-keep', sku: 'KEEP', _count: { images: 2 } },
       ]);
       prisma.productImage.findMany.mockResolvedValue([
         { id: 'img-old', url: 'https://x/old.jpg', position: 0 },
@@ -883,6 +892,368 @@ describe('ProductService', () => {
       });
     });
 
+    // Week10.md 2.4 — dọn ảnh trên Cloudinary sau khi ảnh bị gỡ khỏi DB.
+    describe('dọn ảnh bị gỡ trên Cloudinary (Week10.md 2.4)', () => {
+      const existingVariant = (id: string, sku: string, images = 0) => ({
+        id,
+        sku,
+        _count: { images },
+      });
+      const variantPayload = (sku: string, images: string[]) => ({
+        sku,
+        price: 1,
+        stock: 1,
+        attributeValues: [],
+        images,
+      });
+
+      it('gỡ một ảnh khỏi biến thể: sau commit, URL đó được chuyển cho service dọn ảnh', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([
+          existingVariant('variant-keep', 'KEEP', 2),
+        ]);
+        prisma.productImage.findMany.mockResolvedValue([
+          { id: 'img-old', url: 'https://x/old.jpg', position: 0 },
+          { id: 'img-keep', url: 'https://x/keep.jpg', position: 1 },
+        ]);
+        mockLoadedProduct();
+
+        await service.updateProduct('shop-1', 'product-1', {
+          attributes: [],
+          variants: [variantPayload('KEEP', ['https://x/keep.jpg'])],
+        });
+
+        expect(imageCleanup.deleteUnreferenced).toHaveBeenCalledTimes(1);
+        expect(imageCleanup.deleteUnreferenced).toHaveBeenCalledWith([
+          'https://x/old.jpg',
+        ]);
+      });
+
+      it('ảnh được giữ lại trong payload thì KHÔNG bị đưa vào danh sách dọn', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([
+          existingVariant('variant-keep', 'KEEP', 1),
+        ]);
+        prisma.productImage.findMany.mockResolvedValue([
+          { id: 'img-keep', url: 'https://x/keep.jpg', position: 0 },
+        ]);
+        mockLoadedProduct();
+
+        await service.updateProduct('shop-1', 'product-1', {
+          attributes: [],
+          variants: [variantPayload('KEEP', ['https://x/keep.jpg'])],
+        });
+
+        expect(imageCleanup.deleteUnreferenced).toHaveBeenCalledWith([]);
+      });
+
+      it('gỡ biến thể (soft-delete): xoá dòng ảnh của nó và đưa URL cho service dọn ảnh', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([
+          existingVariant('variant-keep', 'KEEP'),
+          existingVariant('variant-drop', 'DROP', 2),
+        ]);
+        prisma.productImage.findMany.mockImplementation(
+          (args: { where: { variantId: string } }) =>
+            Promise.resolve(
+              args.where.variantId === 'variant-drop'
+                ? [{ url: 'https://x/d1.jpg' }, { url: 'https://x/d2.jpg' }]
+                : [],
+            ),
+        );
+        mockLoadedProduct();
+
+        await service.updateProduct('shop-1', 'product-1', {
+          attributes: [],
+          variants: [variantPayload('KEEP', [])],
+        });
+
+        expect(prisma.productVariant.update).toHaveBeenCalledWith({
+          where: { id: 'variant-drop' },
+          data: { isActive: false },
+        });
+        expect(prisma.productImage.deleteMany).toHaveBeenCalledWith({
+          where: { variantId: 'variant-drop' },
+        });
+        expect(imageCleanup.deleteUnreferenced).toHaveBeenCalledWith([
+          'https://x/d1.jpg',
+          'https://x/d2.jpg',
+        ]);
+      });
+
+      it('biến thể bị gỡ không có ảnh: không xoá dòng nào thừa', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([
+          existingVariant('variant-keep', 'KEEP'),
+          existingVariant('variant-drop', 'DROP'),
+        ]);
+        mockLoadedProduct();
+
+        await service.updateProduct('shop-1', 'product-1', {
+          attributes: [],
+          variants: [variantPayload('KEEP', [])],
+        });
+
+        expect(prisma.productImage.deleteMany).not.toHaveBeenCalled();
+      });
+
+      it('gom ảnh bị gỡ từ NHIỀU biến thể (gỡ ảnh ở biến thể này + gỡ cả biến thể kia) trong một lần gọi', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([
+          existingVariant('variant-a', 'A', 1),
+          existingVariant('variant-b', 'B', 1),
+        ]);
+        prisma.productImage.findMany.mockImplementation(
+          (args: { where: { variantId: string } }) =>
+            Promise.resolve(
+              args.where.variantId === 'variant-a'
+                ? [{ id: 'img-a', url: 'https://x/a.jpg', position: 0 }]
+                : [{ url: 'https://x/b.jpg' }],
+            ),
+        );
+        mockLoadedProduct();
+
+        await service.updateProduct('shop-1', 'product-1', {
+          attributes: [],
+          variants: [variantPayload('A', [])],
+        });
+
+        expect(imageCleanup.deleteUnreferenced).toHaveBeenCalledTimes(1);
+        expect(
+          [
+            ...(
+              imageCleanup.deleteUnreferenced.mock.calls as string[][][]
+            )[0][0],
+          ].sort(),
+        ).toEqual(['https://x/a.jpg', 'https://x/b.jpg']);
+      });
+
+      it('chỉ sửa field cơ bản (không gửi attributes/variants): vẫn gọi dọn với danh sách rỗng, không có ảnh nào bị gỡ', async () => {
+        mockLoadedProduct();
+
+        await service.updateProduct('shop-1', 'product-1', { name: 'Tên mới' });
+
+        expect(imageCleanup.deleteUnreferenced).toHaveBeenCalledWith([]);
+      });
+
+      it('giao dịch LỖI/rollback ⇒ KHÔNG dọn gì (DB vẫn còn tham chiếu tới ảnh)', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([
+          existingVariant('variant-keep', 'KEEP', 1),
+        ]);
+        prisma.productImage.findMany.mockResolvedValue([
+          { id: 'img-old', url: 'https://x/old.jpg', position: 0 },
+        ]);
+        // Ghi kho vật lý thất bại SAU khi đã tính xong ảnh bị gỡ ⇒ giao dịch rollback.
+        prisma.productVariant.updateMany.mockResolvedValue({ count: 0 });
+        prisma.productVariant.findUnique.mockResolvedValue({
+          reservedStock: 5,
+        });
+
+        await expect(
+          service.updateProduct('shop-1', 'product-1', {
+            attributes: [],
+            variants: [variantPayload('KEEP', [])],
+          }),
+        ).rejects.toThrow();
+
+        expect(imageCleanup.deleteUnreferenced).not.toHaveBeenCalled();
+      });
+
+      it('việc dọn chạy SAU giao dịch: kết quả sản phẩm trả về đúng dù dọn ảnh chậm', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([
+          existingVariant('variant-keep', 'KEEP', 1),
+        ]);
+        prisma.productImage.findMany.mockResolvedValue([
+          { id: 'img-old', url: 'https://x/old.jpg', position: 0 },
+        ]);
+        mockLoadedProduct();
+        const order: string[] = [];
+        prisma.$transaction.mockImplementation(
+          async (callback: (tx: unknown) => unknown) => {
+            const result = await callback(prisma);
+            order.push('commit');
+            return result;
+          },
+        );
+        imageCleanup.deleteUnreferenced.mockImplementation(() => {
+          order.push('cleanup');
+          return Promise.resolve();
+        });
+
+        const result = await service.updateProduct('shop-1', 'product-1', {
+          attributes: [],
+          variants: [variantPayload('KEEP', [])],
+        });
+
+        expect(order).toEqual(['commit', 'cleanup']);
+        expect(result.id).toBe('product-1');
+      });
+    });
+
+    // Week10.md 2.4 — trần số ảnh mỗi biến thể, có "grandfather" cho dữ liệu cũ đã vượt trần.
+    describe('trần số ảnh mỗi biến thể (PRODUCT_VARIANT_MAX_IMAGES = 9)', () => {
+      const urls = (count: number) =>
+        Array.from({ length: count }, (_, i) => `https://x/${i}.jpg`);
+      const withImages = (count: number) => ({
+        attributes: [],
+        variants: [
+          {
+            sku: 'KEEP',
+            price: 1,
+            stock: 1,
+            attributeValues: [],
+            images: urls(count),
+          },
+        ],
+      });
+
+      beforeEach(() => {
+        mockLoadedProduct();
+      });
+
+      it('đúng trần (9 ảnh) ở biến thể mới: được phép', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([]);
+
+        await expect(
+          service.updateProduct('shop-1', 'product-1', withImages(9)),
+        ).resolves.toBeDefined();
+      });
+
+      it('10 ảnh ở biến thể MỚI: 400 PRODUCT_IMAGES_LIMIT_EXCEEDED, không ghi gì', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([]);
+
+        await expectAppException(
+          service.updateProduct('shop-1', 'product-1', withImages(10)),
+          { status: 400, code: 'PRODUCT_IMAGES_LIMIT_EXCEEDED' },
+        );
+
+        expect(prisma.productVariant.create).not.toHaveBeenCalled();
+        expect(prisma.productImage.createMany).not.toHaveBeenCalled();
+        expect(imageCleanup.deleteUnreferenced).not.toHaveBeenCalled();
+      });
+
+      it('biến thể đang có 5 ảnh, thêm lên 10: bị chặn (tăng vượt trần)', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([
+          { id: 'variant-keep', sku: 'KEEP', _count: { images: 5 } },
+        ]);
+
+        await expectAppException(
+          service.updateProduct('shop-1', 'product-1', withImages(10)),
+          { status: 400, code: 'PRODUCT_IMAGES_LIMIT_EXCEEDED' },
+        );
+      });
+
+      it('biến thể đang có 9 ảnh, thêm 1: bị chặn', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([
+          { id: 'variant-keep', sku: 'KEEP', _count: { images: 9 } },
+        ]);
+
+        await expectAppException(
+          service.updateProduct('shop-1', 'product-1', withImages(10)),
+          { status: 400, code: 'PRODUCT_IMAGES_LIMIT_EXCEEDED' },
+        );
+      });
+
+      describe('GRANDFATHER: dữ liệu cũ đã vượt trần (vd 12 ảnh) vẫn sửa được', () => {
+        beforeEach(() => {
+          prisma.productVariant.findMany.mockResolvedValue([
+            { id: 'variant-keep', sku: 'KEEP', _count: { images: 12 } },
+          ]);
+          prisma.productImage.findMany.mockResolvedValue(
+            urls(12).map((url, i) => ({ id: `img-${i}`, url, position: i })),
+          );
+        });
+
+        it('giữ nguyên 12 ảnh (chỉ sửa giá/kho): KHÔNG bị chặn', async () => {
+          await expect(
+            service.updateProduct('shop-1', 'product-1', withImages(12)),
+          ).resolves.toBeDefined();
+        });
+
+        it('bớt xuống 11 (vẫn vượt trần nhưng không tăng): được phép', async () => {
+          await expect(
+            service.updateProduct('shop-1', 'product-1', withImages(11)),
+          ).resolves.toBeDefined();
+        });
+
+        it('bớt xuống đúng trần 9: được phép', async () => {
+          await expect(
+            service.updateProduct('shop-1', 'product-1', withImages(9)),
+          ).resolves.toBeDefined();
+        });
+
+        it('thêm lên 13 (tăng thêm khi đã vượt trần): bị chặn', async () => {
+          await expectAppException(
+            service.updateProduct('shop-1', 'product-1', withImages(13)),
+            { status: 400, code: 'PRODUCT_IMAGES_LIMIT_EXCEEDED' },
+          );
+        });
+      });
+
+      it('chỉ biến thể vượt trần mới bị chặn: biến thể khác của cùng sản phẩm không liên quan', async () => {
+        prisma.productVariant.findMany.mockResolvedValue([
+          { id: 'variant-a', sku: 'A', _count: { images: 12 } },
+          { id: 'variant-b', sku: 'B', _count: { images: 1 } },
+        ]);
+
+        await expectAppException(
+          service.updateProduct('shop-1', 'product-1', {
+            attributes: [],
+            variants: [
+              {
+                sku: 'A',
+                price: 1,
+                stock: 1,
+                attributeValues: [],
+                images: urls(12),
+              },
+              {
+                sku: 'B',
+                price: 1,
+                stock: 1,
+                attributeValues: [],
+                images: urls(10),
+              },
+            ],
+          }),
+          { status: 400, code: 'PRODUCT_IMAGES_LIMIT_EXCEEDED' },
+        );
+      });
+
+      describe('tạo sản phẩm mới', () => {
+        const dtoWith = (count: number): CreateProductDto => ({
+          ...baseDto,
+          attributes: [],
+          variants: [
+            {
+              sku: 'NEW-1',
+              price: 1,
+              stock: 1,
+              attributeValues: [],
+              images: urls(count),
+            },
+          ],
+        });
+
+        it('đúng trần: tạo được', async () => {
+          prisma.product.findUnique.mockResolvedValue(null);
+          mockLoadedProduct();
+
+          await expect(
+            service.createProduct('shop-1', dtoWith(9)),
+          ).resolves.toBeDefined();
+        });
+
+        it('vượt trần: 400 và KHÔNG chạm DB (không kiểm slug, không mở giao dịch)', async () => {
+          await expectAppException(
+            service.createProduct('shop-1', dtoWith(10)),
+            {
+              status: 400,
+              code: 'PRODUCT_IMAGES_LIMIT_EXCEEDED',
+            },
+          );
+
+          expect(prisma.product.findUnique).not.toHaveBeenCalled();
+          expect(prisma.$transaction).not.toHaveBeenCalled();
+        });
+      });
+    });
+
     describe('kho giữ chỗ (Week7.md 1.3)', () => {
       const payload = (stock: number) => ({
         attributes: [],
@@ -893,7 +1264,7 @@ describe('ProductService', () => {
 
       beforeEach(() => {
         prisma.productVariant.findMany.mockResolvedValue([
-          { id: 'variant-keep', sku: 'KEEP' },
+          { id: 'variant-keep', sku: 'KEEP', _count: { images: 0 } },
         ]);
         mockLoadedProduct();
       });

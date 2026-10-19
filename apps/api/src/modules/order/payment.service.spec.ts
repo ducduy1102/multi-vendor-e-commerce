@@ -32,7 +32,7 @@ describe('PaymentService', () => {
       create: jest.Mock;
       update: jest.Mock;
     };
-    checkoutGroup: { findFirst: jest.Mock };
+    checkoutGroup: { findFirst: jest.Mock; findUnique: jest.Mock };
     user: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -67,7 +67,7 @@ describe('PaymentService', () => {
         create: jest.fn().mockResolvedValue({}),
         update: jest.fn().mockResolvedValue({}),
       },
-      checkoutGroup: { findFirst: jest.fn() },
+      checkoutGroup: { findFirst: jest.fn(), findUnique: jest.fn() },
       user: { findUnique: jest.fn().mockResolvedValue({ locale: 'vi' }) },
       $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(tx)),
     };
@@ -1111,6 +1111,52 @@ describe('PaymentService', () => {
         details: { method: 'VNPAY', reason: 'AMOUNT_TOO_LARGE' },
       });
       expect(prisma.payment.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // Week10.md 2.3: redirect từ cổng thanh toán về FE phải tự mang prefix ngôn ngữ (FE không còn nhớ qua cookie).
+  describe('findBuyerLocale', () => {
+    it('trả User.locale của chủ nhóm thanh toán', async () => {
+      prisma.checkoutGroup.findUnique.mockResolvedValue({ userId: 'user-1' });
+      prisma.user.findUnique.mockResolvedValue({ locale: 'en' });
+
+      await expect(service.findBuyerLocale('g1')).resolves.toBe('en');
+
+      expect(prisma.checkoutGroup.findUnique).toHaveBeenCalledWith({
+        where: { id: 'g1' },
+        select: { userId: true },
+      });
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { locale: true },
+      });
+    });
+
+    it('người mua dùng vi — trả vi', async () => {
+      prisma.checkoutGroup.findUnique.mockResolvedValue({ userId: 'user-1' });
+      prisma.user.findUnique.mockResolvedValue({ locale: 'vi' });
+
+      await expect(service.findBuyerLocale('g1')).resolves.toBe('vi');
+    });
+
+    it('không có nhóm — mặc định vi, không tra người dùng', async () => {
+      prisma.checkoutGroup.findUnique.mockResolvedValue(null);
+
+      await expect(service.findBuyerLocale('missing')).resolves.toBe('vi');
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('lỗi DB — KHÔNG ném (đang trên đường redirect của trình duyệt), rơi về vi', async () => {
+      prisma.checkoutGroup.findUnique.mockRejectedValue(new Error('db down'));
+
+      await expect(service.findBuyerLocale('g1')).resolves.toBe('vi');
+    });
+
+    it('tra người dùng lỗi — vẫn rơi về vi, không ném', async () => {
+      prisma.checkoutGroup.findUnique.mockResolvedValue({ userId: 'user-1' });
+      prisma.user.findUnique.mockRejectedValue(new Error('db down'));
+
+      await expect(service.findBuyerLocale('g1')).resolves.toBe('vi');
     });
   });
 });

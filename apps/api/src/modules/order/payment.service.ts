@@ -2,6 +2,10 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
 import type { PaymentMethod } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
+import {
+  DEFAULT_MAIL_LOCALE,
+  type MailLocale,
+} from '../../shared/mail/mail-locale';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { findUserLocale } from '../../shared/utils/user-locale';
 import {
@@ -444,6 +448,24 @@ export class PaymentService {
       'ORDER_INVALID_TRANSITION',
       'This checkout group has no unpaid order to cancel',
     );
+  }
+
+  // Ngôn ngữ để đưa người mua QUAY LẠI FE sau khi qua cổng thanh toán (Week10.md 2.3): FE không còn nhớ ngôn
+  // ngữ qua cookie nên redirect về `/checkout/result` phải tự mang prefix `/en`. Cùng nguồn với ngôn ngữ trang
+  // của cổng (createPayment): `User.locale` của chủ nhóm — cổng chỉ trả về txnRef, không biết trang FE nào đã
+  // bấm thanh toán. Chạy trên đường redirect của trình duyệt nên KHÔNG BAO GIỜ ném: lỗi/không tìm thấy ⇒ mặc định.
+  async findBuyerLocale(checkoutGroupId: string): Promise<MailLocale> {
+    try {
+      const group = await this.prisma.checkoutGroup.findUnique({
+        where: { id: checkoutGroupId },
+        select: { userId: true },
+      });
+      return group
+        ? await findUserLocale(this.prisma, group.userId)
+        : DEFAULT_MAIL_LOCALE;
+    } catch {
+      return DEFAULT_MAIL_LOCALE;
+    }
   }
 
   // Chỉ chủ nhóm xem được — người khác coi như không tồn tại (404, cùng luật AddressService).
