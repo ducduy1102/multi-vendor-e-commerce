@@ -20,7 +20,7 @@ const SOURCE_DIRS = [
   join(__dirname, '../../modules'),
 ];
 const KEY_PATTERN =
-  /['"`]((?:auth|shop|product|cart|voucher|checkout|order|admin|review|account)\.validation[A-Za-z0-9]+)['"`]/g;
+  /['"`]((?:auth|shop|product|cart|voucher|checkout|order|admin|review|account|chat)\.validation[A-Za-z0-9]+)['"`]/g;
 
 function listSourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
