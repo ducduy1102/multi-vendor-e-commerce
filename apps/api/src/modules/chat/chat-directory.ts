@@ -12,10 +12,22 @@ export interface ChatShopInfo {
   logoUrl: string | null;
 }
 
+// Người dùng trong mắt đối phương: CHỈ id và tên hiển thị — không email, SĐT hay địa chỉ (Week10.md, checklist
+// bảo mật dữ liệu chat). Cổng không có cách nào trả thêm, nên một nơi gọi mới không thể vô tình lộ chúng.
+export interface ChatUserDisplay {
+  id: string;
+  name: string;
+}
+
 export interface ChatDirectory {
   // null nếu shop không tồn tại. Trạng thái trả nguyên để nơi gọi tự quyết (mở hội thoại chỉ với APPROVED, nhưng
   // hội thoại cũ của shop bị khoá vẫn đọc được ở chế độ chỉ đọc).
   getShopForChat(shopId: string): Promise<ChatShopInfo | null>;
+  // Tra NHIỀU shop bằng một lượt (danh sách hội thoại của người mua — không N+1). Id không tồn tại bị bỏ qua,
+  // thứ tự kết quả không đảm bảo.
+  getShopsForChat(shopIds: string[]): Promise<ChatShopInfo[]>;
+  // Tên hiển thị của nhiều người dùng bằng một lượt (danh sách hội thoại của shop: đối phương là người mua).
+  getUserDisplay(userIds: string[]): Promise<ChatUserDisplay[]>;
 }
 
 // Token DI của cổng danh bạ.

@@ -50,7 +50,11 @@ describe('ChatService.openConversation', () => {
     message: { findFirst: jest.Mock; count: jest.Mock };
     shop: { findUnique: jest.Mock };
   };
-  let directory: { getShopForChat: jest.Mock };
+  let directory: {
+    getShopForChat: jest.Mock;
+    getShopsForChat: jest.Mock;
+    getUserDisplay: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.useFakeTimers({ now: NOW });
@@ -66,7 +70,11 @@ describe('ChatService.openConversation', () => {
       },
       shop: { findUnique: jest.fn() },
     };
-    directory = { getShopForChat: jest.fn().mockResolvedValue(shop()) };
+    directory = {
+      getShopForChat: jest.fn().mockResolvedValue(shop()),
+      getShopsForChat: jest.fn(),
+      getUserDisplay: jest.fn(),
+    };
     service = new ChatService(
       prisma as unknown as PrismaService,
       directory,

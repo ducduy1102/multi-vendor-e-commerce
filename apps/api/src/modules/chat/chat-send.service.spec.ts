@@ -70,7 +70,11 @@ describe('ChatService.sendMessage', () => {
     };
     $transaction: jest.Mock;
   };
-  let directory: { getShopForChat: jest.Mock };
+  let directory: {
+    getShopForChat: jest.Mock;
+    getShopsForChat: jest.Mock;
+    getUserDisplay: jest.Mock;
+  };
   let events: string[];
   // Số sự kiện real-time đã được đẩy vào lúc transaction commit (phải là 0: đẩy chỉ SAU commit).
   let emittedAtCommit = -1;
@@ -115,7 +119,11 @@ describe('ChatService.sendMessage', () => {
         },
       ),
     };
-    directory = { getShopForChat: jest.fn().mockResolvedValue(shopInfo()) };
+    directory = {
+      getShopForChat: jest.fn().mockResolvedValue(shopInfo()),
+      getShopsForChat: jest.fn(),
+      getUserDisplay: jest.fn(),
+    };
     service = new ChatService(
       prisma as unknown as PrismaService,
       directory,
