@@ -32,6 +32,18 @@ export function isSafeMultilineText(value: string): boolean {
   return !CONTROL_CHARS_EXCEPT_WHITESPACE.test(value) && !SPOOFING_CHARS.test(value);
 }
 
+// Tin nhắn chat (Week10.md 4.2): văn bản thuần nhiều dòng. Khác isSafeMultilineText ở chỗ CHỈ cho xuống dòng
+// `\n` — tab và CR (`\r`) bị chặn cùng mọi ký tự điều khiển khác (CR trần có thể ghi đè dòng khi in ra
+// terminal/log). Schema chuẩn hoá `\r\n` → `\n` TRƯỚC khi gọi hàm này nên client gửi CRLF vẫn hợp lệ. Cũng chặn
+// NUL, bidi-override, BOM và dấu phân dòng/đoạn Unicode (cùng bộ chặn của tên và mô tả). Không chặn `<` `>`
+// (React tự escape) và không chặn ZWJ (emoji ghép cần nó).
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS_EXCEPT_NEWLINE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/;
+
+export function isSafeMessageText(value: string): boolean {
+  return !CONTROL_CHARS_EXCEPT_NEWLINE.test(value) && !SPOOFING_CHARS.test(value);
+}
+
 // Số BYTE UTF-8 của chuỗi. bcrypt chỉ đọc 72 BYTE đầu chứ không phải 72 ký tự — mật khẩu có dấu tiếng Việt
 // (3 byte/ký tự) hay emoji (4 byte) vượt 72 byte dù chưa tới 72 ký tự, phần đuôi bị bỏ im lặng ⇒ hai mật
 // khẩu khác nhau ở đuôi băm ra cùng một giá trị. `lib` của package chỉ có ES2022 (không có TextEncoder) nên

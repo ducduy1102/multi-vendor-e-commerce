@@ -919,6 +919,17 @@
     "refundsRetryDialogDescription": "Hệ thống sẽ gọi lại cổng thanh toán với đúng mã tham chiếu của khoản hoàn này nên cổng tự loại trùng. Nếu bạn đã hoàn tiền thủ công trên trang quản trị của cổng, hãy chọn \"Ghi nhận hoàn tay\" thay vì thử lại.",
     "refundsRetryDialogConfirm": "Thử lại"
   },
+  "chat": {
+    "validationMessageRequired": "Vui lòng nhập nội dung tin nhắn",
+    "validationMessageTooLong": "Tin nhắn tối đa 1000 ký tự",
+    "validationMessageUnsafe": "Tin nhắn chứa ký tự không được phép",
+    "errorOwnShop": "Bạn không thể nhắn tin cho shop của chính mình",
+    "errorShopUnavailable": "Shop hiện không nhận tin nhắn mới",
+    "errorRateLimited": "Bạn gửi tin quá nhanh, vui lòng chờ một chút",
+    "errorAwaitingReply": "Bạn đã gửi nhiều tin liên tiếp, hãy chờ shop phản hồi",
+    "errorConversationLimit": "Hôm nay bạn đã mở quá nhiều cuộc trò chuyện, vui lòng thử lại sau",
+    "errorNotParticipant": "Bạn không có quyền xem cuộc trò chuyện này"
+  },
   "review": {
     "validationRatingRequired": "Vui lòng chọn số sao",
     "validationRatingInvalid": "Số sao phải từ 1 đến 5",

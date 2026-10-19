@@ -13,7 +13,21 @@ const SRC_ROOT = __dirname;
 // `review` (Week9.md 2.0) chỉ được phụ thuộc `product` (ProductRatingService — điểm ghi duy nhất của
 // Product.avgRating/reviewCount); dữ liệu đơn hàng nó tự đọc bằng PrismaService, không import `order`.
 // Chiều ngược lại cũng cấm (`product`/`order` → `review`) để đồ thị không có vòng.
+// `chat` (Week10.md Bước 4) không phụ thuộc module nghiệp vụ nào: thông tin shop/người dùng đi qua cổng
+// ChatDirectory (đọc bằng PrismaService với `select` hẹp), để sau này tách chat thành service riêng thì chỉ đổi
+// bản cài đặt cổng. Hạ tầng dùng chung (guard, realtime...) nằm ở shared/ nên không bị cấm.
 export const FORBIDDEN_DEPENDENCIES: Record<string, string[]> = {
+  chat: [
+    'auth',
+    'shop',
+    'product',
+    'cart',
+    'checkout',
+    'voucher',
+    'order',
+    'review',
+    'admin',
+  ],
   voucher: ['cart', 'checkout', 'order'],
   product: ['cart', 'checkout', 'order', 'review'],
   order: ['checkout', 'cart', 'review'],

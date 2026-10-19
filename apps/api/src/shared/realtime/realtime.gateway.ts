@@ -14,8 +14,7 @@ import {
 import { RealtimeAccessService } from './realtime-access.service';
 import type { RealtimeEmitter } from './realtime-emitter';
 import {
-  REALTIME_CONNECT_TIMEOUT_MS,
-  REALTIME_MAX_HTTP_BUFFER_BYTES,
+  REALTIME_GATEWAY_OPTIONS,
   REALTIME_MAX_SOCKETS_PER_USER,
   userRoom,
 } from './realtime.constants';
@@ -35,8 +34,8 @@ function errorMessage(error: unknown): string {
 // Hạ tầng real-time (Week10.md 3.2) — CHỈ lo kết nối: xác thực, phòng riêng của từng người dùng, giới hạn kết
 // nối và ngắt khi token hết hạn. KHÔNG chứa nghiệp vụ chat/thông báo, và cố ý KHÔNG có `@SubscribeMessage`
 // nào: client không có sự kiện nào để gửi lên (kể cả để tự vào phòng) nên bề mặt tấn công chỉ là bước kết nối.
-// Mọi sự kiện lạ client gửi lên đều bị socket.io bỏ qua. Lệnh ghi đi qua REST (D2); sự kiện `chat:typing` sẽ
-// được thêm ở module chat, không ở đây.
+// Mọi sự kiện lạ client gửi lên đều bị socket.io bỏ qua. Lệnh ghi đi qua REST (D2); sự kiện client gửi lên duy
+// nhất của ứng dụng, `chat:typing`, nằm ở ChatGateway (module chat), không ở đây.
 //
 // Các tuỳ chọn tĩnh khai ở decorator (có hiệu lực dù adapter tuỳ biến có được cài hay không):
 //   - chỉ `websocket` (không long-polling): ít bề mặt hơn và không cần sticky session;
@@ -44,12 +43,9 @@ function errorMessage(error: unknown): string {
 // Không đặt `cors`: với chỉ WebSocket, trình duyệt không áp CORS (không có XHR); hàng rào chống CSWSH là kiểm
 // `Origin` ở RealtimeAccessService. Đường dẫn mặc định `/socket.io` ở gốc host, KHÔNG nằm dưới global prefix
 // `api/v1` của REST.
-@WebSocketGateway({
-  transports: ['websocket'],
-  maxHttpBufferSize: REALTIME_MAX_HTTP_BUFFER_BYTES,
-  connectTimeout: REALTIME_CONNECT_TIMEOUT_MS,
-  serveClient: false,
-})
+// Tuỳ chọn lấy từ REALTIME_GATEWAY_OPTIONS: mọi gateway (kể cả ChatGateway) dùng CÙNG hằng số vì Nest chỉ tạo
+// một server và lấy tuỳ chọn của gateway được quét đầu tiên.
+@WebSocketGateway(REALTIME_GATEWAY_OPTIONS)
 export class RealtimeGateway
   implements
     OnGatewayInit,

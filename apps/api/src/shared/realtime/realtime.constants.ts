@@ -24,3 +24,20 @@ export const REALTIME_FAILED_HANDSHAKE_MAX_TRACKED = 10_000;
 export function userRoom(userId: string): string {
   return `user:${userId}`;
 }
+
+// Tuỳ chọn Socket.io dùng chung cho MỌI gateway của ứng dụng. Nest chỉ tạo MỘT server cho các gateway cùng cổng/
+// namespace và lấy tuỳ chọn của gateway nào được quét TRƯỚC — các gateway còn lại bị bỏ qua tuỳ chọn. Vì thứ tự
+// quét không phải thứ để dựa vào, mọi gateway phải khai đúng cùng hằng số này (có test giữ điều đó), để server
+// luôn chỉ-websocket, gói nhỏ, timeout ngắn dù gateway nào đứng đầu.
+export interface RealtimeGatewayOptions {
+  transports: 'websocket'[];
+  maxHttpBufferSize: number;
+  connectTimeout: number;
+  serveClient: boolean;
+}
+export const REALTIME_GATEWAY_OPTIONS: RealtimeGatewayOptions = {
+  transports: ['websocket'],
+  maxHttpBufferSize: REALTIME_MAX_HTTP_BUFFER_BYTES,
+  connectTimeout: REALTIME_CONNECT_TIMEOUT_MS,
+  serveClient: false,
+};

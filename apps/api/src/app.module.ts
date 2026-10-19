@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -14,7 +15,9 @@ import { OrderModule } from './modules/order/order.module';
 import { CheckoutModule } from './modules/checkout/checkout.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ReviewModule } from './modules/review/review.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { RealtimeModule } from './shared/realtime/realtime.module';
+import { RejectFormBodyGuard } from './shared/guards/reject-form-body.guard';
 
 @Module({
   imports: [
@@ -32,9 +35,14 @@ import { RealtimeModule } from './shared/realtime/realtime.module';
     CheckoutModule,
     AdminModule,
     ReviewModule,
+    ChatModule,
     RealtimeModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Guard toàn cục: lệnh ghi mang body dạng form/multipart/text-plain ⇒ 415 (chặn CSRF bằng form, xem guard).
+    { provide: APP_GUARD, useClass: RejectFormBodyGuard },
+  ],
 })
 export class AppModule {}

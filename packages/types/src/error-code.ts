@@ -88,6 +88,17 @@ export const SERVER_ERROR_CODES = [
   // Sản phẩm: một biến thể có nhiều ảnh hơn PRODUCT_VARIANT_MAX_IMAGES (Week10.md 2.4). Giao diện đã chặn từ
   // trước nên chỉ gặp khi gọi API thẳng; biến thể cũ ĐÃ vượt trần mà không thêm ảnh thì không bị lỗi này.
   'PRODUCT_IMAGES_LIMIT_EXCEEDED',
+  // Chat người mua ↔ shop (Week10.md 4.2). OWN_SHOP: chủ shop không nhắn tin cho shop của chính mình (409);
+  // SHOP_UNAVAILABLE: shop không còn APPROVED nên hội thoại chỉ đọc, không gửi thêm được (409); RATE_LIMITED:
+  // gửi quá nhanh trong cửa sổ ngắn (429); AWAITING_REPLY: đã gửi quá nhiều tin liên tiếp khi shop chưa trả lời
+  // (429); CONVERSATION_LIMIT: mở quá nhiều hội thoại MỚI trong một ngày (429); NOT_PARTICIPANT: dành cho nơi
+  // thật sự cần báo "không phải thành viên" — người ngoài hội thoại luôn nhận 404 (không lộ hội thoại tồn tại).
+  'CHAT_OWN_SHOP',
+  'CHAT_SHOP_UNAVAILABLE',
+  'CHAT_RATE_LIMITED',
+  'CHAT_AWAITING_REPLY',
+  'CHAT_CONVERSATION_LIMIT',
+  'CHAT_NOT_PARTICIPANT',
 ] as const;
 export type ServerErrorCode = (typeof SERVER_ERROR_CODES)[number];
 

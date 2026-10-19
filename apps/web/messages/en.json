@@ -919,6 +919,17 @@
     "refundsRetryDialogDescription": "The system will call the payment gateway again with this refund's original reference, so the gateway ignores duplicates. If you already refunded the buyer by hand on the gateway's merchant page, choose \"Mark as refunded\" instead of retrying.",
     "refundsRetryDialogConfirm": "Retry"
   },
+  "chat": {
+    "validationMessageRequired": "Please enter a message",
+    "validationMessageTooLong": "Messages can be up to 1000 characters",
+    "validationMessageUnsafe": "The message contains characters that are not allowed",
+    "errorOwnShop": "You can't send a message to your own shop",
+    "errorShopUnavailable": "This shop is not accepting new messages right now",
+    "errorRateLimited": "You're sending messages too fast, please wait a moment",
+    "errorAwaitingReply": "You've sent several messages in a row, please wait for the shop to reply",
+    "errorConversationLimit": "You've started too many conversations today, please try again later",
+    "errorNotParticipant": "You don't have access to this conversation"
+  },
   "review": {
     "validationRatingRequired": "Please choose a star rating",
     "validationRatingInvalid": "The rating must be between 1 and 5",
