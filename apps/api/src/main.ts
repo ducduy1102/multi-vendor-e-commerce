@@ -10,6 +10,7 @@ import {
 } from './modules/auth/auth.constants';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from './shared/interceptors/transform-response.interceptor';
+import { RealtimeIoAdapter } from './shared/realtime/realtime-io.adapter';
 import { parseTrustProxy } from './shared/utils/parse-trust-proxy';
 import { readCorsOrigins } from './shared/utils/read-cors-origins';
 
@@ -29,6 +30,9 @@ async function bootstrap() {
   });
   app.useGlobalInterceptors(new TransformResponseInterceptor());
   app.useGlobalFilters(new AllExceptionsFilter());
+  // Socket.io (shared/realtime): từ chối sớm Origin lạ / IP bị chặn ở bước HTTP upgrade. Gateway nằm ngoài
+  // global prefix `api/v1` — đường dẫn là `/socket.io` ở gốc host.
+  app.useWebSocketAdapter(new RealtimeIoAdapter(app));
 
   // DTO validate bằng Zod (không phải class-validator) nên @nestjs/swagger
   // không tự suy ra schema từ class được — mỗi route tự khai @ApiBody/

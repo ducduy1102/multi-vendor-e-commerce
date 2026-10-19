@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   HttpStatus,
+  Inject,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -23,6 +24,10 @@ import {
 import { MailService } from '../../shared/mail/mail.service';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import {
+  REALTIME_EMITTER,
+  type RealtimeEmitter,
+} from '../../shared/realtime/realtime-emitter';
 import {
   EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
   EMAIL_VERIFICATION_TOKEN_TTL_MS,
@@ -69,6 +74,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
+    @Inject(REALTIME_EMITTER) private readonly realtime: RealtimeEmitter,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -318,6 +324,7 @@ export class AuthService {
       where: { id: userId },
       data: { refreshTokenHash: null },
     });
+    await this.disconnectRealtimeSafely(userId);
   }
 
   // JWT payload (Bước 2.5) chỉ có sub/role, không có email/name — phải query
@@ -406,6 +413,7 @@ export class AuthService {
     }
 
     const tokens = await this.issueTokens(user.id, user.role);
+    await this.disconnectRealtimeSafely(user.id);
     await this.sendPasswordChangedEmailSafely(user);
     return { message: 'Đã đổi mật khẩu', ...tokens };
   }
@@ -498,8 +506,24 @@ export class AuthService {
       throw this.resetTokenInvalid();
     }
 
+    await this.disconnectRealtimeSafely(user.id);
     await this.sendPasswordChangedEmailSafely(user);
     return { message: 'Đã đặt lại mật khẩu' };
+  }
+
+  // Ngắt mọi kết nối real-time của người dùng sau khi phiên bị thu hồi (đăng xuất, đổi/đặt lại mật khẩu): tab
+  // đã đăng xuất hay thiết bị đang giữ phiên cũ không được tiếp tục nhận dữ liệu qua socket. Chỉ ngắt các kết
+  // nối ĐANG mở — access token cũ vẫn dùng được tối đa ~15 phút (giới hạn đã biết của JWT ngắn hạn, REST cũng
+  // vậy), nên thiết bị khác có thể nối lại trong khoảng đó; thiết bị vừa đổi mật khẩu nối lại bằng cookie mới.
+  // Gọi SAU khi DB đã ghi xong; lỗi chỉ log (id, không dữ liệu khác), không bao giờ làm hỏng request.
+  private async disconnectRealtimeSafely(userId: string): Promise<void> {
+    try {
+      await this.realtime.disconnectUser(userId);
+    } catch (error) {
+      this.logger.error(
+        `Ngắt kết nối real-time thất bại cho user ${userId}: ${(error as Error).message}`,
+      );
+    }
   }
 
   private resetTokenInvalid(): AppException {

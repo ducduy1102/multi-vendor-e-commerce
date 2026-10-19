@@ -12,6 +12,7 @@ import { Header } from '@/shared/components/Header';
 import { QueryProvider } from '@/shared/components/QueryProvider';
 import { ThemeProvider } from '@/shared/components/ThemeProvider';
 import { Toaster } from '@/shared/components/ui/sonner';
+import { RealtimeProvider } from '@/shared/realtime/RealtimeProvider';
 
 import '../globals.css';
 
@@ -92,10 +93,12 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
             <QueryProvider>
               <AuthHydrator />
               <CartHydrator />
-              <Header />
-              <EmailVerificationBanner />
-              <MobileTabBarSpacer>{children}</MobileTabBarSpacer>
-              <BottomTabBar />
+              <RealtimeProvider>
+                <Header />
+                <EmailVerificationBanner />
+                <MobileTabBarSpacer>{children}</MobileTabBarSpacer>
+                <BottomTabBar />
+              </RealtimeProvider>
             </QueryProvider>
             {/* Đặt trên cùng (top-center) để không đè BottomTabBar ở mobile. */}
             <Toaster position="top-center" />

@@ -14,6 +14,7 @@ import { OrderModule } from './modules/order/order.module';
 import { CheckoutModule } from './modules/checkout/checkout.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ReviewModule } from './modules/review/review.module';
+import { RealtimeModule } from './shared/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ReviewModule } from './modules/review/review.module';
     CheckoutModule,
     AdminModule,
     ReviewModule,
+    RealtimeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

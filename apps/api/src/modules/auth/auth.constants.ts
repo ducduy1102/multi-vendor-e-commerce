@@ -3,11 +3,13 @@ import { frontendUrl } from '../../shared/mail/frontend-url';
 import type { MailLocale } from '../../shared/mail/mail-locale';
 import { getFrontendUrl } from '../../shared/utils/frontend-url';
 import { readPositiveInt } from '../../shared/utils/read-positive-int';
+import {
+  ACCESS_TOKEN_COOKIE,
+  REFRESH_TOKEN_COOKIE,
+} from '../../shared/utils/session-cookie-names';
 
-export { getFrontendUrl };
-
-export const ACCESS_TOKEN_COOKIE = 'access_token';
-export const REFRESH_TOKEN_COOKIE = 'refresh_token';
+// Tên cookie định nghĩa ở shared/ (hạ tầng real-time cũng đọc access_token); re-export để giữ nguyên import cũ.
+export { getFrontendUrl, ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE };
 
 // Phải khớp default của JWT_ACCESS_EXPIRES_IN/JWT_REFRESH_EXPIRES_IN ở
 // auth.service.ts (15m/7d) — đổi env đó thì đổi luôn 2 hằng số maxAge này.
