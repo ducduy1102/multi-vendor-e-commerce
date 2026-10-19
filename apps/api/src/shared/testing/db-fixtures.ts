@@ -154,6 +154,9 @@ export async function createOrderWithItem(
     variantId: string;
     status?: OrderStatus;
     completedAt?: Date;
+    // Ảnh CHỤP LẠI trong dòng hàng (order_items.image_url) — mặc định null. Dùng cho test dọn ảnh: ảnh còn nằm
+    // trong lịch sử đơn thì không được xoá khỏi Cloudinary.
+    imageUrl?: string;
   },
 ) {
   const status = input.status ?? 'COMPLETED';
@@ -187,7 +190,7 @@ export async function createOrderWithItem(
             productName: `${nextId()}-sp`,
             sku: variant.sku,
             variantLabel: null,
-            imageUrl: null,
+            imageUrl: input.imageUrl ?? null,
           },
         ],
       },

@@ -4,9 +4,8 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { useRouter } from '@/i18n/navigation';
-import { ApiError } from '@/shared/lib/api-client';
-import { useApiErrorMessage } from '@/shared/hooks/useValidationMessage';
 import { useCategories } from '../hooks/useCategories';
+import { useDescribeProductError } from '../hooks/useDescribeProductError';
 import { useCreateProduct } from '../hooks/useCreateProduct';
 import { ProductForm, type ProductFormSubmitValues } from './ProductForm';
 import { ProductFormSkeleton } from './ProductFormSkeleton';
@@ -20,7 +19,7 @@ interface CreateProductFormContainerProps {
 // SellerProductsContainer/Week4.md Bước 3.6).
 export function CreateProductFormContainer({ shopId }: CreateProductFormContainerProps) {
   const t = useTranslations('product');
-  const tApi = useApiErrorMessage();
+  const describeError = useDescribeProductError();
   const tCommon = useTranslations('common');
   const router = useRouter();
   const categoriesQuery = useCategories();
@@ -42,7 +41,7 @@ export function CreateProductFormContainer({ shopId }: CreateProductFormContaine
       });
       router.push('/seller/products');
     } catch (err) {
-      setError(err instanceof ApiError ? tApi(err.message) : t('productFormCreateGenericError'));
+      setError(describeError(err, t('productFormCreateGenericError')));
     }
   }
 

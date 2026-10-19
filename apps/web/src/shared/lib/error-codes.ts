@@ -73,6 +73,8 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   // Shop: chuyển trạng thái (Admin duyệt/từ chối/khoá, chủ shop gửi duyệt lại) và sửa thông tin
   SHOP_INVALID_TRANSITION: 'shop.errorInvalidTransition',
   SHOP_EDIT_NOT_ALLOWED: 'shop.errorEditNotAllowed',
+  // Sản phẩm: biến thể có nhiều ảnh hơn trần (Week10.md 2.4) — giao diện đã chặn nên chỉ gặp khi gọi API thẳng.
+  PRODUCT_IMAGES_LIMIT_EXCEEDED: 'product.errorImagesLimitExceeded',
   // Lỗi CLIENT tự sinh (mất mạng / phản hồi hỏng) — Week7.md 1.11/1.16: nghĩa là
   // "chưa rõ kết quả", khác các mã nghiệp vụ ở trên (luôn là kết quả chắc chắn).
   NETWORK_ERROR: 'common.errorNetwork',
