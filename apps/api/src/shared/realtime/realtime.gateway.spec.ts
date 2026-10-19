@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { messageHandlersOf } from '../testing/message-handlers';
 import { Role } from '@prisma/client';
 import { REALTIME_EVENTS } from '@ecommerce/types';
 import type { IncomingHttpHeaders } from 'http';
@@ -144,17 +145,7 @@ describe('RealtimeGateway', () => {
     });
 
     it('KHÔNG có @SubscribeMessage nào: client không có sự kiện nào để tự vào phòng hay ghi dữ liệu', () => {
-      const prototype = RealtimeGateway.prototype as unknown as Record<
-        string,
-        unknown
-      >;
-      const handlers = Object.getOwnPropertyNames(prototype).filter(
-        (name) =>
-          typeof prototype[name] === 'function' &&
-          Reflect.getMetadata('__isMessageMapping', prototype[name] as object),
-      );
-
-      expect(handlers).toEqual([]);
+      expect(messageHandlersOf(RealtimeGateway)).toEqual([]);
     });
   });
 
