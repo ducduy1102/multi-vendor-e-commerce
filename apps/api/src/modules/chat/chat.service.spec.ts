@@ -3,6 +3,7 @@ import { Prisma, ShopStatus } from '@prisma/client';
 import { CHAT_PREVIEW_MAX_LENGTH } from '@ecommerce/types';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
+import { createFakeRealtimeEmitter } from '../../shared/testing/fake-realtime-emitter';
 import {
   CHAT_NEW_CONVERSATIONS_LIMIT,
   CHAT_NEW_CONVERSATIONS_WINDOW_MS,
@@ -66,7 +67,11 @@ describe('ChatService.openConversation', () => {
       shop: { findUnique: jest.fn() },
     };
     directory = { getShopForChat: jest.fn().mockResolvedValue(shop()) };
-    service = new ChatService(prisma as unknown as PrismaService, directory);
+    service = new ChatService(
+      prisma as unknown as PrismaService,
+      directory,
+      createFakeRealtimeEmitter(),
+    );
   });
 
   afterEach(() => {
