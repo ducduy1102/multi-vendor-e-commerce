@@ -14,6 +14,7 @@ import { OrderModule } from './modules/order/order.module';
 import { CheckoutModule } from './modules/checkout/checkout.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ReviewModule } from './modules/review/review.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { RealtimeModule } from './shared/realtime/realtime.module';
 
 @Module({
@@ -32,6 +33,7 @@ import { RealtimeModule } from './shared/realtime/realtime.module';
     CheckoutModule,
     AdminModule,
     ReviewModule,
+    ChatModule,
     RealtimeModule,
   ],
   controllers: [AppController],
