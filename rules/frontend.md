@@ -89,6 +89,7 @@ Component dùng `useQuery` phải xử lý riêng cả 3 trạng thái `isPendin
 ## 7. Component con quan trọng cần lưu ý riêng
 
 - **Variant selector** (chọn size/màu): phải xử lý rõ trạng thái hết hàng theo từng combo (disable option hết hàng, không disable cả sản phẩm).
+- **Tải ảnh lên (Cloudinary)** — Week10.md 2.4: mọi chỗ cho người dùng chọn ảnh phải qua `validateImageSelection` (kiểm **cả lượt chọn** trước khi xử lý: định dạng JPEG/PNG/WebP, ≤ 10 MB trước nén, số ảnh) rồi `compressProductImage` (thu nhỏ cạnh dài về 1600 px + WebP 0.8 bằng canvas, **không thêm thư viện**) — hai hàm ở `modules/product/components/compressProductImage.ts`, hằng số giới hạn ở `packages/types`. `accept` của `<input type="file">` chỉ là gợi ý: người dùng vẫn chọn được "mọi tệp", nên luôn kiểm lại bằng mã. Nén bằng canvas phụ thuộc trình duyệt nên đi qua "khe cắm" `ImageCodec` để unit test bằng bản giả; bản thật kiểm bằng Playwright. Ảnh chụp điện thoại cần `createImageBitmap(file, { imageOrientation: 'from-image' })` (áp EXIF) kẻo ảnh dọc bị nằm ngang. Tên file người dùng đưa vào thông báo phải cắt gọn (ca xấu nhất bố cục ở 390px).
 - **Cart multi-vendor**: nhóm item theo shop khi hiển thị, tính tổng tiền riêng từng shop + tổng toàn giỏ.
 
 ## 8. Testing FE
