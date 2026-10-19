@@ -90,6 +90,7 @@ apps/api/src/
 - Unit test cho service (đặc biệt: tính tiền, áp voucher, trừ tồn kho, phân quyền theo shop).
 - Test riêng case race condition trừ tồn kho nếu có thể (giả lập 2 request đồng thời).
 - Không bắt buộc e2e test toàn bộ, ưu tiên e2e cho luồng checkout (luồng quan trọng nhất).
+- **e2e real-time (`test/realtime.e2e-spec.ts`)**: app Nest thật `listen(0)` + Postgres + `socket.io-client` thật (devDependency của `apps/api`), cài `RealtimeIoAdapter` như `main.ts`. **Không `sleep`**: mọi chờ đợi là chờ một sự kiện (promise bọc `once`) và listener được đăng ký **trước** hành động gây ra nó — mở nhiều socket rồi mới `await` từng cái làm mất sự kiện `connect` bắn sớm (đã gặp). Muốn khẳng định "KHÔNG nhận" thì gửi một sentinel sau trên **cùng kết nối**: gói trên một kết nối đến đúng thứ tự server ghi, nên sentinel tới mà chưa thấy gói lạ nghĩa là gói lạ không bao giờ tới. Mỗi test dùng người dùng riêng; test làm IP bị chặn (giới hạn handshake) phải để cuối file.
 
 ## 8. Provider & dependency — tránh sập app lúc bootstrap
 
