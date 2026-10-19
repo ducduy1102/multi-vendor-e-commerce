@@ -526,6 +526,29 @@ export class ChatService {
     };
   }
 
+  // Người nhận tín hiệu "đang gõ" (Week10.md 4.7): đối phương của `userId` trong hội thoại, hoặc null khi `userId`
+  // không phải thành viên, hội thoại không tồn tại, hội thoại chưa có tin nào, hay shop không còn APPROVED. Cố ý
+  // KHÔNG phân biệt các lý do (nơi gọi chỉ cần biết có người nhận hay không, không dò được hội thoại có thật):
+  //  - hội thoại chưa có tin ⇒ đối phương chưa hề thấy nó tồn tại (giống markRead), nên không báo gì cho họ;
+  //  - shop bị khoá ⇒ hội thoại chỉ đọc, không còn ai gõ để gửi.
+  // Người nhận luôn suy ra từ DB (người mua của hội thoại, hoặc chủ shop HIỆN TẠI), không từ client.
+  async resolveTypingRecipient(
+    userId: string,
+    conversationId: string,
+  ): Promise<string | null> {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { buyerId: true, shopId: true, lastMessageAt: true },
+    });
+    if (!conversation?.lastMessageAt) return null;
+    const shop = await this.directory.getShopForChat(conversation.shopId);
+    if (!shop || shop.status !== ShopStatus.APPROVED) return null;
+
+    if (conversation.buyerId === userId) return shop.ownerId;
+    if (shop.ownerId === userId) return conversation.buyerId;
+    return null;
+  }
+
   private parseContent(raw: string): string {
     const parsed = chatMessageContentSchema.safeParse(raw);
     if (!parsed.success) {
