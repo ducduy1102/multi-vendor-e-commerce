@@ -17,6 +17,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import {
+  CLOUDINARY_INCOMING_TRANSFORMATION,
+  CLOUDINARY_UPLOAD_FOLDER,
+} from '@ecommerce/types';
 import { CloudinaryService } from '../../shared/cloudinary/cloudinary.service';
 import { CurrentUserOptional } from '../../shared/decorators/current-user.decorator';
 import { ShopOwnerContext } from '../../shared/decorators/shop-owner-context.decorator';
@@ -180,6 +184,16 @@ export class ProductController {
     schema: { example: { success: true, data: { product: PRODUCT_EXAMPLE } } },
   })
   @ApiResponse({
+    status: 400,
+    description:
+      'Dữ liệu không hợp lệ (không có code), hoặc PRODUCT_IMAGES_LIMIT_EXCEEDED: một biến thể có nhiều hơn 9 ảnh. Khi SỬA, biến thể ĐÃ có sẵn nhiều ảnh hơn mức tối đa (dữ liệu cũ) vẫn lưu được miễn số ảnh không tăng thêm.',
+    schema: {
+      example: errorExample('Variant AT-1 has 10 images, the limit is 9', {
+        code: 'PRODUCT_IMAGES_LIMIT_EXCEEDED',
+      }),
+    },
+  })
+  @ApiResponse({
     status: 403,
     description: 'Email chưa xác thực, hoặc không phải chủ shop',
   })
@@ -249,6 +263,16 @@ export class ProductController {
   @ApiResponse({
     status: 200,
     schema: { example: { success: true, data: { product: PRODUCT_EXAMPLE } } },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Dữ liệu không hợp lệ (không có code), hoặc PRODUCT_IMAGES_LIMIT_EXCEEDED: một biến thể có nhiều hơn 9 ảnh. Khi SỬA, biến thể ĐÃ có sẵn nhiều ảnh hơn mức tối đa (dữ liệu cũ) vẫn lưu được miễn số ảnh không tăng thêm.',
+    schema: {
+      example: errorExample('Variant AT-1 has 10 images, the limit is 9', {
+        code: 'PRODUCT_IMAGES_LIMIT_EXCEEDED',
+      }),
+    },
   })
   @ApiResponse({ status: 403, description: 'Không phải chủ shop' })
   @ApiResponse({ status: 404, description: 'Product không tồn tại' })
@@ -399,6 +423,8 @@ export class ProductController {
   @ApiOperation({
     summary:
       'Lấy chữ ký signed upload Cloudinary — FE tự upload thẳng lên Cloudinary bằng chữ ký này, không qua BE',
+    description:
+      'Chữ ký phủ 2 param mà client PHẢI gửi lên Cloudinary đúng từng ký tự: `folder` = "multi-vendor-ecommerce" và `transformation` (incoming transformation thu nhỏ ảnh về khung 1600×1600) = "c_limit,w_1600,h_1600,q_auto,f_auto". Bỏ hoặc đổi một trong hai thì Cloudinary trả 401 Invalid Signature. Response không trả kèm hai giá trị này — cả hai phía đọc chung hằng số ở packages/types.',
   })
   @ApiResponse({
     // @Post() không khai @HttpCode() tường minh -> NestJS mặc định 201, đã
@@ -408,9 +434,15 @@ export class ProductController {
     schema: { example: { success: true, data: UPLOAD_SIGNATURE_EXAMPLE } },
   })
   @ApiResponse({ status: 403, description: 'Email chưa xác thực' })
+  // `folder` và `transformation` là param ĐÃ KÝ: FE phải gửi lên Cloudinary đúng hai chuỗi này (cùng hằng số
+  // ở packages/types — apps/web/.../uploadToCloudinary.ts đọc lại từ đó), sai một ký tự là Cloudinary từ chối
+  // vì chữ ký không khớp. `transformation` là incoming transformation (Week10.md 2.4): ảnh bị thu nhỏ về
+  // PRODUCT_IMAGE_MAX_EDGE trước khi lưu dù client có nén hay không, vì client không đổi được nó mà không làm
+  // chữ ký hỏng.
   uploadSignature() {
     return this.cloudinaryService.generateUploadSignature({
-      folder: 'multi-vendor-ecommerce',
+      folder: CLOUDINARY_UPLOAD_FOLDER,
+      transformation: CLOUDINARY_INCOMING_TRANSFORMATION,
     });
   }
 }

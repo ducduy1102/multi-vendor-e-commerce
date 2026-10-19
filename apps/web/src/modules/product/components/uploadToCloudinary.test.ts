@@ -38,11 +38,33 @@ describe('uploadToCloudinary', () => {
     expect(body.get('api_key')).toBe('key-1');
     expect(body.get('timestamp')).toBe('1700000000');
     expect(body.get('signature')).toBe('abc123');
-    // folder gửi lên phải khớp CHÍNH XÁC chuỗi đã ký ở BE
-    // (product.controller.ts uploadSignature()) — test này là lưới an toàn
-    // nếu ai đó lỡ đổi 1 bên mà quên đổi bên kia.
+    // folder và transformation gửi lên phải khớp CHÍNH XÁC chuỗi đã ký ở BE
+    // (product.controller.ts uploadSignature()) — viết thẳng chuỗi ở đây (không import hằng số) để test là
+    // lưới an toàn nếu ai đó lỡ đổi hằng số dùng chung mà quên rằng URL ảnh cũ/chữ ký đang chạy phụ thuộc vào nó.
     expect(body.get('folder')).toBe('multi-vendor-ecommerce');
+    expect(body.get('transformation')).toBe('c_limit,w_1600,h_1600,q_auto,f_auto');
     expect(body.get('file')).toBeInstanceOf(File);
+  });
+
+  it('gửi đúng những field đã ký và không thêm field nào khác ngoài file/api_key/signature', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ secure_url: 'https://res.cloudinary.com/x.jpg' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await uploadToCloudinary(makeFile(), signature);
+
+    const body = fetchMock.mock.calls[0][1].body as FormData;
+    // Param thừa không ký (vd thêm `eager`, `tags`) làm Cloudinary từ chối upload; param ký mà thiếu cũng vậy.
+    expect([...body.keys()].sort()).toEqual([
+      'api_key',
+      'file',
+      'folder',
+      'signature',
+      'timestamp',
+      'transformation',
+    ]);
   });
 
   it('ném lỗi khi Cloudinary trả về response không ok', async () => {
