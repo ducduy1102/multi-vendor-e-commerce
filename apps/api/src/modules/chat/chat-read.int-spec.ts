@@ -987,35 +987,74 @@ describe('Đọc chat (DB thật)', () => {
   });
 
   describe('chỉ mục phục vụ truy vấn đọc', () => {
-    it('tin cuối + đếm chưa đọc + đếm huy hiệu đều đi qua index (conversation_id, created_at, id), KHÔNG quét tuần tự bảng messages', async () => {
+    // Bảng chỉ có ít hàng và (trên DB mới tinh như ở CI) chưa có thống kê nào, nên planner tự do chọn quét bất kỳ.
+    // Trong MỘT transaction ta cấm quét tuần tự/bitmap, sort, hash join và merge join để kế hoạch hợp lệ duy nhất là dùng index — chứng
+    // minh index CÓ THỂ phục vụ đúng các câu SQL này. Mỗi test lấy kế hoạch riêng.
+    const explainWithoutScans = async (build: () => Prisma.Sql) =>
+      prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe('SET LOCAL enable_seqscan = off');
+        await tx.$executeRawUnsafe('SET LOCAL enable_bitmapscan = off');
+        await tx.$executeRawUnsafe('SET LOCAL enable_sort = off');
+        // Phép nối đúng ý đồ là VÒNG LẶP LỒNG (ít hội thoại trong phạm vi, mỗi hội thoại dò tin theo index); trên bảng
+        // gần như trống planner có thể chọn hash/merge join đọc cả index messages — cấm hai kiểu đó để kế hoạch hợp lệ là
+        // đúng cách dò mà truy vấn dùng ở quy mô thật.
+        await tx.$executeRawUnsafe('SET LOCAL enable_hashjoin = off');
+        await tx.$executeRawUnsafe('SET LOCAL enable_mergejoin = off');
+        const rows = await tx.$queryRaw<{ 'QUERY PLAN': string }[]>(
+          Prisma.sql`EXPLAIN ${build()}`,
+        );
+        return rows.map((r) => r['QUERY PLAN']).join('\n');
+      });
+
+    it('tin cuối của cả trang: mỗi hội thoại dò LIMIT 1 qua index (conversation_id, created_at, id) đã sắp xếp sẵn — không quét tuần tự, không sort', async () => {
       const buyerId = await newBuyer();
       const side = await newShop();
       const conversationId = await open(buyerId, side.shopId);
       await insert(conversationId, buyerId, at(1));
 
-      // Bảng chỉ có ít hàng nên planner tự do chọn quét bất kỳ; cấm quét tuần tự/bitmap trong một transaction để
-      // kế hoạch hợp lệ duy nhất là dùng index — chứng minh index CÓ THỂ phục vụ đúng các câu SQL này.
-      const plans = await prisma.$transaction(async (tx) => {
-        await tx.$executeRawUnsafe('SET LOCAL enable_seqscan = off');
-        await tx.$executeRawUnsafe('SET LOCAL enable_bitmapscan = off');
-        const explain = async (query: Prisma.Sql) => {
-          const rows = await tx.$queryRaw<{ 'QUERY PLAN': string }[]>(
-            Prisma.sql`EXPLAIN ${query}`,
-          );
-          return rows.map((r) => r['QUERY PLAN']).join('\n');
-        };
-        return {
-          digest: await explain(buildDigestQuery([conversationId], 'BUYER')),
-          unread: await explain(
-            buildUnreadCountQuery({ viewer: 'BUYER', userId: buyerId }),
-          ),
-        };
-      });
+      const plan = await explainWithoutScans(() =>
+        buildDigestQuery([conversationId], 'BUYER'),
+      );
 
-      for (const plan of Object.values(plans)) {
-        expect(plan).toContain('messages_conversation_id_created_at_id_idx');
-        expect(plan).not.toMatch(/Seq Scan on messages/);
-      }
+      expect(plan).toContain('messages_conversation_id_created_at_id_idx');
+      expect(plan).not.toMatch(/Seq Scan on messages/);
+      expect(plan).not.toMatch(/\bSort\b/);
+    });
+
+    // Phép đếm KHÔNG có ORDER BY nên nhiều index cùng dò được: (conversation_id, created_at, id), khoá duy nhất
+    // (conversation_id, sender_id, client_message_id) hay (sender_id, created_at). Planner chọn cái nào tuỳ thống kê —
+    // ở CI, trên DB mới tinh, nó chọn khác với máy dev — nên bản đầu của test này đòi đúng MỘT tên index đã đỏ ở CI
+    // dù truy vấn hoàn toàn ổn. Điều cần khoá là: messages luôn được truy cập bằng index, không bao giờ quét cả bảng.
+    it('đếm chưa đọc (huy hiệu): truy cập messages bằng index, không quét tuần tự cả bảng', async () => {
+      const buyerId = await newBuyer();
+      const side = await newShop();
+      const conversationId = await open(buyerId, side.shopId);
+      await insert(conversationId, buyerId, at(1));
+
+      const plan = await explainWithoutScans(() =>
+        buildUnreadCountQuery({ viewer: 'BUYER', userId: buyerId }),
+      );
+
+      expect(plan).toMatch(
+        /Index (Only )?Scan( Backward)? using \w+ on messages/,
+      );
+      expect(plan).not.toMatch(/Seq Scan on messages/);
+    });
+
+    it('đếm chưa đọc của shop cũng vậy', async () => {
+      const buyerId = await newBuyer();
+      const side = await newShop();
+      const conversationId = await open(buyerId, side.shopId);
+      await insert(conversationId, buyerId, at(1));
+
+      const plan = await explainWithoutScans(() =>
+        buildUnreadCountQuery({ viewer: 'SHOP', shopId: side.shopId }),
+      );
+
+      expect(plan).toMatch(
+        /Index (Only )?Scan( Backward)? using \w+ on messages/,
+      );
+      expect(plan).not.toMatch(/Seq Scan on messages/);
     });
   });
 });
