@@ -723,4 +723,54 @@ describe('ChatService.sendMessage', () => {
       for (const spy of spies) expect(spy).not.toHaveBeenCalled();
     });
   });
+
+  describe('lỗi khi ghi tin không làm lộ nội dung ra log', () => {
+    const SECRET_TEXT = 'nội dung riêng tư cần giữ kín';
+
+    // AllExceptionsFilter log toàn bộ stack của lỗi không phải HttpException; PrismaClientValidationError in
+    // nguyên giá trị đã truyền (kể cả nội dung tin) vào message/stack.
+    it('PrismaClientValidationError (chứa nội dung tin) bị thay bằng lỗi chung: message và stack không còn nội dung', async () => {
+      const leaky = new Prisma.PrismaClientValidationError(
+        `Invalid prisma.message.create() invocation: data: { content: "${SECRET_TEXT}" }`,
+        { clientVersion: 'test' },
+      );
+      prisma.$transaction.mockRejectedValue(leaky);
+
+      const error = await send(buyerActor, SECRET_TEXT).catch(
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBe(leaky);
+      expect(error).not.toBeInstanceOf(Prisma.PrismaClientValidationError);
+      const text = `${(error as Error).message}
+${(error as Error).stack}`;
+      expect(text).not.toContain(SECRET_TEXT);
+    });
+
+    it('lỗi khác (DB sập, khoá ngoại...) được ném NGUYÊN VẸN để không mất thông tin chẩn đoán', async () => {
+      const dbDown = new Error('db down');
+      prisma.$transaction.mockRejectedValue(dbDown);
+
+      await expect(send(buyerActor)).rejects.toBe(dbDown);
+
+      const foreignKey = new Prisma.PrismaClientKnownRequestError(
+        'Foreign key constraint violated',
+        {
+          code: 'P2003',
+          clientVersion: 'test',
+          meta: { modelName: 'Message' },
+        },
+      );
+      prisma.$transaction.mockRejectedValue(foreignKey);
+      await expect(send(buyerActor)).rejects.toBe(foreignKey);
+    });
+
+    it('P2002 của model KHÁC Message không bị nuốt thành "gửi lại": ném nguyên', async () => {
+      const other = uniqueViolation({ modelName: 'Conversation' });
+      prisma.$transaction.mockRejectedValue(other);
+
+      await expect(send(buyerActor)).rejects.toBe(other);
+    });
+  });
 });
