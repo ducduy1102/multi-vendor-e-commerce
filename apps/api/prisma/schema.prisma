@@ -873,32 +873,66 @@ model Review {
 // Chat
 // =========================================================
 
+// Một hội thoại DUY NHẤT cho mỗi cặp (người mua, shop) — @@unique bên dưới. Chỉ NGƯỜI MUA mở được hội thoại
+// (shop không nhắn trước, Week10.md D6) nên cặp này luôn đủ hai phía: người mua và chủ shop hiện tại. Mọi thay đổi
+// cột ở đây chỉ qua ChatService (module chat); module khác không đọc/ghi bảng này.
 model Conversation {
   id        String   @id @default(uuid())
   buyerId   String   @map("buyer_id")
   shopId    String   @map("shop_id")
   createdAt DateTime @default(now()) @map("created_at")
 
+  // Thời điểm của tin MỚI NHẤT; NULL = hội thoại vừa mở, chưa ai nhắn. Danh sách hội thoại chỉ liệt kê hội thoại
+  // ĐÃ có tin (last_message_at IS NOT NULL) nên hội thoại rỗng không hiện ở cả hai phía. Chỉ được cập nhật CÙNG
+  // $transaction với việc ghi tin (ChatService.sendMessage), để không bao giờ lệch khỏi bảng messages.
+  lastMessageAt DateTime? @map("last_message_at")
+
+  // Mốc "đã đọc tới" của từng phía (D7). Số tin chưa đọc = số tin do ĐỐI PHƯƠNG gửi có created_at > mốc, đếm bằng
+  // truy vấn thay vì bộ đếm phi chuẩn hoá (cộng/trừ dễ lệch khi "đánh dấu đã đọc" đua với tin mới; quy mô hiện
+  // tại không cần). Chỉ TĂNG, không bao giờ lùi (markRead dùng GREATEST trong một UPDATE có điều kiện). NULL =
+  // chưa đọc lần nào. Người gửi một tin cũng được đặt mốc của mình = created_at của tin đó (cùng transaction).
+  buyerLastReadAt DateTime? @map("buyer_last_read_at")
+  shopLastReadAt  DateTime? @map("shop_last_read_at")
+
   buyer    User      @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Cascade)
   shop     Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   messages Message[]
 
   @@unique([buyerId, shopId])
-  @@index([shopId])
+  // Danh sách hội thoại "mới nhất trước" của shop / của người mua: composite khớp đúng WHERE + ORDER BY
+  // (rules/backend.md mục 4). (shopId, lastMessageAt) thay hẳn index đơn @@index([shopId]) cũ — cột đứng đầu đã
+  // phục vụ mọi truy vấn trước đó. Phía người mua: @@unique([buyerId, shopId]) chỉ lọc theo người mua chứ không
+  // theo thứ tự thời gian, nên cần thêm index riêng.
+  @@index([shopId, lastMessageAt(sort: Desc)])
+  @@index([buyerId, lastMessageAt(sort: Desc)])
   @@map("conversations")
 }
 
 model Message {
-  id             String   @id @default(uuid())
-  conversationId String   @map("conversation_id")
-  senderId       String   @map("sender_id")
-  content        String
-  createdAt      DateTime @default(now()) @map("created_at")
+  id              String   @id @default(uuid())
+  conversationId  String   @map("conversation_id")
+  senderId        String   @map("sender_id")
+  // Văn bản thuần (D5): không HTML, không tự tạo link. CHECK ở DB (viết tay trong migration, Prisma không khai
+  // được): char_length(content) BETWEEN 1 AND 1000 — khớp CHAT_MESSAGE_MAX_LENGTH ở packages/types. Lưới an toàn
+  // cuối cho đường đi vòng qua service; service vẫn trim và kiểm ký tự (isSafeMessageText) trước khi ghi.
+  content         String
+  // Khoá idempotent do CLIENT sinh (UUID v4) cho mỗi lần bấm gửi: gửi lại cùng khoá (mất mạng, API đang thức dậy,
+  // double-click) trả đúng tin cũ thay vì tạo bản sao. Tuỳ chọn: NULL không bao giờ xung đột (Postgres coi các
+  // NULL là khác nhau trong ràng buộc UNIQUE), nên client không gửi khoá vẫn gửi bình thường.
+  clientMessageId String?  @map("client_message_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id])
 
-  @@index([conversationId])
-  @@index([senderId])
+  // Trọng tài cuối cho idempotency: hai request đồng thời cùng khoá chỉ một cái ghi được (P2002 → đọc lại).
+  @@unique([conversationId, senderId, clientMessageId])
+  // Tải tin của một hội thoại theo con trỏ (created_at, id) giảm dần: id làm khoá phụ để hai tin cùng mili-giây
+  // không bị trùng/mất giữa các trang. Thay hẳn @@index([conversationId]) cũ (cột đầu đã phục vụ mọi truy vấn cũ).
+  // Quét ngược index tăng dần là đủ cho ORDER BY ... DESC.
+  @@index([conversationId, createdAt, id])
+  // Đếm tốc độ gửi của một người trong cửa sổ ngắn (giới hạn CHAT_RATE_LIMITED, tính bằng truy vấn chứ không bằng
+  // bộ nhớ — Week10.md D9). Thay @@index([senderId]) cũ.
+  @@index([senderId, createdAt])
   @@map("messages")
 }
