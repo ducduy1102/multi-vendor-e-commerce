@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -37,6 +37,14 @@ vi.mock('@/modules/cart', () => ({
 
 const chatBadges = { shopId: null as string | null, buyerUnread: 0, shopUnread: 0 };
 vi.mock('@/shared/hooks/useChatBadges', () => ({ useChatBadges: () => chatBadges }));
+
+// Biểu tượng và huy hiệu tin nhắn được nạp bằng React.lazy (lazy-chat.tsx, để khách vãng lai không tải mã chat): sau render
+// chúng hiện ra bất đồng bộ nên khẳng định "có" phải dùng findBy/waitFor, còn khẳng định "KHÔNG có" phải chờ chunk nạp
+// xong rồi mới kiểm — không thì phủ định luôn đúng kể cả khi mã sai.
+const settleLazy = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
 
 vi.mock('@/shared/hooks/useSellerChannelLink', () => ({
   useSellerChannelLink: () => sellerLink() as unknown,
@@ -85,11 +93,13 @@ describe('Header — menu tài khoản (desktop)', () => {
     const labels = Array.from(menu.querySelectorAll('[role="menuitem"], button')).map((el) =>
       el.textContent?.trim(),
     );
+    // Có shop ⇒ có thêm hộp thư của shop ("Tin nhắn của khách") ngay sau mục kênh người bán.
     expect(labels).toEqual([
       'Trang cá nhân',
       'Đơn hàng của tôi',
       'Tin nhắn',
       'Sản phẩm của tôi',
+      'Tin nhắn của khách',
       'Đăng xuất',
     ]);
   });
@@ -141,6 +151,7 @@ describe('Header — menu tài khoản (desktop)', () => {
         'Đơn hàng của tôi',
         'Tin nhắn',
         'Sản phẩm của tôi',
+        'Tin nhắn của khách',
         'Quản trị',
         'Hoàn tiền',
         'Đăng xuất',
@@ -233,34 +244,35 @@ describe('Header — tin nhắn (Week10.md 5.5, D8)', () => {
 
   const chatLinks = () => screen.getAllByRole('link', { name: /^Tin nhắn/ });
 
-  it('đã đăng nhập: biểu tượng tin nhắn trỏ /chat, có bản mobile (hàng 1 bên phải logo) và bản desktop (cạnh giỏ hàng)', () => {
+  it('đã đăng nhập: biểu tượng tin nhắn trỏ /chat, có bản mobile (hàng 1 bên phải logo) và bản desktop (cạnh giỏ hàng)', async () => {
     render(withIntl(<Header />));
 
+    await waitFor(() => expect(chatLinks()).toHaveLength(2));
     const links = chatLinks();
-    expect(links).toHaveLength(2);
     for (const link of links) expect(link).toHaveAttribute('href', '/chat');
     const [mobile, desktop] = links.map((link) => link.closest('div'));
     expect(mobile).toHaveClass('ml-auto', 'flex', 'sm:hidden');
     expect(desktop).toHaveClass('hidden', 'sm:flex');
   });
 
-  it('khách chưa đăng nhập hoặc đang chờ xác định phiên: không có biểu tượng tin nhắn', () => {
+  it('khách chưa đăng nhập hoặc đang chờ xác định phiên: không có biểu tượng tin nhắn', async () => {
     auth.user = null;
     const { rerender } = render(withIntl(<Header />));
+    await settleLazy();
     expect(screen.queryByRole('link', { name: /^Tin nhắn/ })).not.toBeInTheDocument();
 
     auth.isHydrating = true;
     rerender(withIntl(<Header />));
+    await settleLazy();
     expect(screen.queryByRole('link', { name: /^Tin nhắn/ })).not.toBeInTheDocument();
   });
 
-  it('chưa đọc: huy hiệu số (aria-hidden) + bản chữ cho trình đọc màn hình; hết chưa đọc thì không huy hiệu', () => {
+  it('chưa đọc: huy hiệu số (aria-hidden) + bản chữ cho trình đọc màn hình; hết chưa đọc thì không huy hiệu', async () => {
     chatBadges.buyerUnread = 3;
     const { rerender } = render(withIntl(<Header />));
 
-    const [link] = chatLinks();
-    expect(link).toHaveAccessibleName('Tin nhắn: 3 tin chưa đọc');
-    expect(within(link).getByText('3')).toHaveAttribute('aria-hidden', 'true');
+    await waitFor(() => expect(chatLinks()[0]).toHaveAccessibleName('Tin nhắn: 3 tin chưa đọc'));
+    expect(within(chatLinks()[0]).getByText('3')).toHaveAttribute('aria-hidden', 'true');
 
     chatBadges.buyerUnread = 0;
     rerender(withIntl(<Header />));
@@ -268,39 +280,41 @@ describe('Header — tin nhắn (Week10.md 5.5, D8)', () => {
     expect(within(chatLinks()[0]).queryByText('3')).not.toBeInTheDocument();
   });
 
-  it('quá 99 chưa đọc hiện "99+"', () => {
+  it('quá 99 chưa đọc hiện "99+"', async () => {
     chatBadges.buyerUnread = 250;
     render(withIntl(<Header />));
 
-    expect(within(chatLinks()[0]).getByText('99+')).toBeInTheDocument();
+    await waitFor(() => expect(within(chatLinks()[0]).getByText('99+')).toBeInTheDocument());
   });
 
-  it('đang ở /chat: biểu tượng đánh dấu aria-current="page"', () => {
+  it('đang ở /chat: biểu tượng đánh dấu aria-current="page"', async () => {
     pathname.mockReturnValue('/chat');
     render(withIntl(<Header />));
 
+    await waitFor(() => expect(chatLinks()).toHaveLength(2));
     for (const link of chatLinks()) expect(link).toHaveAttribute('aria-current', 'page');
   });
 
   it('menu tài khoản có "Tin nhắn" trỏ /chat kèm huy hiệu người mua; chưa có shop thì KHÔNG có "Tin nhắn của khách"', async () => {
     chatBadges.buyerUnread = 4;
+    sellerLink.mockReturnValue({ ...SHOP_LINK, hasShop: false });
     const menu = await openAccountMenu();
 
     const item = within(menu).getByRole('menuitem', { name: /^Tin nhắn/ });
     expect(item).toHaveAttribute('href', '/chat');
-    expect(within(item).getByText('4')).toBeInTheDocument();
+    expect(await within(item).findByText('4')).toBeInTheDocument();
     expect(
       within(menu).queryByRole('menuitem', { name: /Tin nhắn của khách/ }),
     ).not.toBeInTheDocument();
   });
 
   it('có shop: thêm "Tin nhắn của khách" trỏ /seller/chat kèm huy hiệu RIÊNG của shop, sau mục kênh người bán', async () => {
-    Object.assign(chatBadges, { shopId: 'shop-1', buyerUnread: 1, shopUnread: 7 });
+    Object.assign(chatBadges, { buyerUnread: 1, shopUnread: 7 });
     const menu = await openAccountMenu();
 
     const seller = within(menu).getByRole('menuitem', { name: /Tin nhắn của khách/ });
     expect(seller).toHaveAttribute('href', '/seller/chat');
-    expect(within(seller).getByText('7')).toBeInTheDocument();
+    expect(await within(seller).findByText('7')).toBeInTheDocument();
     // Thứ tự các mục (văn bản có thêm số huy hiệu nên so theo tiền tố, không so bằng).
     const items = Array.from(menu.querySelectorAll('[role="menuitem"]'));
     const position = (prefix: string) =>
@@ -316,18 +330,19 @@ describe('Header — tin nhắn (Week10.md 5.5, D8)', () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
-  it('tin chưa đọc ở hộp thư SHOP nổi lên ngay trên avatar (người bán không phải mở menu mới biết có khách nhắn)', () => {
-    Object.assign(chatBadges, { shopId: 'shop-1', shopUnread: 5 });
+  it('tin chưa đọc ở hộp thư SHOP nổi lên ngay trên avatar (người bán không phải mở menu mới biết có khách nhắn)', async () => {
+    Object.assign(chatBadges, { shopUnread: 5 });
     render(withIntl(<Header />));
 
     const trigger = screen.getByRole('button', { name: /Nguyễn Văn A/ });
-    expect(within(trigger).getByText('5')).toHaveAttribute('aria-hidden', 'true');
+    expect(await within(trigger).findByText('5')).toHaveAttribute('aria-hidden', 'true');
     expect(trigger).toHaveAccessibleName(/5 tin chưa đọc/);
   });
 
-  it('không có tin chưa đọc ở hộp thư shop: avatar không có huy hiệu', () => {
-    Object.assign(chatBadges, { shopId: 'shop-1', shopUnread: 0 });
+  it('không có tin chưa đọc ở hộp thư shop: avatar không có huy hiệu', async () => {
+    Object.assign(chatBadges, { shopUnread: 0 });
     render(withIntl(<Header />));
+    await settleLazy();
 
     const trigger = screen.getByRole('button', { name: /Nguyễn Văn A/ });
     expect(trigger.querySelector('.bg-primary.text-primary-foreground')).toBeNull();

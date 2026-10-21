@@ -20,10 +20,8 @@ import { LogoutButton, useAuthStore } from '@/modules/auth';
 import { CartCountBadge, useCartCount } from '@/modules/cart';
 import { ChotMark } from '@/shared/components/ChotMark';
 import { Container } from '@/shared/components/Container';
-import { CountBadge } from '@/shared/components/CountBadge';
-import { HeaderChatLink } from '@/shared/components/HeaderChatLink';
+import { LazyChatUnreadBadge, LazyHeaderChatLink } from '@/shared/components/lazy-chat';
 import { Button } from '@/shared/components/ui/button';
-import { useChatBadges } from '@/shared/hooks/useChatBadges';
 import { useSellerChannelLink } from '@/shared/hooks/useSellerChannelLink';
 import { HIDDEN_CHROME_PATHS } from '@/shared/lib/hidden-chrome-paths';
 import {
@@ -143,13 +141,10 @@ export function Header() {
   const t = useTranslations('header');
   const tAuth = useTranslations('auth');
   const tCart = useTranslations('cart');
-  const tChat = useTranslations('chat');
   const pathname = usePathname();
   const user = useAuthStore((state) => state.user);
   const isHydrating = useAuthStore((state) => state.isHydrating);
   const cartCount = useCartCount();
-  // Huy hiệu tin nhắn (Week10.md 5.5): hộp thư người mua và hộp thư shop là hai con số riêng.
-  const { shopId: chatShopId, buyerUnread, shopUnread } = useChatBadges();
 
   // href/icon/label (guest -> onboarding, có shop -> quản lý sản phẩm...)
   // dùng chung với AccountSheet.tsx qua đúng 1 hook — useSellerChannelLink
@@ -199,16 +194,11 @@ export function Header() {
             {/* Tin nhắn chưa đọc ở hộp thư SHOP nổi lên ngay trên avatar: người bán không phải mở menu mới biết có khách nhắn. */}
             <span className="relative flex">
               <UserAvatar name={user.name} />
-              <CountBadge count={shopUnread} />
+              <LazyChatUnreadBadge scope="shop" />
             </span>
             <span className="max-w-32 truncate text-sm font-medium text-foreground">
               {user.name}
             </span>
-            {shopUnread > 0 ? (
-              <span className="sr-only">
-                {tChat('conversationUnreadSr', { count: shopUnread })}
-              </span>
-            ) : null}
             <ChevronDown className="size-4 text-muted-foreground" />
           </Button>
         }
@@ -234,10 +224,7 @@ export function Header() {
         <DropdownMenuItem render={<Link href="/chat" />}>
           <MessageCircle />
           {t('myChatLink')}
-          <CountBadge count={buyerUnread} className="static ml-auto" />
-          {buyerUnread > 0 ? (
-            <span className="sr-only">{tChat('conversationUnreadSr', { count: buyerUnread })}</span>
-          ) : null}
+          <LazyChatUnreadBadge scope="buyer" className="static ml-auto" />
         </DropdownMenuItem>
         {shopLink && (
           <DropdownMenuItem render={<Link href={shopLink.href} />}>
@@ -246,16 +233,11 @@ export function Header() {
           </DropdownMenuItem>
         )}
         {/* Hộp thư của SHOP chỉ có khi đã có shop. */}
-        {chatShopId !== null && (
+        {shopLink?.hasShop && (
           <DropdownMenuItem render={<Link href="/seller/chat" />}>
             <MessagesSquare />
             {t('sellerChatLink')}
-            <CountBadge count={shopUnread} className="static ml-auto" />
-            {shopUnread > 0 ? (
-              <span className="sr-only">
-                {tChat('conversationUnreadSr', { count: shopUnread })}
-              </span>
-            ) : null}
+            <LazyChatUnreadBadge scope="shop" className="static ml-auto" />
           </DropdownMenuItem>
         )}
         {/* "Quản trị" (Week8.md 3.9) chỉ hiện cho ADMIN — user thường không có link tới /admin. Đây
@@ -304,7 +286,7 @@ export function Header() {
         {/* Mobile (< sm): biểu tượng tin nhắn ở hàng 1, bên phải logo (D8); ml-auto đẩy sang mép phải. Search w-full vẫn
             rớt xuống hàng 2. Desktop có bản riêng cạnh giỏ hàng bên dưới — mỗi breakpoint chỉ MỘT bản hiện (bản kia
             display:none nên cũng không có trong cây trợ năng). */}
-        <HeaderChatLink className="ml-auto flex sm:hidden" />
+        <LazyHeaderChatLink className="ml-auto flex sm:hidden" />
 
         <HeaderSearchForm />
 
@@ -329,7 +311,7 @@ export function Header() {
           </Button>
         </div>
 
-        <HeaderChatLink className="hidden sm:flex" />
+        <LazyHeaderChatLink className="hidden sm:flex" />
 
         <div className="hidden items-center gap-3 sm:flex">
           <ThemeToggle />
