@@ -75,6 +75,33 @@ describe('decideAuthRedirect', () => {
       ).toBeNull();
     });
 
+    it('/chat và /chat?c=<id> -> next giữ nguyên query (đăng nhập xong quay lại đúng hội thoại)', () => {
+      const conversationId = '3f6c1e4a-9b1d-4c1e-8a55-0d2c4f5a6b7c';
+
+      expect(decideAuthRedirect({ pathname: '/chat', search: '', isAuthenticated: false })).toBe(
+        '/login?next=%2Fchat',
+      );
+      expect(
+        decideAuthRedirect({
+          pathname: '/chat',
+          search: `?c=${conversationId}`,
+          isAuthenticated: false,
+        }),
+      ).toBe(`/login?next=${encodeURIComponent(`/chat?c=${conversationId}`)}`);
+    });
+
+    it('đã đăng nhập vào /chat -> không redirect', () => {
+      expect(
+        decideAuthRedirect({ pathname: '/chat', search: '', isAuthenticated: true, role: 'USER' }),
+      ).toBeNull();
+    });
+
+    it('/chatter -> không phải route /chat (không khớp tiền tố), không bị chặn', () => {
+      expect(
+        decideAuthRedirect({ pathname: '/chatter', search: '', isAuthenticated: false }),
+      ).toBeNull();
+    });
+
     it('/ordersevil -> không phải route /orders (không khớp tiền tố), không bị chặn', () => {
       expect(
         decideAuthRedirect({ pathname: '/ordersevil', search: '', isAuthenticated: false }),

@@ -6,7 +6,8 @@ import { readJwtRole } from './read-jwt-role';
 const GUEST_ONLY_PATHS = ['/login', '/register'];
 
 // Route cần đăng nhập (Week7.md 1.2 thêm "/checkout" — trước đó chỉ "/seller"
-// Tuần 3 Bước 3.9, "/wishlist" Week5.md Bước 3.7, "/orders" Week8.md 3.2, "/admin" Week8.md 3.9, "/account" Week9.md 6.2).
+// Tuần 3 Bước 3.9, "/wishlist" Week5.md Bước 3.7, "/orders" Week8.md 3.2, "/admin" Week8.md 3.9, "/account" Week9.md 6.2,
+// "/chat" Week10.md 5.3 — "/notifications" sẽ thêm ở 8.3).
 // Chỉ check được từ cookie ở edge (proxy.ts) — điều kiện cần query DB (đã có shop chưa...) đẩy
 // xuống Server/Client Component (rules/frontend.md mục 1). Mỗi tiền tố ở đây PHẢI có mặt trong
 // SAFE_NEXT_PATH_ALLOWED_PREFIXES (packages/types) — thiếu thì guest bị đẩy về /login mà mất
@@ -18,6 +19,7 @@ export const PROTECTED_PATH_PREFIXES = [
   '/orders',
   '/admin',
   '/account',
+  '/chat',
 ];
 
 // Khu quản trị — đã đăng nhập nhưng KHÔNG phải ADMIN thì bị đẩy về trang chủ. Role đọc từ payload JWT
