@@ -138,6 +138,24 @@ describe('ConversationListItem', () => {
     expect(screen.getByRole('button')).not.toHaveAttribute('aria-current');
   });
 
+  it('chữ phụ (tin cuối, thời gian) đậm lên khi dòng có nền bg-muted (chọn/hover/focus) để đủ tương phản 4,5:1', () => {
+    setup({
+      lastMessage: { content: 'Còn hàng nhé', senderRole: 'SHOP', createdAt: local(10, 14, 30) },
+      lastMessageAt: local(10, 14, 30),
+    });
+
+    // jsdom không tính được Tailwind nên giữ đúng cặp lớp đã đo bằng trình duyệt thật (4,35:1 → ≥ 4,5:1).
+    expect(screen.getByRole('button')).toHaveClass('group');
+    for (const text of ['Còn hàng nhé', '30 phút']) {
+      expect(screen.getByText(text)).toHaveClass(
+        'text-muted-foreground',
+        'group-hover:text-foreground/75',
+        'group-focus-visible:text-foreground/75',
+        'group-aria-[current=true]:text-foreground/75',
+      );
+    }
+  });
+
   it('bấm gọi onSelect với id hội thoại', async () => {
     const user = userEvent.setup();
     const { onSelect, summary } = setup();

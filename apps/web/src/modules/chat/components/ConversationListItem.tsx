@@ -11,6 +11,12 @@ import type { ChatRole, ConversationSummary } from '../types';
 import { ChatAvatar } from './ChatAvatar';
 import { CONVERSATION_ROW_CLASS } from './chat-layout.constants';
 
+// `text-muted-foreground` (0.556) trên `bg-muted` (0.97) — nền của dòng đang chọn/hover/focus — chỉ đạt 4,35:1 ở chế độ
+// sáng, dưới 4,5:1 của WCAG AA cho chữ nhỏ (trên nền trắng là 4,74:1; đo bằng trình duyệt thật). Giữ nguyên token và nền,
+// chỉ đậm chữ phụ khi dòng ở trạng thái có nền `bg-muted`.
+const SECONDARY_TEXT_CLASS =
+  'text-muted-foreground group-hover:text-foreground/75 group-focus-visible:text-foreground/75 group-aria-[current=true]:text-foreground/75';
+
 interface ConversationListItemProps {
   conversation: ConversationSummary;
   // Vai của NGƯỜI XEM: quyết định tin cuối là "của mình" (tiền tố "Bạn:") hay của đối phương.
@@ -67,7 +73,7 @@ export function ConversationListItem({
       onClick={() => onSelect(conversation.id)}
       className={cn(
         CONVERSATION_ROW_CLASS,
-        'min-h-16 transition-colors outline-none hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+        'group min-h-16 transition-colors outline-none hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
         isSelected && 'bg-muted',
       )}
     >
@@ -85,7 +91,7 @@ export function ConversationListItem({
         <span
           className={cn(
             'truncate text-sm',
-            hasUnread ? 'font-medium text-foreground' : 'text-muted-foreground',
+            hasUnread ? 'font-medium text-foreground' : SECONDARY_TEXT_CLASS,
           )}
         >
           {preview}
@@ -93,7 +99,7 @@ export function ConversationListItem({
       </span>
 
       <span className="flex shrink-0 flex-col items-end gap-1">
-        <span className="text-xs whitespace-nowrap text-muted-foreground">{timeLabel}</span>
+        <span className={cn('text-xs whitespace-nowrap', SECONDARY_TEXT_CLASS)}>{timeLabel}</span>
         {hasUnread ? (
           <>
             <Badge aria-hidden="true" className="min-w-5 justify-center px-1.5 tabular-nums">
