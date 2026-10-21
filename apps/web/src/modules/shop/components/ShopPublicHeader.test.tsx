@@ -159,25 +159,26 @@ describe('ShopPublicHeader', () => {
     });
   });
 
-  describe('nút "Chat với shop" (chỗ chừa cho Tuần 10)', () => {
-    it('là <button> bị vô hiệu, không phải link, kèm lý do bằng chữ', () => {
-      renderHeader();
+  describe('chỗ nút "Chat với shop" (chatSlot do page.tsx ghép vào)', () => {
+    it('có chatSlot: hiện đúng nội dung được truyền vào', () => {
+      render(
+        withIntl(
+          <ShopPublicHeader
+            shop={shop}
+            chatSlot={<button type="button">Nút chat do page ghép</button>}
+          />,
+        ),
+      );
 
-      const chat = screen.getByRole('button', { name: 'Chat với shop' });
-      expect(chat).toHaveAttribute('aria-disabled', 'true');
-      expect(chat.closest('a')).toBeNull();
-      expect(chat).not.toHaveAttribute('href');
-      const reason = screen.getByText('Tính năng chat sẽ sớm có');
-      expect(chat.getAttribute('aria-describedby')).toBe(reason.id);
+      expect(screen.getByRole('button', { name: 'Nút chat do page ghép' })).toBeInTheDocument();
     });
 
-    it('vẫn nhận focus bàn phím (focusableWhenDisabled) để trình đọc màn hình nghe được lý do', () => {
+    it('không có chatSlot: không dựng nút nào và không còn dòng "sắp có" (không link tới trang chưa có)', () => {
       renderHeader();
 
-      const chat = screen.getByRole('button', { name: 'Chat với shop' });
-      chat.focus();
-
-      expect(document.activeElement).toBe(chat);
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      expect(screen.queryByText(/sẽ sớm có/)).not.toBeInTheDocument();
+      expect(screen.queryByText('Chat với shop')).not.toBeInTheDocument();
     });
   });
 

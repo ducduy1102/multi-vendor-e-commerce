@@ -1,8 +1,7 @@
-import { MessageCircle } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 
 import { StarRating } from '@/shared/components/StarRating';
-import { Button } from '@/shared/components/ui/button';
 import { toSafeImageUrl } from '@/shared/lib/safe-image-url';
 
 import type { PublicShop } from '../types';
@@ -10,10 +9,10 @@ import { ShopPublicBanner, ShopPublicLogo } from './ShopPublicMedia';
 
 interface ShopPublicHeaderProps {
   shop: PublicShop;
+  // Nút "Chat với shop" do page.tsx ghép vào (module shop không được import module chat — rules/general.md mục 1);
+  // không truyền thì không có chỗ chat.
+  chatSlot?: ReactNode;
 }
-
-// id của dòng giải thích cho nút "Chat với shop" (aria-describedby). Chỉ có một header trên một trang.
-const CHAT_HINT_ID = 'shop-public-chat-hint';
 
 // Đầu trang shop công khai (/shops/[slug], Week9.md 1.10/6.3): banner, logo, tên, điểm đánh giá gộp của các
 // sản phẩm, số sản phẩm, ngày tham gia, mô tả, nút chat. Server Component thuần trình bày (chỉ ShopPublic
@@ -22,7 +21,7 @@ const CHAT_HINT_ID = 'shop-public-chat-hint';
 // Chữ do chủ shop nhập (tên ≤ 100, mô tả ≤ 2000 ký tự, có thể là chuỗi dài không dấu cách): cột chữ khai
 // tường minh `grid-cols-1` / `minmax(0,1fr)` thay vì `grid` trần có cột ngầm `auto` lấy min-content
 // (rules/frontend.md mục 5), cột con `min-w-0` + `break-words`.
-export function ShopPublicHeader({ shop }: ShopPublicHeaderProps) {
+export function ShopPublicHeader({ shop, chatSlot }: ShopPublicHeaderProps) {
   const t = useTranslations('shop');
   const format = useFormatter();
 
@@ -72,25 +71,9 @@ export function ShopPublicHeader({ shop }: ShopPublicHeaderProps) {
           </div>
         </div>
 
-        {/* "Chat với shop" chỉ là chỗ chừa cho Tuần 10 (chat real-time): nút không bấm được, KHÔNG phải
-            link tới trang chưa có (rules/frontend.md mục 13). focusableWhenDisabled: vẫn nhận focus bàn
-            phím để người dùng trình đọc màn hình nghe được lý do (aria-describedby) thay vì nút "biến mất"
-            khỏi thứ tự Tab; lý do hiện thành chữ thật (không chỉ tooltip) để máy cảm ứng cũng đọc được. */}
-        <div className="flex flex-col items-start gap-1 lg:items-end">
-          <Button
-            type="button"
-            variant="outline"
-            disabled
-            focusableWhenDisabled
-            aria-describedby={CHAT_HINT_ID}
-          >
-            <MessageCircle aria-hidden="true" />
-            {t('publicChatButton')}
-          </Button>
-          <p id={CHAT_HINT_ID} className="text-xs text-muted-foreground">
-            {t('publicChatSoon')}
-          </p>
-        </div>
+        {/* Chỗ nút "Chat với shop" (Week10.md 5.4): page.tsx truyền `chatSlot` — nút cần biết người xem đã đăng
+            nhập chưa và có phải chủ shop này không, là thứ module shop không được biết (không import chat/auth). */}
+        {chatSlot ? <div className="flex flex-col items-start lg:items-end">{chatSlot}</div> : null}
       </div>
 
       {shop.description ? (
