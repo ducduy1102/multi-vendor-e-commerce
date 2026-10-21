@@ -23,6 +23,17 @@ export function useDescribeChatError() {
       if (byCode) return byCode;
       return failure.status === 0 ? tGlobal('common.errorNetwork') : t('sendFailedGeneric');
     },
+    // Lỗi MỞ hội thoại (nút "Chat với shop"): CHAT_OWN_SHOP, EMAIL_NOT_VERIFIED, CHAT_CONVERSATION_LIMIT... dịch theo mã;
+    // mất mạng dùng câu chung của app; còn lại là câu "không mở được" (khác `describeLoadError` vì ở đây không phải
+    // lỗi tải tin nhắn, và 404 nghĩa là shop không còn hiển thị chứ không phải "không có quyền xem").
+    describeOpenError(error: unknown): string {
+      if (error instanceof ApiError) {
+        const code = getErrorCode(error);
+        if (code) return tGlobal(ERROR_CODE_MESSAGE_KEYS[code]);
+        if (error.status === 0) return tGlobal('common.errorNetwork');
+      }
+      return t('openError');
+    },
     describeLoadError(error: unknown): string {
       if (error instanceof ApiError) {
         const code = getErrorCode(error);

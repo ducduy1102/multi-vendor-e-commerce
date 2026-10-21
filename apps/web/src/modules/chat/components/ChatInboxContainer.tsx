@@ -5,7 +5,6 @@ import { useEffect, useMemo } from 'react';
 
 import { useRouter } from '@/i18n/navigation';
 
-import { useChatRealtimeSync } from '../hooks/useChatRealtimeSync';
 import { useConversations } from '../hooks/useConversations';
 import { useNow } from '../hooks/useNow';
 import { useSeededConversation } from '../hooks/useOpenConversation';
@@ -26,13 +25,13 @@ interface ChatInboxContainerProps {
 
 // Hộp thư chat hoàn chỉnh cho MỘT phạm vi (người mua, hoặc một shop). Container: nối danh sách + khung hội thoại với
 // hook, giữ lựa chọn trong URL để F5/chia sẻ link/nút Back của trình duyệt đều đúng (dưới `md` Back đưa từ hội thoại
-// về danh sách). Mount `useChatRealtimeSync` ở đây để dữ liệu hộp thư luôn tươi khi đang xem; không unit test
-// (rules/frontend.md mục 8), kiểm bằng Playwright.
+// về danh sách). Dữ liệu được giữ tươi bằng sự kiện real-time ở `ChatRealtimeSync` (shared/components, mount MỘT lần ở
+// layout cho cả hai phạm vi) — container KHÔNG tự mount `useChatRealtimeSync`, hai bản cùng chạy chỉ nhân đôi việc;
+// không unit test (rules/frontend.md mục 8), kiểm bằng Playwright.
 export function ChatInboxContainer({ scope, selectedId, basePath }: ChatInboxContainerProps) {
   const t = useTranslations('chat');
   const router = useRouter();
   const stableScope = useStableChatScope(scope);
-  useChatRealtimeSync(stableScope);
   const now = useNow();
 
   const conversations = useConversations(stableScope);
