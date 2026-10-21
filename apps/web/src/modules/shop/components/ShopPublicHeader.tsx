@@ -3,8 +3,8 @@ import { useFormatter, useTranslations } from 'next-intl';
 
 import { StarRating } from '@/shared/components/StarRating';
 import { Button } from '@/shared/components/ui/button';
+import { toSafeImageUrl } from '@/shared/lib/safe-image-url';
 
-import { toSafeImageUrl } from '../shop-image-url';
 import type { PublicShop } from '../types';
 import { ShopPublicBanner, ShopPublicLogo } from './ShopPublicMedia';
 

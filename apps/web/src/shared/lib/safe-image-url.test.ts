@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toSafeImageUrl } from './shop-image-url';
+import { toSafeImageUrl } from './safe-image-url';
 
 describe('toSafeImageUrl', () => {
   it('giữ nguyên URL https hợp lệ (kể cả host lạ, không chỉ Cloudinary)', () => {

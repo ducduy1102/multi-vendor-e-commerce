@@ -1,8 +1,8 @@
 'use client';
 
 import { Store } from 'lucide-react';
-import { useCallback, useState } from 'react';
 
+import { useImageFallback } from '@/shared/hooks/useImageFallback';
 import { cn } from '@/shared/lib/utils';
 
 interface ShopPublicMediaProps {
@@ -14,31 +14,7 @@ interface ShopPublicMediaProps {
 // next/image: host chưa khai ở `images.remotePatterns` làm next/image ném lỗi và sập cả trang. Dùng <img>
 // thường kèm `referrerPolicy="no-referrer"` (không gửi địa chỉ trang cho máy chủ ảnh lạ). Ảnh lỗi/thiếu ⇒
 // khối thay thế có biểu tượng cửa hàng, không để icon ảnh vỡ của trình duyệt (Week9.md 1.10, 6.3). "use
-// client" vì cần state `failedSrc` — phần còn lại của header vẫn là Server Component.
-//
-// Nhớ chính URL đã lỗi (không phải cờ bool) để đổi sang URL khác thì thử tải lại bình thường.
-//
-// Hai đường phát hiện ảnh lỗi: (1) `onError` — ảnh lỗi SAU khi hydrate; (2) ref callback kiểm
-// `complete && naturalWidth === 0` — ảnh SSR lỗi RẤT NHANH, trước khi React gắn handler, nên sự kiện `error`
-// đã phát ra và bị bỏ lỡ (đã gặp bằng Playwright: ảnh vỡ nằm lại, không có khối thay thế).
-function useImageFallback(src: string | null) {
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-
-  const imgRef = useCallback(
-    (img: HTMLImageElement | null) => {
-      if (img && img.complete && img.naturalWidth === 0 && img.currentSrc !== '') {
-        setFailedSrc(src);
-      }
-    },
-    [src],
-  );
-
-  return {
-    isShown: Boolean(src) && failedSrc !== src,
-    imgRef,
-    onError: () => setFailedSrc(src),
-  };
-}
+// client" vì cần state của `useImageFallback` — phần còn lại của header vẫn là Server Component.
 
 export function ShopPublicBanner({ src }: ShopPublicMediaProps) {
   const { isShown, imgRef, onError } = useImageFallback(src);
