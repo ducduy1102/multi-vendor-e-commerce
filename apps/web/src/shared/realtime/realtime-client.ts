@@ -22,6 +22,8 @@ export interface RealtimeClientSocket {
   onAny(listener: (event: string, ...args: unknown[]) => void): unknown;
   connect(): unknown;
   disconnect(): unknown;
+  // Gửi một sự kiện client → server (hiện chỉ có `chat:typing`).
+  emit(event: string, payload?: unknown): unknown;
 }
 
 export interface RealtimeSocketOptions {
@@ -73,6 +75,9 @@ export interface RealtimeClient {
   subscribeStatus(listener: () => void): () => void;
   // Nghe một sự kiện server → client; payload chưa được kiểm (nơi dùng tự parse bằng Zod).
   subscribeEvent(event: string, handler: (payload: unknown) => void): () => void;
+  // Gửi một sự kiện lên server. Trả `true` nếu đã giao cho socket đang KẾT NỐI, `false` nếu không gửi (chưa nối,
+  // đang nối lại, đã dừng): sự kiện kiểu "đang gõ" chỉ có nghĩa ngay lúc này nên KHÔNG xếp hàng chờ gửi sau.
+  emitEvent(event: string, payload?: unknown): boolean;
 }
 
 function documentIsVisible(): boolean {
@@ -354,6 +359,16 @@ export function createRealtimeClient(options: RealtimeClientOptions): RealtimeCl
       return () => {
         statusListeners.delete(listener);
       };
+    },
+    emitEvent(event, payload) {
+      if (status !== 'connected' || !socket) return false;
+      try {
+        socket.emit(event, payload);
+        return true;
+      } catch {
+        // Socket hỏng giữa chừng: coi như chưa gửi được, việc nối lại do bộ điều khiển đảm nhiệm.
+        return false;
+      }
     },
     subscribeEvent(event, handler) {
       let handlers = eventHandlers.get(event);

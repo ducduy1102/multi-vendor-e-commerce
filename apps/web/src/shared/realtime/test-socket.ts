@@ -11,6 +11,8 @@ export class FakeSocket implements RealtimeClientSocket {
   private anyListeners: ((event: string, ...args: unknown[]) => void)[] = [];
   connect = vi.fn();
   disconnect = vi.fn();
+  // Ghi lại mọi sự kiện client gửi lên server, để test khẳng định.
+  emit = vi.fn();
 
   on(event: 'connect', listener: () => void): this;
   on(event: 'connect_error', listener: (error: Error) => void): this;
