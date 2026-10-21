@@ -174,11 +174,13 @@ describe('ShopPublicHeader', () => {
     });
 
     it('không có chatSlot: không dựng nút nào và không còn dòng "sắp có" (không link tới trang chưa có)', () => {
-      renderHeader();
+      const { container } = renderHeader();
 
       expect(screen.queryByRole('button')).not.toBeInTheDocument();
       expect(screen.queryByText(/sẽ sớm có/)).not.toBeInTheDocument();
       expect(screen.queryByText('Chat với shop')).not.toBeInTheDocument();
+      // Không dựng cả khối bọc rỗng (nó chiếm một ô của lưới tiêu đề và tạo khoảng trống thừa).
+      expect(container.querySelector('[class~="lg:items-end"]')).toBeNull();
     });
   });
 
