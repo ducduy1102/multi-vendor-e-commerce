@@ -30,3 +30,17 @@ describe('CartCountBadge', () => {
     expect(screen.getByText('3')).toHaveAttribute('aria-hidden', 'true');
   });
 });
+
+describe('CartCountBadge — vỏ mỏng của CountBadge dùng chung', () => {
+  it('chuyển className của nơi dùng xuống huy hiệu (đặt lại vị trí được)', () => {
+    render(<CartCountBadge count={4} className="static ml-auto" />);
+
+    expect(screen.getByText('4')).toHaveClass('static', 'ml-auto');
+  });
+
+  it('mặc định đè góc icon (absolute) như trước khi trích ra shared', () => {
+    render(<CartCountBadge count={4} />);
+
+    expect(screen.getByText('4')).toHaveClass('absolute');
+  });
+});

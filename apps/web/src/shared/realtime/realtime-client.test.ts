@@ -712,4 +712,57 @@ describe('createRealtimeClient', () => {
       expect(client.getStatus()).toBe('offline');
     });
   });
+
+  describe('gửi sự kiện client → server (emitEvent)', () => {
+    it('đang kết nối ⇒ giao đúng sự kiện và payload cho socket, trả true', async () => {
+      const { client, socket } = await connected();
+
+      const sent = client.emitEvent('chat:typing', { conversationId: 'c1' });
+
+      expect(sent).toBe(true);
+      expect(socket.emit).toHaveBeenCalledTimes(1);
+      expect(socket.emit).toHaveBeenCalledWith('chat:typing', { conversationId: 'c1' });
+    });
+
+    it('chưa nối (chưa start / đang connecting) ⇒ KHÔNG gửi, trả false, không xếp hàng chờ gửi sau', async () => {
+      const { client, socket } = setup();
+
+      expect(client.emitEvent('chat:typing', { conversationId: 'c1' })).toBe(false);
+      client.start();
+      await flush();
+      expect(client.getStatus()).toBe('connecting');
+      expect(client.emitEvent('chat:typing', { conversationId: 'c1' })).toBe(false);
+      socket.serverConnects();
+
+      // Nối xong cũng không có gì bị "dội" lại từ các lần gọi trước.
+      expect(socket.emit).not.toHaveBeenCalled();
+    });
+
+    it('mất đường truyền (đang chờ nối lại) ⇒ không gửi', async () => {
+      const { client, socket } = await connected();
+      socket.serverDisconnects('transport close');
+
+      expect(client.getStatus()).toBe('connecting');
+      expect(client.emitEvent('chat:typing', { conversationId: 'c1' })).toBe(false);
+      expect(socket.emit).not.toHaveBeenCalled();
+    });
+
+    it('đã stop ⇒ không gửi', async () => {
+      const { client, socket } = await connected();
+      client.stop();
+
+      expect(client.emitEvent('chat:typing', { conversationId: 'c1' })).toBe(false);
+      expect(socket.emit).not.toHaveBeenCalled();
+    });
+
+    it('socket ném lỗi khi gửi ⇒ trả false, không ném ra ngoài', async () => {
+      const { client, socket } = await connected();
+      socket.emit.mockImplementation(() => {
+        throw new Error('socket hỏng');
+      });
+
+      expect(() => client.emitEvent('chat:typing', {})).not.toThrow();
+      expect(client.emitEvent('chat:typing', {})).toBe(false);
+    });
+  });
 });

@@ -35,6 +35,9 @@ interface OrderDetailViewProps {
   // Thẻ yêu cầu hủy/trả hàng (RefundRequestCard) do Container dựng khi đơn có yêu cầu — đặt NGAY TRÊN danh
   // sách dòng hàng vì là thứ người mua cần xem đầu tiên khi có yêu cầu đang chạy.
   refundRequestSection?: ReactNode;
+  // Nút "Chat với shop" do page.tsx ghép vào (module order không được import module chat — rules/general.md mục 1),
+  // đặt cạnh các nút hành động ở chân thẻ đơn. Không truyền thì không có chỗ chat.
+  chatSlot?: ReactNode;
 }
 
 // Chi tiết 1 đơn của người mua — component THUẦN từ `OrderDetail`: mọi số tiền/địa chỉ/dòng hàng là
@@ -47,6 +50,7 @@ export function OrderDetailView({
   actions,
   renderItemFooter,
   refundRequestSection,
+  chatSlot,
 }: OrderDetailViewProps) {
   const t = useTranslations('order');
   const formatDate = useFormatOrderDate();
@@ -65,7 +69,10 @@ export function OrderDetailView({
           <p>{t('cardPlacedAt', { date: formatDate(order.createdAt) })}</p>
         </div>
         {/* empty:hidden — OrderActions trả null khi không có hành động nào, khi đó ẩn cả dải viền. */}
-        <div className={cn(ORDER_CARD_FOOTER_CLASS, 'empty:hidden')}>{actions}</div>
+        <div className={cn(ORDER_CARD_FOOTER_CLASS, 'empty:hidden')}>
+          {actions}
+          {chatSlot}
+        </div>
       </section>
 
       <div className={ORDER_DETAIL_GRID_CLASS}>

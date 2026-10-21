@@ -727,6 +727,38 @@ describe('Đọc chat (DB thật)', () => {
       });
     });
 
+    it('otherLastReadAt (dấu "Đã xem") sống sót sau khi tải lại: mỗi bên thấy mốc của ĐỐI PHƯƠNG, khớp payload chat:read', async () => {
+      const { buyerId, side, conversationId } = await setup();
+      const viewOf = async (actor: ChatActor) =>
+        (await chat.listConversations(actor, { limit: 20 })).items[0];
+
+      // Chưa ai đọc: cả hai phía đều thấy null.
+      expect((await viewOf(buyerActor(buyerId))).otherLastReadAt).toBeNull();
+      expect((await viewOf(side.shop)).otherLastReadAt).toBeNull();
+
+      // Chủ shop đọc ⇒ người mua thấy mốc đó, còn chủ shop vẫn không thấy mốc của người mua (người mua chưa đọc).
+      await chat.markRead(side.shop, conversationId);
+      expect((await viewOf(buyerActor(buyerId))).otherLastReadAt).toBe(
+        at(3).toISOString(),
+      );
+      expect((await viewOf(side.shop)).otherLastReadAt).toBeNull();
+
+      // Người mua đọc ⇒ chủ shop thấy mốc của người mua; mốc người mua thấy không đổi.
+      await chat.markRead(buyerActor(buyerId), conversationId);
+      expect((await viewOf(side.shop)).otherLastReadAt).toBe(
+        at(3).toISOString(),
+      );
+      expect((await viewOf(buyerActor(buyerId))).otherLastReadAt).toBe(
+        at(3).toISOString(),
+      );
+
+      // Chính xác là giá trị sự kiện `chat:read` đã đẩy cho người mua: tải lại trang và nhận sự kiện không lệch nhau.
+      const toBuyer = realtime.emitted.find((e) => e.userId === buyerId);
+      expect(chatReadPayloadSchema.parse(toBuyer?.payload).readAt).toBe(
+        (await viewOf(buyerActor(buyerId))).otherLastReadAt,
+      );
+    });
+
     it('chủ shop đánh dấu: chỉ mốc của SHOP đổi, mốc người mua giữ nguyên, chỉ người mua nhận sự kiện', async () => {
       const { buyerId, side, conversationId } = await setup();
       await setMarks(conversationId, { buyer: at(1) });

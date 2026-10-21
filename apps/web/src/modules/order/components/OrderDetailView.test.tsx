@@ -153,6 +153,29 @@ describe('OrderDetailView — hoàn tiền và yêu cầu hủy/trả hàng', ()
 
     expect(container.querySelector('[aria-label="Thẻ yêu cầu"]')).toBeNull();
   });
+
+  it('chatSlot (nút "Chat với shop" do page ghép) nằm trong thẻ đơn cạnh các nút hành động', () => {
+    render(
+      withIntl(
+        <OrderDetailView
+          order={order()}
+          actions={<button type="button">Hành động</button>}
+          chatSlot={<button type="button">Chat với shop</button>}
+        />,
+      ),
+    );
+
+    const chat = screen.getByRole('button', { name: 'Chat với shop' });
+    const action = screen.getByRole('button', { name: 'Hành động' });
+    expect(chat.parentElement).toBe(action.parentElement);
+  });
+
+  it('không truyền chatSlot -> không có nút chat và không dựng dải chân thẻ trống', () => {
+    const { container } = renderView();
+
+    expect(screen.queryByRole('button', { name: 'Chat với shop' })).not.toBeInTheDocument();
+    expect(container.querySelector('.empty\\:hidden')).toBeEmptyDOMElement();
+  });
 });
 
 describe('OrderDetailView — liên kết sản phẩm và dải đánh giá', () => {

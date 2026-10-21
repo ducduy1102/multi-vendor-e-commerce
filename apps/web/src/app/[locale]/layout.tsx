@@ -8,8 +8,10 @@ import { routing } from '@/i18n/routing';
 import { AuthHydrator, EmailVerificationBanner } from '@/modules/auth';
 import { CartHydrator } from '@/modules/cart';
 import { BottomTabBar, MobileTabBarSpacer } from '@/shared/components/BottomTabBar';
+import { ChatRealtimeSync } from '@/shared/components/ChatRealtimeSync';
 import { Header } from '@/shared/components/Header';
 import { QueryProvider } from '@/shared/components/QueryProvider';
+import { SessionCacheReset } from '@/shared/components/SessionCacheReset';
 import { ThemeProvider } from '@/shared/components/ThemeProvider';
 import { Toaster } from '@/shared/components/ui/sonner';
 import { RealtimeProvider } from '@/shared/realtime/RealtimeProvider';
@@ -93,7 +95,9 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
             <QueryProvider>
               <AuthHydrator />
               <CartHydrator />
+              <SessionCacheReset />
               <RealtimeProvider>
+                <ChatRealtimeSync />
                 <Header />
                 <EmailVerificationBanner />
                 <MobileTabBarSpacer>{children}</MobileTabBarSpacer>

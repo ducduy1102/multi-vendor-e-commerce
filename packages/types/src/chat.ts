@@ -125,6 +125,11 @@ export const conversationSummarySchema = z.object({
   lastMessage: chatLastMessageSchema.nullable(),
   lastMessageAt: isoDateTimeSchema.nullable(),
   unreadCount: z.number().int().nonnegative(),
+  // Mốc ĐỐI PHƯƠNG đã đọc tới (null = chưa đọc lần nào): tin của MÌNH có `createdAt <= otherLastReadAt` là đã được
+  // xem — cho dấu "Đã xem". Đối phương gửi tin cũng nâng mốc của họ (trả lời là đã đọc). Cập nhật tức thời qua
+  // `chat:read`, trường này giữ nó sau khi tải lại trang. Chỉ là mốc thời gian: không lộ thêm gì ngoài việc đối
+  // phương đã mở hội thoại, đúng thứ `chat:read` đã đẩy.
+  otherLastReadAt: isoDateTimeSchema.nullable(),
   // Shop không còn APPROVED (bị khoá/từ chối): hội thoại cũ chỉ đọc được, gửi tin trả CHAT_SHOP_UNAVAILABLE.
   isReadOnly: z.boolean(),
 });

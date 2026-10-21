@@ -6,6 +6,8 @@ import { Link } from '@/i18n/navigation';
 import { OrderDetailContainer } from '@/modules/order';
 import { Container } from '@/shared/components/Container';
 
+import { OrderChatEntry } from './_components/OrderChatEntry';
+
 interface OrderDetailPageProps {
   params: Promise<{ id: string }>;
 }
@@ -32,7 +34,10 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
             {t('detailBackToList')}
           </Link>
           <h1 className="text-xl font-semibold text-foreground">{t('detailPageTitle')}</h1>
-          <OrderDetailContainer orderId={parsedId.success ? parsedId.data : null} />
+          <OrderDetailContainer
+            orderId={parsedId.success ? parsedId.data : null}
+            chatSlot={parsedId.success ? <OrderChatEntry orderId={parsedId.data} /> : null}
+          />
         </Container>
       </main>
     </div>

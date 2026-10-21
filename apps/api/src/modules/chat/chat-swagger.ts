@@ -58,6 +58,7 @@ const buyerSummaryExample = {
   },
   lastMessageAt: '2026-10-01T10:05:00.000Z',
   unreadCount: 1,
+  otherLastReadAt: '2026-10-01T10:04:00.000Z',
   isReadOnly: false,
 };
 const sellerSummaryExample = {
@@ -115,6 +116,7 @@ export function ApiOpenConversation() {
             lastMessage: null,
             lastMessageAt: null,
             unreadCount: 0,
+            otherLastReadAt: null,
           },
         },
       },

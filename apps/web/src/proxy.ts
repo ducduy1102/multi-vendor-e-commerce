@@ -37,7 +37,7 @@ function withLocalePrefix(prefix: string, path: string): string {
 
 // Chặn route dành cho guest (login/register) khi đã có access_token — quay lại
 // đúng `?next=` nếu có (Week7.md 1.2/3.2); chặn route cần đăng nhập
-// (/seller/*, /wishlist, /checkout, /orders, /account/*, /admin/*) khi KHÔNG còn dấu vết phiên
+// (/seller/*, /wishlist, /checkout, /orders, /account/*, /admin/*, /chat) khi KHÔNG còn dấu vết phiên
 // (không access_token lẫn refresh_token), giữ lại đích tới qua `?next=` để quay lại sau khi login.
 // Hai vị từ khác nhau có chủ đích (Week10.md 2.1): access_token chỉ sống 15 phút, refresh_token 7 ngày —
 // người chỉ còn refresh_token phải vào được route cần đăng nhập để client kịp gia hạn phiên, nhưng

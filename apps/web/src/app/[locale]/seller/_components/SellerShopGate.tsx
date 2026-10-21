@@ -11,6 +11,8 @@ interface SellerShopGateProps {
   skeleton: ReactNode;
   // Chỉ được render khi đã có shop.
   children: (shopId: string) => ReactNode;
+  // Lề dọc gọn (thay cho `py-16`) cho trang cần nhiều chỗ theo chiều cao như hộp thư chat.
+  compact?: boolean;
 }
 
 // Cổng "shop của tôi" cho các trang trong khu seller: trang cần biết shop của user hiện tại
@@ -20,11 +22,14 @@ interface SellerShopGateProps {
 // (chuyển sang /seller/onboarding). Thư mục `_components` là private folder của Next.js (không thành
 // route). Dùng cho các trang seller rộng `max-w-5xl` (products, vouchers, orders, orders/[id]); trang
 // products/new hẹp hơn (`max-w-3xl`) và chỉ hiện chữ "Đang tải" nên chưa dùng cổng này.
-export function SellerShopGate({ skeleton, children }: SellerShopGateProps) {
+export function SellerShopGate({ skeleton, children, compact = false }: SellerShopGateProps) {
   const t = useTranslations('shop');
   const tCommon = useTranslations('common');
   const router = useRouter();
   const myShopQuery = useMyShop();
+  const containerClassName = compact
+    ? 'mx-auto w-full max-w-5xl flex-1 px-4 py-4 md:py-6'
+    : 'mx-auto w-full max-w-5xl flex-1 px-4 py-16';
 
   useEffect(() => {
     if (myShopQuery.isSuccess && !myShopQuery.data) {
@@ -35,7 +40,7 @@ export function SellerShopGate({ skeleton, children }: SellerShopGateProps) {
   if (myShopQuery.isPending || !myShopQuery.data) {
     if (myShopQuery.isError) {
       return (
-        <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-16">
+        <div className={containerClassName}>
           <p role="alert" className="text-sm text-destructive">
             {t('loadShopError')}
           </p>
@@ -43,7 +48,7 @@ export function SellerShopGate({ skeleton, children }: SellerShopGateProps) {
       );
     }
     return (
-      <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-16">
+      <div className={containerClassName}>
         <div aria-busy="true" className="flex flex-col gap-6">
           <span className="sr-only">{tCommon('loading')}</span>
           {skeleton}
@@ -52,9 +57,5 @@ export function SellerShopGate({ skeleton, children }: SellerShopGateProps) {
     );
   }
 
-  return (
-    <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-16">
-      {children(myShopQuery.data.id)}
-    </div>
-  );
+  return <div className={containerClassName}>{children(myShopQuery.data.id)}</div>;
 }
