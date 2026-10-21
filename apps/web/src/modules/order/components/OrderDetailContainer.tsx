@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { ReviewFormSheet } from '@/modules/review';
@@ -23,6 +24,8 @@ interface OrderDetailContainerProps {
   // null khi URL không phải id hợp lệ — page.tsx (Server Component) đã kiểm UUID trước khi truyền
   // xuống nên không gọi API với đường dẫn tuỳ ý.
   orderId: string | null;
+  // Nút "Chat với shop" do page.tsx ghép vào (module order không import module chat); chuyển nguyên xuống OrderDetailView.
+  chatSlot?: ReactNode;
 }
 
 // "Không tìm thấy" dùng chung cho id sai dạng và 404 từ BE: BE trả CÙNG 1 body 404 cho đơn không
@@ -42,7 +45,7 @@ function OrderNotFound() {
   );
 }
 
-function OrderDetailLoader({ orderId }: { orderId: string }) {
+function OrderDetailLoader({ orderId, chatSlot }: { orderId: string; chatSlot?: ReactNode }) {
   const t = useTranslations('order');
   const tCommon = useTranslations('common');
 
@@ -85,6 +88,7 @@ function OrderDetailLoader({ orderId }: { orderId: string }) {
       {flow.actionError ? <Alert variant="destructive">{flow.actionError}</Alert> : null}
       <OrderDetailView
         order={order}
+        chatSlot={chatSlot}
         actions={
           <OrderActions
             order={order}
@@ -132,10 +136,10 @@ function OrderDetailLoader({ orderId }: { orderId: string }) {
 // 404/thành công (rules/frontend.md mục 10). Container không cần unit test (mục 8) — logic có test ở
 // useOrderActionFlow, useOrderItemReviewFlow, getCancelBlockedReasonKey, OrderDetailView, OrderActions,
 // OrderItemReviewAction, OrderTimeline.
-export function OrderDetailContainer({ orderId }: OrderDetailContainerProps) {
+export function OrderDetailContainer({ orderId, chatSlot }: OrderDetailContainerProps) {
   if (!orderId) {
     return <OrderNotFound />;
   }
 
-  return <OrderDetailLoader orderId={orderId} />;
+  return <OrderDetailLoader orderId={orderId} chatSlot={chatSlot} />;
 }
