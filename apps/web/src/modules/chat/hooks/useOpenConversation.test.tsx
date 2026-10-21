@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,6 +32,18 @@ describe('useOpenConversation / useSeededConversation', () => {
 
   afterEach(() => {
     cleanup();
+    onlineManager.setOnline(true);
+  });
+
+  it('trình duyệt báo MẤT MẠNG ⇒ vẫn gọi API và báo lỗi ngay, không treo ở trạng thái đang mở', async () => {
+    onlineManager.setOnline(false);
+    openConversationMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    const { result } = renderHook(() => useOpenConversation(), { wrapper });
+
+    act(() => result.current.mutate(SHOP_ID));
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(openConversationMock).toHaveBeenCalledTimes(1);
   });
 
   it('mở hội thoại: gọi API với shopId, ghi bản tóm tắt vào cache để đọc lại, trả về bản tóm tắt', async () => {

@@ -44,6 +44,11 @@ export function useSendMessage(scope: ChatScope, conversationId: string): UseSen
   const stableScope = useStableChatScope(scope);
 
   const mutation = useMutation({
+    // 'always': mặc định của TanStack Query là 'online' — khi trình duyệt báo mất mạng (`navigator.onLine === false`)
+    // mutation bị TREO, không hề gọi API, và tin kẹt ở "Đang gửi..." cho tới khi có sự kiện `online`. Không hợp với
+    // chat: người dùng không thấy lỗi, không "Thử lại"/"Xoá" được, và cờ `onLine` hay sai (VPN, mạng LAN không ra
+    // internet). Luôn thử gửi: mất mạng thật thì fetch lỗi ngay ⇒ "Gửi lỗi" + "Thử lại" (idempotent theo clientMessageId).
+    networkMode: 'always',
     mutationFn: ({
       scope: variableScope,
       conversationId: id,

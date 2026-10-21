@@ -16,6 +16,8 @@ export function useOpenConversation() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // 'always' (xem useSendMessage): mất mạng thì báo lỗi ngay thay vì để nút kẹt ở "Đang mở..." tới khi có mạng lại.
+    networkMode: 'always',
     mutationFn: (shopId: string) => chatService.openConversation(shopId),
     onSuccess: (summary) => {
       queryClient.setQueryData(seededConversationQueryKey(BUYER_SCOPE, summary.id), summary);

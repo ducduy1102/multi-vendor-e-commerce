@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { StrictMode } from 'react';
@@ -60,6 +60,7 @@ describe('useSendMessage', () => {
 
   afterEach(() => {
     cleanup();
+    onlineManager.setOnline(true);
   });
 
   it('send: tin hiện NGAY trong hộp chờ ở trạng thái "đang gửi", rồi gọi API với đúng phạm vi + khoá', async () => {
@@ -176,6 +177,21 @@ describe('useSendMessage', () => {
 
     await waitFor(() => expect(outboxItems()[0].deliveryStatus).toBe('failed'));
     expect(outboxItems()[0].failure).toEqual({ status: 0 });
+  });
+
+  it('trình duyệt báo MẤT MẠNG (navigator.onLine = false) ⇒ vẫn gọi API ngay và chuyển "gửi lỗi", không treo ở "đang gửi"', async () => {
+    onlineManager.setOnline(false);
+    sendMessageMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    const { result } = renderHook(() => useSendMessage(BUYER, CONVERSATION_ID), { wrapper });
+
+    act(() => {
+      result.current.send('lúc mất mạng');
+    });
+
+    await waitFor(() => expect(outboxItems()[0].deliveryStatus).toBe('failed'));
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    expect(outboxItems()[0].failure).toEqual({ status: 0 });
+    await waitFor(() => expect(result.current.isSending).toBe(false));
   });
 
   it('retry: gửi lại ĐÚNG clientMessageId + nội dung cũ, không tạo tin thứ hai; thành công thì gỡ bản tạm', async () => {
