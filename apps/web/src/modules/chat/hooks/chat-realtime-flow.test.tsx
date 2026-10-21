@@ -1,5 +1,5 @@
 import { REALTIME_EVENTS } from '@ecommerce/types';
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CONVERSATION_ID, SHOP_ID, at, makeMessage, makeSummary, uuid } from '../chat-test-data';
@@ -259,5 +259,46 @@ describe('luồng chat ghép các hook với real-time giả', () => {
     expect(listConversations.mock.calls.length).toBeGreaterThan(callsBefore.conversations);
     expect(getUnreadCount.mock.calls.length).toBeGreaterThan(callsBefore.unread);
     expect(result.current.conversations.data?.pages[0].items[0].lastMessageAt).toBe(at(50));
+  });
+
+  it('MOUNT TRỄ: hook đồng bộ (nạp động) bắt đầu nghe SAU khi socket đã nối và tin đã phát trong khoảng đó ⇒ huy hiệu vẫn được đối soát', async () => {
+    // MỘT Provider duy nhất cho cả hai phần (mỗi `renderHook` tạo Provider riêng nên không dùng được ở đây): huy hiệu mount
+    // sẵn (như biểu tượng tin nhắn ở Header), còn component đồng bộ chỉ được dựng SAU, đúng như `React.lazy` ở lazy-chat.
+    function LateSync() {
+      useChatRealtimeSync(BUYER);
+      return null;
+    }
+    function Page({ showSync }: { showSync: boolean }) {
+      const unread = useChatUnreadCount(BUYER, { enabled: true });
+      return (
+        <>
+          <output data-testid="badge">{unread.data ?? ''}</output>
+          {showSync ? <LateSync /> : null}
+        </>
+      );
+    }
+    const badge = () => screen.getByTestId('badge').textContent;
+    const view = render(<Page showSync={false} />, { wrapper: h.wrapper });
+    await h.connect();
+    await waitFor(() => expect(badge()).toBe('0'));
+    const callsBefore = getUnreadCount.mock.calls.length;
+
+    // Server phát một tin cho người mua LÚC CHƯA AI NGHE: sự kiện này bị lỡ, và số chưa đọc ở server giờ là 1.
+    act(() =>
+      h.socket.serverEmits(REALTIME_EVENTS.chatMessage, {
+        message: makeMessage({ id: uuid(40), senderRole: 'SHOP', createdAt: at(60) }),
+        viewerRole: 'BUYER',
+        shopId: SHOP_ID,
+      }),
+    );
+    getUnreadCount.mockResolvedValue({ unreadCount: 1 });
+    await h.settle();
+    expect(badge()).toBe('0'); // đúng như lỗi thật: huy hiệu cũ, không có gì làm mới
+
+    // Chunk đồng bộ về trễ và mount khi socket ĐÃ nối: phải tự đối soát chứ không chờ sự kiện kế tiếp.
+    view.rerender(<Page showSync />);
+
+    await waitFor(() => expect(badge()).toBe('1'));
+    expect(getUnreadCount.mock.calls.length).toBeGreaterThan(callsBefore);
   });
 });

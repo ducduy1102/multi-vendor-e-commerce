@@ -1,5 +1,5 @@
 import { REALTIME_EVENTS } from '@ecommerce/types';
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, render, renderHook, waitFor } from '@testing-library/react';
 import type { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
@@ -286,14 +286,53 @@ describe('useChatRealtimeSync', () => {
       expect(invalidate).not.toHaveBeenCalled();
     });
 
-    it('gắn hook khi socket ĐÃ đang kết nối (vd Header đã giữ một bản) ⇒ không làm mới thêm', async () => {
+    it('gắn hook khi socket ĐÃ đang kết nối (mount trễ do nạp động) ⇒ làm mới đúng MỘT lần, KHÔNG huỷ truy vấn đang bay', async () => {
+      // MỘT Provider duy nhất (mỗi `renderHook` tạo Provider riêng và chưa nối — bản test trước đây vì thế xanh giả): hook
+      // "sớm" mount trước khi nối, hook "trễ" chỉ được dựng sau khi socket đã nối, đúng như `React.lazy` ở lazy-chat.
       const invalidate = vi.spyOn(h.queryClient, 'invalidateQueries');
-      renderHook(() => useChatRealtimeSync(BUYER), { wrapper: h.wrapper });
+      function Late({ enabled }: { enabled: boolean }) {
+        useChatRealtimeSync(SHOP, { enabled });
+        return null;
+      }
+      function Page({ showLate, lateEnabled }: { showLate: boolean; lateEnabled: boolean }) {
+        useChatRealtimeSync(BUYER);
+        return showLate ? <Late enabled={lateEnabled} /> : null;
+      }
+      const view = render(<Page showLate={false} lateEnabled />, { wrapper: h.wrapper });
+      await h.connect();
+      await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1));
+      // Lần nối thật: dùng mặc định (huỷ rồi nạp lại truy vấn đang bay, vì kết nối cũ có thể đã treo).
+      expect(invalidate.mock.calls[0][1]).toEqual({ cancelRefetch: true });
+      invalidate.mockClear();
+
+      view.rerender(<Page showLate lateEnabled />);
+      await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1));
+      expect(invalidate).toHaveBeenCalledWith(
+        { queryKey: ['chat', 'shop', SHOP_ID] },
+        { cancelRefetch: false },
+      );
+
+      view.rerender(<Page showLate lateEnabled />);
+      await h.settle();
+      expect(invalidate).toHaveBeenCalledTimes(1);
+    });
+
+    it('gắn hook khi socket đã nối nhưng enabled=false ⇒ không làm mới (phạm vi chưa dùng)', async () => {
+      const invalidate = vi.spyOn(h.queryClient, 'invalidateQueries');
+      function Late() {
+        useChatRealtimeSync(SHOP, { enabled: false });
+        return null;
+      }
+      function Page({ showLate }: { showLate: boolean }) {
+        useChatRealtimeSync(BUYER);
+        return showLate ? <Late /> : null;
+      }
+      const view = render(<Page showLate={false} />, { wrapper: h.wrapper });
       await h.connect();
       await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1));
       invalidate.mockClear();
 
-      renderHook(() => useChatRealtimeSync(SHOP), { wrapper: h.wrapper });
+      view.rerender(<Page showLate />);
       await h.settle();
 
       expect(invalidate).not.toHaveBeenCalled();
