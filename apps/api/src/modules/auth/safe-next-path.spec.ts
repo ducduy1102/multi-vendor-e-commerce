@@ -24,6 +24,10 @@ describe('safeNextPath', () => {
       '/account',
       '/account/addresses',
       '/account/password?from=reset',
+      '/chat',
+      '/chat?c=3f6c1e4a-9b1d-4c1e-8a55-0d2c4f5a6b7c',
+      '/shops/ao-thun-shop',
+      '/shops/ao-thun-shop?sort=newest&page=2',
       '/cart#top',
     ])('%s', (path) => {
       expect(safeNextPath(path)).toBe(path);
@@ -100,6 +104,11 @@ describe('safeNextPath', () => {
       '/accounting',
       '/account-evil.com',
       '/account/../admin/../..//evil.com',
+      '/chatter',
+      '/chat-evil.com',
+      '/shopsevil',
+      '/shops-evil.com',
+      '/chat/../admin/..//evil.com',
     ])('%s', (value) => {
       expect(safeNextPath(value)).toBeNull();
     });
