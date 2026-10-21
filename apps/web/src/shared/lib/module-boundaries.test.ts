@@ -25,16 +25,43 @@ import { describe, expect, it } from 'vitest';
 //      `useAuthStore`) và `checkout` (hook địa chỉ, `AddressForm`) qua barrel
 //      của chúng, nên cấm chiều ngược lại để đồ thị không có vòng (Week9.md
 //      6.0). `account` chỉ có ở FE: phía BE endpoint tài khoản nằm trong `auth`.
+//   6. `modules/chat` là LÁ: không import module nghiệp vụ nào và không module
+//      nghiệp vụ nào import `chat` (kể cả qua barrel) — nút "Chat với shop"/"Chat
+//      với người mua" ghép ở `page.tsx` bằng slot/prop, huy hiệu ở Header ghép từ
+//      `shared/` (Week10.md 5.4, 5.5; BE có luật `chat` tương ứng ở
+//      apps/api/src/module-boundaries.spec.ts). Đăng xuất dọn hộp chờ gửi
+//      (`resetChatOutbox`) cũng do nơi ghép làm, vì chat không thấy `auth`.
 
 const SRC_ROOT = resolve(__dirname, '..', '..'); // apps/web/src
 
+const BUSINESS_MODULES_OTHER_THAN_CHAT = [
+  'account',
+  'admin',
+  'auth',
+  'cart',
+  'checkout',
+  'order',
+  'product',
+  'review',
+  'shop',
+  'voucher',
+  'wishlist',
+];
+
 // module (khoá) KHÔNG được import module (giá trị) — kể cả qua barrel.
 export const FORBIDDEN_MODULE_IMPORTS: Record<string, string[]> = {
-  cart: ['checkout'],
-  order: ['checkout', 'cart'],
-  review: ['product', 'order', 'cart', 'checkout', 'voucher'],
-  auth: ['account'],
-  checkout: ['account'],
+  account: ['chat'],
+  admin: ['chat'],
+  auth: ['account', 'chat'],
+  cart: ['checkout', 'chat'],
+  chat: BUSINESS_MODULES_OTHER_THAN_CHAT,
+  checkout: ['account', 'chat'],
+  order: ['checkout', 'cart', 'chat'],
+  product: ['chat'],
+  review: ['product', 'order', 'cart', 'checkout', 'voucher', 'chat'],
+  shop: ['chat'],
+  voucher: ['chat'],
+  wishlist: ['chat'],
 };
 
 const BARREL_ONLY_NAMES = new Set(['index', 'index.ts', 'index.tsx']);
@@ -241,6 +268,61 @@ describe('module boundaries (FE)', () => {
       expect(deep).toHaveLength(2);
       expect(deep[0]).toContain('import sâu vào modules/checkout/hooks/useDeleteAddress');
       expect(deep[1]).toContain('import sâu vào modules/auth/store/auth.store');
+    });
+
+    it('modules/chat là lá: cấm import mọi module nghiệp vụ, kể cả qua barrel', () => {
+      const v = findViolations([
+        file('modules/chat/a.ts', "import { useAuthStore } from '@/modules/auth';"),
+        file('modules/chat/b.ts', "import { formatPrice } from '@/modules/product';"),
+        file('modules/chat/c.ts', "import { useMyShop } from '@/modules/shop';"),
+        file('modules/chat/d.ts', "import { useOrder } from '@/modules/order';"),
+      ]);
+      expect(v).toHaveLength(4);
+      expect(v[0]).toContain("'chat' không được phụ thuộc module 'auth'");
+      expect(v[1]).toContain("'chat' không được phụ thuộc module 'product'");
+      expect(v[2]).toContain("'chat' không được phụ thuộc module 'shop'");
+      expect(v[3]).toContain("'chat' không được phụ thuộc module 'order'");
+    });
+
+    it.each(BUSINESS_MODULES_OTHER_THAN_CHAT)(
+      'cấm modules/%s import modules/chat, kể cả qua barrel',
+      (name) => {
+        const v = findViolations([
+          file(`modules/${name}/a.ts`, "import { ChatInbox } from '@/modules/chat';"),
+        ]);
+        expect(v).toHaveLength(1);
+        expect(v[0]).toContain(`'${name}' không được phụ thuộc module 'chat'`);
+      },
+    );
+
+    it('page.tsx và shared/ vẫn được import barrel modules/chat, cấm import sâu', () => {
+      const ok = findViolations([
+        file('app/[locale]/chat/page.tsx', "import { ChatInbox } from '@/modules/chat';"),
+        file(
+          'shared/components/Header.tsx',
+          "import { useChatUnreadCount } from '@/modules/chat';",
+        ),
+      ]);
+      expect(ok).toEqual([]);
+
+      const deep = findViolations([
+        file(
+          'shared/components/Header.tsx',
+          "import { useMessages } from '@/modules/chat/hooks/useMessages';",
+        ),
+      ]);
+      expect(deep).toHaveLength(1);
+      expect(deep[0]).toContain('import sâu vào modules/chat/hooks/useMessages');
+    });
+
+    it('modules/chat vẫn được import shared/ và @ecommerce/types', () => {
+      const v = findViolations([
+        file(
+          'modules/chat/a.ts',
+          "import { apiFetch } from '@/shared/lib/api-client';\nimport { useRealtimeEvent } from '@/shared/realtime/useRealtimeEvent';\nimport type { ChatMessage } from '@ecommerce/types';",
+        ),
+      ]);
+      expect(v).toEqual([]);
     });
 
     it('modules/order vẫn được import formatPrice từ barrel modules/product', () => {
