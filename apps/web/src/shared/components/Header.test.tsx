@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -35,6 +35,9 @@ vi.mock('@/modules/cart', () => ({
   useCartCount: () => null,
 }));
 
+const chatBadges = { shopId: null as string | null, buyerUnread: 0, shopUnread: 0 };
+vi.mock('@/shared/hooks/useChatBadges', () => ({ useChatBadges: () => chatBadges }));
+
 vi.mock('@/shared/hooks/useSellerChannelLink', () => ({
   useSellerChannelLink: () => sellerLink() as unknown,
 }));
@@ -64,6 +67,7 @@ describe('Header — menu tài khoản (desktop)', () => {
     auth.isHydrating = false;
     sellerLink.mockReturnValue(SHOP_LINK);
     pathname.mockReturnValue('/');
+    Object.assign(chatBadges, { shopId: null, buyerUnread: 0, shopUnread: 0 });
   });
 
   it('đã đăng nhập -> menu có "Đơn hàng của tôi" trỏ /orders', async () => {
@@ -81,7 +85,13 @@ describe('Header — menu tài khoản (desktop)', () => {
     const labels = Array.from(menu.querySelectorAll('[role="menuitem"], button')).map((el) =>
       el.textContent?.trim(),
     );
-    expect(labels).toEqual(['Trang cá nhân', 'Đơn hàng của tôi', 'Sản phẩm của tôi', 'Đăng xuất']);
+    expect(labels).toEqual([
+      'Trang cá nhân',
+      'Đơn hàng của tôi',
+      'Tin nhắn',
+      'Sản phẩm của tôi',
+      'Đăng xuất',
+    ]);
   });
 
   it('chưa có shop -> mục người bán là "Trở thành người bán", "Đơn hàng của tôi" vẫn đứng đầu', async () => {
@@ -99,6 +109,7 @@ describe('Header — menu tài khoản (desktop)', () => {
     expect(labels).toEqual([
       'Trang cá nhân',
       'Đơn hàng của tôi',
+      'Tin nhắn',
       'Trở thành người bán',
       'Đăng xuất',
     ]);
@@ -128,6 +139,7 @@ describe('Header — menu tài khoản (desktop)', () => {
       expect(labels).toEqual([
         'Trang cá nhân',
         'Đơn hàng của tôi',
+        'Tin nhắn',
         'Sản phẩm của tôi',
         'Quản trị',
         'Hoàn tiền',
@@ -207,5 +219,117 @@ describe('Header — menu tài khoản (desktop)', () => {
 
     const cluster = screen.getByRole('button', { name: /Nguyễn Văn A/ }).closest('.hidden');
     expect(cluster).toHaveClass('hidden', 'sm:flex');
+  });
+});
+
+describe('Header — tin nhắn (Week10.md 5.5, D8)', () => {
+  beforeEach(() => {
+    auth.user = { name: 'Nguyễn Văn A' };
+    auth.isHydrating = false;
+    sellerLink.mockReturnValue(SHOP_LINK);
+    pathname.mockReturnValue('/');
+    Object.assign(chatBadges, { shopId: null, buyerUnread: 0, shopUnread: 0 });
+  });
+
+  const chatLinks = () => screen.getAllByRole('link', { name: /^Tin nhắn/ });
+
+  it('đã đăng nhập: biểu tượng tin nhắn trỏ /chat, có bản mobile (hàng 1 bên phải logo) và bản desktop (cạnh giỏ hàng)', () => {
+    render(withIntl(<Header />));
+
+    const links = chatLinks();
+    expect(links).toHaveLength(2);
+    for (const link of links) expect(link).toHaveAttribute('href', '/chat');
+    const [mobile, desktop] = links.map((link) => link.closest('div'));
+    expect(mobile).toHaveClass('ml-auto', 'flex', 'sm:hidden');
+    expect(desktop).toHaveClass('hidden', 'sm:flex');
+  });
+
+  it('khách chưa đăng nhập hoặc đang chờ xác định phiên: không có biểu tượng tin nhắn', () => {
+    auth.user = null;
+    const { rerender } = render(withIntl(<Header />));
+    expect(screen.queryByRole('link', { name: /^Tin nhắn/ })).not.toBeInTheDocument();
+
+    auth.isHydrating = true;
+    rerender(withIntl(<Header />));
+    expect(screen.queryByRole('link', { name: /^Tin nhắn/ })).not.toBeInTheDocument();
+  });
+
+  it('chưa đọc: huy hiệu số (aria-hidden) + bản chữ cho trình đọc màn hình; hết chưa đọc thì không huy hiệu', () => {
+    chatBadges.buyerUnread = 3;
+    const { rerender } = render(withIntl(<Header />));
+
+    const [link] = chatLinks();
+    expect(link).toHaveAccessibleName('Tin nhắn: 3 tin chưa đọc');
+    expect(within(link).getByText('3')).toHaveAttribute('aria-hidden', 'true');
+
+    chatBadges.buyerUnread = 0;
+    rerender(withIntl(<Header />));
+    expect(chatLinks()[0]).toHaveAccessibleName('Tin nhắn');
+    expect(within(chatLinks()[0]).queryByText('3')).not.toBeInTheDocument();
+  });
+
+  it('quá 99 chưa đọc hiện "99+"', () => {
+    chatBadges.buyerUnread = 250;
+    render(withIntl(<Header />));
+
+    expect(within(chatLinks()[0]).getByText('99+')).toBeInTheDocument();
+  });
+
+  it('đang ở /chat: biểu tượng đánh dấu aria-current="page"', () => {
+    pathname.mockReturnValue('/chat');
+    render(withIntl(<Header />));
+
+    for (const link of chatLinks()) expect(link).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('menu tài khoản có "Tin nhắn" trỏ /chat kèm huy hiệu người mua; chưa có shop thì KHÔNG có "Tin nhắn của khách"', async () => {
+    chatBadges.buyerUnread = 4;
+    const menu = await openAccountMenu();
+
+    const item = within(menu).getByRole('menuitem', { name: /^Tin nhắn/ });
+    expect(item).toHaveAttribute('href', '/chat');
+    expect(within(item).getByText('4')).toBeInTheDocument();
+    expect(
+      within(menu).queryByRole('menuitem', { name: /Tin nhắn của khách/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('có shop: thêm "Tin nhắn của khách" trỏ /seller/chat kèm huy hiệu RIÊNG của shop, sau mục kênh người bán', async () => {
+    Object.assign(chatBadges, { shopId: 'shop-1', buyerUnread: 1, shopUnread: 7 });
+    const menu = await openAccountMenu();
+
+    const seller = within(menu).getByRole('menuitem', { name: /Tin nhắn của khách/ });
+    expect(seller).toHaveAttribute('href', '/seller/chat');
+    expect(within(seller).getByText('7')).toBeInTheDocument();
+    // Thứ tự các mục (văn bản có thêm số huy hiệu nên so theo tiền tố, không so bằng).
+    const items = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+    const position = (prefix: string) =>
+      items.findIndex((el) => el.textContent?.trim().startsWith(prefix));
+    const order = [
+      'Trang cá nhân',
+      'Đơn hàng của tôi',
+      'Tin nhắn',
+      'Sản phẩm của tôi',
+      'Tin nhắn của khách',
+    ].map(position);
+    expect(order).not.toContain(-1);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('tin chưa đọc ở hộp thư SHOP nổi lên ngay trên avatar (người bán không phải mở menu mới biết có khách nhắn)', () => {
+    Object.assign(chatBadges, { shopId: 'shop-1', shopUnread: 5 });
+    render(withIntl(<Header />));
+
+    const trigger = screen.getByRole('button', { name: /Nguyễn Văn A/ });
+    expect(within(trigger).getByText('5')).toHaveAttribute('aria-hidden', 'true');
+    expect(trigger).toHaveAccessibleName(/5 tin chưa đọc/);
+  });
+
+  it('không có tin chưa đọc ở hộp thư shop: avatar không có huy hiệu', () => {
+    Object.assign(chatBadges, { shopId: 'shop-1', shopUnread: 0 });
+    render(withIntl(<Header />));
+
+    const trigger = screen.getByRole('button', { name: /Nguyễn Văn A/ });
+    expect(trigger.querySelector('.bg-primary.text-primary-foreground')).toBeNull();
   });
 });

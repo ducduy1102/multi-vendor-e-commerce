@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
@@ -42,6 +42,9 @@ vi.mock('@/shared/components/Header', () => ({
   UserAvatar: ({ name }: { name: string }) => <span data-testid="avatar">{name}</span>,
 }));
 
+const chatBadges = { shopId: null as string | null, buyerUnread: 0, shopUnread: 0 };
+vi.mock('@/shared/hooks/useChatBadges', () => ({ useChatBadges: () => chatBadges }));
+
 vi.mock('@/shared/hooks/useSellerChannelLink', () => ({
   useSellerChannelLink: () => sellerLink() as unknown,
 }));
@@ -75,6 +78,7 @@ describe('AccountSheet — mục "Trang cá nhân" và "Đơn hàng của tôi"'
     auth.user = { name: 'Nguyễn Văn A' };
     auth.isHydrating = false;
     sellerLink.mockReturnValue(SHOP_LINK);
+    Object.assign(chatBadges, { shopId: null, buyerUnread: 0, shopUnread: 0 });
     useUIStore.setState({ isAccountSheetOpen: false });
   });
 
@@ -145,7 +149,7 @@ describe('AccountSheet — mục "Trang cá nhân" và "Đơn hàng của tôi"'
     openSheet();
 
     const links = screen.getAllByRole('link').map((link) => link.textContent);
-    expect(links).toEqual(['Trang cá nhân', 'Đơn hàng của tôi', 'Trở thành người bán']);
+    expect(links).toEqual(['Trang cá nhân', 'Đơn hàng của tôi', 'Tin nhắn', 'Trở thành người bán']);
   });
 
   describe('mục "Quản trị" (Week8.md 3.9) — chỉ ADMIN', () => {
@@ -253,5 +257,96 @@ describe('AccountSheet — mục "Trang cá nhân" và "Đơn hàng của tôi"'
     openSheet();
 
     expect(screen.getByRole('button', { name: 'Đăng xuất' })).toBeInTheDocument();
+  });
+});
+
+describe('AccountSheet — tin nhắn (Week10.md 5.5, D8)', () => {
+  beforeEach(() => {
+    auth.user = { name: 'Nguyễn Văn A' };
+    auth.isHydrating = false;
+    sellerLink.mockReturnValue(SHOP_LINK);
+    Object.assign(chatBadges, { shopId: null, buyerUnread: 0, shopUnread: 0 });
+    useUIStore.setState({ isAccountSheetOpen: false });
+  });
+
+  const linkTo = (href: string) =>
+    screen.getAllByRole('link').find((link) => link.getAttribute('href') === href);
+
+  it('đã đăng nhập: có "Tin nhắn" trỏ /chat, đứng sau "Đơn hàng của tôi" và trước kênh người bán, cùng khối', () => {
+    openSheet();
+
+    const orders = screen.getByRole('link', { name: 'Đơn hàng của tôi' });
+    const chat = linkTo('/chat');
+    const shop = screen.getByRole('link', { name: 'Sản phẩm của tôi' });
+    expect(chat).toHaveTextContent('Tin nhắn');
+    expect(
+      orders.compareDocumentPosition(chat as Element) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      (chat as Element).compareDocumentPosition(shop) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(chat?.parentElement).toBe(orders.parentElement);
+  });
+
+  it('khách chưa đăng nhập: không có "Tin nhắn"', () => {
+    auth.user = null;
+    openSheet();
+
+    expect(linkTo('/chat')).toBeUndefined();
+    expect(linkTo('/seller/chat')).toBeUndefined();
+  });
+
+  it('bấm "Tin nhắn" -> đóng Sheet', async () => {
+    const user = userEvent.setup();
+    openSheet();
+
+    await user.click(linkTo('/chat') as Element);
+
+    expect(useUIStore.getState().isAccountSheetOpen).toBe(false);
+  });
+
+  it('chưa đọc: huy hiệu số inline (aria-hidden) + bản chữ cho trình đọc màn hình; không chưa đọc thì không huy hiệu', () => {
+    chatBadges.buyerUnread = 6;
+    openSheet();
+
+    const chat = linkTo('/chat') as HTMLElement;
+    expect(within(chat).getByText('6')).toHaveAttribute('aria-hidden', 'true');
+    expect(within(chat).getByText('6')).toHaveClass('static', 'ml-auto');
+    expect(chat).toHaveAccessibleName('Tin nhắn 6 tin chưa đọc');
+  });
+
+  it('chưa có shop: KHÔNG có "Tin nhắn của khách"', () => {
+    openSheet();
+
+    expect(linkTo('/seller/chat')).toBeUndefined();
+  });
+
+  it('có shop: có "Tin nhắn của khách" trỏ /seller/chat với huy hiệu RIÊNG của shop, tách khỏi huy hiệu người mua', () => {
+    Object.assign(chatBadges, { shopId: 'shop-1', buyerUnread: 1, shopUnread: 9 });
+    openSheet();
+
+    const seller = linkTo('/seller/chat') as HTMLElement;
+    expect(seller).toHaveTextContent('Tin nhắn của khách');
+    expect(within(seller).getByText('9')).toBeInTheDocument();
+    const buyer = linkTo('/chat') as HTMLElement;
+    expect(within(buyer).getByText('1')).toBeInTheDocument();
+  });
+
+  it('tin chưa đọc ở hộp thư SHOP nổi lên ngay trên tab "Tài khoản" (không cần mở Sheet)', () => {
+    Object.assign(chatBadges, { shopId: 'shop-1', shopUnread: 3 });
+    useUIStore.setState({ isAccountSheetOpen: false });
+    render(withIntl(<AccountSheet />));
+
+    const trigger = screen.getByRole('button', { name: /Tài khoản/ });
+    expect(within(trigger).getByText('3')).toHaveAttribute('aria-hidden', 'true');
+    expect(trigger).toHaveAccessibleName(/3 tin chưa đọc/);
+  });
+
+  it('không có tin chưa đọc ở hộp thư shop: tab không có huy hiệu', () => {
+    Object.assign(chatBadges, { shopId: 'shop-1', shopUnread: 0 });
+    render(withIntl(<AccountSheet />));
+
+    const trigger = screen.getByRole('button', { name: /Tài khoản/ });
+    expect(trigger.querySelector('.bg-primary')).toBeNull();
   });
 });

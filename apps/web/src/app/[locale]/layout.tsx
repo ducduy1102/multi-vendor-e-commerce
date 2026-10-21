@@ -8,6 +8,7 @@ import { routing } from '@/i18n/routing';
 import { AuthHydrator, EmailVerificationBanner } from '@/modules/auth';
 import { CartHydrator } from '@/modules/cart';
 import { BottomTabBar, MobileTabBarSpacer } from '@/shared/components/BottomTabBar';
+import { ChatRealtimeSync } from '@/shared/components/ChatRealtimeSync';
 import { Header } from '@/shared/components/Header';
 import { QueryProvider } from '@/shared/components/QueryProvider';
 import { SessionCacheReset } from '@/shared/components/SessionCacheReset';
@@ -96,6 +97,7 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
               <CartHydrator />
               <SessionCacheReset />
               <RealtimeProvider>
+                <ChatRealtimeSync />
                 <Header />
                 <EmailVerificationBanner />
                 <MobileTabBarSpacer>{children}</MobileTabBarSpacer>
