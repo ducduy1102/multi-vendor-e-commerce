@@ -15,6 +15,8 @@ import { ShopPublicHeader, shopService } from '@/modules/shop';
 import { Container } from '@/shared/components/Container';
 import { Skeleton } from '@/shared/components/ui/skeleton';
 
+import { ShopChatEntry } from '../../_components/ShopChatEntry';
+
 interface ShopPublicPageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -91,7 +93,7 @@ export default async function ShopPublicPage({ params, searchParams }: ShopPubli
     <div className="flex flex-1 flex-col">
       <main className="flex flex-1 flex-col">
         <Container className="flex flex-1 flex-col gap-6 py-6">
-          <ShopPublicHeader shop={shop} />
+          <ShopPublicHeader shop={shop} chatSlot={<ShopChatEntry shopId={shop.id} />} />
 
           <section aria-labelledby="shop-products-title" className="flex flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
