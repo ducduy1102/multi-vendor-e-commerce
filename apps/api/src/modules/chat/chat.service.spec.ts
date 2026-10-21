@@ -163,6 +163,7 @@ describe('ChatService.openConversation', () => {
         lastMessage: null,
         lastMessageAt: null,
         unreadCount: 0,
+        otherLastReadAt: null,
         isReadOnly: false,
       });
       // Hội thoại chưa có tin không tốn thêm truy vấn tin nhắn.
@@ -204,6 +205,28 @@ describe('ChatService.openConversation', () => {
 
       expect(result.id).toBe('conv-old');
       noWrites();
+    });
+
+    it('otherLastReadAt là mốc đọc của SHOP (đối phương), không phải mốc của chính người mua', async () => {
+      const BUYER_READ = new Date('2030-01-02T09:00:00.000Z');
+      const SHOP_READ = new Date('2030-01-02T10:00:00.000Z');
+      prisma.conversation.findUnique.mockResolvedValue(
+        row({ buyerLastReadAt: BUYER_READ, shopLastReadAt: SHOP_READ }),
+      );
+
+      const result = await service.openConversation(BUYER, SHOP_ID);
+
+      expect(result.otherLastReadAt).toBe(SHOP_READ.toISOString());
+    });
+
+    it('shop chưa đọc lần nào ⇒ otherLastReadAt là null', async () => {
+      prisma.conversation.findUnique.mockResolvedValue(
+        row({ buyerLastReadAt: new Date('2030-01-02T09:00:00.000Z') }),
+      );
+
+      const result = await service.openConversation(BUYER, SHOP_ID);
+
+      expect(result.otherLastReadAt).toBeNull();
     });
 
     it('tra theo đúng khoá (người mua, shop)', async () => {

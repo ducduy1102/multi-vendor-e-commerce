@@ -299,6 +299,7 @@ describe('schema response', () => {
     lastMessage: { content: 'ok', senderRole: 'SHOP', createdAt: ISO },
     lastMessageAt: ISO,
     unreadCount: 3,
+    otherLastReadAt: ISO,
     isReadOnly: false,
   };
 
@@ -309,6 +310,7 @@ describe('schema response', () => {
         ...summary,
         lastMessage: null,
         lastMessageAt: null,
+        otherLastReadAt: null,
       }).success,
     ).toBe(true);
   });
@@ -334,6 +336,8 @@ describe('schema response', () => {
     ['unreadCount âm', { unreadCount: -1 }],
     ['unreadCount thập phân', { unreadCount: 1.5 }],
     ['isReadOnly thiếu', { isReadOnly: undefined }],
+    ['otherLastReadAt thiếu', { otherLastReadAt: undefined }],
+    ['otherLastReadAt không phải ISO', { otherLastReadAt: 'hôm qua' }],
     ['id không phải UUID', { id: 'abc' }],
     ['lastMessageAt không phải ISO', { lastMessageAt: 'hôm qua' }],
   ])('conversationSummarySchema từ chối %s', (_name, override) => {

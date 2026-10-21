@@ -338,9 +338,45 @@ describe('ChatService — phần đọc', () => {
             },
             lastMessageAt: T2.toISOString(),
             unreadCount: 2,
+            otherLastReadAt: null,
             isReadOnly: false,
           },
         ]);
+      });
+
+      it('otherLastReadAt là mốc của ĐỐI PHƯƠNG: người mua thấy mốc của shop, chủ shop thấy mốc của người mua (không bao giờ mốc của chính mình)', async () => {
+        prisma.conversation.findMany.mockResolvedValue([
+          conversationRow({
+            lastMessageAt: T2,
+            buyerLastReadAt: T1,
+            shopLastReadAt: T2,
+          }),
+        ]);
+        prisma.$queryRaw.mockResolvedValue([digest()]);
+        directory.getUserDisplay.mockResolvedValue([
+          { id: BUYER, name: 'Nguyễn An' },
+        ]);
+
+        const asBuyer = await list(buyerActor);
+        const asShop = await list(shopActor);
+
+        expect(asBuyer.items[0].otherLastReadAt).toBe(T2.toISOString());
+        expect(asShop.items[0].otherLastReadAt).toBe(T1.toISOString());
+      });
+
+      it('đối phương chưa đọc lần nào ⇒ otherLastReadAt là null, kể cả khi chính mình đã đọc', async () => {
+        prisma.conversation.findMany.mockResolvedValue([
+          conversationRow({
+            lastMessageAt: T2,
+            buyerLastReadAt: T2,
+            shopLastReadAt: null,
+          }),
+        ]);
+        prisma.$queryRaw.mockResolvedValue([digest()]);
+
+        const result = await list(buyerActor);
+
+        expect(result.items[0].otherLastReadAt).toBeNull();
       });
 
       it('chủ shop thấy tên NGƯỜI MUA, logo luôn null, và vai tin cuối suy ra từ buyerId', async () => {

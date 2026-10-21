@@ -305,6 +305,7 @@ export class ChatService {
         lastMessage: this.toLastMessage(digest, conversation.buyerId),
         lastMessageAt: conversation.lastMessageAt.toISOString(),
         unreadCount: digest.unreadCount,
+        otherLastReadAt: otherReadMarkOf(conversation, inbox.role),
         isReadOnly: party.isReadOnly,
       });
     }
@@ -836,6 +837,7 @@ export class ChatService {
       id: conversation.id,
       shopId: conversation.shopId,
       counterpart: { name: shop.name, logoUrl: shop.logoUrl },
+      otherLastReadAt: otherReadMarkOf(conversation, 'BUYER'),
       isReadOnly: shop.status !== ShopStatus.APPROVED,
     };
     if (!conversation.lastMessageAt) {
@@ -883,6 +885,19 @@ export class ChatService {
 // Vai của người gửi trong hội thoại — luôn suy ra từ DB (buyerId của hội thoại), không bao giờ từ client.
 function roleOf(senderId: string, buyerId: string): ChatRole {
   return senderId === buyerId ? 'BUYER' : 'SHOP';
+}
+
+// Mốc đọc của ĐỐI PHƯƠNG trong mắt người xem (người mua thấy mốc của shop và ngược lại), dạng ISO hoặc null nếu họ
+// chưa đọc lần nào. Chỉ là một mốc thời gian — cùng thông tin `chat:read` đã đẩy cho đối phương.
+function otherReadMarkOf(
+  conversation: Pick<ConversationRow, 'buyerLastReadAt' | 'shopLastReadAt'>,
+  viewer: ChatRole,
+): string | null {
+  const mark =
+    viewer === 'BUYER'
+      ? conversation.shopLastReadAt
+      : conversation.buyerLastReadAt;
+  return mark ? mark.toISOString() : null;
 }
 
 function uniqueViolationOf(
