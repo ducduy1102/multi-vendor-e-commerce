@@ -6,6 +6,7 @@ export type {
   ChatLastMessage,
   ChatMessage,
   ChatMessageEvent,
+  ChatMessageFormInput,
   ChatReadPayload,
   ChatRole,
   ChatTypingPayload,

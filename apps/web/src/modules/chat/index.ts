@@ -1,5 +1,7 @@
 // Barrel export cho module chat — chỉ những gì cần dùng ở app/ và (qua page.tsx) ghép với module khác. Component
 // giao diện (hộp thư, khung tin, nút "Chat với shop") được thêm ở các bước sau.
+export { ChatInboxContainer } from './components/ChatInboxContainer';
+export { formatUnread } from './chat-format';
 export { resetChatOutbox } from './store/chat-outbox.store';
 export {
   chatScopeQueryKey,
