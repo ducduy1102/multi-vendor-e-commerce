@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { runSessionResets } from '@/shared/lib/session-reset';
+
 import { CONVERSATION_ID, OTHER_CONVERSATION_ID, at, uuid } from '../chat-test-data';
 import { EMPTY_OUTBOX, resetChatOutbox, useChatOutboxStore } from './chat-outbox.store';
 
@@ -104,6 +106,16 @@ describe('useChatOutboxStore', () => {
     enqueue(base(1, OTHER_CONVERSATION_ID));
 
     resetChatOutbox();
+
+    expect(useChatOutboxStore.getState().byConversation).toEqual({});
+  });
+
+  it('TỰ ĐĂNG KÝ vào sổ dọn phiên khi mã chat được nạp: runSessionResets() xoá hộp chờ, không cần ai gọi resetChatOutbox', () => {
+    const { enqueue } = useChatOutboxStore.getState();
+    enqueue(base(1));
+    enqueue(base(1, OTHER_CONVERSATION_ID));
+
+    runSessionResets();
 
     expect(useChatOutboxStore.getState().byConversation).toEqual({});
   });

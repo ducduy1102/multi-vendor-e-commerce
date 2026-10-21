@@ -21,7 +21,12 @@ import { useStableChatScope } from './useStableChatScope';
 //  - `chat:read` ⇒ ghi mốc "đối phương đã đọc tới" (cache riêng, không theo phạm vi).
 //  - SAU MỖI LẦN NỐI (kể cả lần đầu và nối lại sau khi rớt mạng / API ngủ) ⇒ làm mới mọi query của phạm vi đang được
 //    dùng (danh sách, huy hiệu, hội thoại đang mở) để lấp khoảng trống: sự kiện phát lúc KHÔNG có kết nối không được
-//    gửi lại. Mở hook khi đã đang kết nối thì không làm mới thêm (dữ liệu vừa được nạp).
+//    gửi lại.
+//  - MỞ HOOK KHI SOCKET ĐÃ ĐANG KẾT NỐI cũng được coi là một lần nối (làm mới đúng một lần, KHÔNG huỷ truy vấn đang
+//    bay): hook này được mount trễ bằng `React.lazy` (shared/components/lazy-chat.tsx) nên có thể bắt đầu nghe SAU khi
+//    socket đã nối, và tin phát trong khoảng đó bị lỡ — huy hiệu đã nạp trước đó sẽ cũ mãi. (Trước đây hook mount ở
+//    layout trước khi socket nối nên giả định "dữ liệu vừa nạp, khỏi làm mới" đúng; nạp động làm giả định đó sai.)
+//    Bật `enabled`/đổi phạm vi khi đang kết nối thì KHÔNG làm mới: query mới tự nạp khi có người dùng nó.
 // `chat:typing` KHÔNG xử lý ở đây (trạng thái tạm theo từng hội thoại, xem useTypingIndicator).
 export function useChatRealtimeSync(scope: ChatScope, options: { enabled?: boolean } = {}): void {
   const enabled = options.enabled ?? true;
@@ -36,12 +41,17 @@ export function useChatRealtimeSync(scope: ChatScope, options: { enabled?: boole
   });
 
   const status = useRealtimeStatus();
-  const previousStatus = useRef<RealtimeStatus>(status);
+  // `null` = hook chưa chạy effect lần nào: lần chạy đầu mà đã đang kết nối là "mount trễ" (xem trên).
+  const previousStatus = useRef<RealtimeStatus | null>(null);
   useEffect(() => {
     const previous = previousStatus.current;
     previousStatus.current = status;
     if (enabled && status === 'connected' && previous !== 'connected') {
-      void queryClient.invalidateQueries({ queryKey: chatScopeQueryKey(stableScope) });
+      void queryClient.invalidateQueries(
+        { queryKey: chatScopeQueryKey(stableScope) },
+        // Mount trễ: truy vấn đang nạp lần đầu đã lấy dữ liệu MỚI, không huỷ rồi nạp lại; truy vấn đã xong trước đó mới cần.
+        { cancelRefetch: previous !== null },
+      );
     }
   }, [status, enabled, queryClient, stableScope]);
 }

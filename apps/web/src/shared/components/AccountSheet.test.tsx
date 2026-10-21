@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
@@ -44,6 +44,13 @@ vi.mock('@/shared/components/Header', () => ({
 
 const chatBadges = { shopId: null as string | null, buyerUnread: 0, shopUnread: 0 };
 vi.mock('@/shared/hooks/useChatBadges', () => ({ useChatBadges: () => chatBadges }));
+
+// Huy hiệu tin nhắn được nạp bằng React.lazy (lazy-chat.tsx, để khách vãng lai không tải mã chat): khẳng định "có" dùng
+// findBy, còn khẳng định "KHÔNG có" phải chờ chunk nạp xong rồi mới kiểm — không thì phủ định luôn đúng kể cả khi mã sai.
+const settleLazy = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
 
 vi.mock('@/shared/hooks/useSellerChannelLink', () => ({
   useSellerChannelLink: () => sellerLink() as unknown,
@@ -305,46 +312,49 @@ describe('AccountSheet — tin nhắn (Week10.md 5.5, D8)', () => {
     expect(useUIStore.getState().isAccountSheetOpen).toBe(false);
   });
 
-  it('chưa đọc: huy hiệu số inline (aria-hidden) + bản chữ cho trình đọc màn hình; không chưa đọc thì không huy hiệu', () => {
+  it('chưa đọc: huy hiệu số inline (aria-hidden) + bản chữ cho trình đọc màn hình; không chưa đọc thì không huy hiệu', async () => {
     chatBadges.buyerUnread = 6;
     openSheet();
 
     const chat = linkTo('/chat') as HTMLElement;
-    expect(within(chat).getByText('6')).toHaveAttribute('aria-hidden', 'true');
-    expect(within(chat).getByText('6')).toHaveClass('static', 'ml-auto');
+    const badge = await within(chat).findByText('6');
+    expect(badge).toHaveAttribute('aria-hidden', 'true');
+    expect(badge).toHaveClass('static', 'ml-auto');
     expect(chat).toHaveAccessibleName('Tin nhắn 6 tin chưa đọc');
   });
 
   it('chưa có shop: KHÔNG có "Tin nhắn của khách"', () => {
+    sellerLink.mockReturnValue({ ...SHOP_LINK, hasShop: false });
     openSheet();
 
     expect(linkTo('/seller/chat')).toBeUndefined();
   });
 
-  it('có shop: có "Tin nhắn của khách" trỏ /seller/chat với huy hiệu RIÊNG của shop, tách khỏi huy hiệu người mua', () => {
-    Object.assign(chatBadges, { shopId: 'shop-1', buyerUnread: 1, shopUnread: 9 });
+  it('có shop: có "Tin nhắn của khách" trỏ /seller/chat với huy hiệu RIÊNG của shop, tách khỏi huy hiệu người mua', async () => {
+    Object.assign(chatBadges, { buyerUnread: 1, shopUnread: 9 });
     openSheet();
 
     const seller = linkTo('/seller/chat') as HTMLElement;
     expect(seller).toHaveTextContent('Tin nhắn của khách');
-    expect(within(seller).getByText('9')).toBeInTheDocument();
+    expect(await within(seller).findByText('9')).toBeInTheDocument();
     const buyer = linkTo('/chat') as HTMLElement;
-    expect(within(buyer).getByText('1')).toBeInTheDocument();
+    expect(await within(buyer).findByText('1')).toBeInTheDocument();
   });
 
-  it('tin chưa đọc ở hộp thư SHOP nổi lên ngay trên tab "Tài khoản" (không cần mở Sheet)', () => {
-    Object.assign(chatBadges, { shopId: 'shop-1', shopUnread: 3 });
+  it('tin chưa đọc ở hộp thư SHOP nổi lên ngay trên tab "Tài khoản" (không cần mở Sheet)', async () => {
+    Object.assign(chatBadges, { shopUnread: 3 });
     useUIStore.setState({ isAccountSheetOpen: false });
     render(withIntl(<AccountSheet />));
 
     const trigger = screen.getByRole('button', { name: /Tài khoản/ });
-    expect(within(trigger).getByText('3')).toHaveAttribute('aria-hidden', 'true');
+    expect(await within(trigger).findByText('3')).toHaveAttribute('aria-hidden', 'true');
     expect(trigger).toHaveAccessibleName(/3 tin chưa đọc/);
   });
 
-  it('không có tin chưa đọc ở hộp thư shop: tab không có huy hiệu', () => {
-    Object.assign(chatBadges, { shopId: 'shop-1', shopUnread: 0 });
+  it('không có tin chưa đọc ở hộp thư shop: tab không có huy hiệu', async () => {
+    Object.assign(chatBadges, { shopUnread: 0 });
     render(withIntl(<AccountSheet />));
+    await settleLazy();
 
     const trigger = screen.getByRole('button', { name: /Tài khoản/ });
     expect(trigger.querySelector('.bg-primary')).toBeNull();

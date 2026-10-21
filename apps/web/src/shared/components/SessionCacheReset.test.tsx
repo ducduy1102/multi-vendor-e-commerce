@@ -3,11 +3,9 @@ import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuthStore } from '@/modules/auth';
-import { resetChatOutbox } from '@/modules/chat';
+import { registerSessionReset } from '@/shared/lib/session-reset';
 
 import { SessionCacheReset } from './SessionCacheReset';
-
-vi.mock('@/modules/chat', () => ({ resetChatOutbox: vi.fn() }));
 
 const USER_A = {
   id: 'user-a',
@@ -37,20 +35,25 @@ describe('SessionCacheReset', () => {
     queryClient.setQueryData(['chat', 'buyer', 'conversations'], { pages: [] });
   };
   const cachedCount = () => queryClient.getQueryCache().getAll().length;
+  // Bộ dọn của một store Zustand riêng tư (như hộp chờ chat) tự đăng ký vào sổ `session-reset`.
+  const storeResetter = vi.fn();
+  let unregister: () => void;
 
   beforeEach(() => {
     queryClient = new QueryClient();
-    vi.mocked(resetChatOutbox).mockClear();
+    storeResetter.mockClear();
+    unregister = registerSessionReset(storeResetter);
     useAuthStore.setState({ user: USER_A, isHydrating: false });
   });
 
   afterEach(() => {
     // Gỡ component TRƯỚC khi reset store: reset khi còn mount làm React cập nhật ngoài act().
     cleanup();
+    unregister();
     useAuthStore.setState({ user: null, isHydrating: true });
   });
 
-  it('đổi sang TÀI KHOẢN KHÁC ⇒ xoá cache của MỌI module (đơn hàng, wishlist, địa chỉ, chat) và hộp chờ chat', () => {
+  it('đổi sang TÀI KHOẢN KHÁC ⇒ xoá cache của MỌI module (đơn hàng, wishlist, địa chỉ, chat) và chạy các bộ dọn đã đăng ký', () => {
     mount();
     seedCaches();
     expect(cachedCount()).toBe(4);
@@ -58,7 +61,7 @@ describe('SessionCacheReset', () => {
     act(() => useAuthStore.setState({ user: USER_B }));
 
     expect(cachedCount()).toBe(0);
-    expect(resetChatOutbox).toHaveBeenCalledTimes(1);
+    expect(storeResetter).toHaveBeenCalledTimes(1);
   });
 
   it('ĐĂNG XUẤT (user → null) ⇒ xoá', () => {
@@ -68,7 +71,7 @@ describe('SessionCacheReset', () => {
     act(() => useAuthStore.setState({ user: null }));
 
     expect(cachedCount()).toBe(0);
-    expect(resetChatOutbox).toHaveBeenCalledTimes(1);
+    expect(storeResetter).toHaveBeenCalledTimes(1);
   });
 
   it('khôi phục phiên lúc mở trang (null → id) ⇒ KHÔNG xoá: các truy vấn chạy song song với /auth/me không bị loại oan', () => {
@@ -79,7 +82,7 @@ describe('SessionCacheReset', () => {
     act(() => useAuthStore.setState({ user: USER_A, isHydrating: false }));
 
     expect(cachedCount()).toBe(4);
-    expect(resetChatOutbox).not.toHaveBeenCalled();
+    expect(storeResetter).not.toHaveBeenCalled();
   });
 
   it('đăng xuất rồi đăng nhập lại: chỉ xoá lúc đăng xuất, lúc đăng nhập lại không xoá dữ liệu vừa tải', () => {
@@ -92,7 +95,7 @@ describe('SessionCacheReset', () => {
     act(() => useAuthStore.setState({ user: USER_B }));
 
     expect(queryClient.getQueryData(['public', 'categories'])).toEqual({ items: [1] });
-    expect(resetChatOutbox).toHaveBeenCalledTimes(1);
+    expect(storeResetter).toHaveBeenCalledTimes(1);
   });
 
   it('làm mới phiên (cùng id, object user mới) ⇒ KHÔNG xoá: dữ liệu đang xem không được mất', () => {
@@ -102,7 +105,7 @@ describe('SessionCacheReset', () => {
     act(() => useAuthStore.setState({ user: { ...USER_A, name: 'An (đã đổi tên)' } }));
 
     expect(cachedCount()).toBe(4);
-    expect(resetChatOutbox).not.toHaveBeenCalled();
+    expect(storeResetter).not.toHaveBeenCalled();
   });
 
   it('mount lần đầu khi đã đăng nhập ⇒ không xoá gì', () => {
@@ -111,7 +114,7 @@ describe('SessionCacheReset', () => {
     mount();
 
     expect(cachedCount()).toBe(4);
-    expect(resetChatOutbox).not.toHaveBeenCalled();
+    expect(storeResetter).not.toHaveBeenCalled();
   });
 
   it('gỡ component KHÔNG xoá cache (rời cây component không có nghĩa là đổi người dùng)', () => {
@@ -121,5 +124,6 @@ describe('SessionCacheReset', () => {
     view.unmount();
 
     expect(cachedCount()).toBe(4);
+    expect(storeResetter).not.toHaveBeenCalled();
   });
 });

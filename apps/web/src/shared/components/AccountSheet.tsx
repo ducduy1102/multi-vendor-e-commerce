@@ -14,8 +14,8 @@ import { useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
 import { useAuthStore, useLogout } from '@/modules/auth';
-import { CountBadge } from '@/shared/components/CountBadge';
 import { UserAvatar } from '@/shared/components/Header';
+import { LazyChatUnreadBadge } from '@/shared/components/lazy-chat';
 import { Button, buttonVariants } from '@/shared/components/ui/button';
 import { Separator } from '@/shared/components/ui/separator';
 import {
@@ -25,7 +25,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/shared/components/ui/sheet';
-import { useChatBadges } from '@/shared/hooks/useChatBadges';
 import { useSellerChannelLink } from '@/shared/hooks/useSellerChannelLink';
 import { cn } from '@/shared/lib/utils';
 import { useUIStore } from '@/shared/store/ui.store';
@@ -50,7 +49,6 @@ interface AccountSheetProps {
 export function AccountSheet({ triggerClassName }: AccountSheetProps) {
   const t = useTranslations('header');
   const tAuth = useTranslations('auth');
-  const tChat = useTranslations('chat');
   const user = useAuthStore((state) => state.user);
   const isHydrating = useAuthStore((state) => state.isHydrating);
   const { handleLogout, isLoading: isLoggingOut } = useLogout();
@@ -58,8 +56,6 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
   const setAccountSheetOpen = useUIStore((state) => state.setAccountSheetOpen);
 
   const shopLink = useSellerChannelLink();
-  // Huy hiệu tin nhắn (Week10.md 5.5): hộp thư người mua và hộp thư shop là hai con số riêng.
-  const { shopId: chatShopId, buyerUnread, shopUnread } = useChatBadges();
 
   // Các link trong Sheet là <Link> thường, tự đóng Sheet qua store khi bấm — KHÔNG dùng
   // `SheetClose render={<Link/>}`: Base UI coi SheetClose là nút nên mặc định đòi phần tử gốc là
@@ -82,13 +78,10 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
           // Tin nhắn chưa đọc ở hộp thư SHOP nổi lên ngay trên tab "Tài khoản" — người bán không phải mở Sheet mới biết có khách nhắn.
           <span className="relative flex">
             <User className="size-5" aria-hidden="true" />
-            <CountBadge count={shopUnread} />
+            <LazyChatUnreadBadge scope="shop" />
           </span>
         )}
         {t('accountTabLabel')}
-        {shopUnread > 0 ? (
-          <span className="sr-only">{tChat('conversationUnreadSr', { count: shopUnread })}</span>
-        ) : null}
       </SheetTrigger>
       <SheetContent side="bottom" className="max-h-[80vh]">
         <SheetHeader>
@@ -154,12 +147,7 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
                 <Link href="/chat" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
                   <MessageCircle className="size-4" aria-hidden="true" />
                   {t('myChatLink')}
-                  <CountBadge count={buyerUnread} className="static ml-auto" />
-                  {buyerUnread > 0 ? (
-                    <span className="sr-only">
-                      {tChat('conversationUnreadSr', { count: buyerUnread })}
-                    </span>
-                  ) : null}
+                  <LazyChatUnreadBadge scope="buyer" className="static ml-auto" />
                 </Link>
                 {shopLink && (
                   <Link href={shopLink.href} onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
@@ -168,16 +156,11 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
                   </Link>
                 )}
                 {/* Hộp thư của SHOP chỉ có khi đã có shop. */}
-                {chatShopId !== null && (
+                {shopLink?.hasShop && (
                   <Link href="/seller/chat" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
                     <MessagesSquare className="size-4" aria-hidden="true" />
                     {t('sellerChatLink')}
-                    <CountBadge count={shopUnread} className="static ml-auto" />
-                    {shopUnread > 0 ? (
-                      <span className="sr-only">
-                        {tChat('conversationUnreadSr', { count: shopUnread })}
-                      </span>
-                    ) : null}
+                    <LazyChatUnreadBadge scope="shop" className="static ml-auto" />
                   </Link>
                 )}
                 {/* "Quản trị" chỉ hiện cho ADMIN, cùng thứ tự với dropdown desktop của Header. */}

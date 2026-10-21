@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { registerSessionReset } from '@/shared/lib/session-reset';
+
 import type { ChatDeliveryStatus, ChatRole, ChatSendFailure } from '../types';
 
 // "Hộp chờ gửi" (outbox): các tin CỦA CHÍNH NGƯỜI DÙNG đã bấm gửi nhưng CHƯA được server xác nhận — đang gửi hoặc
@@ -93,10 +95,15 @@ export const useChatOutboxStore = create<ChatOutboxState>((set) => ({
 }));
 
 // Xoá sạch hộp chờ — gọi khi người dùng đăng xuất/đổi tài khoản để nội dung chưa gửi của người trước không nằm lại
-// trong bộ nhớ của tab. Module chat không biết đăng xuất (không import auth): page/Header — nơi biết sự kiện đó — gọi.
+// trong bộ nhớ của tab. Module chat không biết đăng xuất (không import auth) nên TỰ ĐĂNG KÝ hàm này vào sổ dọn phiên
+// bên dưới; `SessionCacheReset` (layout) gọi sổ đó khi đổi người/đăng xuất.
 export function resetChatOutbox(): void {
   useChatOutboxStore.getState().clear();
 }
+
+// Đăng ký NGAY khi tệp này được nạp (tức là ngay khi bất kỳ mã chat nào dùng hộp chờ được nạp): có hộp chờ ⇒ chắc chắn
+// đã đăng ký, không phụ thuộc component nạp động nào mount kịp hay không. Xem shared/lib/session-reset.ts.
+registerSessionReset(resetChatOutbox);
 
 // Danh sách rỗng DÙNG CHUNG một identity để selector `useChatOutboxStore((s) => s.byConversation[id] ?? EMPTY)`
 // không tạo mảng mới mỗi lần (Zustand so sánh bằng ===, mảng mới = render lại vô hạn).
