@@ -23,6 +23,9 @@
     "becomeSellerLink": "Trở thành người bán",
     "myAccountLink": "Trang cá nhân",
     "myOrdersLink": "Đơn hàng của tôi",
+    "chatLink": "Tin nhắn",
+    "myChatLink": "Tin nhắn",
+    "sellerChatLink": "Tin nhắn của khách",
     "myProductsLink": "Sản phẩm của tôi",
     "productsLink": "Sản phẩm",
     "homeLink": "Trang chủ",
@@ -176,8 +179,6 @@
     "publicNoReviews": "Chưa có đánh giá",
     "publicProductCount": "{count} sản phẩm",
     "publicJoined": "Tham gia {date}",
-    "publicChatButton": "Chat với shop",
-    "publicChatSoon": "Tính năng chat sẽ sớm có",
     "publicProductsTitle": "Sản phẩm của shop",
     "publicNoProducts": "Shop chưa có sản phẩm nào.",
     "publicMetaDescription": "Sản phẩm và đánh giá của {name}."
@@ -974,7 +975,12 @@
     "composerCounter": "{count}/{max}",
     "composerHint": "Enter để gửi, Shift+Enter để xuống dòng",
     "composerReadOnlyBuyer": "Shop hiện không nhận tin nhắn mới nên bạn chỉ có thể xem lại cuộc trò chuyện này.",
-    "composerReadOnlySeller": "Shop của bạn hiện không hoạt động nên không thể gửi tin nhắn mới."
+    "composerReadOnlySeller": "Shop của bạn hiện không hoạt động nên không thể gửi tin nhắn mới.",
+    "pageTitleBuyer": "Tin nhắn",
+    "pageTitleSeller": "Tin nhắn từ khách hàng",
+    "chatWithShop": "Chat với shop",
+    "openingConversation": "Đang mở...",
+    "openError": "Không mở được cuộc trò chuyện, vui lòng thử lại."
   },
   "review": {
     "validationRatingRequired": "Vui lòng chọn số sao",

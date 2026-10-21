@@ -23,6 +23,9 @@
     "becomeSellerLink": "Become a seller",
     "myAccountLink": "My account",
     "myOrdersLink": "My orders",
+    "chatLink": "Messages",
+    "myChatLink": "Messages",
+    "sellerChatLink": "Customer messages",
     "myProductsLink": "My products",
     "productsLink": "Products",
     "homeLink": "Home",
@@ -176,8 +179,6 @@
     "publicNoReviews": "No reviews yet",
     "publicProductCount": "{count, plural, one {# product} other {# products}}",
     "publicJoined": "Joined {date}",
-    "publicChatButton": "Chat with shop",
-    "publicChatSoon": "Chat is coming soon",
     "publicProductsTitle": "Shop products",
     "publicNoProducts": "This shop has no products yet.",
     "publicMetaDescription": "Products and reviews from {name}."
@@ -974,7 +975,12 @@
     "composerCounter": "{count}/{max}",
     "composerHint": "Press Enter to send, Shift+Enter for a new line",
     "composerReadOnlyBuyer": "This shop is not accepting new messages, so you can only read this conversation.",
-    "composerReadOnlySeller": "Your shop is not active right now, so you cannot send new messages."
+    "composerReadOnlySeller": "Your shop is not active right now, so you cannot send new messages.",
+    "pageTitleBuyer": "Messages",
+    "pageTitleSeller": "Customer messages",
+    "chatWithShop": "Chat with shop",
+    "openingConversation": "Opening...",
+    "openError": "Could not open the conversation, please try again."
   },
   "review": {
     "validationRatingRequired": "Please choose a star rating",
