@@ -1,8 +1,9 @@
 'use client';
 
-import { Component, lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense } from 'react';
 
 import { useAuthStore } from '@/modules/auth';
+import { ChunkFailureBoundary } from '@/shared/components/ChunkFailureBoundary';
 
 // Các mảnh giao diện của chat chỉ NGƯỜI ĐÃ ĐĂNG NHẬP mới dùng (đồng bộ real-time, biểu tượng + huy hiệu tin nhắn ở
 // Header/AccountSheet), nhưng chúng nằm ở layout/Header nên nếu import tĩnh thì mọi khách vãng lai cũng tải mã dữ liệu
@@ -28,21 +29,6 @@ const ChatUnreadBadgeImpl = lazy(() =>
 
 function useIsSignedIn(): boolean {
   return useAuthStore((state) => state.user !== null);
-}
-
-// Chunk tải LỖI (mạng chập chờn đúng lúc vừa vào trang) làm `React.lazy` ném lỗi khi render; không rào lại thì lỗi đó bay
-// lên `error.tsx` và thay cả trang bằng màn hình lỗi chỉ vì mất biểu tượng/huy hiệu tin nhắn. Các mảnh này chỉ là tiện
-// ích nên lỗi thì im lặng không dựng gì (tải lại trang sẽ thử lại).
-class ChunkFailureBoundary extends Component<{ children: ReactNode }, { hasFailed: boolean }> {
-  state = { hasFailed: false };
-
-  static getDerivedStateFromError() {
-    return { hasFailed: true };
-  }
-
-  render() {
-    return this.state.hasFailed ? null : this.props.children;
-  }
 }
 
 // Đồng bộ real-time của chat cho cả phiên (mount MỘT lần ở layout).

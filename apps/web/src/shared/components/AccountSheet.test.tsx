@@ -45,6 +45,14 @@ vi.mock('@/shared/components/Header', () => ({
 const chatBadges = { shopId: null as string | null, buyerUnread: 0, shopUnread: 0 };
 vi.mock('@/shared/hooks/useChatBadges', () => ({ useChatBadges: () => chatBadges }));
 
+// Chuông và huy hiệu thông báo cũng được nạp bằng React.lazy (lazy-notification.tsx). Phải mock hook dữ liệu: thiếu mock thì
+// `useUnreadNotificationCount` ném lỗi (không có QueryClientProvider) và rào lỗi chunk NUỐT lỗi đó — chuông biến mất mà test
+// vẫn xanh nếu chỉ khẳng định phủ định.
+const notificationUnread = { data: 0 as number | undefined };
+vi.mock('@/modules/notification', () => ({
+  useUnreadNotificationCount: () => notificationUnread,
+}));
+
 // Huy hiệu tin nhắn được nạp bằng React.lazy (lazy-chat.tsx, để khách vãng lai không tải mã chat): khẳng định "có" dùng
 // findBy, còn khẳng định "KHÔNG có" phải chờ chunk nạp xong rồi mới kiểm — không thì phủ định luôn đúng kể cả khi mã sai.
 const settleLazy = () =>
@@ -156,7 +164,13 @@ describe('AccountSheet — mục "Trang cá nhân" và "Đơn hàng của tôi"'
     openSheet();
 
     const links = screen.getAllByRole('link').map((link) => link.textContent);
-    expect(links).toEqual(['Trang cá nhân', 'Đơn hàng của tôi', 'Tin nhắn', 'Trở thành người bán']);
+    expect(links).toEqual([
+      'Trang cá nhân',
+      'Đơn hàng của tôi',
+      'Tin nhắn',
+      'Thông báo',
+      'Trở thành người bán',
+    ]);
   });
 
   describe('mục "Quản trị" (Week8.md 3.9) — chỉ ADMIN', () => {
@@ -358,5 +372,59 @@ describe('AccountSheet — tin nhắn (Week10.md 5.5, D8)', () => {
 
     const trigger = screen.getByRole('button', { name: /Tài khoản/ });
     expect(trigger.querySelector('.bg-primary')).toBeNull();
+  });
+});
+
+describe('AccountSheet — thông báo (Week10.md 8.4, D8)', () => {
+  beforeEach(() => {
+    auth.user = { name: 'Nguyễn Văn A' };
+    auth.isHydrating = false;
+    sellerLink.mockReturnValue(SHOP_LINK);
+    Object.assign(chatBadges, { shopId: null, buyerUnread: 0, shopUnread: 0 });
+    notificationUnread.data = 0;
+    useUIStore.setState({ isAccountSheetOpen: false });
+  });
+
+  const notificationsLink = () =>
+    screen.getAllByRole('link').find((link) => link.getAttribute('href') === '/notifications');
+
+  it('đã đăng nhập: có "Thông báo" trỏ /notifications, đứng sau "Tin nhắn" và trước kênh người bán', () => {
+    openSheet();
+
+    const chat = screen.getAllByRole('link').find((link) => link.getAttribute('href') === '/chat');
+    const shop = screen.getByRole('link', { name: 'Sản phẩm của tôi' });
+    const bell = notificationsLink() as Element;
+    expect(bell).toHaveTextContent('Thông báo');
+    expect(
+      (chat as Element).compareDocumentPosition(bell) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(bell.compareDocumentPosition(shop) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('khách: không có mục "Thông báo"', () => {
+    auth.user = null;
+    openSheet();
+
+    expect(notificationsLink()).toBeUndefined();
+  });
+
+  it('bấm "Thông báo" -> đóng Sheet', async () => {
+    const user = userEvent.setup();
+    openSheet();
+
+    await user.click(notificationsLink() as Element);
+
+    expect(useUIStore.getState().isAccountSheetOpen).toBe(false);
+  });
+
+  it('chưa đọc: huy hiệu số inline (aria-hidden) + bản chữ cho trình đọc màn hình; không chưa đọc thì không huy hiệu', async () => {
+    notificationUnread.data = 8;
+    openSheet();
+
+    const link = notificationsLink() as HTMLElement;
+    const badge = await within(link).findByText('8');
+    expect(badge).toHaveAttribute('aria-hidden', 'true');
+    expect(badge).toHaveClass('static', 'ml-auto');
+    expect(link).toHaveAccessibleName('Thông báo 8 thông báo chưa đọc');
   });
 });

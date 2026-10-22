@@ -96,6 +96,36 @@ describe('decideAuthRedirect', () => {
       ).toBeNull();
     });
 
+    it('/notifications và /notifications?tab=unread -> next giữ nguyên query (đăng nhập xong quay lại đúng tab)', () => {
+      expect(
+        decideAuthRedirect({ pathname: '/notifications', search: '', isAuthenticated: false }),
+      ).toBe('/login?next=%2Fnotifications');
+      expect(
+        decideAuthRedirect({
+          pathname: '/notifications',
+          search: '?tab=unread',
+          isAuthenticated: false,
+        }),
+      ).toBe(`/login?next=${encodeURIComponent('/notifications?tab=unread')}`);
+    });
+
+    it('đã đăng nhập vào /notifications -> không redirect', () => {
+      expect(
+        decideAuthRedirect({
+          pathname: '/notifications',
+          search: '',
+          isAuthenticated: true,
+          role: 'USER',
+        }),
+      ).toBeNull();
+    });
+
+    it('/notificationsevil -> không phải route /notifications (không khớp tiền tố), không bị chặn', () => {
+      expect(
+        decideAuthRedirect({ pathname: '/notificationsevil', search: '', isAuthenticated: false }),
+      ).toBeNull();
+    });
+
     it('/chatter -> không phải route /chat (không khớp tiền tố), không bị chặn', () => {
       expect(
         decideAuthRedirect({ pathname: '/chatter', search: '', isAuthenticated: false }),

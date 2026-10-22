@@ -38,6 +38,14 @@ vi.mock('@/modules/cart', () => ({
 const chatBadges = { shopId: null as string | null, buyerUnread: 0, shopUnread: 0 };
 vi.mock('@/shared/hooks/useChatBadges', () => ({ useChatBadges: () => chatBadges }));
 
+// Chuông và huy hiệu thông báo cũng được nạp bằng React.lazy (lazy-notification.tsx). Phải mock hook dữ liệu: thiếu mock thì
+// `useUnreadNotificationCount` ném lỗi (không có QueryClientProvider) và rào lỗi chunk NUỐT lỗi đó — chuông biến mất mà test
+// vẫn xanh nếu chỉ khẳng định phủ định.
+const notificationUnread = { data: 0 as number | undefined };
+vi.mock('@/modules/notification', () => ({
+  useUnreadNotificationCount: () => notificationUnread,
+}));
+
 // Biểu tượng và huy hiệu tin nhắn được nạp bằng React.lazy (lazy-chat.tsx, để khách vãng lai không tải mã chat): sau render
 // chúng hiện ra bất đồng bộ nên khẳng định "có" phải dùng findBy/waitFor, còn khẳng định "KHÔNG có" phải chờ chunk nạp
 // xong rồi mới kiểm — không thì phủ định luôn đúng kể cả khi mã sai.
@@ -71,6 +79,7 @@ async function openAccountMenu() {
 
 describe('Header — menu tài khoản (desktop)', () => {
   beforeEach(() => {
+    notificationUnread.data = 0;
     auth.user = { name: 'Nguyễn Văn A' };
     auth.isHydrating = false;
     sellerLink.mockReturnValue(SHOP_LINK);
@@ -98,6 +107,7 @@ describe('Header — menu tài khoản (desktop)', () => {
       'Trang cá nhân',
       'Đơn hàng của tôi',
       'Tin nhắn',
+      'Thông báo',
       'Sản phẩm của tôi',
       'Tin nhắn của khách',
       'Đăng xuất',
@@ -120,6 +130,7 @@ describe('Header — menu tài khoản (desktop)', () => {
       'Trang cá nhân',
       'Đơn hàng của tôi',
       'Tin nhắn',
+      'Thông báo',
       'Trở thành người bán',
       'Đăng xuất',
     ]);
@@ -150,6 +161,7 @@ describe('Header — menu tài khoản (desktop)', () => {
         'Trang cá nhân',
         'Đơn hàng của tôi',
         'Tin nhắn',
+        'Thông báo',
         'Sản phẩm của tôi',
         'Tin nhắn của khách',
         'Quản trị',
@@ -323,6 +335,7 @@ describe('Header — tin nhắn (Week10.md 5.5, D8)', () => {
       'Trang cá nhân',
       'Đơn hàng của tôi',
       'Tin nhắn',
+      'Thông báo',
       'Sản phẩm của tôi',
       'Tin nhắn của khách',
     ].map(position);
@@ -346,5 +359,89 @@ describe('Header — tin nhắn (Week10.md 5.5, D8)', () => {
 
     const trigger = screen.getByRole('button', { name: /Nguyễn Văn A/ });
     expect(trigger.querySelector('.bg-primary.text-primary-foreground')).toBeNull();
+  });
+});
+
+describe('Header — thông báo (Week10.md 8.4, D8)', () => {
+  beforeEach(() => {
+    auth.user = { name: 'Nguyễn Văn A' };
+    auth.isHydrating = false;
+    sellerLink.mockReturnValue(SHOP_LINK);
+    pathname.mockReturnValue('/');
+    Object.assign(chatBadges, { shopId: null, buyerUnread: 0, shopUnread: 0 });
+    notificationUnread.data = 0;
+  });
+
+  const bells = () => screen.getAllByRole('link', { name: /^Thông báo/ });
+
+  it('đã đăng nhập: chuông trỏ /notifications, có bản mobile (hàng 1) và bản desktop (cạnh icon tin nhắn)', async () => {
+    render(withIntl(<Header />));
+
+    await waitFor(() => expect(bells()).toHaveLength(2));
+    const links = bells();
+    for (const link of links) expect(link).toHaveAttribute('href', '/notifications');
+    const [mobile, desktop] = links.map((link) => link.closest('div'));
+    // Mỗi breakpoint chỉ MỘT bản hiện: cặp ẩn/hiện duy nhất theo `sm:` (cùng ranh giới điều hướng mobile/desktop).
+    expect(mobile).toHaveClass('flex', 'sm:hidden');
+    expect(desktop).toHaveClass('hidden', 'sm:flex');
+  });
+
+  it('chuông đứng NGAY SAU icon tin nhắn ở cả hai breakpoint', async () => {
+    render(withIntl(<Header />));
+
+    await waitFor(() => expect(bells()).toHaveLength(2));
+    const chat = screen.getAllByRole('link', { name: /^Tin nhắn/ });
+    const bell = bells();
+    for (let i = 0; i < 2; i += 1) {
+      expect(
+        chat[i].compareDocumentPosition(bell[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
+  it('khách chưa đăng nhập hoặc đang chờ xác định phiên: không có chuông', async () => {
+    auth.user = null;
+    const { rerender } = render(withIntl(<Header />));
+    await settleLazy();
+    expect(screen.queryByRole('link', { name: /^Thông báo/ })).not.toBeInTheDocument();
+
+    auth.isHydrating = true;
+    rerender(withIntl(<Header />));
+    await settleLazy();
+    expect(screen.queryByRole('link', { name: /^Thông báo/ })).not.toBeInTheDocument();
+  });
+
+  it('chưa đọc: huy hiệu số (aria-hidden) + tên truy cập kèm số; quá 99 hiện "99+"', async () => {
+    notificationUnread.data = 4;
+    const { rerender } = render(withIntl(<Header />));
+
+    await waitFor(() => expect(bells()[0]).toHaveAccessibleName('Thông báo: 4 thông báo chưa đọc'));
+    expect(within(bells()[0]).getByText('4')).toHaveAttribute('aria-hidden', 'true');
+
+    notificationUnread.data = 250;
+    rerender(withIntl(<Header />));
+    await waitFor(() => expect(within(bells()[0]).getByText('99+')).toBeInTheDocument());
+  });
+
+  it('đang ở /notifications: chuông đánh dấu aria-current="page"', async () => {
+    pathname.mockReturnValue('/notifications');
+    render(withIntl(<Header />));
+
+    await waitFor(() => expect(bells()).toHaveLength(2));
+    for (const link of bells()) expect(link).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('menu tài khoản có mục "Thông báo" trỏ /notifications kèm huy hiệu chưa đọc inline', async () => {
+    notificationUnread.data = 7;
+    const user = userEvent.setup();
+    render(withIntl(<Header />));
+    await user.click(screen.getByRole('button', { name: /Nguyễn Văn A/ }));
+    const menu = await screen.findByRole('menu');
+
+    const item = within(menu).getByRole('menuitem', { name: /^Thông báo/ });
+    expect(item).toHaveAttribute('href', '/notifications');
+    const badge = await within(item).findByText('7');
+    expect(badge).toHaveAttribute('aria-hidden', 'true');
+    expect(badge).toHaveClass('static', 'ml-auto');
   });
 });

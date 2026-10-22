@@ -16,6 +16,7 @@ export const SAFE_NEXT_PATH_ALLOWED_PREFIXES: readonly string[] = [
   '/admin',
   '/account',
   '/chat',
+  '/notifications',
   '/shops',
 ];
 

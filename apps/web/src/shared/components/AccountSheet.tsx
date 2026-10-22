@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Bell,
   LogOut,
   MessageCircle,
   MessagesSquare,
@@ -16,6 +17,7 @@ import { Link } from '@/i18n/navigation';
 import { useAuthStore, useLogout } from '@/modules/auth';
 import { UserAvatar } from '@/shared/components/Header';
 import { LazyChatUnreadBadge } from '@/shared/components/lazy-chat';
+import { LazyNotificationUnreadBadge } from '@/shared/components/lazy-notification';
 import { Button, buttonVariants } from '@/shared/components/ui/button';
 import { Separator } from '@/shared/components/ui/separator';
 import {
@@ -148,6 +150,12 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
                   <MessageCircle className="size-4" aria-hidden="true" />
                   {t('myChatLink')}
                   <LazyChatUnreadBadge scope="buyer" className="static ml-auto" />
+                </Link>
+                {/* "Thông báo" (D8): trang /notifications kèm huy hiệu chưa đọc, cùng thứ tự với dropdown desktop. */}
+                <Link href="/notifications" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
+                  <Bell className="size-4" aria-hidden="true" />
+                  {t('myNotificationsLink')}
+                  <LazyNotificationUnreadBadge className="static ml-auto" />
                 </Link>
                 {shopLink && (
                   <Link href={shopLink.href} onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>

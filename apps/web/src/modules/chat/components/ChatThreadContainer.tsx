@@ -3,11 +3,11 @@
 import { useState } from 'react';
 
 import { useRealtimeStatus } from '@/shared/realtime/useRealtimeStatus';
+import { useNow } from '@/shared/hooks/useNow';
 
 import { useDescribeChatError } from '../hooks/useDescribeChatError';
 import { useMarkReadWhileOpen } from '../hooks/useMarkReadWhileOpen';
 import { useMessages } from '../hooks/useMessages';
-import { useNow } from '../hooks/useNow';
 import { useOtherReadMark } from '../hooks/useOtherReadMark';
 import { useSendMessage } from '../hooks/useSendMessage';
 import { useStableChatScope } from '../hooks/useStableChatScope';

@@ -1,4 +1,6 @@
-import type { QueryClient, QueryKey } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
+
+import { scheduleInvalidate } from '@/shared/lib/schedule-invalidate';
 
 import { useChatOutboxStore } from '../store/chat-outbox.store';
 import type { ChatMessage, ChatMessageEvent, ChatReadPayload, ChatScope } from '../types';
@@ -11,34 +13,6 @@ import {
 import { conversationsQueryKey, unreadCountQueryKey } from './chat-query-keys';
 
 // Xử lý sự kiện real-time của chat thành các thay đổi cache — tách khỏi hook để test được không cần socket/React.
-
-// Làm mới theo lô: nhiều tin đến dồn dập (hoặc nhiều tab) chỉ gây MỘT lần tải lại mỗi key thay vì một lần mỗi tin.
-// Không "debounce kéo dài" (mỗi sự kiện đẩy lùi thời hạn): lần tải đầu luôn chạy sau tối đa `delayMs` kể từ sự kiện
-// đầu tiên, và sự kiện đến SAU khi đã tải lại thì hẹn một lần tải mới — không sự kiện nào bị bỏ sót.
-const INVALIDATE_DELAY_MS = 250;
-const pendingInvalidations = new WeakMap<QueryClient, Map<string, ReturnType<typeof setTimeout>>>();
-
-export function scheduleInvalidate(
-  queryClient: QueryClient,
-  queryKey: QueryKey,
-  delayMs: number = INVALIDATE_DELAY_MS,
-): void {
-  let pending = pendingInvalidations.get(queryClient);
-  if (!pending) {
-    pending = new Map();
-    pendingInvalidations.set(queryClient, pending);
-  }
-  const id = JSON.stringify(queryKey);
-  if (pending.has(id)) return;
-  const timers = pending;
-  timers.set(
-    id,
-    setTimeout(() => {
-      timers.delete(id);
-      void queryClient.invalidateQueries({ queryKey });
-    }, delayMs),
-  );
-}
 
 // `chat:message` mang `viewerRole` (vai của NGƯỜI NHẬN) và `shopId`: một người vừa mua vừa bán nhận sự kiện của cả
 // hai hộp thư trên cùng một kết nối, nên mỗi phạm vi chỉ xử lý sự kiện của MÌNH.
