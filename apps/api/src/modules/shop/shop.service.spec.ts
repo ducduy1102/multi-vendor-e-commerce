@@ -7,6 +7,12 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
+import {
+  createBrokenNotificationService,
+  createFakeNotificationService,
+  silenceNotificationLogs,
+  type FakeNotificationService,
+} from '../../shared/testing/fake-notification-service';
 import { ShopStatusService } from './shop-status.service';
 import { ShopService } from './shop.service';
 
@@ -16,6 +22,7 @@ interface ShopCreateArgs {
 
 describe('ShopService', () => {
   let service: ShopService;
+  let notifications: FakeNotificationService;
   let shopStatusService: { recordCreated: jest.Mock; transition: jest.Mock };
   let prisma: {
     shop: {
@@ -52,10 +59,16 @@ describe('ShopService', () => {
       recordCreated: jest.fn().mockResolvedValue(undefined),
       transition: jest.fn().mockResolvedValue(undefined),
     };
+    notifications = createFakeNotificationService();
     service = new ShopService(
       prisma as unknown as PrismaService,
       shopStatusService as unknown as ShopStatusService,
+      notifications,
     );
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   function p2002(): Prisma.PrismaClientKnownRequestError {
@@ -449,6 +462,148 @@ describe('ShopService', () => {
   });
 
   // --- GET /shops/:slug (Week9.md 1.10/5.5). Truy vấn thật + HTTP ở shop-public.controller.int-spec.ts.
+
+  describe('thông báo cho Admin khi shop vào hàng chờ duyệt (Week10.md 7.4)', () => {
+    describe('createShop → SHOP_SUBMITTED', () => {
+      beforeEach(() => {
+        prisma.shop.findFirst.mockResolvedValue(null);
+        prisma.shop.findUnique.mockResolvedValue(null);
+        prisma.shop.create.mockResolvedValue({
+          id: 'shop-1',
+          slug: 'shop-abc',
+        });
+      });
+
+      it('slug tự sinh — báo đúng id shop vừa tạo', async () => {
+        await service.createShop('user-1', { name: 'Shop ABC' });
+
+        expect(notifications.events).toEqual([
+          { kind: 'SHOP_SUBMITTED', shopId: 'shop-1' },
+        ]);
+      });
+
+      it('slug do người dùng nhập — cũng báo', async () => {
+        await service.createShop('user-1', {
+          name: 'Shop ABC',
+          slug: 'shop-abc',
+        });
+
+        expect(notifications.events).toEqual([
+          { kind: 'SHOP_SUBMITTED', shopId: 'shop-1' },
+        ]);
+      });
+
+      it('báo SAU khi shop đã ghi xong', async () => {
+        const order: string[] = [];
+        prisma.shop.create.mockImplementation(() => {
+          order.push('create');
+          return Promise.resolve({ id: 'shop-1', slug: 'shop-abc' });
+        });
+        jest.spyOn(notifications, 'notify').mockImplementation(() => {
+          order.push('notify');
+          return Promise.resolve();
+        });
+
+        await service.createShop('user-1', { name: 'Shop ABC' });
+
+        expect(order).toEqual(['create', 'notify']);
+      });
+
+      it('đã có shop (409), slug bị chiếm, ghi shop lỗi — KHÔNG báo gì', async () => {
+        prisma.shop.findFirst.mockResolvedValueOnce({ id: 'old' });
+        await expect(
+          service.createShop('user-1', { name: 'Shop ABC' }),
+        ).rejects.toBeInstanceOf(ConflictException);
+
+        prisma.shop.findUnique.mockResolvedValueOnce({ id: 'other' });
+        await expect(
+          service.createShop('user-1', { name: 'Shop ABC', slug: 'shop-abc' }),
+        ).rejects.toBeDefined();
+
+        prisma.shop.create.mockRejectedValueOnce(new Error('db down'));
+        await expect(
+          service.createShop('user-1', { name: 'Shop ABC' }),
+        ).rejects.toThrow('db down');
+
+        expect(notifications.events).toEqual([]);
+      });
+
+      it('tầng thông báo hỏng KHÔNG làm hỏng việc tạo shop', async () => {
+        const logs = silenceNotificationLogs();
+        const broken = new ShopService(
+          prisma as unknown as PrismaService,
+          shopStatusService as unknown as ShopStatusService,
+          createBrokenNotificationService(),
+        );
+
+        await expect(
+          broken.createShop('user-1', { name: 'Shop ABC' }),
+        ).resolves.toMatchObject({ id: 'shop-1' });
+
+        expect(logs.error).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('resubmitShop → SHOP_SUBMITTED', () => {
+      beforeEach(() => {
+        prisma.shop.findUniqueOrThrow.mockResolvedValue({
+          id: 'shop-1',
+          status: 'PENDING',
+        });
+        jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+      });
+
+      it('nộp lại thành công — báo đúng id shop, SAU commit', async () => {
+        const order: string[] = [];
+        prisma.$transaction.mockImplementation(
+          async (callback: (tx: unknown) => unknown) => {
+            const result = await callback(prisma);
+            order.push('commit');
+            return result;
+          },
+        );
+        jest.spyOn(notifications, 'notify').mockImplementation(() => {
+          order.push('notify');
+          return Promise.resolve();
+        });
+
+        await service.resubmitShop('user-1', 'shop-1', {});
+
+        expect(notifications.notify).toHaveBeenCalledWith({
+          kind: 'SHOP_SUBMITTED',
+          shopId: 'shop-1',
+        });
+        expect(order).toEqual(['commit', 'notify']);
+      });
+
+      it('shop không còn ở trạng thái cho phép nộp lại (409) — KHÔNG báo gì', async () => {
+        shopStatusService.transition.mockRejectedValue(
+          new Error('invalid transition'),
+        );
+
+        await expect(
+          service.resubmitShop('user-1', 'shop-1', {}),
+        ).rejects.toThrow('invalid transition');
+
+        expect(notifications.events).toEqual([]);
+      });
+
+      it('tầng thông báo hỏng KHÔNG làm hỏng việc nộp lại', async () => {
+        const logs = silenceNotificationLogs();
+        const broken = new ShopService(
+          prisma as unknown as PrismaService,
+          shopStatusService as unknown as ShopStatusService,
+          createBrokenNotificationService(),
+        );
+
+        await expect(
+          broken.resubmitShop('user-1', 'shop-1', {}),
+        ).resolves.toMatchObject({ id: 'shop-1' });
+
+        expect(logs.error).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
 
   describe('getPublicShop', () => {
     const SHOP_ROW = {
