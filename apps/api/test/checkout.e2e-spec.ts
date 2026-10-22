@@ -407,6 +407,7 @@ describe('Luồng checkout (e2e thật qua HTTP)', () => {
       'Đặt hàng thành công — thanh toán khi nhận hàng', // đơn 1 đặt
       `${TAG}shop-cod đã xác nhận đơn hàng của bạn`, // seller xác nhận
       'Đơn hàng của bạn đang được giao', // seller giao
+      `Đơn hàng #${orderId.slice(0, 8).toUpperCase()} đã hoàn tất`, // buyer bấm đã nhận hàng (Week10.md 7.5)
       'Đặt hàng thành công — thanh toán khi nhận hàng', // đơn 2 đặt
       'Bạn đã hủy đơn hàng', // buyer hủy đơn 2
     ]);

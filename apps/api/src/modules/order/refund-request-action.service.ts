@@ -7,6 +7,7 @@ import {
   type CreateRefundRequestInput,
 } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
+import { NotificationService } from '../../shared/notification/notification.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   getSellerRefundRequestActions,
@@ -19,6 +20,7 @@ import {
   readRefundSellerResponseHours,
   readRefundWindowDays,
 } from './refund-config';
+import { OrderEmailService } from './order-email.service';
 import { RefundRequestService } from './refund-request.service';
 import { RefundService } from './refund.service';
 import { sellerVisibleOrderFilter } from './seller-order-visibility';
@@ -65,6 +67,8 @@ export class RefundRequestActionService {
     private readonly prisma: PrismaService,
     private readonly refundRequestService: RefundRequestService,
     private readonly refundService: RefundService,
+    private readonly notificationService: NotificationService,
+    private readonly orderEmailService: OrderEmailService,
   ) {}
 
   // Gửi yêu cầu cho đơn của mình. Loại yêu cầu suy từ trạng thái đơn; điều kiện (cửa sổ trả hàng, đã gửi rồi,
@@ -129,8 +133,9 @@ export class RefundRequestActionService {
     }
 
     const actor: OrderActor = { type: 'BUYER', id: userId };
+    let createdRequestId: string;
     try {
-      await this.prisma.$transaction(async (tx) => {
+      createdRequestId = await this.prisma.$transaction(async (tx) => {
         // Khoá hàng đơn để tuần tự hoá với seller đóng gói/giao/hủy: nếu đơn đã chuyển sang trạng thái khác
         // giữa lúc đọc và lúc này thì dừng, không để lại yêu cầu mồ côi cho một đơn không còn hợp lệ.
         const locked = await tx.$queryRaw<{ status: OrderStatus }[]>`
@@ -158,6 +163,7 @@ export class RefundRequestActionService {
           select: { id: true, createdAt: true },
         });
         await this.refundRequestService.recordCreated(tx, request, actor);
+        return request.id;
       });
     } catch (error) {
       // Index duy nhất từng phần (order_id, kind) WHERE status <> 'WITHDRAWN' là trọng tài cuối khi hai lần gửi
@@ -170,6 +176,11 @@ export class RefundRequestActionService {
       }
       throw error;
     }
+    // Báo chủ shop có yêu cầu mới, SAU commit (không bao giờ ném).
+    await this.notificationService.notify({
+      kind: 'REFUND_REQUEST_CREATED',
+      refundRequestId: createdRequestId,
+    });
   }
 
   // Rút yêu cầu khi seller CHƯA trả lời. Trả orderId để controller đọc lại chi tiết đơn.
@@ -197,7 +208,7 @@ export class RefundRequestActionService {
     userId: string,
     requestId: string,
   ): Promise<{ orderId: string }> {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const request = await this.findOwned(tx, userId, requestId);
       if (
         request.status === 'REJECTED_BY_SELLER' &&
@@ -218,6 +229,12 @@ export class RefundRequestActionService {
       );
       return { orderId: request.orderId };
     });
+    // Báo MỌI Admin đang hoạt động và chủ shop về khiếu nại, SAU commit.
+    await this.notificationService.notify({
+      kind: 'REFUND_REQUEST_ESCALATED',
+      refundRequestId: requestId,
+    });
+    return result;
   }
 
   // --- Seller (Week9.md 2.7) --------------------------------------------------------------------
@@ -255,6 +272,11 @@ export class RefundRequestActionService {
         refundRequestId: request.id,
       });
     }
+    // Báo người mua yêu cầu đã được duyệt (SAU commit, không bao giờ ném).
+    await this.notificationService.notify({
+      kind: 'REFUND_REQUEST_APPROVED',
+      refundRequestId: request.id,
+    });
   }
 
   // Seller TỪ CHỐI yêu cầu (chỉ khi đang chờ seller) — ghi chú BẮT BUỘC, ghi vào RefundRequestHistory.note để
@@ -275,6 +297,17 @@ export class RefundRequestActionService {
         { type: 'SELLER', id: sellerUserId },
         note,
       );
+    });
+    // Báo người mua kèm lý do từ chối (email + thông báo trong ứng dụng), SAU commit; không bao giờ ném.
+    await this.orderEmailService.notifyRefundRequestRejected(
+      requestId,
+      'SELLER',
+      note,
+    );
+    await this.notificationService.notify({
+      kind: 'REFUND_REQUEST_REJECTED',
+      refundRequestId: requestId,
+      reason: note,
     });
   }
 
@@ -323,6 +356,12 @@ export class RefundRequestActionService {
           note,
         ),
       );
+      await this.orderEmailService.notifyRefundRequestRejected(
+        request.id,
+        'ADMIN',
+        note,
+      );
+      await this.notifyAdminDecision(request.id, 'REJECTED', note);
       return;
     }
 
@@ -338,6 +377,26 @@ export class RefundRequestActionService {
         refundRequestId: request.id,
       });
     }
+    await this.notifyAdminDecision(request.id, 'APPROVED', note);
+  }
+
+  // Admin quyết định xong: người mua nhận kết quả (duyệt/từ chối, kèm lý do) và chủ shop biết Admin đã quyết định.
+  // SAU commit, không bao giờ ném.
+  private async notifyAdminDecision(
+    refundRequestId: string,
+    outcome: 'APPROVED' | 'REJECTED',
+    note?: string | null,
+  ): Promise<void> {
+    await this.notificationService.notify(
+      outcome === 'APPROVED'
+        ? { kind: 'REFUND_REQUEST_APPROVED', refundRequestId }
+        : { kind: 'REFUND_REQUEST_REJECTED', refundRequestId, reason: note },
+    );
+    await this.notificationService.notify({
+      kind: 'REFUND_REQUEST_DECIDED_BY_ADMIN',
+      refundRequestId,
+      outcome,
+    });
   }
 
   // --- Hệ thống (RefundJob, Week9.md 2.8) -----------------------------------------------------------
@@ -380,6 +439,10 @@ export class RefundRequestActionService {
           refundRequestId: request.id,
           onlyFrom: ['CONFIRMED', 'PACKED'],
         });
+        await this.notificationService.notify({
+          kind: 'REFUND_REQUEST_APPROVED',
+          refundRequestId: request.id,
+        });
         return 'APPROVED';
       }
       await this.prisma.$transaction((tx) =>
@@ -391,6 +454,10 @@ export class RefundRequestActionService {
           actor,
         ),
       );
+      await this.notificationService.notify({
+        kind: 'REFUND_REQUEST_ESCALATED',
+        refundRequestId: request.id,
+      });
       return 'ESCALATED';
     } catch (error) {
       if (this.isLostRace(error)) return null;

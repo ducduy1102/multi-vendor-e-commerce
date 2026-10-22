@@ -3,6 +3,7 @@ import { Prisma, type ShopStatus } from '@prisma/client';
 import { frontendUrl } from '../../shared/mail/frontend-url';
 import type { MailLocale } from '../../shared/mail/mail-locale';
 import { MailService } from '../../shared/mail/mail.service';
+import { NotificationService } from '../../shared/notification/notification.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { ShopStatusService } from '../shop/shop-status.service';
 import type { ListShopsQueryDto } from './dto/list-shops-query.dto';
@@ -84,6 +85,7 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly shopStatusService: ShopStatusService,
     private readonly mailService: MailService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // Hàng chờ duyệt (PENDING) xếp theo MỐC VÀO HÀNG CHỜ cũ nhất trước để không ai bị bỏ quên — shop nộp lại
@@ -145,6 +147,15 @@ export class AdminService {
     this.logger.log(
       `Admin ${adminId} changed shop ${shopId} status ${from} -> ${dto.status}`,
     );
+
+    // Báo chủ shop trong ứng dụng (mọi cạnh Admin vừa làm), SAU commit và không bao giờ ném. Lý do chỉ đi vào thông
+    // báo (đã cắt gọn), không vào log.
+    await this.notificationService.notify({
+      kind: 'SHOP_STATUS_CHANGED',
+      shopId,
+      status: dto.status,
+      reason: dto.reason,
+    });
 
     const [shop, recipient] = await Promise.all([
       this.prisma.shop.findUniqueOrThrow({

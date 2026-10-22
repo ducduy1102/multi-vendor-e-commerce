@@ -174,6 +174,7 @@ model User {
   conversations  Conversation[]  @relation("BuyerConversations")
   messages       Message[]
   oauthAccounts  OAuthAccount[]
+  notifications  Notification[]
 
   @@map("users")
 }
@@ -935,4 +936,44 @@ model Message {
   // bộ nhớ — Week10.md D9). Thay @@index([senderId]) cũ.
   @@index([senderId, createdAt])
   @@map("messages")
+}
+
+// =========================================================
+// Notification
+// =========================================================
+
+// Hộp thông báo trong ứng dụng của MỘT người dùng (Week10.md Bước 7). Chỉ được ghi qua NotificationService
+// (shared/notification) sau khi thao tác nghiệp vụ đã commit, và chỉ được đọc qua modules/notification — module
+// khác không đọc/ghi bảng này. Người nhận (userId) luôn suy ra từ dữ liệu DB của sự kiện, không bao giờ từ client.
+model Notification {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+
+  // Loại thông báo (vd 'ORDER_NEW'). String chứ KHÔNG phải enum Postgres có chủ đích — cùng tinh thần reasonCode
+  // của RefundRequest: thêm một loại mới không cần migration. Hệ quả: danh sách loại hợp lệ chỉ nằm ở
+  // packages/types (NOTIFICATION_TYPES), được Zod kiểm cả lúc ghi lẫn lúc đọc; loại lạ lúc đọc (bản cũ/mới lệch)
+  // thì FE rơi về nhãn chung. CHECK ở DB chỉ chặn độ dài (viết tay trong migration, Prisma không khai được).
+  type String
+
+  // Dữ liệu tối thiểu để dựng câu chữ và đường dẫn: CHỈ id (UUID) và vài nhãn ngắn (tên shop, tên sản phẩm, lý do
+  // đã cắt gọn), KHÔNG URL, KHÔNG địa chỉ/SĐT/email, KHÔNG nội dung tin nhắn chat (D10). Hình dạng theo từng loại
+  // được Zod kiểm (union phân biệt theo type); CHECK ở DB là lưới an toàn cuối: phải là object và ≤ 2 KB.
+  data Json
+
+  // NULL = chưa đọc. Đánh dấu đã đọc chỉ ĐẶT mốc một lần (updateMany có điều kiện read_at IS NULL), không ghi đè.
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Hai chỉ mục, mỗi cái phục vụ một họ truy vấn (rules/backend.md mục 4 — composite khớp đúng WHERE + ORDER BY,
+  // không giữ chỉ mục dư thừa): (1) danh sách đầy đủ của một người, mới nhất trước: WHERE user_id = ? ORDER BY
+  // created_at DESC, id DESC; (2) huy hiệu "chưa đọc", danh sách "chỉ chưa đọc" và "đánh dấu tất cả đã đọc":
+  // WHERE user_id = ? AND read_at IS NULL [ORDER BY created_at DESC, id DESC] — đếm và liệt kê đúng thứ tự mà không
+  // phải quét các thông báo đã đọc. id là khoá phụ của con trỏ phân trang (hai thông báo cùng mili-giây không bị
+  // trùng/mất giữa các trang), đứng cuối cả hai chỉ mục để thứ tự ORDER BY được phục vụ thẳng từ chỉ mục. Chi phí:
+  // đánh dấu đã đọc làm một mục chỉ mục di chuyển (chấp nhận được ở quy mô hiện tại).
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([userId, readAt, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("notifications")
 }

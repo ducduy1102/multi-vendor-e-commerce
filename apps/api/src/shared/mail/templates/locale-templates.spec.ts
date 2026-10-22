@@ -8,19 +8,23 @@ import type {
 } from './account-email.types';
 import type {
   OrderCancelledEmailData,
+  OrderCompletedEmailData,
   OrderConfirmedEmailData,
   OrderEmailOrder,
   OrderPlacedEmailData,
   OrderRefundedEmailData,
   OrderShippedEmailData,
+  RefundRequestRejectedEmailData,
 } from './order-email.types';
 import { orderCancelledTemplate } from './order-cancelled.template';
+import { orderCompletedTemplate } from './order-completed.template';
 import { orderConfirmedTemplate } from './order-confirmed.template';
 import { orderPlacedTemplate } from './order-placed.template';
 import { orderRefundedTemplate } from './order-refunded.template';
 import { orderShippedTemplate } from './order-shipped.template';
 import { passwordChangedTemplate } from './password-changed.template';
 import { passwordResetTemplate } from './password-reset.template';
+import { refundRequestRejectedTemplate } from './refund-request-rejected.template';
 import { shopStatusTemplate } from './shop-status.template';
 import { verifyEmailTemplate } from './verify-email.template';
 
@@ -143,6 +147,50 @@ const BUILDERS: Array<
             refundTo,
           } satisfies OrderRefundedEmailData),
       ] as [string, (locale: MailLocale) => { subject: string; html: string }],
+  ),
+  ...(['BUYER', 'SYSTEM'] as const).flatMap((completedBy) =>
+    [true, false].map(
+      (invitesReview) =>
+        [
+          `order-completed (${completedBy}, mời đánh giá=${invitesReview})`,
+          (locale: MailLocale) =>
+            orderCompletedTemplate({
+              locale,
+              buyerName: 'John',
+              ordersUrl: ordersUrl(locale),
+              order: ORDER,
+              completedBy,
+              autoCompleteDays: 7,
+              returnWindowDays: 7,
+              invitesReview,
+            } satisfies OrderCompletedEmailData),
+        ] as [
+          string,
+          (locale: MailLocale) => { subject: string; html: string },
+        ],
+    ),
+  ),
+  ...(['SELLER', 'ADMIN'] as const).flatMap((rejectedBy) =>
+    (['CANCEL', 'RETURN'] as const).map(
+      (kind) =>
+        [
+          `refund-request-rejected (${rejectedBy}, ${kind})`,
+          (locale: MailLocale) =>
+            refundRequestRejectedTemplate({
+              locale,
+              buyerName: 'John',
+              ordersUrl: ordersUrl(locale),
+              order: ORDER,
+              kind,
+              rejectedBy,
+              reason: 'Out of stock',
+              escalateDays: rejectedBy === 'SELLER' ? 3 : null,
+            } satisfies RefundRequestRejectedEmailData),
+        ] as [
+          string,
+          (locale: MailLocale) => { subject: string; html: string },
+        ],
+    ),
   ),
   [
     'password-reset',
@@ -274,6 +322,46 @@ describe('mọi template × mọi ngôn ngữ', () => {
 });
 
 describe('chống chèn HTML ở mọi ngôn ngữ', () => {
+  it.each(LOCALES)(
+    'order-completed và refund-request-rejected (%s): tên người nhận, tên shop, tên sản phẩm và LÝ DO bị escape',
+    (locale) => {
+      const hostile = '<script>alert(1)</script><img src=x onerror=alert(2)>';
+      const evilOrder: OrderEmailOrder = {
+        ...ORDER,
+        shopName: hostile,
+        items: [{ ...ORDER.items[0], productName: hostile }],
+      };
+      const outputs = [
+        orderCompletedTemplate({
+          locale,
+          buyerName: hostile,
+          ordersUrl: ordersUrl(locale),
+          order: evilOrder,
+          completedBy: 'SYSTEM',
+          autoCompleteDays: 7,
+          returnWindowDays: 7,
+          invitesReview: true,
+        }).html,
+        refundRequestRejectedTemplate({
+          locale,
+          buyerName: hostile,
+          ordersUrl: ordersUrl(locale),
+          order: evilOrder,
+          kind: 'CANCEL',
+          rejectedBy: 'SELLER',
+          reason: hostile,
+          escalateDays: 3,
+        }).html,
+      ];
+
+      for (const html of outputs) {
+        expect(html).not.toContain('<script>');
+        expect(html).not.toContain('<img');
+        expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+      }
+    },
+  );
+
   const HOSTILE = '<script>alert(1)</script><img src=x onerror=alert(2)>"\'&';
 
   function expectEscaped(html: string) {

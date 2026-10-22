@@ -35,24 +35,46 @@ function emailOrder(overrides: Record<string, unknown> = {}) {
 
 describe('OrderEmailService', () => {
   let service: OrderEmailService;
-  let prisma: { order: { findMany: jest.Mock } };
+  let prisma: {
+    order: { findMany: jest.Mock };
+    orderItem: { findMany: jest.Mock };
+    review: { findMany: jest.Mock };
+    refundRequest: { findUnique: jest.Mock };
+  };
   let mail: {
     sendOrderPlaced: jest.Mock;
     sendOrderConfirmed: jest.Mock;
     sendOrderShipped: jest.Mock;
     sendOrderCancelled: jest.Mock;
     sendOrderRefunded: jest.Mock;
+    sendOrderCompleted: jest.Mock;
+    sendRefundRequestRejected: jest.Mock;
   };
 
   beforeEach(() => {
     process.env.FRONTEND_URL = 'http://localhost:3000';
-    prisma = { order: { findMany: jest.fn().mockResolvedValue([]) } };
+    prisma = {
+      order: { findMany: jest.fn().mockResolvedValue([]) },
+      // Hai sản phẩm trong đơn (theo variant); chưa có đánh giá nào.
+      orderItem: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { productVariant: { productId: 'p1' } },
+            { productVariant: { productId: 'p2' } },
+          ]),
+      },
+      review: { findMany: jest.fn().mockResolvedValue([]) },
+      refundRequest: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
     mail = {
       sendOrderPlaced: jest.fn().mockResolvedValue(undefined),
       sendOrderConfirmed: jest.fn().mockResolvedValue(undefined),
       sendOrderShipped: jest.fn().mockResolvedValue(undefined),
       sendOrderCancelled: jest.fn().mockResolvedValue(undefined),
       sendOrderRefunded: jest.fn().mockResolvedValue(undefined),
+      sendOrderCompleted: jest.fn().mockResolvedValue(undefined),
+      sendRefundRequestRejected: jest.fn().mockResolvedValue(undefined),
     };
     service = new OrderEmailService(
       prisma as unknown as PrismaService,
@@ -62,6 +84,8 @@ describe('OrderEmailService', () => {
 
   afterEach(() => {
     delete process.env.FRONTEND_URL;
+    delete process.env.REFUND_WINDOW_DAYS;
+    delete process.env.REFUND_ESCALATE_DAYS;
   });
 
   describe('notifyPlaced', () => {
@@ -254,6 +278,297 @@ describe('OrderEmailService', () => {
       ][];
       expect(calls[0][1].refundAmount).toBe(410_000);
       expect(calls[1][1].refundAmount).toBeNull();
+    });
+  });
+
+  describe('notifyCompleted (đơn đã hoàn tất, Week10.md 7.5)', () => {
+    type CompletedData = {
+      locale: string;
+      completedBy: string;
+      autoCompleteDays: number;
+      returnWindowDays: number;
+      invitesReview: boolean;
+      ordersUrl: string;
+      order: { shopName: string; orderCode: string };
+    };
+    const sent = () => {
+      const [to, data] = mail.sendOrderCompleted.mock.calls[0] as [
+        string,
+        CompletedData,
+      ];
+      return { to, data };
+    };
+
+    it('người mua tự bấm: đọc đơn theo id, gửi email nhánh BUYER tới người mua, link trỏ thẳng tới đơn', async () => {
+      prisma.order.findMany.mockResolvedValue([emailOrder()]);
+
+      await service.notifyCompleted('order-1', { by: 'BUYER' });
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'order-1' } }),
+      );
+      const { to, data } = sent();
+      expect(to).toBe('buyer@example.com');
+      expect(data).toMatchObject({
+        completedBy: 'BUYER',
+        autoCompleteDays: 0,
+        ordersUrl: 'http://localhost:3000/orders/order-1',
+        order: { shopName: 'Shop Áo Xinh', orderCode: 'ABCDEF12' },
+      });
+    });
+
+    it('hệ thống tự hoàn tất: truyền số ngày đã chờ', async () => {
+      prisma.order.findMany.mockResolvedValue([emailOrder()]);
+
+      await service.notifyCompleted('order-1', { by: 'SYSTEM', days: 7 });
+
+      expect(sent().data).toMatchObject({
+        completedBy: 'SYSTEM',
+        autoCompleteDays: 7,
+      });
+    });
+
+    it('cửa sổ trả hàng/hoàn tiền lấy từ cấu hình REFUND_WINDOW_DAYS', async () => {
+      process.env.REFUND_WINDOW_DAYS = '10';
+      prisma.order.findMany.mockResolvedValue([emailOrder()]);
+
+      await service.notifyCompleted('order-1', { by: 'BUYER' });
+
+      expect(sent().data.returnWindowDays).toBe(10);
+    });
+
+    describe('mời đánh giá chỉ khi còn sản phẩm chưa được đánh giá', () => {
+      beforeEach(() => {
+        prisma.order.findMany.mockResolvedValue([emailOrder()]);
+      });
+
+      it('chưa đánh giá sản phẩm nào ⇒ mời', async () => {
+        await service.notifyCompleted('order-1', { by: 'BUYER' });
+
+        expect(sent().data.invitesReview).toBe(true);
+        expect(prisma.review.findMany).toHaveBeenCalledWith({
+          where: { orderId: 'order-1' },
+          select: { productId: true },
+        });
+        expect(prisma.orderItem.findMany).toHaveBeenCalledWith({
+          where: { orderId: 'order-1' },
+          select: { productVariant: { select: { productId: true } } },
+        });
+      });
+
+      it('mới đánh giá một trong hai sản phẩm ⇒ vẫn mời', async () => {
+        prisma.review.findMany.mockResolvedValue([{ productId: 'p1' }]);
+
+        await service.notifyCompleted('order-1', { by: 'BUYER' });
+
+        expect(sent().data.invitesReview).toBe(true);
+      });
+
+      it('đã đánh giá mọi sản phẩm ⇒ KHÔNG mời', async () => {
+        prisma.review.findMany.mockResolvedValue([
+          { productId: 'p1' },
+          { productId: 'p2' },
+        ]);
+
+        await service.notifyCompleted('order-1', { by: 'BUYER' });
+
+        expect(sent().data.invitesReview).toBe(false);
+      });
+
+      it('hai dòng hàng của cùng một sản phẩm (khác biến thể) chỉ cần MỘT đánh giá', async () => {
+        prisma.orderItem.findMany.mockResolvedValue([
+          { productVariant: { productId: 'p1' } },
+          { productVariant: { productId: 'p1' } },
+        ]);
+        prisma.review.findMany.mockResolvedValue([{ productId: 'p1' }]);
+
+        await service.notifyCompleted('order-1', { by: 'BUYER' });
+
+        expect(sent().data.invitesReview).toBe(false);
+      });
+    });
+
+    it('buyer en: email mang locale en và link có prefix /en', async () => {
+      prisma.order.findMany.mockResolvedValue([
+        emailOrder({
+          user: { email: 'b@x.com', name: 'John', locale: 'en' },
+        }),
+      ]);
+
+      await service.notifyCompleted('order-1', { by: 'BUYER' });
+
+      expect(sent().data).toMatchObject({
+        locale: 'en',
+        ordersUrl: 'http://localhost:3000/en/orders/order-1',
+      });
+    });
+
+    it('đơn không còn tồn tại — không gửi, không đọc đánh giá, không lỗi', async () => {
+      await expect(
+        service.notifyCompleted('order-ma', { by: 'BUYER' }),
+      ).resolves.toBeUndefined();
+
+      expect(mail.sendOrderCompleted).not.toHaveBeenCalled();
+      expect(prisma.review.findMany).not.toHaveBeenCalled();
+    });
+
+    it('KHÔNG BAO GIỜ ném: provider mail lỗi, đọc đơn lỗi, đọc đánh giá lỗi', async () => {
+      prisma.order.findMany.mockResolvedValue([emailOrder()]);
+      mail.sendOrderCompleted.mockRejectedValue(new Error('Resend down'));
+      await expect(
+        service.notifyCompleted('order-1', { by: 'BUYER' }),
+      ).resolves.toBeUndefined();
+
+      mail.sendOrderCompleted.mockClear();
+      prisma.review.findMany.mockRejectedValue(new Error('db timeout'));
+      await expect(
+        service.notifyCompleted('order-1', { by: 'BUYER' }),
+      ).resolves.toBeUndefined();
+      expect(mail.sendOrderCompleted).not.toHaveBeenCalled();
+
+      prisma.order.findMany.mockRejectedValue(new Error('db down'));
+      await expect(
+        service.notifyCompleted('order-1', { by: 'SYSTEM', days: 7 }),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('notifyRefundRequestRejected (yêu cầu bị từ chối, Week10.md 7.5)', () => {
+    type RejectedData = {
+      locale: string;
+      kind: string;
+      rejectedBy: string;
+      reason: string | null;
+      escalateDays: number | null;
+      ordersUrl: string;
+      order: { shopName: string };
+    };
+    const request = (overrides: Record<string, unknown> = {}) => ({
+      kind: 'RETURN',
+      order: emailOrder(),
+      ...overrides,
+    });
+    const sent = () => {
+      const [to, data] = mail.sendRefundRequestRejected.mock.calls[0] as [
+        string,
+        RejectedData,
+      ];
+      return { to, data };
+    };
+
+    it('shop từ chối: đọc yêu cầu theo id, gửi tới người mua kèm lý do và số ngày còn khiếu nại được', async () => {
+      process.env.REFUND_ESCALATE_DAYS = '5';
+      prisma.refundRequest.findUnique.mockResolvedValue(request());
+
+      await service.notifyRefundRequestRejected(
+        'req-1',
+        'SELLER',
+        'Hàng đã qua sử dụng',
+      );
+
+      expect(prisma.refundRequest.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'req-1' } }),
+      );
+      const { to, data } = sent();
+      expect(to).toBe('buyer@example.com');
+      expect(data).toMatchObject({
+        kind: 'RETURN',
+        rejectedBy: 'SELLER',
+        reason: 'Hàng đã qua sử dụng',
+        escalateDays: 5,
+        ordersUrl:
+          'http://localhost:3000/orders/abcdef12-3456-7890-abcd-ef1234567890',
+        order: { shopName: 'Shop Áo Xinh' },
+      });
+    });
+
+    it('Admin từ chối: quyết định cuối nên không có số ngày khiếu nại', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(request());
+
+      await service.notifyRefundRequestRejected(
+        'req-1',
+        'ADMIN',
+        'Không đủ điều kiện',
+      );
+
+      expect(sent().data).toMatchObject({
+        rejectedBy: 'ADMIN',
+        escalateDays: null,
+        reason: 'Không đủ điều kiện',
+      });
+    });
+
+    it.each([[undefined], [null], [''], ['   ']])(
+      'lý do %j ⇒ gửi với reason null (không bịa lý do)',
+      async (reason) => {
+        prisma.refundRequest.findUnique.mockResolvedValue(request());
+
+        await service.notifyRefundRequestRejected('req-1', 'SELLER', reason);
+
+        expect(sent().data.reason).toBeNull();
+      },
+    );
+
+    it('lý do được cắt khoảng trắng hai đầu', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(request());
+
+      await service.notifyRefundRequestRejected(
+        'req-1',
+        'SELLER',
+        '  Hết hạn  ',
+      );
+
+      expect(sent().data.reason).toBe('Hết hạn');
+    });
+
+    it('yêu cầu HỦY: truyền đúng loại', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(
+        request({ kind: 'CANCEL' }),
+      );
+
+      await service.notifyRefundRequestRejected('req-1', 'SELLER', 'x');
+
+      expect(sent().data.kind).toBe('CANCEL');
+    });
+
+    it('buyer en: email mang locale en và link có prefix /en', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(
+        request({
+          order: emailOrder({
+            user: { email: 'b@x.com', name: 'John', locale: 'en' },
+          }),
+        }),
+      );
+
+      await service.notifyRefundRequestRejected('req-1', 'SELLER', 'x');
+
+      expect(sent().data.locale).toBe('en');
+      expect(sent().data.ordersUrl).toContain(
+        'http://localhost:3000/en/orders/',
+      );
+    });
+
+    it('yêu cầu không còn tồn tại — không gửi, không lỗi', async () => {
+      await expect(
+        service.notifyRefundRequestRejected('req-ma', 'SELLER', 'x'),
+      ).resolves.toBeUndefined();
+
+      expect(mail.sendRefundRequestRejected).not.toHaveBeenCalled();
+    });
+
+    it('KHÔNG BAO GIỜ ném: provider mail lỗi hoặc đọc DB lỗi', async () => {
+      prisma.refundRequest.findUnique.mockResolvedValue(request());
+      mail.sendRefundRequestRejected.mockRejectedValue(
+        new Error('Resend down'),
+      );
+      await expect(
+        service.notifyRefundRequestRejected('req-1', 'SELLER', 'x'),
+      ).resolves.toBeUndefined();
+
+      prisma.refundRequest.findUnique.mockRejectedValue(new Error('db down'));
+      await expect(
+        service.notifyRefundRequestRejected('req-1', 'ADMIN', 'x'),
+      ).resolves.toBeUndefined();
     });
   });
 

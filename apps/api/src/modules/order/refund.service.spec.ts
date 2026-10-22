@@ -5,6 +5,12 @@ import type { PaymentGatewayService } from '../../shared/payment/payment-gateway
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import type { TxClient } from '../../shared/prisma/tx-client';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
+import {
+  createBrokenNotificationService,
+  createFakeNotificationService,
+  silenceNotificationLogs,
+  type FakeNotificationService,
+} from '../../shared/testing/fake-notification-service';
 import type { InventoryService } from '../product/inventory.service';
 import type { VoucherUsageService } from '../voucher/voucher-usage.service';
 import type { OrderEmailService } from './order-email.service';
@@ -47,6 +53,7 @@ const orderRow = (overrides: Record<string, unknown> = {}) => ({
 
 describe('RefundService', () => {
   let service: RefundService;
+  let notifications: FakeNotificationService;
   // Ghi lại thứ tự gọi để kiểm thứ tự khoá: Payment → đơn cả nhóm → variant → voucher.
   let calls: string[];
   // Trạng thái "DB" giả mà các mock đọc/ghi.
@@ -169,6 +176,7 @@ describe('RefundService', () => {
           Promise.resolve({
             id: 'r1',
             paymentId: 'p1',
+            orderId: 'o1',
             status: refundState.status,
             amount: D(410_000),
             gatewayRef: null,
@@ -217,6 +225,7 @@ describe('RefundService', () => {
       notifyRefunded: jest.fn().mockResolvedValue(undefined),
     };
 
+    notifications = createFakeNotificationService();
     service = new RefundService(
       prisma as unknown as PrismaService,
       orderStatusService as unknown as OrderStatusService,
@@ -225,12 +234,318 @@ describe('RefundService', () => {
       paymentGateway as unknown as PaymentGatewayService,
       refundRequestService as unknown as RefundRequestService,
       orderEmailService as unknown as OrderEmailService,
+      notifications,
     );
   });
 
   afterEach(() => {
     delete process.env.REFUND_GATEWAY_TIMEOUT_MS;
     jest.restoreAllMocks();
+  });
+
+  // --- Thông báo trong ứng dụng (Week10.md 7.4) ----------------------------------------------------
+
+  describe('thông báo trong ứng dụng', () => {
+    const codOrder = () =>
+      orderRow({
+        checkoutGroup: {
+          payments: [
+            paymentRow({ method: 'COD', status: 'PENDING', paidAt: null }),
+          ],
+        },
+      });
+
+    describe('hủy đơn (ORDERS_CANCELLED)', () => {
+      it('người mua hủy ngay đơn đã trả online — báo hủy kèm lý do, TRƯỚC khi gọi cổng hoàn tiền, rồi báo đã hoàn tiền', async () => {
+        const order: string[] = [];
+        jest.spyOn(notifications, 'notify').mockImplementation((event) => {
+          order.push(event.kind);
+          return Promise.resolve();
+        });
+        gateway.refund.mockImplementation(() => {
+          order.push('gateway');
+          return Promise.resolve({
+            outcome: 'SUCCESS',
+            gatewayRef: 'GW-1',
+            failureReason: null,
+          });
+        });
+
+        await service.cancelOrderWithRefund(BUYER, 'o1', {
+          reason: 'Đặt nhầm',
+        });
+
+        expect(order).toEqual([
+          'ORDERS_CANCELLED',
+          'gateway',
+          'REFUND_COMPLETED',
+        ]);
+        expect(notifications.notify).toHaveBeenNthCalledWith(1, {
+          kind: 'ORDERS_CANCELLED',
+          target: { orderIds: ['o1'] },
+          by: 'BUYER',
+          reason: 'Đặt nhầm',
+          closedRefundRequest: false,
+        });
+        expect(notifications.notify).toHaveBeenNthCalledWith(2, {
+          kind: 'REFUND_COMPLETED',
+          orderId: 'o1',
+        });
+      });
+
+      it.each([
+        ['SELLER', SELLER],
+        ['ADMIN', ADMIN],
+        ['SYSTEM', SYSTEM],
+      ] as const)('actor %s — truyền đúng "ai hủy"', async (by, actor) => {
+        await service.cancelOrderWithRefund(actor, 'o1', {
+          reason: 'Hết hàng',
+        });
+
+        expect(notifications.events[0]).toEqual({
+          kind: 'ORDERS_CANCELLED',
+          target: { orderIds: ['o1'] },
+          by,
+          reason: 'Hết hàng',
+          closedRefundRequest: false,
+        });
+      });
+
+      it('hủy kèm duyệt một yêu cầu hủy đang mở — báo closedRefundRequest: true (người mua đã có thông báo "yêu cầu được duyệt")', async () => {
+        prisma.order.findUnique.mockResolvedValue(
+          orderRow({ status: 'CONFIRMED' }),
+        );
+        groupRows = [{ id: 'o1', status: 'CONFIRMED' }];
+        tx.refundRequest.findFirst.mockResolvedValue({
+          id: 'req-1',
+          status: 'PENDING_SELLER',
+        });
+
+        await service.cancelOrderWithRefund(SELLER, 'o1', {
+          refundRequestId: 'req-1',
+        });
+
+        expect(notifications.events[0]).toMatchObject({
+          kind: 'ORDERS_CANCELLED',
+          by: 'SELLER',
+          closedRefundRequest: true,
+        });
+      });
+
+      it('đơn COD — vẫn báo hủy, nhưng không có khoản hoàn qua cổng nên không có REFUND_COMPLETED', async () => {
+        prisma.order.findUnique.mockResolvedValue(codOrder());
+
+        await service.cancelOrderWithRefund(BUYER, 'o1');
+
+        expect(notifications.events.map((e) => e.kind)).toEqual([
+          'ORDERS_CANCELLED',
+        ]);
+      });
+
+      it('không có lý do — reason là undefined (không bịa chuỗi mặc định)', async () => {
+        await service.cancelOrderWithRefund(BUYER, 'o1');
+
+        expect(notifications.events[0]).toMatchObject({
+          kind: 'ORDERS_CANCELLED',
+          reason: undefined,
+        });
+      });
+
+      it('hủy bị từ chối (409 sai trạng thái / thua race) — KHÔNG báo gì', async () => {
+        prisma.order.findUnique.mockResolvedValue(
+          orderRow({ status: 'SHIPPING' }),
+        );
+
+        await expect(
+          service.cancelOrderWithRefund(BUYER, 'o1'),
+        ).rejects.toThrow();
+
+        expect(notifications.events).toEqual([]);
+      });
+
+      it('đơn không tồn tại — KHÔNG báo gì', async () => {
+        prisma.order.findUnique.mockResolvedValue(null);
+
+        await expect(
+          service.cancelOrderWithRefund(BUYER, 'x'),
+        ).rejects.toThrow();
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    describe('trả hàng / hoàn tiền sau giao (refundReturnedOrder)', () => {
+      it('KHÔNG báo "đơn đã hủy" (đây không phải hủy đơn); khoản hoàn qua cổng thành công thì báo REFUND_COMPLETED', async () => {
+        prisma.order.findUnique.mockResolvedValue(
+          orderRow({ status: 'COMPLETED' }),
+        );
+        groupRows = [{ id: 'o1', status: 'COMPLETED' }];
+
+        await service.refundReturnedOrder(ADMIN, 'o1');
+
+        expect(notifications.events).toEqual([
+          { kind: 'REFUND_COMPLETED', orderId: 'o1' },
+        ]);
+      });
+
+      it('đơn COD trả hàng — shop hoàn tiền mặt ngoài hệ thống nên không có thông báo hoàn tiền', async () => {
+        prisma.order.findUnique.mockResolvedValue(
+          orderRow({
+            status: 'COMPLETED',
+            checkoutGroup: {
+              payments: [
+                paymentRow({
+                  method: 'COD',
+                  status: 'SUCCESS',
+                  paidAt: new Date(),
+                }),
+              ],
+            },
+          }),
+        );
+        groupRows = [{ id: 'o1', status: 'COMPLETED' }];
+
+        await service.refundReturnedOrder(ADMIN, 'o1');
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    describe('REFUND_COMPLETED — chỉ khi tiền THẬT SỰ đã hoàn, chỉ một lần', () => {
+      const SUCCESS = {
+        outcome: 'SUCCESS',
+        gatewayRef: 'GW-1',
+        failureReason: null,
+      } as const;
+
+      it('chốt SUCCESS ở finaliseRefund — báo người mua của đơn', async () => {
+        await service.finaliseRefund('r1', SUCCESS);
+
+        expect(notifications.events).toEqual([
+          { kind: 'REFUND_COMPLETED', orderId: 'o1' },
+        ]);
+      });
+
+      it('SAU commit của việc chốt, không trước', async () => {
+        const order: string[] = [];
+        prisma.$transaction.mockImplementation(
+          async (fn: (t: unknown) => unknown) => {
+            const result = await fn(tx);
+            order.push('commit');
+            return result;
+          },
+        );
+        jest.spyOn(notifications, 'notify').mockImplementation(() => {
+          order.push('notify');
+          return Promise.resolve();
+        });
+
+        await service.finaliseRefund('r1', SUCCESS);
+
+        expect(order).toEqual(['commit', 'notify']);
+      });
+
+      it('IDEMPOTENT: bên khác đã chốt trước (UPDATE có điều kiện lật 0 dòng) — KHÔNG báo lần hai', async () => {
+        tx.paymentRefund.updateMany.mockResolvedValue({ count: 0 });
+
+        await service.finaliseRefund('r1', SUCCESS);
+
+        expect(notifications.events).toEqual([]);
+      });
+
+      it.each([
+        [
+          'cổng từ chối',
+          { outcome: 'FAILED', gatewayRef: null, failureReason: 'Từ chối' },
+        ],
+        [
+          'cổng chưa trả lời',
+          { outcome: 'PENDING', gatewayRef: null, failureReason: null },
+        ],
+      ] as const)('%s — KHÔNG báo đã hoàn tiền', async (_name, result) => {
+        await service.finaliseRefund('r1', result);
+
+        expect(notifications.events).toEqual([]);
+      });
+
+      it('bất biến vỡ (rollback việc chốt) — KHÔNG báo', async () => {
+        tx.$executeRaw.mockResolvedValue(0);
+
+        await expect(service.finaliseRefund('r1', SUCCESS)).rejects.toThrow();
+
+        expect(notifications.events).toEqual([]);
+      });
+
+      it('khoản hoàn không gắn đơn (orderId NULL: thanh toán trùng/sau hạn) — không có đơn để trỏ tới nên KHÔNG báo', async () => {
+        const row = {
+          id: 'r1',
+          paymentId: 'p1',
+          orderId: null,
+          status: 'PENDING',
+          amount: D(410_000),
+        };
+        prisma.paymentRefund.findUnique.mockResolvedValue(row);
+
+        await service.finaliseRefund('r1', SUCCESS);
+
+        expect(notifications.events).toEqual([]);
+      });
+
+      it('Admin ghi nhận hoàn tiền thủ công (markRefundCompleted) cũng báo người mua', async () => {
+        prisma.paymentRefund.findUnique.mockResolvedValue({
+          id: 'r1',
+          paymentId: 'p1',
+          orderId: 'o1',
+          status: 'FAILED',
+          amount: D(410_000),
+          gatewayRef: null,
+          updatedAt: new Date(),
+        });
+
+        await service.markRefundCompleted(ADMIN, 'r1', 'GD-123456');
+
+        expect(notifications.events).toEqual([
+          { kind: 'REFUND_COMPLETED', orderId: 'o1' },
+        ]);
+      });
+    });
+
+    describe('tầng thông báo hỏng KHÔNG làm hỏng thao tác chính', () => {
+      let broken: RefundService;
+      let logs: ReturnType<typeof silenceNotificationLogs>;
+
+      beforeEach(() => {
+        logs = silenceNotificationLogs();
+        broken = new RefundService(
+          prisma as unknown as PrismaService,
+          orderStatusService as unknown as OrderStatusService,
+          inventoryService as unknown as InventoryService,
+          voucherUsageService as unknown as VoucherUsageService,
+          paymentGateway as unknown as PaymentGatewayService,
+          refundRequestService as unknown as RefundRequestService,
+          orderEmailService as unknown as OrderEmailService,
+          createBrokenNotificationService(),
+        );
+      });
+
+      it('hủy đơn đã trả online vẫn thành công: kho, voucher, khoản hoàn SUCCEEDED, email vẫn đủ', async () => {
+        const result = await broken.cancelOrderWithRefund(BUYER, 'o1');
+
+        expect(result.refund?.status).toBe('SUCCEEDED');
+        expect(orderEmailService.notifyCancelled).toHaveBeenCalledTimes(1);
+        expect(logs.error).toHaveBeenCalledTimes(2); // báo hủy + báo đã hoàn tiền
+      });
+
+      it('chốt hoàn tiền vẫn trả khoản SUCCEEDED', async () => {
+        const result = await broken.finaliseRefund('r1', {
+          outcome: 'SUCCESS',
+          gatewayRef: 'GW-1',
+          failureReason: null,
+        });
+
+        expect(result.status).toBe('SUCCEEDED');
+      });
+    });
   });
 
   // --- cancelOrderWithRefund: nhánh online -------------------------------------------------------

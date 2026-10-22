@@ -23,6 +23,7 @@ import {
   settleCodPayment,
   shouldReleaseVoucher,
 } from './checkout-group-tx';
+import { NotificationService } from '../../shared/notification/notification.service';
 import { OrderEmailService } from './order-email.service';
 import { OrderStatusService, type OrderActor } from './order-status.service';
 import {
@@ -231,6 +232,7 @@ export class RefundService {
     private readonly paymentGateway: PaymentGatewayService,
     private readonly refundRequestService: RefundRequestService,
     private readonly orderEmailService: OrderEmailService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // --- Hủy / trả hàng theo đơn ----------------------------------------------------------------
@@ -367,6 +369,20 @@ export class RefundService {
       }
       return { refund, closedRequest: request !== null };
     });
+
+    // Thông báo trong ứng dụng báo "đơn đã hủy" NGAY sau commit, TRƯỚC khi gọi cổng hoàn tiền (có thể chậm tới hết hạn
+    // chờ cổng): việc hủy đã có hiệu lực, và nhờ vậy "đơn đã hủy" luôn đứng TRƯỚC "đã hoàn tiền" trong hộp thư. `closedRefundRequest`:
+    // lần hủy này là hệ quả của việc duyệt một yêu cầu hủy — người mua đã có thông báo "yêu cầu được duyệt" nên không báo
+    // thêm "đơn đã hủy" (xem NotificationEvent). Hoàn tiền sau giao (RETURN) không phải hủy đơn nên không báo ở đây.
+    if (plan.kind === 'CANCEL') {
+      await this.notificationService.notify({
+        kind: 'ORDERS_CANCELLED',
+        target: { orderIds: [orderId] },
+        by: actor.type,
+        reason: options.reason,
+        closedRefundRequest: committed.closedRequest,
+      });
+    }
 
     const refund = committed.refund
       ? await this.tryExecuteRefund(committed.refund)
@@ -680,7 +696,7 @@ export class RefundService {
   ): Promise<RefundSummary> {
     const head = await this.prisma.paymentRefund.findUnique({
       where: { id: refundId },
-      select: { ...refundSummarySelect, paymentId: true },
+      select: { ...refundSummarySelect, paymentId: true, orderId: true },
     });
     if (!head) throw refundNotFound();
     if (result.outcome === 'PENDING') return toSummary(head);
@@ -691,6 +707,7 @@ export class RefundService {
       await this.lockPayment(tx, head.paymentId);
 
       let failedNow = false;
+      let succeededNow = false;
       if (result.outcome === 'SUCCESS') {
         const { count } = await tx.paymentRefund.updateMany({
           where: { id: refundId, status: { in: [...successFrom] } },
@@ -703,6 +720,7 @@ export class RefundService {
         });
         if (count === 1) {
           await this.applyRefundToPayment(tx, head.paymentId, head.amount);
+          succeededNow = true;
         }
       } else {
         const { count } = await tx.paymentRefund.updateMany({
@@ -722,13 +740,21 @@ export class RefundService {
         where: { id: refundId },
         select: refundSummarySelect,
       });
-      return { summary: toSummary(fresh), failedNow };
+      return { summary: toSummary(fresh), failedNow, succeededNow };
     });
 
     if (settled.failedNow) {
       this.logger.error(
         `Refund ${refundId} was rejected by the gateway: ${result.failureReason ?? 'no reason given'} — admin must retry or complete it manually`,
       );
+    }
+    // Báo người mua khi tiền THẬT SỰ đã hoàn, chỉ ở lần chốt đã thắng (gọi lặp/đồng thời không báo trùng) và SAU commit.
+    // Khoản hoàn không gắn đơn (orderId NULL: thanh toán trùng/sau hạn) không có đơn để trỏ tới nên không báo ở đây.
+    if (settled.succeededNow && head.orderId) {
+      await this.notificationService.notify({
+        kind: 'REFUND_COMPLETED',
+        orderId: head.orderId,
+      });
     }
     return settled.summary;
   }

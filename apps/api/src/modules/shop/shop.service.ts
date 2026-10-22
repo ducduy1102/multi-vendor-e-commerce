@@ -13,6 +13,7 @@ import {
   type PublicShop,
 } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
+import { NotificationService } from '../../shared/notification/notification.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { slugify } from '../../shared/utils/slugify';
 import { ShopStatusService } from './shop-status.service';
@@ -81,6 +82,7 @@ export class ShopService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shopStatusService: ShopStatusService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // Giới hạn 1 shop/user (Week3.md Bước 1.6) chỉ enforce ở đây, không có
@@ -103,10 +105,15 @@ export class ShopService {
       bannerUrl: dto.bannerUrl,
     };
 
-    if (dto.slug) {
-      return this.createWithExplicitSlug(data, dto.slug);
-    }
-    return this.createWithGeneratedSlug(data, slugify(dto.name));
+    const created = dto.slug
+      ? await this.createWithExplicitSlug(data, dto.slug)
+      : await this.createWithGeneratedSlug(data, slugify(dto.name));
+    // Shop mới vào hàng chờ duyệt: báo mọi Admin, SAU khi đã ghi (không bao giờ ném).
+    await this.notificationService.notify({
+      kind: 'SHOP_SUBMITTED',
+      shopId: created.id,
+    });
+    return created;
   }
 
   async getMyShop(userId: string): Promise<ShopSummary> {
@@ -239,6 +246,9 @@ export class ShopService {
     });
 
     this.logger.log(`Owner ${userId} resubmitted shop ${shopId}`);
+
+    // Nộp lại cũng vào hàng chờ duyệt ⇒ báo mọi Admin, SAU commit.
+    await this.notificationService.notify({ kind: 'SHOP_SUBMITTED', shopId });
 
     return this.prisma.shop.findUniqueOrThrow({
       where: { id: shopId },

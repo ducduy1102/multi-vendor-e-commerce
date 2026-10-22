@@ -6,6 +6,7 @@ import {
 import { MockPaymentProvider } from '../../shared/payment/mock-payment.provider';
 import { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
 import { VnpayProvider } from '../../shared/payment/vnpay.provider';
+import { createFakeNotificationService } from '../../shared/testing/fake-notification-service';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   cleanupByTag,
@@ -35,15 +36,17 @@ describe('OrderAutoCompleteJob (DB thật)', () => {
   const prisma = new PrismaClient();
   const orderStatusService = new OrderStatusService();
   const inventoryService = new InventoryService();
+  const fakeMail = createFakeMail();
   const orderEmailService = new OrderEmailService(
     prisma as unknown as PrismaService,
-    createFakeMail().mailService,
+    fakeMail.mailService,
   );
   const voucherUsageService = new VoucherUsageService();
   const paymentGateway = new PaymentGatewayService(
     new VnpayProvider(),
     new MockPaymentProvider(),
   );
+  const notifications = createFakeNotificationService();
   const paymentService = new PaymentService(
     prisma as unknown as PrismaService,
     inventoryService,
@@ -51,6 +54,7 @@ describe('OrderAutoCompleteJob (DB thật)', () => {
     paymentGateway,
     orderStatusService,
     orderEmailService,
+    notifications,
   );
   const refundService = new RefundService(
     prisma as unknown as PrismaService,
@@ -60,6 +64,7 @@ describe('OrderAutoCompleteJob (DB thật)', () => {
     paymentGateway,
     new RefundRequestService(),
     orderEmailService,
+    notifications,
   );
   const actionService = new OrderActionService(
     prisma as unknown as PrismaService,
@@ -67,6 +72,7 @@ describe('OrderAutoCompleteJob (DB thật)', () => {
     paymentService,
     orderEmailService,
     refundService,
+    notifications,
   );
   const job = new OrderAutoCompleteJob(
     prisma as unknown as PrismaService,
@@ -311,6 +317,113 @@ describe('OrderAutoCompleteJob (DB thật)', () => {
       );
       expect(completedRows).toHaveLength(1);
     }
+  });
+
+  describe('email và thông báo khi tự hoàn tất / người mua bấm đã nhận (Week10.md 7.5)', () => {
+    const emailOf = async (orderId: string) => {
+      const buyer = await prisma.user.findFirstOrThrow({
+        where: { orders: { some: { id: orderId } } },
+        select: { id: true, email: true },
+      });
+      return {
+        ...buyer,
+        mails: fakeMail.sent.filter((m) => m.to === buyer.email),
+      };
+    };
+
+    beforeEach(() => {
+      fakeMail.reset();
+      notifications.reset();
+    });
+
+    it('đơn tự hoàn tất: người mua nhận ĐÚNG MỘT email nêu hệ thống tự hoàn tất sau 7 ngày + mời đánh giá, và có sự kiện ORDER_AUTO_COMPLETED; đơn chưa tới hạn không có gì', async () => {
+      const overdue = await seedGroup([
+        { status: 'SHIPPING', shippedAt: daysAgo(8) },
+      ]);
+      const recent = await seedGroup([
+        { status: 'SHIPPING', shippedAt: daysAgo(6) },
+      ]);
+
+      await job.run();
+
+      const overdueMail = (await emailOf(overdue.orderIds[0])).mails;
+      expect(overdueMail).toHaveLength(1);
+      expect(overdueMail[0].subject).toMatch(/tự động hoàn tất/);
+      expect(overdueMail[0].html).toContain('sau 7 ngày');
+      expect(overdueMail[0].html).toContain('Đánh giá sản phẩm'); // chưa đánh giá ⇒ mời
+      expect(notifications.events).toContainEqual({
+        kind: 'ORDER_AUTO_COMPLETED',
+        orderId: overdue.orderIds[0],
+      });
+
+      expect((await emailOf(recent.orderIds[0])).mails).toEqual([]);
+      expect(notifications.events).not.toContainEqual(
+        expect.objectContaining({ orderId: recent.orderIds[0] }),
+      );
+    });
+
+    it('chạy lại job: đơn đã hoàn tất không bị gửi email lần hai', async () => {
+      const g = await seedGroup([
+        { status: 'SHIPPING', shippedAt: daysAgo(8) },
+      ]);
+
+      await job.run();
+      await job.run();
+
+      expect((await emailOf(g.orderIds[0])).mails).toHaveLength(1);
+    });
+
+    it('người mua tự bấm đã nhận: email nhánh BUYER (không nhắc tự hoàn tất), KHÔNG có thông báo trong ứng dụng', async () => {
+      const g = await seedGroup([
+        { status: 'SHIPPING', shippedAt: daysAgo(2) },
+      ]);
+      const buyer = await emailOf(g.orderIds[0]);
+
+      await actionService.confirmReceived(buyer.id, g.orderIds[0]);
+
+      const mails = (await emailOf(g.orderIds[0])).mails;
+      expect(mails).toHaveLength(1);
+      expect(mails[0].subject).toMatch(/đã hoàn tất$/);
+      expect(mails[0].html).not.toContain('tự động hoàn tất');
+      expect(notifications.events).toEqual([]);
+    });
+
+    it('đã đánh giá mọi sản phẩm của đơn ⇒ email KHÔNG mời đánh giá (đọc đánh giá thật từ DB)', async () => {
+      const g = await seedGroup([
+        { status: 'SHIPPING', shippedAt: daysAgo(2) },
+      ]);
+      const buyer = await emailOf(g.orderIds[0]);
+      const item = await prisma.orderItem.findFirstOrThrow({
+        where: { orderId: g.orderIds[0] },
+        select: { productVariant: { select: { productId: true } } },
+      });
+      await prisma.review.create({
+        data: {
+          userId: buyer.id,
+          productId: item.productVariant.productId,
+          orderId: g.orderIds[0],
+          rating: 5,
+        },
+      });
+
+      await actionService.confirmReceived(buyer.id, g.orderIds[0]);
+
+      const mails = (await emailOf(g.orderIds[0])).mails;
+      expect(mails).toHaveLength(1);
+      expect(mails[0].html).not.toContain('Đánh giá sản phẩm');
+      expect(mails[0].html).toContain('Xem đơn hàng');
+    });
+
+    it('mail lỗi KHÔNG làm hỏng việc hoàn tất: đơn vẫn COMPLETED', async () => {
+      const g = await seedGroup([
+        { status: 'SHIPPING', shippedAt: daysAgo(8) },
+      ]);
+      fakeMail.failWith();
+
+      await job.run();
+
+      expect(await statusOf(g.orderIds[0])).toBe('COMPLETED');
+    });
   });
 
   it('số ngày lấy từ ORDER_AUTO_COMPLETE_DAYS lúc chạy', async () => {

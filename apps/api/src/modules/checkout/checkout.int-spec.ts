@@ -8,6 +8,7 @@ import {
   createUser,
   createVariant,
 } from '../../shared/testing/db-fixtures';
+import { createFakeNotificationService } from '../../shared/testing/fake-notification-service';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import { MockPaymentProvider } from '../../shared/payment/mock-payment.provider';
 import { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
@@ -59,6 +60,7 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
     new VnpayProvider(),
     new MockPaymentProvider(),
   );
+  const notifications = createFakeNotificationService();
   const paymentService = new PaymentService(
     prisma as unknown as PrismaService,
     inventoryService,
@@ -66,6 +68,7 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
     paymentGateway,
     orderStatusService,
     orderEmailService,
+    notifications,
   );
   const checkoutService = new CheckoutService(
     prisma as unknown as PrismaService,
@@ -78,6 +81,7 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
     paymentGateway,
     paymentService,
     orderEmailService,
+    notifications,
   );
 
   const stockOf = (id: string) =>

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MailModule } from '../../shared/mail/mail.module';
+import { NotificationModule } from '../../shared/notification/notification.module';
 import { OrderModule } from '../order/order.module';
 import { ShopModule } from '../shop/shop.module';
 import { AdminRefundController } from './admin-refund.controller';
@@ -9,7 +10,7 @@ import { AdminService } from './admin.service';
 // Khu quản trị toàn sàn. Duyệt shop dùng ShopModule (ShopStatusService); xử lý tiền hoàn (Week9.md 2.9) dùng
 // OrderModule (RefundQueryService / RefundRequestActionService / RefundService) — chỉ qua các service đã export.
 @Module({
-  imports: [ShopModule, OrderModule, MailModule],
+  imports: [ShopModule, OrderModule, MailModule, NotificationModule],
   controllers: [AdminController, AdminRefundController],
   providers: [AdminService],
 })

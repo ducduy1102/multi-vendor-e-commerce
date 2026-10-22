@@ -21,3 +21,4 @@ export * from './safe-next-path';
 export * from './error-code';
 export * from './realtime';
 export * from './chat';
+export * from './notification';

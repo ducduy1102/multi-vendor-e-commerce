@@ -1,5 +1,6 @@
 import { PrismaClient, type ShopStatus } from '@prisma/client';
 import { SHOP_STATUS_TRANSITIONS } from '@ecommerce/types';
+import { createFakeNotificationService } from '../../shared/testing/fake-notification-service';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import { cleanupByTag, createUser } from '../../shared/testing/db-fixtures';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
@@ -18,6 +19,7 @@ describe('ShopStatusService (DB thật)', () => {
   const shopService = new ShopService(
     prisma as unknown as PrismaService,
     service,
+    createFakeNotificationService(),
   );
 
   let counter = 0;
@@ -336,6 +338,7 @@ describe('ShopStatusService (DB thật)', () => {
       const brokenShopService = new ShopService(
         prisma as unknown as PrismaService,
         failing,
+        createFakeNotificationService(),
       );
 
       await expect(

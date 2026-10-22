@@ -6,6 +6,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { TxClient } from '../../shared/prisma/tx-client';
 import { lockGroupOrders, settleCodPayment } from './checkout-group-tx';
 import { getCancelBlockReason } from './order-actions';
+import { NotificationService } from '../../shared/notification/notification.service';
 import { OrderEmailService } from './order-email.service';
 import { OrderStatusService, type OrderActor } from './order-status.service';
 import { PaymentService } from './payment.service';
@@ -74,6 +75,7 @@ export class OrderActionService {
     private readonly paymentService: PaymentService,
     private readonly orderEmailService: OrderEmailService,
     private readonly refundService: RefundService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // --- Seller ---------------------------------------------------------------------------------
@@ -92,6 +94,7 @@ export class OrderActionService {
       { type: 'SELLER', id: sellerUserId },
     );
     await this.orderEmailService.notifyConfirmed(orderId);
+    await this.notificationService.notify({ kind: 'ORDER_CONFIRMED', orderId });
   }
 
   // Đóng gói / giao hàng bị chặn (409 REFUND_REQUEST_PENDING) khi người mua đang có yêu cầu HỦY chờ xử lý:
@@ -135,6 +138,7 @@ export class OrderActionService {
       },
     );
     await this.orderEmailService.notifyShipped(orderId);
+    await this.notificationService.notify({ kind: 'ORDER_SHIPPED', orderId });
   }
 
   // Từ chối đơn đang chờ xác nhận (PENDING → CANCELLED), mọi phương thức thanh toán (Week9.md 1.3): đơn COD
@@ -230,6 +234,8 @@ export class OrderActionService {
       { type: 'BUYER', id: userId },
       'Received by buyer',
     );
+    // Email "đơn đã hoàn tất" SAU commit (không bao giờ ném). Người mua tự bấm nên không có thông báo trong ứng dụng.
+    await this.orderEmailService.notifyCompleted(orderId, { by: 'BUYER' });
   }
 
   // --- Hệ thống -------------------------------------------------------------------------------
@@ -246,7 +252,6 @@ export class OrderActionService {
         { type: 'SYSTEM' },
         `Auto-completed: not confirmed by buyer within ${days} day(s) of shipping`,
       );
-      return true;
     } catch (error) {
       if (
         error instanceof AppException &&
@@ -258,6 +263,17 @@ export class OrderActionService {
       }
       throw error;
     }
+    // Báo người mua SAU commit, chỉ khi lần này thật sự hoàn tất đơn: email (nêu rõ hệ thống đã tự hoàn tất sau `days` ngày)
+    // và thông báo trong ứng dụng. Đặt NGOÀI try/catch ở trên để một lỗi bất ngờ ở đây không bị nhầm với "thua race".
+    await this.orderEmailService.notifyCompleted(orderId, {
+      by: 'SYSTEM',
+      days,
+    });
+    await this.notificationService.notify({
+      kind: 'ORDER_AUTO_COMPLETED',
+      orderId,
+    });
+    return true;
   }
 
   // SHIPPING → COMPLETED cho cả buyer lẫn hệ thống (khác nhau ở phạm vi đọc đơn, actor và ghi chú). Với

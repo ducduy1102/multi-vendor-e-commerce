@@ -8,18 +8,22 @@ import type {
 } from './templates/account-email.types';
 import type {
   OrderCancelledEmailData,
+  OrderCompletedEmailData,
   OrderConfirmedEmailData,
   OrderPlacedEmailData,
   OrderRefundedEmailData,
   OrderShippedEmailData,
+  RefundRequestRejectedEmailData,
 } from './templates/order-email.types';
 import { orderCancelledTemplate } from './templates/order-cancelled.template';
+import { orderCompletedTemplate } from './templates/order-completed.template';
 import { orderConfirmedTemplate } from './templates/order-confirmed.template';
 import { orderPlacedTemplate } from './templates/order-placed.template';
 import { orderRefundedTemplate } from './templates/order-refunded.template';
 import { orderShippedTemplate } from './templates/order-shipped.template';
 import { passwordChangedTemplate } from './templates/password-changed.template';
 import { passwordResetTemplate } from './templates/password-reset.template';
+import { refundRequestRejectedTemplate } from './templates/refund-request-rejected.template';
 import { shopStatusTemplate } from './templates/shop-status.template';
 import { verifyEmailTemplate } from './templates/verify-email.template';
 
@@ -105,6 +109,22 @@ export class MailService {
     data: OrderCancelledEmailData,
   ): Promise<void> {
     await this.deliver(to, orderCancelledTemplate(data));
+  }
+
+  // Đơn đã hoàn tất — người mua tự bấm hoặc hệ thống tự hoàn tất (Week10.md 7.5).
+  async sendOrderCompleted(
+    to: string,
+    data: OrderCompletedEmailData,
+  ): Promise<void> {
+    await this.deliver(to, orderCompletedTemplate(data));
+  }
+
+  // Yêu cầu hủy / trả hàng bị shop hoặc Admin từ chối (Week10.md 7.5).
+  async sendRefundRequestRejected(
+    to: string,
+    data: RefundRequestRejectedEmailData,
+  ): Promise<void> {
+    await this.deliver(to, refundRequestRejectedTemplate(data));
   }
 
   // Duyệt trả hàng/hoàn tiền sau giao (Week9.md 1.3).

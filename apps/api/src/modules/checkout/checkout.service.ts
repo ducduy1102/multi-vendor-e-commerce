@@ -15,6 +15,7 @@ import type { TxClient } from '../../shared/prisma/tx-client';
 import { findUserLocale } from '../../shared/utils/user-locale';
 import { readPaymentTtlMinutes } from '../../shared/payment/payment-config';
 import { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
+import { NotificationService } from '../../shared/notification/notification.service';
 import { generateTxnRef } from '../../shared/payment/txn-ref';
 import { CartService } from '../cart/cart.service';
 import {
@@ -107,6 +108,7 @@ export class CheckoutService {
     private readonly paymentGateway: PaymentGatewayService,
     private readonly paymentService: PaymentService,
     private readonly orderEmailService: OrderEmailService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // Route đặt ở checkout (nhóm thanh toán là thực thể của checkout theo domain-erd.md) nhưng đơn
@@ -427,8 +429,13 @@ export class CheckoutService {
     // vẫn AWAITING_PAYMENT, "tiếp tục thanh toán" ở 2.9 xử lý (rules/backend.md mục 4).
     // COD: báo "đặt hàng thành công" ngay (đơn online được báo khi thanh toán xác nhận, ở PaymentService).
     // SAU commit, không bao giờ ném. Phát lại theo Idempotency-Key trả sớm ở trên nên không gửi trùng.
+    // Cùng lúc báo từng shop có đơn mới (thông báo trong ứng dụng). Cũng SAU commit và không bao giờ ném.
     if (isCod) {
       await this.orderEmailService.notifyPlaced(created.groupId);
+      await this.notificationService.notify({
+        kind: 'ORDERS_PLACED',
+        checkoutGroupId: created.groupId,
+      });
     }
 
     // COD không có cổng nên không có payUrl (paymentUrl null là KẾT QUẢ ĐÚNG, không phải lỗi cổng).

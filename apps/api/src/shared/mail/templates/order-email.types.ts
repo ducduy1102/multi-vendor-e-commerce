@@ -70,3 +70,30 @@ export interface OrderRefundedEmailData extends OrderEmailBase {
   refundAmount: number;
   refundTo: OrderRefundTarget;
 }
+
+// Đơn đã hoàn tất (SHIPPING → COMPLETED, Week10.md 7.5). `completedBy`: người mua tự bấm "đã nhận hàng" hay hệ thống tự
+// hoàn tất sau `autoCompleteDays` ngày không xác nhận (chỉ có nghĩa ở nhánh SYSTEM, nhánh BUYER bỏ qua giá trị này).
+export type OrderCompletedBy = 'BUYER' | 'SYSTEM';
+
+export interface OrderCompletedEmailData extends OrderEmailBase {
+  order: OrderEmailOrder;
+  completedBy: OrderCompletedBy;
+  autoCompleteDays: number;
+  // Cửa sổ trả hàng/hoàn tiền còn lại, tính từ lúc hoàn tất (ngày) — REFUND_WINDOW_DAYS.
+  returnWindowDays: number;
+  // Còn sản phẩm của đơn mà người mua chưa đánh giá ⇒ email mời đánh giá; false ⇒ không mời.
+  invitesReview: boolean;
+}
+
+// Yêu cầu hủy / trả hàng của người mua bị từ chối (Week10.md 7.5). `rejectedBy`: shop từ chối (người mua còn khiếu nại được
+// trong `escalateDays` ngày) hoặc Admin (quyết định cuối, `escalateDays` bỏ qua). `reason` do shop/Admin nhập — có thể rỗng.
+export type RefundRequestEmailKind = 'CANCEL' | 'RETURN';
+export type RefundRequestRejectedBy = 'SELLER' | 'ADMIN';
+
+export interface RefundRequestRejectedEmailData extends OrderEmailBase {
+  order: OrderEmailOrder;
+  kind: RefundRequestEmailKind;
+  rejectedBy: RefundRequestRejectedBy;
+  reason: string | null;
+  escalateDays: number | null;
+}

@@ -28,6 +28,20 @@ export const FORBIDDEN_DEPENDENCIES: Record<string, string[]> = {
     'review',
     'admin',
   ],
+  // `notification` (Week10.md 7.6) là phía ĐỌC hộp thông báo: chỉ đọc bảng `notifications` của người đang đăng nhập nên
+  // không phụ thuộc module nghiệp vụ nào (phía GHI nằm ở shared/notification, được các module nghiệp vụ gọi).
+  notification: [
+    'auth',
+    'shop',
+    'product',
+    'cart',
+    'checkout',
+    'voucher',
+    'order',
+    'review',
+    'admin',
+    'chat',
+  ],
   voucher: ['cart', 'checkout', 'order'],
   product: ['cart', 'checkout', 'order', 'review'],
   order: ['checkout', 'cart', 'review'],
