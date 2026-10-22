@@ -234,6 +234,8 @@ export class OrderActionService {
       { type: 'BUYER', id: userId },
       'Received by buyer',
     );
+    // Email "đơn đã hoàn tất" SAU commit (không bao giờ ném). Người mua tự bấm nên không có thông báo trong ứng dụng.
+    await this.orderEmailService.notifyCompleted(orderId, { by: 'BUYER' });
   }
 
   // --- Hệ thống -------------------------------------------------------------------------------
@@ -261,8 +263,12 @@ export class OrderActionService {
       }
       throw error;
     }
-    // Báo người mua SAU commit, chỉ khi lần này thật sự hoàn tất đơn (người mua tự bấm "đã nhận" thì không cần báo).
-    // Đặt NGOÀI try/catch ở trên để một lỗi bất ngờ ở đây không bị nhầm với "thua race".
+    // Báo người mua SAU commit, chỉ khi lần này thật sự hoàn tất đơn: email (nêu rõ hệ thống đã tự hoàn tất sau `days` ngày)
+    // và thông báo trong ứng dụng. Đặt NGOÀI try/catch ở trên để một lỗi bất ngờ ở đây không bị nhầm với "thua race".
+    await this.orderEmailService.notifyCompleted(orderId, {
+      by: 'SYSTEM',
+      days,
+    });
     await this.notificationService.notify({
       kind: 'ORDER_AUTO_COMPLETED',
       orderId,

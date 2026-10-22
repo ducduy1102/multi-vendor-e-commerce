@@ -79,6 +79,7 @@ describe('RefundJob (DB thật)', () => {
     refundRequestService,
     refundService,
     notifications,
+    orderEmailService,
   );
 
   // Chỉ thấy yêu cầu / khoản hoàn của người dùng test (email bắt đầu bằng TAG). `where` gốc của job vẫn được
@@ -310,6 +311,82 @@ describe('RefundJob (DB thật)', () => {
         updatedAt: new Date(Date.now() - REFUND_PENDING_STALE_MS - 1000),
       },
     });
+
+  // --- Email "yêu cầu bị từ chối" (Week10.md 7.5) --------------------------------------------------
+
+  describe('email yêu cầu bị từ chối — đọc yêu cầu và đơn thật từ DB', () => {
+    const buyerEmailOf = async (userId: string) =>
+      (
+        await prisma.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { email: true },
+        })
+      ).email;
+
+    it('shop từ chối: người mua nhận email nhánh SELLER có lý do shop nhập, loại yêu cầu và số ngày còn khiếu nại; lý do HTML bị escape', async () => {
+      const order = await setupOrder({ method: 'VNPAY', status: 'CONFIRMED' });
+      const requestId = await seedRequest(order, {
+        respondBy: new Date(Date.now() + HOUR_MS),
+      });
+
+      await actionService.rejectForSeller(
+        order.shopId,
+        order.sellerUserId,
+        requestId,
+        'Hàng đã giao <script>alert(1)</script>',
+      );
+
+      const buyerEmail = await buyerEmailOf(order.userId);
+      const mails = fakeMail.sent.filter((m) => m.to === buyerEmail);
+      expect(mails).toHaveLength(1);
+      expect(mails[0].subject).toMatch(/Shop đã từ chối yêu cầu hủy đơn/);
+      expect(mails[0].html).toContain('Hàng đã giao &lt;script&gt;');
+      expect(mails[0].html).not.toContain('<script>');
+      expect(mails[0].html).toContain('khiếu nại lên sàn');
+      expect((await requestOf(requestId)).status).toBe('REJECTED_BY_SELLER');
+    });
+
+    it('Admin từ chối: email nhánh ADMIN, quyết định cuối cùng, không mời khiếu nại', async () => {
+      const order = await setupOrder({ method: 'VNPAY', status: 'COMPLETED' });
+      const requestId = await seedRequest(order, {
+        kind: 'RETURN',
+        status: 'ESCALATED',
+      });
+      const admin = await createUser(prisma, TAG);
+
+      await actionService.decideForAdmin(
+        admin.id,
+        requestId,
+        'REJECT',
+        'Không đủ điều kiện hoàn trả',
+      );
+
+      const buyerEmail = await buyerEmailOf(order.userId);
+      const mails = fakeMail.sent.filter((m) => m.to === buyerEmail);
+      expect(mails).toHaveLength(1);
+      expect(mails[0].subject).toMatch(/đã bị từ chối/);
+      expect(mails[0].html).toContain('Không đủ điều kiện hoàn trả');
+      expect(mails[0].html).toContain('quyết định cuối cùng');
+      expect(mails[0].html).not.toContain('khiếu nại lên sàn');
+    });
+
+    it('duyệt yêu cầu: KHÔNG gửi email "bị từ chối" (chỉ email hủy/hoàn tiền như cũ)', async () => {
+      const order = await setupOrder({ method: 'VNPAY', status: 'CONFIRMED' });
+      const requestId = await seedRequest(order, {
+        respondBy: new Date(Date.now() + HOUR_MS),
+      });
+
+      await actionService.approveForSeller(
+        order.shopId,
+        order.sellerUserId,
+        requestId,
+      );
+
+      expect(fakeMail.sent.filter((m) => /từ chối/.test(m.subject))).toEqual(
+        [],
+      );
+    });
+  });
 
   // --- Lượt 1: yêu cầu quá hạn phản hồi của seller -----------------------------------------------
 

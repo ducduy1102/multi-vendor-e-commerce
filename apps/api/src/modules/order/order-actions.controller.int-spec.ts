@@ -254,7 +254,7 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
 
     const subjects = () => fakeMail.sent.map((m) => m.subject);
 
-    it('xác nhận → đóng gói → giao → nhận hàng: email "đã xác nhận" và "đang giao" (kèm mã vận đơn), đóng gói/nhận hàng không gửi', async () => {
+    it('xác nhận → đóng gói → giao → nhận hàng: email "đã xác nhận", "đang giao" (kèm mã vận đơn) và "đã hoàn tất"; đóng gói không gửi', async () => {
       const { orderId } = await seedOne('PENDING');
 
       await sellerA.post(sellerUrl(shopA, orderId, 'confirm')).expect(200);
@@ -271,7 +271,10 @@ describe('Hành động đơn hàng (HTTP thật)', () => {
       expect(fakeMail.sent[1].html).toContain('GHN-MAIL-1');
 
       await buyer.post(buyerUrl(orderId, 'confirm-received')).expect(200);
-      expect(fakeMail.sent).toHaveLength(2); // nhận hàng: buyer tự bấm, không cần báo
+      // Nhận hàng: người mua tự bấm nên có email "đã hoàn tất" (Week10.md 7.5) nhưng không có thông báo trong ứng dụng.
+      expect(fakeMail.sent).toHaveLength(3);
+      expect(subjects()[2]).toMatch(/^Đơn hàng #[0-9A-F]{8} đã hoàn tất$/);
+      expect(fakeMail.sent[2].html).not.toContain('tự động hoàn tất');
       // Gửi tới đúng buyer.
       const buyerRow = await prisma.user.findUniqueOrThrow({
         where: { id: buyerId },

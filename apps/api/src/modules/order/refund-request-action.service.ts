@@ -20,6 +20,7 @@ import {
   readRefundSellerResponseHours,
   readRefundWindowDays,
 } from './refund-config';
+import { OrderEmailService } from './order-email.service';
 import { RefundRequestService } from './refund-request.service';
 import { RefundService } from './refund.service';
 import { sellerVisibleOrderFilter } from './seller-order-visibility';
@@ -67,6 +68,7 @@ export class RefundRequestActionService {
     private readonly refundRequestService: RefundRequestService,
     private readonly refundService: RefundService,
     private readonly notificationService: NotificationService,
+    private readonly orderEmailService: OrderEmailService,
   ) {}
 
   // Gửi yêu cầu cho đơn của mình. Loại yêu cầu suy từ trạng thái đơn; điều kiện (cửa sổ trả hàng, đã gửi rồi,
@@ -296,7 +298,12 @@ export class RefundRequestActionService {
         note,
       );
     });
-    // Báo người mua kèm lý do từ chối, SAU commit.
+    // Báo người mua kèm lý do từ chối (email + thông báo trong ứng dụng), SAU commit; không bao giờ ném.
+    await this.orderEmailService.notifyRefundRequestRejected(
+      requestId,
+      'SELLER',
+      note,
+    );
     await this.notificationService.notify({
       kind: 'REFUND_REQUEST_REJECTED',
       refundRequestId: requestId,
@@ -348,6 +355,11 @@ export class RefundRequestActionService {
           actor,
           note,
         ),
+      );
+      await this.orderEmailService.notifyRefundRequestRejected(
+        request.id,
+        'ADMIN',
+        note,
       );
       await this.notifyAdminDecision(request.id, 'REJECTED', note);
       return;

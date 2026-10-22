@@ -54,6 +54,7 @@ describe('OrderActionService', () => {
     notifyConfirmed: jest.Mock;
     notifyShipped: jest.Mock;
     notifyCancelled: jest.Mock;
+    notifyCompleted: jest.Mock;
   };
   let notifications: FakeNotificationService;
   // Ghi lại thứ tự gọi để kiểm thứ tự khoá (khoá nhóm TRƯỚC khi chuyển trạng thái).
@@ -93,6 +94,7 @@ describe('OrderActionService', () => {
       notifyConfirmed: jest.fn().mockResolvedValue(undefined),
       notifyShipped: jest.fn().mockResolvedValue(undefined),
       notifyCancelled: jest.fn().mockResolvedValue(undefined),
+      notifyCompleted: jest.fn().mockResolvedValue(undefined),
     };
     notifications = createFakeNotificationService();
     service = new OrderActionService(
@@ -191,6 +193,67 @@ describe('OrderActionService', () => {
       expect(orderEmailService.notifyConfirmed).not.toHaveBeenCalled();
       expect(orderEmailService.notifyShipped).not.toHaveBeenCalled();
       expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('email "đơn đã hoàn tất" (Week10.md 7.5) — sau commit, chỉ khi thật sự hoàn tất', () => {
+    it('người mua bấm đã nhận hàng — gửi email nhánh BUYER cho đúng đơn, SAU khi đã chuyển trạng thái', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'VNPAY'));
+      const order: string[] = [];
+      orderStatusService.transition.mockImplementation(() => {
+        order.push('transition');
+        return Promise.resolve(['o1']);
+      });
+      orderEmailService.notifyCompleted.mockImplementation(() => {
+        order.push('email');
+        return Promise.resolve();
+      });
+
+      await service.confirmReceived('buyer-1', 'o1');
+
+      expect(orderEmailService.notifyCompleted).toHaveBeenCalledWith('o1', {
+        by: 'BUYER',
+      });
+      expect(order).toEqual(['transition', 'email']);
+    });
+
+    it('hệ thống tự hoàn tất — gửi email nhánh SYSTEM kèm đúng số ngày chờ', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'VNPAY'));
+
+      await service.autoCompleteShipped('o1', 7);
+
+      expect(orderEmailService.notifyCompleted).toHaveBeenCalledWith('o1', {
+        by: 'SYSTEM',
+        days: 7,
+      });
+    });
+
+    it('đơn không hoàn tất được (sai trạng thái / thua race / không phải đơn của mình) — KHÔNG gửi email', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('CANCELLED', 'VNPAY'));
+      await expect(
+        service.confirmReceived('buyer-1', 'o1'),
+      ).rejects.toBeInstanceOf(AppException);
+      await expect(service.autoCompleteShipped('o1', 7)).resolves.toBe(false);
+
+      tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'VNPAY'));
+      orderStatusService.transition.mockResolvedValue([]);
+      await expect(service.autoCompleteShipped('o1', 7)).resolves.toBe(false);
+
+      tx.order.findFirst.mockResolvedValue(null);
+      await expect(
+        service.confirmReceived('buyer-1', 'o-khac'),
+      ).rejects.toBeInstanceOf(AppException);
+
+      expect(orderEmailService.notifyCompleted).not.toHaveBeenCalled();
+    });
+
+    it('xác nhận / giao / đóng gói / hủy — KHÔNG gửi email hoàn tất', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('PENDING'));
+      await service.confirm('shop-1', 'seller-1', 'o1');
+      tx.order.findFirst.mockResolvedValue(loaded('PACKED'));
+      await service.ship('shop-1', 'seller-1', 'o1', {});
+
+      expect(orderEmailService.notifyCompleted).not.toHaveBeenCalled();
     });
   });
 

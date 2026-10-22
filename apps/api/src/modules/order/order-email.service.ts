@@ -6,8 +6,10 @@ import { MailService } from '../../shared/mail/mail.service';
 import type {
   OrderCancelledBy,
   OrderEmailOrder,
+  RefundRequestRejectedBy,
 } from '../../shared/mail/templates/order-email.types';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { readRefundEscalateDays, readRefundWindowDays } from './refund-config';
 
 const emailOrderSelect = {
   id: true,
@@ -175,6 +177,72 @@ export class OrderEmailService {
         refundTo: method === 'COD' ? 'SHOP_CASH' : 'ORIGINAL_PAYMENT',
       });
     });
+  }
+
+  // Đơn đã hoàn tất (SHIPPING → COMPLETED, Week10.md 7.5): người mua tự bấm "đã nhận hàng" hoặc hệ thống tự hoàn tất sau
+  // `days` ngày không xác nhận. Nhắc cửa sổ trả hàng/hoàn tiền còn lại và, nếu còn sản phẩm chưa được đánh giá, mời đánh giá.
+  notifyCompleted(
+    orderId: string,
+    how: { by: 'BUYER' } | { by: 'SYSTEM'; days: number },
+  ): Promise<void> {
+    return this.safely('order-completed', orderId, async () => {
+      const [order] = await this.load({ id: orderId });
+      if (!order) return;
+      await this.mailService.sendOrderCompleted(order.user.email, {
+        locale: order.user.locale,
+        buyerName: order.user.name,
+        ordersUrl: this.ordersUrl(order.user.locale, orderId),
+        order: this.toEmailOrder(order),
+        completedBy: how.by,
+        autoCompleteDays: how.by === 'SYSTEM' ? how.days : 0,
+        returnWindowDays: readRefundWindowDays(),
+        invitesReview: await this.hasUnreviewedProduct(orderId),
+      });
+    });
+  }
+
+  // Yêu cầu hủy / trả hàng bị từ chối bởi shop hoặc Admin (Week10.md 7.5). `reason` do người quyết định nhập (có thể rỗng).
+  // Shop từ chối ⇒ người mua còn khiếu nại được lên sàn nên email nêu số ngày; Admin từ chối ⇒ quyết định cuối.
+  notifyRefundRequestRejected(
+    refundRequestId: string,
+    rejectedBy: RefundRequestRejectedBy,
+    reason: string | null | undefined,
+  ): Promise<void> {
+    return this.safely('refund-request-rejected', refundRequestId, async () => {
+      const request = await this.prisma.refundRequest.findUnique({
+        where: { id: refundRequestId },
+        select: { kind: true, order: { select: emailOrderSelect } },
+      });
+      if (!request) return;
+      const { order } = request;
+      await this.mailService.sendRefundRequestRejected(order.user.email, {
+        locale: order.user.locale,
+        buyerName: order.user.name,
+        ordersUrl: this.ordersUrl(order.user.locale, order.id),
+        order: this.toEmailOrder(order),
+        kind: request.kind,
+        rejectedBy,
+        reason: reason?.trim() || null,
+        escalateDays: rejectedBy === 'SELLER' ? readRefundEscalateDays() : null,
+      });
+    });
+  }
+
+  // Còn ít nhất một sản phẩm của đơn mà người mua chưa đánh giá? (Review nối với đơn qua orderId; OrderItem không có
+  // productId nên nối qua variant → sản phẩm.) Module order đọc thẳng bảng reviews bằng PrismaService — chỉ ĐỌC.
+  private async hasUnreviewedProduct(orderId: string): Promise<boolean> {
+    const [items, reviews] = await Promise.all([
+      this.prisma.orderItem.findMany({
+        where: { orderId },
+        select: { productVariant: { select: { productId: true } } },
+      }),
+      this.prisma.review.findMany({
+        where: { orderId },
+        select: { productId: true },
+      }),
+    ]);
+    const reviewed = new Set(reviews.map((review) => review.productId));
+    return items.some((item) => !reviewed.has(item.productVariant.productId));
   }
 
   private async safely(

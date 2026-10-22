@@ -14,6 +14,7 @@ import {
   type FakeNotificationService,
 } from '../../shared/testing/fake-notification-service';
 import { RefundRequestActionService } from './refund-request-action.service';
+import type { OrderEmailService } from './order-email.service';
 import type { RefundRequestService } from './refund-request.service';
 import type { RefundService } from './refund.service';
 
@@ -44,6 +45,7 @@ function orderRow(overrides: Record<string, unknown> = {}) {
 describe('RefundRequestActionService', () => {
   let service: RefundRequestActionService;
   let notifications: FakeNotificationService;
+  let orderEmailService: { notifyRefundRequestRejected: jest.Mock };
   let tx: {
     $queryRaw: jest.Mock;
     refundRequest: { create: jest.Mock; findFirst: jest.Mock };
@@ -84,11 +86,15 @@ describe('RefundRequestActionService', () => {
       recordCreated: jest.fn().mockResolvedValue(undefined),
     };
     notifications = createFakeNotificationService();
+    orderEmailService = {
+      notifyRefundRequestRejected: jest.fn().mockResolvedValue(undefined),
+    };
     service = new RefundRequestActionService(
       prisma as unknown as PrismaService,
       refundRequestService as unknown as RefundRequestService,
       refundService as unknown as RefundService,
       notifications,
+      orderEmailService as unknown as OrderEmailService,
     );
   });
 
@@ -1074,6 +1080,87 @@ describe('RefundRequestActionService', () => {
       });
     });
 
+    describe('email "yêu cầu bị từ chối" (Week10.md 7.5)', () => {
+      it('shop từ chối — gửi email nhánh SELLER kèm lý do shop nhập, SAU commit', async () => {
+        tx.refundRequest.findFirst.mockResolvedValue(sellerRequest());
+        const order: string[] = [];
+        prisma.$transaction.mockImplementation(
+          async (fn: (t: unknown) => unknown) => {
+            const result = await fn(tx);
+            order.push('commit');
+            return result;
+          },
+        );
+        orderEmailService.notifyRefundRequestRejected.mockImplementation(() => {
+          order.push('email');
+          return Promise.resolve();
+        });
+
+        await service.rejectForSeller(
+          'shop-1',
+          'seller-1',
+          'req-1',
+          'Hàng đã giao vận chuyển',
+        );
+
+        expect(
+          orderEmailService.notifyRefundRequestRejected,
+        ).toHaveBeenCalledWith('req-1', 'SELLER', 'Hàng đã giao vận chuyển');
+        expect(order).toEqual(['commit', 'email']);
+      });
+
+      it('Admin từ chối — gửi email nhánh ADMIN kèm lý do Admin nhập', async () => {
+        prisma.refundRequest.findUnique.mockResolvedValue(adminRequest());
+
+        await service.decideForAdmin(
+          'admin-1',
+          'req-1',
+          'REJECT',
+          'Không đủ điều kiện',
+        );
+
+        expect(
+          orderEmailService.notifyRefundRequestRejected,
+        ).toHaveBeenCalledWith('req-1', 'ADMIN', 'Không đủ điều kiện');
+      });
+
+      it('duyệt (seller, Admin, hệ thống quá hạn), rút, khiếu nại — KHÔNG gửi email từ chối', async () => {
+        prisma.refundRequest.findFirst.mockResolvedValue(sellerRequest());
+        await service.approveForSeller('shop-1', 'seller-1', 'req-1');
+        prisma.refundRequest.findUnique.mockResolvedValue(adminRequest());
+        await service.decideForAdmin('admin-1', 'req-1', 'APPROVE');
+        prisma.refundRequest.findUnique.mockResolvedValue({
+          ...sellerRequest(),
+          sellerRespondBy: new Date('2026-10-10T11:59:59.000Z'),
+        });
+        await service.resolveOverdueRequest(
+          'req-1',
+          new Date('2026-10-10T12:00:00.000Z'),
+        );
+
+        expect(
+          orderEmailService.notifyRefundRequestRejected,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('không từ chối được (không phải yêu cầu của shop / sai trạng thái) — KHÔNG gửi email', async () => {
+        tx.refundRequest.findFirst.mockResolvedValue(null);
+        await expect(
+          service.rejectForSeller('shop-1', 'seller-1', 'req-x', 'x'),
+        ).rejects.toBeDefined();
+        prisma.refundRequest.findUnique.mockResolvedValue(
+          adminRequest({ status: 'WITHDRAWN' }),
+        );
+        await expect(
+          service.decideForAdmin('admin-1', 'req-1', 'REJECT', 'x'),
+        ).rejects.toBeDefined();
+
+        expect(
+          orderEmailService.notifyRefundRequestRejected,
+        ).not.toHaveBeenCalled();
+      });
+    });
+
     describe('rejectForSeller → REFUND_REQUEST_REJECTED (báo người mua kèm lý do)', () => {
       it('từ chối thành công — báo kèm lý do shop nhập', async () => {
         tx.refundRequest.findFirst.mockResolvedValue(sellerRequest());
@@ -1238,6 +1325,7 @@ describe('RefundRequestActionService', () => {
           refundRequestService as unknown as RefundRequestService,
           refundService as unknown as RefundService,
           createBrokenNotificationService(),
+          orderEmailService as unknown as OrderEmailService,
         );
       });
 
