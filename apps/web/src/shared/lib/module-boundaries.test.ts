@@ -31,6 +31,10 @@ import { describe, expect, it } from 'vitest';
 //      `shared/` (Week10.md 5.4, 5.5; BE có luật `chat` tương ứng ở
 //      apps/api/src/module-boundaries.spec.ts). Đăng xuất dọn hộp chờ gửi
 //      (`resetChatOutbox`) cũng do nơi ghép làm, vì chat không thấy `auth`.
+//   7. `modules/notification` cũng là LÁ (Week10.md 8.5): không import module nghiệp vụ nào, không import `chat` và
+//      ngược lại, không module nào import `notification` (kể cả qua barrel) — chuông, huy hiệu và đồng bộ real-time ghép
+//      ở `shared/` (nạp động cho người đã đăng nhập, xem shared/components/lazy-notification.tsx), trang `/notifications`
+//      chỉ compose ở page.tsx. BE có luật `notification` tương ứng ở apps/api/src/module-boundaries.spec.ts.
 
 const SRC_ROOT = resolve(__dirname, '..', '..'); // apps/web/src
 
@@ -50,18 +54,19 @@ const BUSINESS_MODULES_OTHER_THAN_CHAT = [
 
 // module (khoá) KHÔNG được import module (giá trị) — kể cả qua barrel.
 export const FORBIDDEN_MODULE_IMPORTS: Record<string, string[]> = {
-  account: ['chat'],
-  admin: ['chat'],
-  auth: ['account', 'chat'],
-  cart: ['checkout', 'chat'],
-  chat: BUSINESS_MODULES_OTHER_THAN_CHAT,
-  checkout: ['account', 'chat'],
-  order: ['checkout', 'cart', 'chat'],
-  product: ['chat'],
-  review: ['product', 'order', 'cart', 'checkout', 'voucher', 'chat'],
-  shop: ['chat'],
-  voucher: ['chat'],
-  wishlist: ['chat'],
+  account: ['chat', 'notification'],
+  admin: ['chat', 'notification'],
+  auth: ['account', 'chat', 'notification'],
+  cart: ['checkout', 'chat', 'notification'],
+  chat: [...BUSINESS_MODULES_OTHER_THAN_CHAT, 'notification'],
+  checkout: ['account', 'chat', 'notification'],
+  notification: [...BUSINESS_MODULES_OTHER_THAN_CHAT, 'chat'],
+  order: ['checkout', 'cart', 'chat', 'notification'],
+  product: ['chat', 'notification'],
+  review: ['product', 'order', 'cart', 'checkout', 'voucher', 'chat', 'notification'],
+  shop: ['chat', 'notification'],
+  voucher: ['chat', 'notification'],
+  wishlist: ['chat', 'notification'],
 };
 
 const BARREL_ONLY_NAMES = new Set(['index', 'index.ts', 'index.tsx']);
@@ -320,6 +325,69 @@ describe('module boundaries (FE)', () => {
         file(
           'modules/chat/a.ts',
           "import { apiFetch } from '@/shared/lib/api-client';\nimport { useRealtimeEvent } from '@/shared/realtime/useRealtimeEvent';\nimport type { ChatMessage } from '@ecommerce/types';",
+        ),
+      ]);
+      expect(v).toEqual([]);
+    });
+
+    it('modules/notification là lá: cấm import mọi module nghiệp vụ và chat, kể cả qua barrel', () => {
+      const v = findViolations([
+        file('modules/notification/a.ts', "import { useAuthStore } from '@/modules/auth';"),
+        file('modules/notification/b.ts', "import { useMyShop } from '@/modules/shop';"),
+        file('modules/notification/c.ts', "import { useOrder } from '@/modules/order';"),
+        file('modules/notification/d.ts', "import { useChatUnreadCount } from '@/modules/chat';"),
+      ]);
+      expect(v).toHaveLength(4);
+      expect(v[0]).toContain("'notification' không được phụ thuộc module 'auth'");
+      expect(v[1]).toContain("'notification' không được phụ thuộc module 'shop'");
+      expect(v[2]).toContain("'notification' không được phụ thuộc module 'order'");
+      expect(v[3]).toContain("'notification' không được phụ thuộc module 'chat'");
+    });
+
+    it.each([...BUSINESS_MODULES_OTHER_THAN_CHAT, 'chat'])(
+      'cấm modules/%s import modules/notification, kể cả qua barrel',
+      (name) => {
+        const v = findViolations([
+          file(
+            `modules/${name}/a.ts`,
+            "import { NotificationBell } from '@/modules/notification';",
+          ),
+        ]);
+        expect(v).toHaveLength(1);
+        expect(v[0]).toContain(`'${name}' không được phụ thuộc module 'notification'`);
+      },
+    );
+
+    it('page.tsx và shared/ vẫn được import barrel modules/notification, cấm import sâu', () => {
+      const ok = findViolations([
+        file(
+          'app/[locale]/notifications/page.tsx',
+          "import { NotificationsContainer } from '@/modules/notification';",
+        ),
+        file(
+          'shared/components/NotificationBell.tsx',
+          "import { useUnreadNotificationCount } from '@/modules/notification';",
+        ),
+      ]);
+      expect(ok).toEqual([]);
+
+      const deep = findViolations([
+        file(
+          'shared/components/NotificationBell.tsx',
+          "import { useUnreadNotificationCount } from '@/modules/notification/hooks/useUnreadNotificationCount';",
+        ),
+      ]);
+      expect(deep).toHaveLength(1);
+      expect(deep[0]).toContain(
+        'import sâu vào modules/notification/hooks/useUnreadNotificationCount',
+      );
+    });
+
+    it('modules/notification vẫn được import shared/ và @ecommerce/types', () => {
+      const v = findViolations([
+        file(
+          'modules/notification/a.ts',
+          "import { apiFetch } from '@/shared/lib/api-client';\nimport { scheduleInvalidate } from '@/shared/lib/schedule-invalidate';\nimport type { Notification } from '@ecommerce/types';",
         ),
       ]);
       expect(v).toEqual([]);
