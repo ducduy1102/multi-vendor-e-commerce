@@ -112,6 +112,44 @@ describe('NotificationItem', () => {
       expect(screen.queryByText('Chưa đọc.')).not.toBeInTheDocument();
       expect(container.querySelector('span.bg-primary[aria-hidden="true"]')).toBeNull();
     });
+
+    // Tương phản (Week10.md 9.3): chữ phụ `text-muted-foreground` trên nền `bg-primary/5` của dòng chưa đọc chỉ đạt 4,42:1 ở
+    // chế độ sáng (< 4,5:1 WCAG AA). jsdom không tính được màu Tailwind nên chỉ khoá cặp lớp; việc đo thật làm bằng Playwright.
+    it('chữ phụ (nội dung, thời gian) của dòng CHƯA ĐỌC đậm hơn để đủ tương phản trên nền pha màu; dòng đã đọc giữ màu phụ', () => {
+      const unread = setup(makeNotification({ readAt: null }));
+      const unreadSecondary = [
+        screen.getByTitle(/^Bạn có đơn hàng mới/),
+        unread.container.querySelector('time') as HTMLElement,
+      ];
+      for (const el of unreadSecondary) {
+        expect(el).toHaveClass('text-foreground/75');
+        expect(el).not.toHaveClass('text-muted-foreground');
+      }
+      unread.unmount();
+
+      const read = setup(makeNotification({ readAt: at(5) }));
+      const readSecondary = [
+        screen.getByTitle(/^Bạn có đơn hàng mới/),
+        read.container.querySelector('time') as HTMLElement,
+      ];
+      for (const el of readSecondary) {
+        expect(el).toHaveClass('text-muted-foreground');
+        expect(el).not.toHaveClass('text-foreground/75');
+      }
+    });
+
+    it('hover/focus: chữ phụ luôn đậm lên (nền chuyển sang bg-muted) ở cả dòng chưa đọc lẫn đã đọc', () => {
+      for (const readAt of [null, at(5)]) {
+        const { container, unmount } = setup(makeNotification({ readAt }));
+        const time = container.querySelector('time') as HTMLElement;
+
+        expect(time).toHaveClass(
+          'group-hover:text-foreground/75',
+          'group-focus-visible:text-foreground/75',
+        );
+        unmount();
+      }
+    });
   });
 
   describe('bấm vào dòng', () => {
