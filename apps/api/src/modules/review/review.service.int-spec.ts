@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { createFakeNotificationService } from '../../shared/testing/fake-notification-service';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   cleanupByTag,
@@ -21,7 +22,11 @@ const TAG = 'it-review-svc-';
 describe('ReviewService / ProductRatingService (DB thật)', () => {
   const prisma = new PrismaClient();
   const rating = new ProductRatingService();
-  const reviews = new ReviewService(prisma as unknown as PrismaService, rating);
+  const reviews = new ReviewService(
+    prisma as unknown as PrismaService,
+    rating,
+    createFakeNotificationService(),
+  );
 
   beforeAll(async () => {
     await cleanupByTag(prisma, TAG);

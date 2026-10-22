@@ -7,6 +7,12 @@ import {
 } from '@ecommerce/types';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
+import {
+  createBrokenNotificationService,
+  createFakeNotificationService,
+  silenceNotificationLogs,
+  type FakeNotificationService,
+} from '../../shared/testing/fake-notification-service';
 import type { ProductRatingService } from '../product/product-rating.service';
 import { ReviewService } from './review.service';
 
@@ -53,6 +59,7 @@ function reviewRow(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ReviewService', () => {
+  let notifications: FakeNotificationService;
   let service: ReviewService;
   // Thứ tự gọi để kiểm "khoá product TRƯỚC khi chèn/sửa review, tính lại SAU".
   let calls: string[];
@@ -117,13 +124,16 @@ describe('ReviewService', () => {
           },
         ),
     };
+    notifications = createFakeNotificationService();
     service = new ReviewService(
       prisma as unknown as PrismaService,
       productRating as unknown as ProductRatingService,
+      notifications,
     );
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
     delete process.env.REVIEW_WINDOW_DAYS;
   });
 
@@ -680,6 +690,156 @@ describe('ReviewService', () => {
     });
   });
 
+  describe('thông báo trong ứng dụng (Week10.md 7.4)', () => {
+    const input = { orderId: 'o1', productId: 'p1', rating: 5 };
+
+    describe('create → REVIEW_CREATED (báo chủ shop)', () => {
+      it('tạo thành công — báo đúng id đánh giá vừa tạo, SAU commit', async () => {
+        const order: string[] = [];
+        prisma.$transaction.mockImplementation(
+          async (fn: (t: unknown) => unknown) => {
+            const result = await fn(tx);
+            order.push('commit');
+            return result;
+          },
+        );
+        jest.spyOn(notifications, 'notify').mockImplementation(() => {
+          order.push('notify');
+          return Promise.resolve();
+        });
+
+        const review = await service.create('user-1', input);
+
+        expect(notifications.notify).toHaveBeenCalledWith({
+          kind: 'REVIEW_CREATED',
+          reviewId: review.id,
+        });
+        expect(order).toEqual(['commit', 'notify']);
+      });
+
+      it('không được phép đánh giá (đơn của người khác / chưa hoàn tất) hoặc đã đánh giá rồi (Postgres từ chối bản trùng) — KHÔNG báo gì', async () => {
+        prisma.order.findFirst.mockResolvedValueOnce(null);
+        await expect(service.create('user-1', input)).rejects.toBeDefined();
+
+        prisma.$transaction.mockRejectedValueOnce(uniqueViolation());
+        await expect(service.create('user-1', input)).rejects.toBeDefined();
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    describe('reply → REVIEW_REPLIED (báo tác giả đánh giá)', () => {
+      beforeEach(() => {
+        prisma.review.findFirstOrThrow.mockResolvedValue(
+          reviewRow({
+            product: { id: 'p1', name: 'Áo thun', slug: 'ao-thun' },
+            sellerReply: 'Cảm ơn bạn',
+            sellerRepliedAt: new Date('2026-10-09T08:00:00.000Z'),
+          }),
+        );
+      });
+
+      it('LẦN ĐẦU shop trả lời — báo người mua, và chỉ ghi một câu UPDATE', async () => {
+        prisma.review.updateMany.mockResolvedValueOnce({ count: 1 });
+
+        await service.reply('shop-1', 'rv-1', 'Cảm ơn bạn');
+
+        expect(prisma.review.updateMany).toHaveBeenCalledTimes(1);
+        expect(notifications.events).toEqual([
+          { kind: 'REVIEW_REPLIED', reviewId: 'rv-1' },
+        ]);
+      });
+
+      it('SỬA lại lời trả lời đã có — vẫn ghi đè nhưng KHÔNG báo lần nữa (tránh làm phiền người mua vì lỗi chính tả)', async () => {
+        prisma.review.updateMany
+          .mockResolvedValueOnce({ count: 0 }) // đã có lời trả lời nên không khớp "chưa trả lời"
+          .mockResolvedValueOnce({ count: 1 });
+
+        await service.reply('shop-1', 'rv-1', 'Cảm ơn bạn nhiều');
+
+        expect(prisma.review.updateMany).toHaveBeenCalledTimes(2);
+        const [second] = prisma.review.updateMany.mock.calls[1] as [
+          { where: unknown },
+        ];
+        expect(second.where).toEqual({
+          id: 'rv-1',
+          product: { shopId: 'shop-1' },
+        });
+        expect(notifications.events).toEqual([]);
+      });
+
+      it('đánh giá không thuộc shop / không tồn tại — 404 và KHÔNG báo', async () => {
+        prisma.review.updateMany.mockResolvedValue({ count: 0 });
+
+        await expect(
+          service.reply('shop-1', 'rv-x', 'x'),
+        ).rejects.toBeDefined();
+
+        expect(notifications.events).toEqual([]);
+      });
+
+      it('báo SAU khi đã đọc lại đánh giá thành công, không trước', async () => {
+        prisma.review.updateMany.mockResolvedValueOnce({ count: 1 });
+        const order: string[] = [];
+        prisma.review.findFirstOrThrow.mockImplementation(() => {
+          order.push('reload');
+          return Promise.resolve(
+            reviewRow({
+              product: { id: 'p1', name: 'Áo thun', slug: 'ao-thun' },
+              sellerReply: 'Cảm ơn bạn',
+              sellerRepliedAt: new Date(),
+            }),
+          );
+        });
+        jest.spyOn(notifications, 'notify').mockImplementation(() => {
+          order.push('notify');
+          return Promise.resolve();
+        });
+
+        await service.reply('shop-1', 'rv-1', 'Cảm ơn bạn');
+
+        expect(order).toEqual(['reload', 'notify']);
+      });
+    });
+
+    describe('tầng thông báo hỏng KHÔNG làm hỏng thao tác chính', () => {
+      let broken: ReviewService;
+      let logs: ReturnType<typeof silenceNotificationLogs>;
+
+      beforeEach(() => {
+        logs = silenceNotificationLogs();
+        broken = new ReviewService(
+          prisma as unknown as PrismaService,
+          productRating as unknown as ProductRatingService,
+          createBrokenNotificationService(),
+        );
+      });
+
+      it('tạo đánh giá vẫn thành công và trả đánh giá', async () => {
+        const review = await broken.create('user-1', input);
+
+        expect(review.rating).toBeDefined();
+        expect(tx.review.create).toHaveBeenCalledTimes(1);
+        expect(logs.error).toHaveBeenCalledTimes(1);
+      });
+
+      it('trả lời đánh giá vẫn thành công', async () => {
+        prisma.review.updateMany.mockResolvedValueOnce({ count: 1 });
+        prisma.review.findFirstOrThrow.mockResolvedValue(
+          reviewRow({
+            product: { id: 'p1', name: 'Áo thun', slug: 'ao-thun' },
+            sellerReply: 'Cảm ơn bạn',
+            sellerRepliedAt: new Date(),
+          }),
+        );
+
+        await expect(
+          broken.reply('shop-1', 'rv-1', 'Cảm ơn bạn'),
+        ).resolves.toMatchObject({ sellerReply: 'Cảm ơn bạn' });
+      });
+    });
+  });
+
   // --- reply --------------------------------------------------------------------------------------
 
   describe('reply', () => {
@@ -705,6 +865,7 @@ describe('ReviewService', () => {
       expect(args.where).toEqual({
         id: 'rv-1',
         product: { shopId: 'shop-1' },
+        sellerRepliedAt: null, // thử đặt lời trả lời LẦN ĐẦU trước (để biết có cần báo người mua)
       });
       expect(args.data.sellerReply).toBe('Cảm ơn bạn');
       expect(args.data.sellerRepliedAt).toBeInstanceOf(Date);

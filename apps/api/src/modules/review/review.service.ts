@@ -11,6 +11,7 @@ import type {
   UpdateReviewInput,
 } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
+import { NotificationService } from '../../shared/notification/notification.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   getReviewBlockReason,
@@ -102,6 +103,7 @@ export class ReviewService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly productRating: ProductRatingService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // --- Người mua ------------------------------------------------------------------------------
@@ -145,8 +147,9 @@ export class ReviewService {
     });
     if (reason) throw reviewNotAllowed(reason);
 
+    let review: Review;
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      review = await this.prisma.$transaction(async (tx) => {
         const created = await this.productRating.updateRating(
           tx,
           input.productId,
@@ -170,6 +173,12 @@ export class ReviewService {
       if (isUniqueViolation(error)) throw reviewNotAllowed('ALREADY_REVIEWED');
       throw error;
     }
+    // Báo chủ shop có đánh giá mới, SAU commit (không bao giờ ném).
+    await this.notificationService.notify({
+      kind: 'REVIEW_CREATED',
+      reviewId: review.id,
+    });
+    return review;
   }
 
   // Sửa đánh giá của chính mình — ĐÚNG MỘT LẦN (không tự xoá). Đánh giá của người khác / không tồn tại cùng
@@ -306,16 +315,30 @@ export class ReviewService {
     reviewId: string,
     reply: string,
   ): Promise<SellerReview> {
-    const { count } = await this.prisma.review.updateMany({
-      where: { id: reviewId, product: { shopId } },
+    // Thử đặt lời trả lời LẦN ĐẦU trước (`sellerRepliedAt IS NULL`): chỉ lần đầu mới báo người mua — sửa lại lời trả lời
+    // (lỗi chính tả...) không gửi thêm thông báo. Không khớp thì ghi đè như trước; vẫn 0 dòng ⇒ không phải đánh giá của shop mình.
+    const first = await this.prisma.review.updateMany({
+      where: { id: reviewId, product: { shopId }, sellerRepliedAt: null },
       data: { sellerReply: reply, sellerRepliedAt: new Date() },
     });
-    if (count === 0) throw reviewNotFound();
+    if (first.count === 0) {
+      const { count } = await this.prisma.review.updateMany({
+        where: { id: reviewId, product: { shopId } },
+        data: { sellerReply: reply, sellerRepliedAt: new Date() },
+      });
+      if (count === 0) throw reviewNotFound();
+    }
 
     const updated = await this.prisma.review.findFirstOrThrow({
       where: { id: reviewId, product: { shopId } },
       select: sellerReviewSelect,
     });
+    if (first.count === 1) {
+      await this.notificationService.notify({
+        kind: 'REVIEW_REPLIED',
+        reviewId,
+      });
+    }
     return toSellerReview(updated);
   }
 }

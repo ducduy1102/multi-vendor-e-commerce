@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { NotificationModule } from '../../shared/notification/notification.module';
 import { ProductModule } from '../product/product.module';
 import { ReviewController } from './review.controller';
 import { ReviewService } from './review.service';
@@ -7,7 +8,7 @@ import { ReviewService } from './review.service';
 // Product.avgRating/reviewCount). Dữ liệu đơn hàng tự đọc bằng PrismaService, KHÔNG import `order`; chiều
 // ngược lại (`product`/`order` → `review`) bị cấm để đồ thị không có vòng (module-boundaries.spec.ts).
 @Module({
-  imports: [ProductModule],
+  imports: [NotificationModule, ProductModule],
   controllers: [ReviewController],
   providers: [ReviewService],
 })
