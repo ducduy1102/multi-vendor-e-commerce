@@ -10,6 +10,7 @@ export { useMarkNotificationRead } from './hooks/useMarkNotificationRead';
 export { useNotificationRealtimeSync } from './hooks/useNotificationRealtimeSync';
 export { useNotifications } from './hooks/useNotifications';
 export { useUnreadNotificationCount } from './hooks/useUnreadNotificationCount';
+export { describeNotification } from './notification-display';
 export * as notificationService from './services/notification.service';
 export type {
   KnownNotification,
