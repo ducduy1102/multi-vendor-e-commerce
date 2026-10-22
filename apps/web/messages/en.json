@@ -37,7 +37,8 @@
     "searchSubmitLabel": "Search",
     "cartLink": "Cart",
     "adminLink": "Admin",
-    "adminRefundsLink": "Refunds"
+    "adminRefundsLink": "Refunds",
+    "notificationsLink": "Notifications"
   },
   "home": {
     "bannerHeading": "Shop from many stores, check out fast",
@@ -1151,6 +1152,28 @@
     "titleAdminShopPending": "Shop awaiting review",
     "bodyAdminShopPending": "{shopName} is waiting for admin approval.",
     "titleUnknown": "New notification",
-    "bodyUnknown": "You have a new notification."
+    "bodyUnknown": "You have a new notification.",
+    "pageTitle": "Notifications",
+    "tabsLabel": "Filter notifications",
+    "tabAll": "All",
+    "tabUnread": "Unread",
+    "listLabel": "Notification list",
+    "markAllRead": "Mark all as read",
+    "markAllReadPending": "Marking...",
+    "markAllReadError": "Could not mark as read. Please try again.",
+    "unreadSummary": "{count, plural, =0 {No unread notifications} one {# unread notification} other {# unread notifications}}",
+    "unreadSr": "Unread.",
+    "listLoadingSrOnly": "Loading notifications...",
+    "loadError": "Could not load notifications. Please try again.",
+    "retry": "Try again",
+    "emptyAllTitle": "No notifications yet",
+    "emptyAllHint": "Updates about orders, reviews, cancellation or return requests and your shop will show up here.",
+    "emptyUnreadTitle": "You are all caught up",
+    "emptyUnreadHint": "New notifications will show up here as soon as they arrive.",
+    "loadMore": "Load more",
+    "loadingMore": "Loading...",
+    "loadMoreError": "Could not load more. Please try again.",
+    "timeJustNow": "Just now",
+    "toastView": "View"
   }
 }

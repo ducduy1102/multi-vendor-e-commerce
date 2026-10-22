@@ -37,7 +37,8 @@
     "searchSubmitLabel": "Tìm kiếm",
     "cartLink": "Giỏ hàng",
     "adminLink": "Quản trị",
-    "adminRefundsLink": "Hoàn tiền"
+    "adminRefundsLink": "Hoàn tiền",
+    "notificationsLink": "Thông báo"
   },
   "home": {
     "bannerHeading": "Chốt đơn nhanh, mua sắm từ nhiều shop",
@@ -1151,6 +1152,28 @@
     "titleAdminShopPending": "Shop chờ duyệt",
     "bodyAdminShopPending": "{shopName} đang chờ Admin duyệt.",
     "titleUnknown": "Thông báo mới",
-    "bodyUnknown": "Bạn có một thông báo mới."
+    "bodyUnknown": "Bạn có một thông báo mới.",
+    "pageTitle": "Thông báo",
+    "tabsLabel": "Lọc thông báo",
+    "tabAll": "Tất cả",
+    "tabUnread": "Chưa đọc",
+    "listLabel": "Danh sách thông báo",
+    "markAllRead": "Đánh dấu tất cả đã đọc",
+    "markAllReadPending": "Đang đánh dấu...",
+    "markAllReadError": "Không thể đánh dấu đã đọc. Vui lòng thử lại.",
+    "unreadSummary": "{count, plural, =0 {Không có thông báo chưa đọc} other {# thông báo chưa đọc}}",
+    "unreadSr": "Chưa đọc.",
+    "listLoadingSrOnly": "Đang tải thông báo...",
+    "loadError": "Không tải được thông báo. Vui lòng thử lại.",
+    "retry": "Thử lại",
+    "emptyAllTitle": "Chưa có thông báo nào",
+    "emptyAllHint": "Thông báo về đơn hàng, đánh giá, yêu cầu hủy/trả hàng và shop sẽ hiện ở đây.",
+    "emptyUnreadTitle": "Bạn đã đọc hết thông báo",
+    "emptyUnreadHint": "Thông báo mới sẽ hiện ở đây ngay khi có.",
+    "loadMore": "Tải thêm",
+    "loadingMore": "Đang tải...",
+    "loadMoreError": "Không tải thêm được. Vui lòng thử lại.",
+    "timeJustNow": "Vừa xong",
+    "toastView": "Xem"
   }
 }
