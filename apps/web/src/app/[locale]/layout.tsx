@@ -10,6 +10,7 @@ import { CartHydrator } from '@/modules/cart';
 import { BottomTabBar, MobileTabBarSpacer } from '@/shared/components/BottomTabBar';
 import { Header } from '@/shared/components/Header';
 import { LazyChatRealtimeSync } from '@/shared/components/lazy-chat';
+import { LazyNotificationRealtimeSync } from '@/shared/components/lazy-notification';
 import { QueryProvider } from '@/shared/components/QueryProvider';
 import { SessionCacheReset } from '@/shared/components/SessionCacheReset';
 import { ThemeProvider } from '@/shared/components/ThemeProvider';
@@ -98,6 +99,7 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
               <SessionCacheReset />
               <RealtimeProvider>
                 <LazyChatRealtimeSync />
+                <LazyNotificationRealtimeSync />
                 <Header />
                 <EmailVerificationBanner />
                 <MobileTabBarSpacer>{children}</MobileTabBarSpacer>

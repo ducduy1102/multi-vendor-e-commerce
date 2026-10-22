@@ -38,7 +38,8 @@
     "cartLink": "Cart",
     "adminLink": "Admin",
     "adminRefundsLink": "Refunds",
-    "notificationsLink": "Notifications"
+    "notificationsLink": "Notifications",
+    "myNotificationsLink": "Notifications"
   },
   "home": {
     "bannerHeading": "Shop from many stores, check out fast",

@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Bell,
   ChevronDown,
   MessageCircle,
   MessagesSquare,
@@ -21,6 +22,10 @@ import { CartCountBadge, useCartCount } from '@/modules/cart';
 import { ChotMark } from '@/shared/components/ChotMark';
 import { Container } from '@/shared/components/Container';
 import { LazyChatUnreadBadge, LazyHeaderChatLink } from '@/shared/components/lazy-chat';
+import {
+  LazyNotificationBell,
+  LazyNotificationUnreadBadge,
+} from '@/shared/components/lazy-notification';
 import { Button } from '@/shared/components/ui/button';
 import { useSellerChannelLink } from '@/shared/hooks/useSellerChannelLink';
 import { HIDDEN_CHROME_PATHS } from '@/shared/lib/hidden-chrome-paths';
@@ -226,6 +231,12 @@ export function Header() {
           {t('myChatLink')}
           <LazyChatUnreadBadge scope="buyer" className="static ml-auto" />
         </DropdownMenuItem>
+        {/* "Thông báo" (Week10.md 8.4, D8): trang /notifications kèm huy hiệu chưa đọc, ngay sau "Tin nhắn". */}
+        <DropdownMenuItem render={<Link href="/notifications" />}>
+          <Bell />
+          {t('myNotificationsLink')}
+          <LazyNotificationUnreadBadge className="static ml-auto" />
+        </DropdownMenuItem>
         {shopLink && (
           <DropdownMenuItem render={<Link href={shopLink.href} />}>
             <shopLink.icon />
@@ -287,6 +298,8 @@ export function Header() {
             rớt xuống hàng 2. Desktop có bản riêng cạnh giỏ hàng bên dưới — mỗi breakpoint chỉ MỘT bản hiện (bản kia
             display:none nên cũng không có trong cây trợ năng). */}
         <LazyHeaderChatLink className="ml-auto flex sm:hidden" />
+        {/* Chuông thông báo (D8) ngay cạnh icon tin nhắn, cùng cặp ẩn/hiện `sm:`. */}
+        <LazyNotificationBell className="flex sm:hidden" />
 
         <HeaderSearchForm />
 
@@ -312,6 +325,7 @@ export function Header() {
         </div>
 
         <LazyHeaderChatLink className="hidden sm:flex" />
+        <LazyNotificationBell className="hidden sm:flex" />
 
         <div className="hidden items-center gap-3 sm:flex">
           <ThemeToggle />
