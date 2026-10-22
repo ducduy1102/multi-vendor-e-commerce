@@ -7,6 +7,7 @@ import { MockPaymentProvider } from '../../shared/payment/mock-payment.provider'
 import type { VerifiedCallback } from '../../shared/payment/payment-gateway.interface';
 import { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
 import { VnpayProvider } from '../../shared/payment/vnpay.provider';
+import { createFakeNotificationService } from '../../shared/testing/fake-notification-service';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   cleanupByTag,
@@ -65,6 +66,7 @@ describe('RefundService (DB thật)', () => {
     prisma as unknown as PrismaService,
     fakeMail.mailService,
   );
+  const notifications = createFakeNotificationService();
   const service = new RefundService(
     prisma as unknown as PrismaService,
     orderStatusService,
@@ -73,6 +75,7 @@ describe('RefundService (DB thật)', () => {
     paymentGateway,
     new RefundRequestService(),
     orderEmailService,
+    notifications,
   );
   const paymentService = new PaymentService(
     prisma as unknown as PrismaService,
@@ -81,6 +84,7 @@ describe('RefundService (DB thật)', () => {
     paymentGateway,
     orderStatusService,
     orderEmailService,
+    notifications,
   );
   const actionService = new OrderActionService(
     prisma as unknown as PrismaService,
@@ -88,6 +92,7 @@ describe('RefundService (DB thật)', () => {
     paymentService,
     orderEmailService,
     service,
+    notifications,
   );
 
   const originalEnv = {

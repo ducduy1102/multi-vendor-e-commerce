@@ -13,6 +13,7 @@ import type {
 } from '../../shared/payment/payment-gateway.interface';
 import { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
 import { VnpayProvider } from '../../shared/payment/vnpay.provider';
+import { createFakeNotificationService } from '../../shared/testing/fake-notification-service';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   cleanupByTag,
@@ -62,6 +63,7 @@ describe('RefundJob (DB thật)', () => {
     fakeMail.mailService,
   );
   const refundRequestService = new RefundRequestService();
+  const notifications = createFakeNotificationService();
   const refundService = new RefundService(
     prisma as unknown as PrismaService,
     orderStatusService,
@@ -70,11 +72,13 @@ describe('RefundJob (DB thật)', () => {
     paymentGateway,
     refundRequestService,
     orderEmailService,
+    notifications,
   );
   const actionService = new RefundRequestActionService(
     prisma as unknown as PrismaService,
     refundRequestService,
     refundService,
+    notifications,
   );
 
   // Chỉ thấy yêu cầu / khoản hoàn của người dùng test (email bắt đầu bằng TAG). `where` gốc của job vẫn được

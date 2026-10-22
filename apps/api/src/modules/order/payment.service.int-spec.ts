@@ -6,6 +6,7 @@ import {
   createUser,
   createVariant,
 } from '../../shared/testing/db-fixtures';
+import { createFakeNotificationService } from '../../shared/testing/fake-notification-service';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import { MockPaymentProvider } from '../../shared/payment/mock-payment.provider';
 import { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
@@ -47,6 +48,7 @@ describe('PaymentService (DB thật)', () => {
       prisma as unknown as PrismaService,
       createFakeMail().mailService,
     ),
+    createFakeNotificationService(),
   );
 
   beforeAll(() => cleanupByTag(prisma, TAG));

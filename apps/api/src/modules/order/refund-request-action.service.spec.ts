@@ -7,6 +7,12 @@ import {
 import { AppException } from '../../shared/exceptions/app.exception';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
+import {
+  createBrokenNotificationService,
+  createFakeNotificationService,
+  silenceNotificationLogs,
+  type FakeNotificationService,
+} from '../../shared/testing/fake-notification-service';
 import { RefundRequestActionService } from './refund-request-action.service';
 import type { RefundRequestService } from './refund-request.service';
 import type { RefundService } from './refund.service';
@@ -37,6 +43,7 @@ function orderRow(overrides: Record<string, unknown> = {}) {
 
 describe('RefundRequestActionService', () => {
   let service: RefundRequestActionService;
+  let notifications: FakeNotificationService;
   let tx: {
     $queryRaw: jest.Mock;
     refundRequest: { create: jest.Mock; findFirst: jest.Mock };
@@ -76,14 +83,17 @@ describe('RefundRequestActionService', () => {
       transition: jest.fn().mockResolvedValue(undefined),
       recordCreated: jest.fn().mockResolvedValue(undefined),
     };
+    notifications = createFakeNotificationService();
     service = new RefundRequestActionService(
       prisma as unknown as PrismaService,
       refundRequestService as unknown as RefundRequestService,
       refundService as unknown as RefundService,
+      notifications,
     );
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
     delete process.env.REFUND_SELLER_RESPONSE_HOURS;
     delete process.env.REFUND_WINDOW_DAYS;
     delete process.env.REFUND_ESCALATE_DAYS;
@@ -895,6 +905,373 @@ describe('RefundRequestActionService', () => {
   });
 
   // --- Hệ thống: RefundJob (Week9.md 2.8) -----------------------------------------------------------
+  describe('thông báo trong ứng dụng (Week10.md 7.4) — sau commit, chỉ khi hành động thành công', () => {
+    const sellerRequest = (overrides: Record<string, unknown> = {}) => ({
+      id: 'req-1',
+      kind: 'CANCEL',
+      status: 'PENDING_SELLER',
+      orderId: 'o1',
+      ...overrides,
+    });
+    const adminRequest = (overrides: Record<string, unknown> = {}) =>
+      sellerRequest({ status: 'ESCALATED', ...overrides });
+
+    describe('createForBuyer → REFUND_REQUEST_CREATED (báo chủ shop)', () => {
+      it('gửi thành công — báo đúng id yêu cầu vừa tạo, SAU commit', async () => {
+        const order: string[] = [];
+        prisma.$transaction.mockImplementation(
+          async (fn: (t: unknown) => unknown) => {
+            const result = await fn(tx);
+            order.push('commit');
+            return result;
+          },
+        );
+        jest.spyOn(notifications, 'notify').mockImplementation(() => {
+          order.push('notify');
+          return Promise.resolve();
+        });
+
+        await service.createForBuyer('buyer-1', 'o1', input());
+
+        expect(notifications.notify).toHaveBeenCalledWith({
+          kind: 'REFUND_REQUEST_CREATED',
+          refundRequestId: 'req-1',
+        });
+        expect(order).toEqual(['commit', 'notify']);
+      });
+
+      it.each([
+        [
+          'đơn không phải của mình',
+          () => prisma.order.findFirst.mockResolvedValue(null),
+        ],
+        [
+          'trạng thái đơn không cho phép',
+          () =>
+            prisma.order.findFirst.mockResolvedValue(
+              orderRow({ status: 'PENDING' }),
+            ),
+        ],
+        [
+          'đã gửi yêu cầu rồi (Postgres từ chối bản trùng)',
+          () =>
+            prisma.$transaction.mockRejectedValue(
+              new Prisma.PrismaClientKnownRequestError('dup', {
+                code: 'P2002',
+                clientVersion: 'test',
+              }),
+            ),
+        ],
+      ])('%s — KHÔNG báo gì', async (_name, arrange) => {
+        arrange();
+
+        await expect(
+          service.createForBuyer('buyer-1', 'o1', input()),
+        ).rejects.toBeDefined();
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    describe('escalateForBuyer → REFUND_REQUEST_ESCALATED (báo Admin và chủ shop)', () => {
+      it('khiếu nại thành công — báo đúng id yêu cầu', async () => {
+        tx.refundRequest.findFirst.mockResolvedValue({
+          orderId: 'o1',
+          status: 'REJECTED_BY_SELLER',
+          statusChangedAt: new Date(Date.now() - DAY_MS),
+        });
+
+        await service.escalateForBuyer('buyer-1', 'req-1');
+
+        expect(notifications.events).toEqual([
+          { kind: 'REFUND_REQUEST_ESCALATED', refundRequestId: 'req-1' },
+        ]);
+      });
+
+      it('quá hạn khiếu nại hoặc không phải yêu cầu của mình — KHÔNG báo gì', async () => {
+        tx.refundRequest.findFirst.mockResolvedValue({
+          orderId: 'o1',
+          status: 'REJECTED_BY_SELLER',
+          statusChangedAt: new Date(Date.now() - 10 * DAY_MS),
+        });
+        await expect(
+          service.escalateForBuyer('buyer-1', 'req-1'),
+        ).rejects.toBeDefined();
+        tx.refundRequest.findFirst.mockResolvedValue(null);
+        await expect(
+          service.escalateForBuyer('buyer-1', 'req-x'),
+        ).rejects.toBeDefined();
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    it('withdrawForBuyer — người mua tự rút nên KHÔNG báo ai', async () => {
+      tx.refundRequest.findFirst.mockResolvedValue({
+        orderId: 'o1',
+        status: 'PENDING_SELLER',
+        statusChangedAt: new Date(),
+      });
+
+      await service.withdrawForBuyer('buyer-1', 'req-1');
+
+      expect(notifications.events).toEqual([]);
+    });
+
+    describe('approveForSeller → REFUND_REQUEST_APPROVED (báo người mua)', () => {
+      it.each(['CANCEL', 'RETURN'] as const)(
+        'duyệt yêu cầu %s — báo SAU khi đã hủy/hoàn đơn',
+        async (kind) => {
+          prisma.refundRequest.findFirst.mockResolvedValue(
+            sellerRequest({ kind, status: 'PENDING_SELLER' }),
+          );
+          const order: string[] = [];
+          refundService.cancelOrderWithRefund.mockImplementation(() => {
+            order.push('refund');
+            return Promise.resolve({ refund: null });
+          });
+          refundService.refundReturnedOrder.mockImplementation(() => {
+            order.push('refund');
+            return Promise.resolve({ refund: null });
+          });
+          jest.spyOn(notifications, 'notify').mockImplementation(() => {
+            order.push('notify');
+            return Promise.resolve();
+          });
+
+          await service.approveForSeller('shop-1', 'seller-1', 'req-1');
+
+          expect(notifications.notify).toHaveBeenCalledWith({
+            kind: 'REFUND_REQUEST_APPROVED',
+            refundRequestId: 'req-1',
+          });
+          expect(order).toEqual(['refund', 'notify']);
+        },
+      );
+
+      it('không duyệt được (404 / sai trạng thái / thua race ở bước hủy đơn) — KHÔNG báo gì', async () => {
+        prisma.refundRequest.findFirst.mockResolvedValue(null);
+        await expect(
+          service.approveForSeller('shop-1', 'seller-1', 'req-x'),
+        ).rejects.toBeDefined();
+
+        prisma.refundRequest.findFirst.mockResolvedValue(
+          sellerRequest({ status: 'APPROVED' }),
+        );
+        await expect(
+          service.approveForSeller('shop-1', 'seller-1', 'req-1'),
+        ).rejects.toBeDefined();
+
+        prisma.refundRequest.findFirst.mockResolvedValue(sellerRequest());
+        refundService.cancelOrderWithRefund.mockRejectedValue(
+          new AppException(409, 'ORDER_ALREADY_CHANGED', 'race'),
+        );
+        await expect(
+          service.approveForSeller('shop-1', 'seller-1', 'req-1'),
+        ).rejects.toBeDefined();
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    describe('rejectForSeller → REFUND_REQUEST_REJECTED (báo người mua kèm lý do)', () => {
+      it('từ chối thành công — báo kèm lý do shop nhập', async () => {
+        tx.refundRequest.findFirst.mockResolvedValue(sellerRequest());
+
+        await service.rejectForSeller(
+          'shop-1',
+          'seller-1',
+          'req-1',
+          'Hàng đã giao vận chuyển',
+        );
+
+        expect(notifications.events).toEqual([
+          {
+            kind: 'REFUND_REQUEST_REJECTED',
+            refundRequestId: 'req-1',
+            reason: 'Hàng đã giao vận chuyển',
+          },
+        ]);
+      });
+
+      it('yêu cầu không thuộc shop / không tồn tại — KHÔNG báo gì', async () => {
+        tx.refundRequest.findFirst.mockResolvedValue(null);
+
+        await expect(
+          service.rejectForSeller('shop-1', 'seller-1', 'req-x', 'x'),
+        ).rejects.toBeDefined();
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    describe('decideForAdmin — báo người mua kết quả VÀ báo chủ shop Admin đã quyết định', () => {
+      it.each(['CANCEL', 'RETURN'] as const)(
+        'DUYỆT yêu cầu %s — người mua nhận APPROVED, chủ shop nhận DECIDED_BY_ADMIN(APPROVED)',
+        async (kind) => {
+          prisma.refundRequest.findUnique.mockResolvedValue(
+            adminRequest({ kind }),
+          );
+
+          await service.decideForAdmin('admin-1', 'req-1', 'APPROVE', 'Đồng ý');
+
+          expect(notifications.events).toEqual([
+            { kind: 'REFUND_REQUEST_APPROVED', refundRequestId: 'req-1' },
+            {
+              kind: 'REFUND_REQUEST_DECIDED_BY_ADMIN',
+              refundRequestId: 'req-1',
+              outcome: 'APPROVED',
+            },
+          ]);
+        },
+      );
+
+      it('TỪ CHỐI — người mua nhận REJECTED kèm lý do Admin, chủ shop nhận DECIDED_BY_ADMIN(REJECTED)', async () => {
+        prisma.refundRequest.findUnique.mockResolvedValue(adminRequest());
+
+        await service.decideForAdmin(
+          'admin-1',
+          'req-1',
+          'REJECT',
+          'Không đủ điều kiện',
+        );
+
+        expect(notifications.events).toEqual([
+          {
+            kind: 'REFUND_REQUEST_REJECTED',
+            refundRequestId: 'req-1',
+            reason: 'Không đủ điều kiện',
+          },
+          {
+            kind: 'REFUND_REQUEST_DECIDED_BY_ADMIN',
+            refundRequestId: 'req-1',
+            outcome: 'REJECTED',
+          },
+        ]);
+      });
+
+      it('yêu cầu không tồn tại hoặc không còn quyết định được (đã rút / đã xử lý) — KHÔNG báo gì', async () => {
+        prisma.refundRequest.findUnique.mockResolvedValue(null);
+        await expect(
+          service.decideForAdmin('admin-1', 'req-x', 'APPROVE'),
+        ).rejects.toBeDefined();
+        prisma.refundRequest.findUnique.mockResolvedValue(
+          adminRequest({ status: 'WITHDRAWN' }),
+        );
+        await expect(
+          service.decideForAdmin('admin-1', 'req-1', 'REJECT', 'x'),
+        ).rejects.toBeDefined();
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    describe('resolveOverdueRequest (hệ thống xử lý yêu cầu quá hạn)', () => {
+      const NOW = new Date('2026-10-10T12:00:00.000Z');
+      const overdue = (overrides: Record<string, unknown> = {}) => ({
+        ...sellerRequest(),
+        sellerRespondBy: new Date('2026-10-10T11:59:59.000Z'),
+        ...overrides,
+      });
+
+      it('yêu cầu HỦY quá hạn, tự duyệt — báo người mua REFUND_REQUEST_APPROVED', async () => {
+        prisma.refundRequest.findUnique.mockResolvedValue(overdue());
+
+        await service.resolveOverdueRequest('req-1', NOW);
+
+        expect(notifications.events).toEqual([
+          { kind: 'REFUND_REQUEST_APPROVED', refundRequestId: 'req-1' },
+        ]);
+      });
+
+      it('yêu cầu TRẢ HÀNG quá hạn, chuyển Admin — báo REFUND_REQUEST_ESCALATED (Admin và chủ shop)', async () => {
+        prisma.refundRequest.findUnique.mockResolvedValue(
+          overdue({ kind: 'RETURN' }),
+        );
+
+        await service.resolveOverdueRequest('req-1', NOW);
+
+        expect(notifications.events).toEqual([
+          { kind: 'REFUND_REQUEST_ESCALATED', refundRequestId: 'req-1' },
+        ]);
+      });
+
+      it.each([
+        [
+          'chưa quá hạn',
+          () =>
+            overdue({ sellerRespondBy: new Date('2026-10-10T12:00:01.000Z') }),
+        ],
+        ['không còn chờ seller', () => overdue({ status: 'APPROVED' })],
+      ])('%s — không làm gì và KHÔNG báo', async (_name, row) => {
+        prisma.refundRequest.findUnique.mockResolvedValue(row());
+
+        await expect(
+          service.resolveOverdueRequest('req-1', NOW),
+        ).resolves.toBeNull();
+
+        expect(notifications.events).toEqual([]);
+      });
+
+      it('thua race với seller/người mua/Admin — trả null và KHÔNG báo', async () => {
+        prisma.refundRequest.findUnique.mockResolvedValue(overdue());
+        refundService.cancelOrderWithRefund.mockRejectedValue(
+          new AppException(409, 'ORDER_ALREADY_CHANGED', 'race'),
+        );
+
+        await expect(
+          service.resolveOverdueRequest('req-1', NOW),
+        ).resolves.toBeNull();
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    describe('tầng thông báo hỏng KHÔNG làm hỏng thao tác chính', () => {
+      let broken: RefundRequestActionService;
+      let logs: ReturnType<typeof silenceNotificationLogs>;
+
+      beforeEach(() => {
+        logs = silenceNotificationLogs();
+        broken = new RefundRequestActionService(
+          prisma as unknown as PrismaService,
+          refundRequestService as unknown as RefundRequestService,
+          refundService as unknown as RefundService,
+          createBrokenNotificationService(),
+        );
+      });
+
+      it('gửi yêu cầu vẫn thành công', async () => {
+        await expect(
+          broken.createForBuyer('buyer-1', 'o1', input()),
+        ).resolves.toBeUndefined();
+
+        expect(tx.refundRequest.create).toHaveBeenCalled();
+        expect(logs.error).toHaveBeenCalledTimes(1);
+      });
+
+      it('duyệt yêu cầu vẫn thành công, đơn vẫn bị hủy', async () => {
+        prisma.refundRequest.findFirst.mockResolvedValue(sellerRequest());
+
+        await expect(
+          broken.approveForSeller('shop-1', 'seller-1', 'req-1'),
+        ).resolves.toBeUndefined();
+
+        expect(refundService.cancelOrderWithRefund).toHaveBeenCalledTimes(1);
+      });
+
+      it('Admin quyết định vẫn thành công (cả hai thông báo hỏng, thao tác chính không ảnh hưởng)', async () => {
+        prisma.refundRequest.findUnique.mockResolvedValue(adminRequest());
+
+        await expect(
+          broken.decideForAdmin('admin-1', 'req-1', 'REJECT', 'x'),
+        ).resolves.toBeUndefined();
+
+        expect(logs.error).toHaveBeenCalledTimes(2);
+      });
+    });
+  });
+
   describe('resolveOverdueRequest', () => {
     const SYSTEM = { type: 'SYSTEM' };
     const NOW = new Date('2026-10-10T12:00:00.000Z');

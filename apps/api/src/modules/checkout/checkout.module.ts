@@ -3,6 +3,7 @@ import { CartModule } from '../cart/cart.module';
 import { OrderModule } from '../order/order.module';
 import { ProductModule } from '../product/product.module';
 import { VoucherModule } from '../voucher/voucher.module';
+import { NotificationModule } from '../../shared/notification/notification.module';
 import { PaymentModule } from '../../shared/payment/payment.module';
 import { AddressController } from './address.controller';
 import { AddressService } from './address.service';
@@ -17,6 +18,7 @@ import { CheckoutService } from './checkout.service';
     ProductModule,
     OrderModule,
     PaymentModule,
+    NotificationModule,
   ],
   controllers: [CheckoutController, AddressController],
   providers: [CheckoutService, AddressService],

@@ -3,6 +3,12 @@ import type { OrderStatus, PaymentMethod } from '@prisma/client';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
+import {
+  createBrokenNotificationService,
+  createFakeNotificationService,
+  silenceNotificationLogs,
+  type FakeNotificationService,
+} from '../../shared/testing/fake-notification-service';
 import { OrderActionService } from './order-action.service';
 import type { OrderEmailService } from './order-email.service';
 import type { OrderStatusService } from './order-status.service';
@@ -49,6 +55,7 @@ describe('OrderActionService', () => {
     notifyShipped: jest.Mock;
     notifyCancelled: jest.Mock;
   };
+  let notifications: FakeNotificationService;
   // Ghi lại thứ tự gọi để kiểm thứ tự khoá (khoá nhóm TRƯỚC khi chuyển trạng thái).
   let calls: string[];
 
@@ -87,13 +94,19 @@ describe('OrderActionService', () => {
       notifyShipped: jest.fn().mockResolvedValue(undefined),
       notifyCancelled: jest.fn().mockResolvedValue(undefined),
     };
+    notifications = createFakeNotificationService();
     service = new OrderActionService(
       prisma as unknown as PrismaService,
       orderStatusService as unknown as OrderStatusService,
       paymentService as unknown as PaymentService,
       orderEmailService as unknown as OrderEmailService,
       refundService as unknown as RefundService,
+      notifications,
     );
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   const SELLER = { type: 'SELLER', id: 'seller-1' };
@@ -178,6 +191,155 @@ describe('OrderActionService', () => {
       expect(orderEmailService.notifyConfirmed).not.toHaveBeenCalled();
       expect(orderEmailService.notifyShipped).not.toHaveBeenCalled();
       expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('thông báo trong ứng dụng (Week10.md 7.4) — sau commit, chỉ khi hành động thành công', () => {
+    it('confirm thành công — báo đúng sự kiện ORDER_CONFIRMED của đơn', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('PENDING'));
+
+      await service.confirm('shop-1', 'seller-1', 'o1');
+
+      expect(notifications.events).toEqual([
+        { kind: 'ORDER_CONFIRMED', orderId: 'o1' },
+      ]);
+    });
+
+    it('ship thành công — báo ORDER_SHIPPED', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('PACKED'));
+
+      await service.ship('shop-1', 'seller-1', 'o1', { carrier: 'GHN' });
+
+      expect(notifications.events).toEqual([
+        { kind: 'ORDER_SHIPPED', orderId: 'o1' },
+      ]);
+    });
+
+    it('confirm thất bại (đơn sai trạng thái) — KHÔNG báo gì', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('CONFIRMED'));
+
+      await expect(
+        service.confirm('shop-1', 'seller-1', 'o1'),
+      ).rejects.toBeInstanceOf(AppException);
+
+      expect(notifications.events).toEqual([]);
+    });
+
+    it('thứ tự: báo SAU khi đơn đã chuyển trạng thái (không báo trước commit)', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('PENDING'));
+      const order: string[] = [];
+      orderStatusService.transition.mockImplementation(() => {
+        order.push('transition');
+        return Promise.resolve(['o1']);
+      });
+      jest.spyOn(notifications, 'notify').mockImplementation(() => {
+        order.push('notify');
+        return Promise.resolve();
+      });
+
+      await service.confirm('shop-1', 'seller-1', 'o1');
+
+      expect(order).toEqual(['transition', 'notify']);
+    });
+
+    it('pack, từ chối, hủy của shop/người mua, người mua bấm đã nhận — KHÔNG báo từ service này (hủy do RefundService báo)', async () => {
+      tx.order.findFirst.mockResolvedValue(loaded('CONFIRMED'));
+      await service.pack('shop-1', 'seller-1', 'o1');
+      tx.order.findFirst.mockResolvedValue(loaded('SHIPPING'));
+      await service.confirmReceived('buyer-1', 'o1');
+      prisma.order.findFirst.mockResolvedValue({ status: 'PENDING' });
+      await service.reject('shop-1', 'seller-1', 'o1', 'Hết hàng');
+      prisma.order.findFirst.mockResolvedValue({
+        status: 'PENDING',
+        checkoutGroupId: 'g1',
+      });
+      await service.cancelByBuyer('buyer-1', 'o1');
+
+      expect(notifications.events).toEqual([]);
+    });
+
+    describe('autoCompleteShipped', () => {
+      it('hoàn tất thật — báo người mua ORDER_AUTO_COMPLETED', async () => {
+        tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'VNPAY'));
+
+        await expect(service.autoCompleteShipped('o1', 7)).resolves.toBe(true);
+
+        expect(notifications.events).toEqual([
+          { kind: 'ORDER_AUTO_COMPLETED', orderId: 'o1' },
+        ]);
+      });
+
+      it.each([
+        ['đơn không còn SHIPPING (người mua vừa bấm tay)', 'COMPLETED'],
+        ['đơn bị đổi sang trạng thái khác', 'CANCELLED'],
+      ] as const)('%s — trả false và KHÔNG báo', async (_label, status) => {
+        tx.order.findFirst.mockResolvedValue(loaded(status, 'VNPAY'));
+
+        await expect(service.autoCompleteShipped('o1', 7)).resolves.toBe(false);
+
+        expect(notifications.events).toEqual([]);
+      });
+
+      it('thua race lúc chuyển trạng thái — trả false và KHÔNG báo', async () => {
+        tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'VNPAY'));
+        orderStatusService.transition.mockResolvedValue([]);
+
+        await expect(service.autoCompleteShipped('o1', 7)).resolves.toBe(false);
+
+        expect(notifications.events).toEqual([]);
+      });
+
+      it('lỗi thật (DB) — vẫn ném cho job log và KHÔNG báo', async () => {
+        tx.order.findFirst.mockRejectedValue(new Error('db down'));
+
+        await expect(service.autoCompleteShipped('o1', 7)).rejects.toThrow(
+          'db down',
+        );
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    describe('tầng thông báo hỏng KHÔNG làm hỏng thao tác chính', () => {
+      let broken: OrderActionService;
+      let logs: ReturnType<typeof silenceNotificationLogs>;
+
+      beforeEach(() => {
+        logs = silenceNotificationLogs();
+        broken = new OrderActionService(
+          prisma as unknown as PrismaService,
+          orderStatusService as unknown as OrderStatusService,
+          paymentService as unknown as PaymentService,
+          orderEmailService as unknown as OrderEmailService,
+          refundService as unknown as RefundService,
+          createBrokenNotificationService(),
+        );
+      });
+
+      it('confirm vẫn thành công, lỗi chỉ được log', async () => {
+        tx.order.findFirst.mockResolvedValue(loaded('PENDING'));
+
+        await expect(
+          broken.confirm('shop-1', 'seller-1', 'o1'),
+        ).resolves.toBeUndefined();
+
+        expect(orderStatusService.transition).toHaveBeenCalled();
+        expect(logs.error).toHaveBeenCalledTimes(1);
+      });
+
+      it('ship vẫn thành công', async () => {
+        tx.order.findFirst.mockResolvedValue(loaded('PACKED'));
+
+        await expect(
+          broken.ship('shop-1', 'seller-1', 'o1', {}),
+        ).resolves.toBeUndefined();
+      });
+
+      it('autoCompleteShipped vẫn trả true', async () => {
+        tx.order.findFirst.mockResolvedValue(loaded('SHIPPING', 'VNPAY'));
+
+        await expect(broken.autoCompleteShipped('o1', 7)).resolves.toBe(true);
+      });
     });
   });
 

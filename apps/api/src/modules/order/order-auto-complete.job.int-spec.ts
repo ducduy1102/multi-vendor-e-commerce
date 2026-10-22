@@ -6,6 +6,7 @@ import {
 import { MockPaymentProvider } from '../../shared/payment/mock-payment.provider';
 import { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
 import { VnpayProvider } from '../../shared/payment/vnpay.provider';
+import { createFakeNotificationService } from '../../shared/testing/fake-notification-service';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import {
   cleanupByTag,
@@ -44,6 +45,7 @@ describe('OrderAutoCompleteJob (DB thật)', () => {
     new VnpayProvider(),
     new MockPaymentProvider(),
   );
+  const notifications = createFakeNotificationService();
   const paymentService = new PaymentService(
     prisma as unknown as PrismaService,
     inventoryService,
@@ -51,6 +53,7 @@ describe('OrderAutoCompleteJob (DB thật)', () => {
     paymentGateway,
     orderStatusService,
     orderEmailService,
+    notifications,
   );
   const refundService = new RefundService(
     prisma as unknown as PrismaService,
@@ -60,6 +63,7 @@ describe('OrderAutoCompleteJob (DB thật)', () => {
     paymentGateway,
     new RefundRequestService(),
     orderEmailService,
+    notifications,
   );
   const actionService = new OrderActionService(
     prisma as unknown as PrismaService,
@@ -67,6 +71,7 @@ describe('OrderAutoCompleteJob (DB thật)', () => {
     paymentService,
     orderEmailService,
     refundService,
+    notifications,
   );
   const job = new OrderAutoCompleteJob(
     prisma as unknown as PrismaService,

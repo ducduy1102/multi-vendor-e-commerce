@@ -3,6 +3,12 @@ import { Prisma } from '@prisma/client';
 import type { VerifiedCallback } from '../../shared/payment/payment-gateway.interface';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { expectAppException } from '../../shared/testing/expect-app-exception';
+import {
+  createBrokenNotificationService,
+  createFakeNotificationService,
+  silenceNotificationLogs,
+  type FakeNotificationService,
+} from '../../shared/testing/fake-notification-service';
 import type { PaymentGatewayService } from '../../shared/payment/payment-gateway.service';
 import type { InventoryService } from '../product/inventory.service';
 import type { VoucherUsageService } from '../voucher/voucher-usage.service';
@@ -25,6 +31,7 @@ const FAILED_CALLBACK: VerifiedCallback = {
 
 describe('PaymentService', () => {
   let service: PaymentService;
+  let notifications: FakeNotificationService;
   let prisma: {
     payment: {
       findUnique: jest.Mock;
@@ -90,6 +97,7 @@ describe('PaymentService', () => {
       }),
     };
 
+    notifications = createFakeNotificationService();
     service = new PaymentService(
       prisma as unknown as PrismaService,
       inventoryService as unknown as InventoryService,
@@ -97,7 +105,12 @@ describe('PaymentService', () => {
       paymentGateway as unknown as PaymentGatewayService,
       orderStatusService as unknown as OrderStatusService,
       orderEmailService as unknown as OrderEmailService,
+      notifications,
     );
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   describe('confirmPayment — fail-fast trước khi chạm nhánh SUCCESS/FAILED', () => {
@@ -577,6 +590,195 @@ describe('PaymentService', () => {
       await service.reclaimCheckoutGroup('g1');
 
       expect(orderEmailService.notifyCancelled).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('thông báo trong ứng dụng (Week10.md 7.4)', () => {
+    // Payment tìm thấy theo txnRef và số tiền khớp callback (nếu không confirmPayment dừng ngay ở NOT_FOUND và các
+    // khẳng định "không báo gì" bên dưới sẽ đúng một cách vô nghĩa).
+    const mockPaymentFound = () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        id: 'p1',
+        status: 'PENDING',
+        amount: new Prisma.Decimal(100_000),
+        checkoutGroupId: 'g1',
+      });
+    };
+
+    // Thanh toán thành công thật sự lần đầu: khoá Payment PENDING, đơn AWAITING_PAYMENT lật được.
+    const mockFirstConfirmation = () => {
+      mockPaymentFound();
+      tx.$queryRaw
+        .mockResolvedValueOnce([{ status: 'PENDING' }])
+        .mockResolvedValueOnce([{ id: 'o1', status: 'AWAITING_PAYMENT' }]);
+      orderStatusService.transition.mockResolvedValue(['o1']);
+      tx.orderItem.findMany.mockResolvedValue([
+        { productVariantId: 'v1', quantity: 1 },
+      ]);
+    };
+
+    describe('confirmPayment → ORDERS_PLACED (báo từng shop có đơn mới)', () => {
+      it('lần xác nhận thật sự đầu tiên — báo đúng nhóm thanh toán, SAU commit', async () => {
+        mockFirstConfirmation();
+        const order: string[] = [];
+        prisma.$transaction.mockImplementation(
+          async (fn: (t: unknown) => unknown) => {
+            const result = await fn(tx);
+            order.push('commit');
+            return result;
+          },
+        );
+        jest.spyOn(notifications, 'notify').mockImplementation(() => {
+          order.push('notify');
+          return Promise.resolve();
+        });
+
+        await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+
+        expect(notifications.notify).toHaveBeenCalledTimes(1);
+        expect(notifications.notify).toHaveBeenCalledWith({
+          kind: 'ORDERS_PLACED',
+          checkoutGroupId: 'g1',
+        });
+        expect(order).toEqual(['commit', 'notify']);
+      });
+
+      it('IPN rồi return gọi lặp — chỉ báo MỘT lần (lần 2 là ALREADY_CONFIRMED)', async () => {
+        mockFirstConfirmation();
+        await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+        tx.$queryRaw.mockResolvedValueOnce([{ status: 'SUCCESS' }]);
+        await service.confirmPayment(SUCCESS_CALLBACK, 'RETURN');
+
+        expect(notifications.events).toEqual([
+          { kind: 'ORDERS_PLACED', checkoutGroupId: 'g1' },
+        ]);
+      });
+
+      it('thanh toán đến muộn / trùng, thanh toán thất bại, chữ ký sai, sai số tiền — KHÔNG báo gì', async () => {
+        mockPaymentFound();
+        for (const orderStatus of ['PENDING', 'CANCELLED']) {
+          tx.$queryRaw
+            .mockResolvedValueOnce([{ status: 'PENDING' }])
+            .mockResolvedValueOnce([{ id: 'o1', status: orderStatus }]);
+          orderStatusService.transition.mockResolvedValue([]);
+          await service.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+        }
+        await service.confirmPayment(FAILED_CALLBACK, 'IPN');
+        await service.confirmPayment(
+          { ...SUCCESS_CALLBACK, isSignatureValid: false },
+          'IPN',
+        );
+        await service.confirmPayment(
+          { ...SUCCESS_CALLBACK, amountVnd: 1 },
+          'IPN',
+        );
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    describe('reclaimCheckoutGroup → ORDERS_CANCELLED (đơn chưa thanh toán bị hủy)', () => {
+      beforeEach(() => {
+        tx.payment.count.mockResolvedValue(0);
+        tx.$queryRaw.mockResolvedValue([
+          { id: 'o1', status: 'AWAITING_PAYMENT' },
+        ]);
+      });
+
+      it('hết hạn thanh toán (SYSTEM) — báo theo nhóm, không có lý do', async () => {
+        orderStatusService.transition.mockResolvedValue(['o1']);
+
+        await service.reclaimCheckoutGroup('g1');
+
+        expect(notifications.events).toEqual([
+          {
+            kind: 'ORDERS_CANCELLED',
+            target: { checkoutGroupId: 'g1' },
+            by: 'SYSTEM',
+            reason: null,
+          },
+        ]);
+      });
+
+      it('người mua chủ động hủy cả nhóm — báo "BUYER" kèm lý do người mua nhập', async () => {
+        orderStatusService.transition.mockResolvedValue(['o1']);
+
+        await service.reclaimCheckoutGroup('g1', {
+          actor: { type: 'BUYER', id: 'user-1' },
+          note: 'Đổi ý',
+        });
+
+        expect(notifications.events).toEqual([
+          {
+            kind: 'ORDERS_CANCELLED',
+            target: { checkoutGroupId: 'g1' },
+            by: 'BUYER',
+            reason: 'Đổi ý',
+          },
+        ]);
+      });
+
+      it('lý do mặc định của hệ thống ("Payment hold reclaimed") KHÔNG đi vào thông báo', async () => {
+        orderStatusService.transition.mockResolvedValue(['o1']);
+
+        await service.reclaimCheckoutGroup('g1', {
+          note: 'Payment hold reclaimed',
+        });
+
+        expect(notifications.events).toEqual([
+          expect.objectContaining({ by: 'SYSTEM', reason: null }),
+        ]);
+      });
+
+      it('không thu hồi được gì (đã có SUCCESS / đã hủy từ trước) — KHÔNG báo lại (idempotent)', async () => {
+        tx.payment.count.mockResolvedValue(1);
+        await service.reclaimCheckoutGroup('g1');
+        tx.payment.count.mockResolvedValue(0);
+        orderStatusService.transition.mockResolvedValue([]);
+        await service.reclaimCheckoutGroup('g1');
+
+        expect(notifications.events).toEqual([]);
+      });
+    });
+
+    describe('tầng thông báo hỏng KHÔNG làm hỏng thao tác chính', () => {
+      let broken: PaymentService;
+      let logs: ReturnType<typeof silenceNotificationLogs>;
+
+      beforeEach(() => {
+        logs = silenceNotificationLogs();
+        broken = new PaymentService(
+          prisma as unknown as PrismaService,
+          inventoryService as unknown as InventoryService,
+          voucherUsageService as unknown as VoucherUsageService,
+          paymentGateway as unknown as PaymentGatewayService,
+          orderStatusService as unknown as OrderStatusService,
+          orderEmailService as unknown as OrderEmailService,
+          createBrokenNotificationService(),
+        );
+      });
+
+      it('confirmPayment vẫn trả CONFIRMED, email vẫn đã gửi', async () => {
+        mockFirstConfirmation();
+
+        const result = await broken.confirmPayment(SUCCESS_CALLBACK, 'IPN');
+
+        expect(result.outcome).toBe('CONFIRMED');
+        expect(orderEmailService.notifyPlaced).toHaveBeenCalledTimes(1);
+        expect(logs.error).toHaveBeenCalledTimes(1);
+      });
+
+      it('reclaimCheckoutGroup vẫn trả reclaimed: true', async () => {
+        tx.payment.count.mockResolvedValue(0);
+        tx.$queryRaw.mockResolvedValue([
+          { id: 'o1', status: 'AWAITING_PAYMENT' },
+        ]);
+        orderStatusService.transition.mockResolvedValue(['o1']);
+
+        await expect(broken.reclaimCheckoutGroup('g1')).resolves.toEqual({
+          reclaimed: true,
+        });
+      });
     });
   });
 

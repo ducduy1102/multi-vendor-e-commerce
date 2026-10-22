@@ -22,6 +22,7 @@ import {
   canRetryFromStatus,
   deriveCheckoutGroupStatus,
 } from './checkout-group-status';
+import { NotificationService } from '../../shared/notification/notification.service';
 import { OrderEmailService } from './order-email.service';
 import { OrderStatusService, type OrderActor } from './order-status.service';
 
@@ -156,6 +157,7 @@ export class PaymentService {
     private readonly paymentGateway: PaymentGatewayService,
     private readonly orderStatusService: OrderStatusService,
     private readonly orderEmailService: OrderEmailService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // Được gọi bởi cả IPN lẫn return (2 nguồn, cùng 1 hàm, idempotent — Week7.md 1.10). Thứ tự bắt
@@ -199,6 +201,11 @@ export class PaymentService {
       // giờ ném (Week8.md 2.8).
       if (result.outcome === 'CONFIRMED') {
         await this.orderEmailService.notifyPlaced(payment.checkoutGroupId);
+        // Báo từng shop có đơn mới (thông báo trong ứng dụng), cùng điều kiện: chỉ lần xác nhận thật sự đầu tiên.
+        await this.notificationService.notify({
+          kind: 'ORDERS_PLACED',
+          checkoutGroupId: payment.checkoutGroupId,
+        });
       }
       return result;
     }
@@ -405,11 +412,19 @@ export class PaymentService {
     // Báo buyer SAU commit, chỉ khi lần gọi này thật sự thu hồi (idempotent: gọi lặp không gửi lại).
     // Buyer chủ động hủy ⇒ "bạn đã hủy"; còn lại (job/hết hạn lười) ⇒ "hết hạn thanh toán".
     if (result.reclaimed) {
+      const cancelledByBuyer = options.actor?.type === 'BUYER';
       await this.orderEmailService.notifyCancelled(
         { checkoutGroupId },
-        options.actor?.type === 'BUYER' ? 'BUYER' : 'SYSTEM',
-        options.actor?.type === 'BUYER' ? (options.note ?? null) : null,
+        cancelledByBuyer ? 'BUYER' : 'SYSTEM',
+        cancelledByBuyer ? (options.note ?? null) : null,
       );
+      // Thông báo trong ứng dụng: đơn vừa hủy ở đây là đơn CHƯA THANH TOÁN nên chỉ người mua được báo (shop chưa từng thấy).
+      await this.notificationService.notify({
+        kind: 'ORDERS_CANCELLED',
+        target: { checkoutGroupId },
+        by: cancelledByBuyer ? 'BUYER' : 'SYSTEM',
+        reason: cancelledByBuyer ? (options.note ?? null) : null,
+      });
     }
     return result;
   }

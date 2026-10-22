@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MailModule } from '../../shared/mail/mail.module';
+import { NotificationModule } from '../../shared/notification/notification.module';
 import { PaymentModule } from '../../shared/payment/payment.module';
 import { ProductModule } from '../product/product.module';
 import { VoucherModule } from '../voucher/voucher.module';
@@ -28,7 +29,13 @@ import { SellerRefundRequestController } from './seller-refund-request.controlle
 // PaymentExpiryJob (2.10) chỉ dùng nội bộ (không export) — ScheduleModule.forRoot() đăng ký 1 lần ở
 // AppModule, còn @Cron() tự hoạt động miễn provider có trong graph của app.
 @Module({
-  imports: [MailModule, PaymentModule, ProductModule, VoucherModule],
+  imports: [
+    MailModule,
+    NotificationModule,
+    PaymentModule,
+    ProductModule,
+    VoucherModule,
+  ],
   controllers: [
     OrderController,
     BuyerOrderController,
