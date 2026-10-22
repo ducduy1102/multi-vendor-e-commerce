@@ -57,6 +57,15 @@ export function NotificationItem({ notification, now, onOpen }: NotificationItem
     isUnread && 'bg-primary/5',
   );
 
+  // Chữ phụ (nội dung, thời gian): `text-muted-foreground` (0,556) trên nền `bg-primary/5` của dòng CHƯA ĐỌC chỉ đạt 4,42:1 ở
+  // chế độ sáng (< 4,5:1 của WCAG AA; đo bằng trình duyệt thật, Week10.md 9.3) và trên `bg-muted` khi hover/focus chỉ 4,35:1
+  // (trên nền trắng vẫn 4,74:1). Giữ nguyên token và nền, chỉ đậm chữ ở đúng các trạng thái có nền pha màu
+  // (rules/frontend.md mục 5). jsdom không tính được màu Tailwind nên unit test chỉ khoá cặp lớp.
+  const secondaryTextClass = cn(
+    isUnread ? 'text-foreground/75' : 'text-muted-foreground',
+    'group-hover:text-foreground/75 group-focus-visible:text-foreground/75',
+  );
+
   const content = (
     <>
       <span className={NOTIFICATION_ICON_WRAPPER_CLASS}>
@@ -75,7 +84,7 @@ export function NotificationItem({ notification, now, onOpen }: NotificationItem
         </span>
         <span
           title={body}
-          className="line-clamp-3 text-sm [overflow-wrap:anywhere] text-muted-foreground group-hover:text-foreground/75 group-focus-visible:text-foreground/75"
+          className={cn('line-clamp-3 text-sm [overflow-wrap:anywhere]', secondaryTextClass)}
         >
           {body}
         </span>
@@ -84,7 +93,7 @@ export function NotificationItem({ notification, now, onOpen }: NotificationItem
         <time
           dateTime={notification.createdAt}
           title={fullTime}
-          className="text-xs whitespace-nowrap text-muted-foreground group-hover:text-foreground/75 group-focus-visible:text-foreground/75"
+          className={cn('text-xs whitespace-nowrap', secondaryTextClass)}
         >
           {timeLabel}
         </time>
