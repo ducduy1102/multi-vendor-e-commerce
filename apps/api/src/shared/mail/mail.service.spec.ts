@@ -207,6 +207,74 @@ describe('MailService', () => {
       expect(message.html.replace(/\s/g, ' ')).toContain('120.000 ₫');
     });
 
+    it('sendOrderCompleted: gửi tới người mua với tiêu đề có mã đơn', async () => {
+      await service.sendOrderCompleted('b@x.com', {
+        locale: 'en',
+        buyerName: 'John',
+        ordersUrl: 'http://localhost:3000/en/orders/o1',
+        order: {
+          orderCode: 'AB12CD34',
+          shopName: 'Shop A',
+          items: [
+            {
+              productName: 'Shirt',
+              variantLabel: null,
+              quantity: 1,
+              unitPrice: 100_000,
+            },
+          ],
+          shippingFee: 20_000,
+          discountAmount: 0,
+          totalAmount: 120_000,
+        },
+        completedBy: 'SYSTEM',
+        autoCompleteDays: 7,
+        returnWindowDays: 7,
+        invitesReview: true,
+      });
+
+      const message = provider.send.mock.calls[0][0];
+      expect(message.to).toBe('b@x.com');
+      expect(message.subject).toBe(
+        'Order #AB12CD34 was completed automatically',
+      );
+      expect(message.html).toContain('within 7 days');
+    });
+
+    it('sendRefundRequestRejected: gửi tới người mua, lý do nằm trong thư', async () => {
+      await service.sendRefundRequestRejected('b@x.com', {
+        locale: 'vi',
+        buyerName: 'An',
+        ordersUrl: 'http://localhost:3000/orders/o1',
+        order: {
+          orderCode: 'AB12CD34',
+          shopName: 'Shop A',
+          items: [
+            {
+              productName: 'Áo',
+              variantLabel: null,
+              quantity: 1,
+              unitPrice: 100_000,
+            },
+          ],
+          shippingFee: 20_000,
+          discountAmount: 0,
+          totalAmount: 120_000,
+        },
+        kind: 'RETURN',
+        rejectedBy: 'SELLER',
+        reason: 'Hàng đã qua sử dụng',
+        escalateDays: 3,
+      });
+
+      const message = provider.send.mock.calls[0][0];
+      expect(message.to).toBe('b@x.com');
+      expect(message.subject).toBe(
+        'Shop đã từ chối yêu cầu trả hàng/hoàn tiền cho đơn #AB12CD34',
+      );
+      expect(message.html).toContain('Hàng đã qua sử dụng');
+    });
+
     it('lỗi của provider được ném lại cho người gọi ở mọi hàm mới', async () => {
       provider.send.mockRejectedValue(new Error('Resend down'));
 

@@ -1,5 +1,6 @@
 import { escapeHtml, formatVnd } from './html';
 import { orderCancelledTemplate } from './order-cancelled.template';
+import { orderCompletedTemplate } from './order-completed.template';
 import { orderConfirmedTemplate } from './order-confirmed.template';
 import type {
   OrderEmailOrder,
@@ -7,6 +8,7 @@ import type {
 } from './order-email.types';
 import { orderPlacedTemplate } from './order-placed.template';
 import { orderShippedTemplate } from './order-shipped.template';
+import { refundRequestRejectedTemplate } from './refund-request-rejected.template';
 
 const ORDER: OrderEmailOrder = {
   orderCode: 'AB12CD34',
@@ -247,6 +249,201 @@ describe('orderCancelledTemplate', () => {
   });
 });
 
+describe('orderCompletedTemplate (Week10.md 7.5)', () => {
+  const COMPLETED = {
+    ...BASE,
+    order: ORDER,
+    completedBy: 'BUYER' as const,
+    autoCompleteDays: 0,
+    returnWindowDays: 7,
+    invitesReview: true,
+  };
+
+  it('người mua tự bấm: cảm ơn, KHÔNG nhắc tự hoàn tất, có mã đơn trong tiêu đề', () => {
+    const { subject, html } = orderCompletedTemplate(COMPLETED);
+
+    expect(subject).toBe('Đơn hàng #AB12CD34 đã hoàn tất');
+    expect(html).toContain('Cảm ơn bạn đã xác nhận đã nhận hàng');
+    expect(html).not.toContain('tự động hoàn tất');
+  });
+
+  it('hệ thống tự hoàn tất: nêu RÕ lý do và số ngày chờ', () => {
+    const { subject, html } = orderCompletedTemplate({
+      ...COMPLETED,
+      completedBy: 'SYSTEM',
+      autoCompleteDays: 7,
+    });
+
+    expect(subject).toBe('Đơn hàng #AB12CD34 đã được tự động hoàn tất');
+    expect(html).toContain('chưa được bạn xác nhận sau 7 ngày');
+    expect(html).toContain('hệ thống đã tự động hoàn tất đơn hàng');
+  });
+
+  it('nhắc cửa sổ trả hàng/hoàn tiền còn lại ở cả hai nhánh', () => {
+    for (const completedBy of ['BUYER', 'SYSTEM'] as const) {
+      const { html } = orderCompletedTemplate({
+        ...COMPLETED,
+        completedBy,
+        returnWindowDays: 14,
+      });
+
+      expect(html).toContain('trả hàng/hoàn tiền');
+      expect(html).toContain('trong 14 ngày kể từ hôm nay');
+    }
+  });
+
+  it('còn sản phẩm chưa đánh giá: mời đánh giá và nút là "Đánh giá sản phẩm"', () => {
+    const { html } = orderCompletedTemplate(COMPLETED);
+
+    expect(html).toContain('đánh giá sản phẩm');
+    expect(html).toContain('>Đánh giá sản phẩm</a>');
+  });
+
+  it('mọi sản phẩm đã được đánh giá: KHÔNG mời đánh giá, nút là "Xem đơn hàng"', () => {
+    const { html } = orderCompletedTemplate({
+      ...COMPLETED,
+      invitesReview: false,
+    });
+
+    expect(html).not.toContain('Đánh giá sản phẩm');
+    expect(html).not.toContain('giúp những người mua khác');
+    expect(html).toContain('>Xem đơn hàng</a>');
+  });
+
+  it('có khối tóm tắt đơn và link trỏ tới đơn', () => {
+    const { html } = orderCompletedTemplate(COMPLETED);
+
+    expect(html).toContain('Shop Áo Xinh');
+    expect(html).toContain('href="http://localhost:3000/orders/o1"');
+  });
+
+  it('tiếng Anh: số ít "1 day" và số nhiều "7 days"', () => {
+    const one = orderCompletedTemplate({
+      ...COMPLETED,
+      locale: 'en',
+      completedBy: 'SYSTEM',
+      autoCompleteDays: 1,
+      returnWindowDays: 1,
+    });
+    const many = orderCompletedTemplate({
+      ...COMPLETED,
+      locale: 'en',
+      completedBy: 'SYSTEM',
+      autoCompleteDays: 7,
+      returnWindowDays: 7,
+    });
+
+    expect(one.html).toContain('within 1 day, so we completed');
+    expect(one.html).toContain('within 1 day from today');
+    expect(many.html).toContain('within 7 days, so we completed');
+    expect(many.html).toContain('within 7 days from today');
+  });
+});
+
+describe('refundRequestRejectedTemplate (Week10.md 7.5)', () => {
+  const REJECTED = {
+    ...BASE,
+    order: ORDER,
+    kind: 'CANCEL' as const,
+    rejectedBy: 'SELLER' as const,
+    reason: 'Hàng đã giao cho đơn vị vận chuyển',
+    escalateDays: 3,
+  };
+
+  it.each([
+    ['CANCEL', 'hủy đơn'],
+    ['RETURN', 'trả hàng/hoàn tiền'],
+  ] as const)('loại %s: tiêu đề gọi đúng tên loại yêu cầu', (kind, label) => {
+    const { subject, html } = refundRequestRejectedTemplate({
+      ...REJECTED,
+      kind,
+    });
+
+    expect(subject).toBe(`Shop đã từ chối yêu cầu ${label} cho đơn #AB12CD34`);
+    expect(html).toContain(`yêu cầu ${label} của bạn cho đơn hàng #AB12CD34`);
+  });
+
+  it('shop từ chối: hiện lý do và nêu còn khiếu nại được lên sàn trong N ngày', () => {
+    const { html } = refundRequestRejectedTemplate(REJECTED);
+
+    expect(html).toContain(
+      '<strong>Lý do:</strong> Hàng đã giao cho đơn vị vận chuyển',
+    );
+    expect(html).toContain(
+      'khiếu nại lên sàn từ trang đơn hàng trong 3 ngày kể từ hôm nay',
+    );
+    expect(html).not.toContain('quyết định cuối cùng');
+  });
+
+  it('shop từ chối nhưng không còn đường khiếu nại (escalateDays null): không hứa hẹn gì', () => {
+    const { html } = refundRequestRejectedTemplate({
+      ...REJECTED,
+      escalateDays: null,
+    });
+
+    expect(html).not.toContain('khiếu nại');
+  });
+
+  it('Admin từ chối: câu dẫn của sàn, nói đây là quyết định cuối cùng, KHÔNG mời khiếu nại', () => {
+    const { subject, html } = refundRequestRejectedTemplate({
+      ...REJECTED,
+      rejectedBy: 'ADMIN',
+      escalateDays: null,
+    });
+
+    expect(subject).toBe('Yêu cầu hủy đơn cho đơn #AB12CD34 đã bị từ chối');
+    expect(html).toContain('Sau khi xem xét, sàn đã từ chối');
+    expect(html).toContain('quyết định cuối cùng của sàn');
+    expect(html).not.toContain('khiếu nại lên sàn');
+  });
+
+  it('Admin từ chối: bỏ qua escalateDays dù được truyền vào', () => {
+    const { html } = refundRequestRejectedTemplate({
+      ...REJECTED,
+      rejectedBy: 'ADMIN',
+      escalateDays: 3,
+    });
+
+    expect(html).not.toContain('trong 3 ngày');
+  });
+
+  it('không có lý do: không có dòng "Lý do"', () => {
+    const { html } = refundRequestRejectedTemplate({
+      ...REJECTED,
+      reason: null,
+    });
+
+    expect(html).not.toContain('Lý do:');
+  });
+
+  it('tiếng Anh: tên loại và số ít/số nhiều của ngày', () => {
+    const one = refundRequestRejectedTemplate({
+      ...REJECTED,
+      locale: 'en',
+      kind: 'RETURN',
+      escalateDays: 1,
+    });
+    const many = refundRequestRejectedTemplate({
+      ...REJECTED,
+      locale: 'en',
+      escalateDays: 3,
+    });
+
+    expect(one.subject).toBe(
+      'The shop declined your return/refund request for order #AB12CD34',
+    );
+    expect(one.html).toContain('within 1 day from today');
+    expect(many.html).toContain('within 3 days from today');
+  });
+
+  it('có khối tóm tắt đơn và link trỏ tới đơn', () => {
+    const { html } = refundRequestRejectedTemplate(REJECTED);
+
+    expect(html).toContain('Shop Áo Xinh');
+    expect(html).toContain('href="http://localhost:3000/orders/o1"');
+  });
+});
+
 describe('chống chèn HTML (dữ liệu người dùng/seller nhập)', () => {
   const EVIL = `<script>alert(1)</script><a href="https://evil.example">bấm vào</a>`;
 
@@ -291,6 +488,24 @@ describe('chống chèn HTML (dữ liệu người dùng/seller nhập)', () => 
         orders: [evilOrder],
         cancelledBy: 'BUYER',
         reason: EVIL,
+      }).html,
+      orderCompletedTemplate({
+        ...BASE,
+        buyerName: EVIL,
+        order: evilOrder,
+        completedBy: 'SYSTEM',
+        autoCompleteDays: 7,
+        returnWindowDays: 7,
+        invitesReview: true,
+      }).html,
+      refundRequestRejectedTemplate({
+        ...BASE,
+        buyerName: EVIL,
+        order: evilOrder,
+        kind: 'RETURN',
+        rejectedBy: 'SELLER',
+        reason: EVIL,
+        escalateDays: 3,
       }).html,
     ];
 
