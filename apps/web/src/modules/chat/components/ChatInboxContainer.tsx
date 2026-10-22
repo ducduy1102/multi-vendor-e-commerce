@@ -5,8 +5,8 @@ import { useEffect, useMemo } from 'react';
 
 import { useRouter } from '@/i18n/navigation';
 
+import { useNow } from '@/shared/hooks/useNow';
 import { useConversations } from '../hooks/useConversations';
-import { useNow } from '../hooks/useNow';
 import { useSeededConversation } from '../hooks/useOpenConversation';
 import { useStableChatScope } from '../hooks/useStableChatScope';
 import type { ChatScope } from '../types';
