@@ -99,6 +99,16 @@ export const SERVER_ERROR_CODES = [
   'CHAT_AWAITING_REPLY',
   'CHAT_CONVERSATION_LIMIT',
   'CHAT_NOT_PARTICIPANT',
+  // Quản lý người dùng của Admin (Week11.md Bước 3, D2). USER_NOT_FOUND (404): không có người dùng đó;
+  // USER_INVALID_TRANSITION (409): tài khoản không còn ở trạng thái cho phép chuyển (đã có Admin khác xử lý, hoặc cạnh
+  // không có trong ADMIN_ACCOUNT_STATUS_TRANSITIONS) — gộp "sai trạng thái lúc đọc" và "thua race" như
+  // SHOP_INVALID_TRANSITION; CANNOT_MODIFY_ADMIN / CANNOT_MODIFY_SELF (409): không khoá được tài khoản Admin khác hay
+  // chính mình; SHOP_OWNER_NOT_ACTIVE (409): không duyệt được shop khi chủ shop đang bị khoá hoặc cấm.
+  'USER_NOT_FOUND',
+  'USER_INVALID_TRANSITION',
+  'CANNOT_MODIFY_ADMIN',
+  'CANNOT_MODIFY_SELF',
+  'SHOP_OWNER_NOT_ACTIVE',
 ] as const;
 export type ServerErrorCode = (typeof SERVER_ERROR_CODES)[number];
 

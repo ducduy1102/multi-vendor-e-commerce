@@ -138,6 +138,15 @@ model User {
   locale           UserLocale    @default(vi)
   refreshTokenHash String?       @map("refresh_token_hash")
 
+  // Lý do và mốc của LẦN Admin đổi trạng thái tài khoản gần nhất (Week11.md 3.1, D2) — cùng mẫu Shop.statusReason /
+  // statusChangedAt. Cả hai NULL cho tới lần Admin đầu tiên đổi (không backfill: người dùng cũ chưa từng bị đổi). Chỉ ghi
+  // qua luồng khoá/mở của Admin (3.3), trong cùng $transaction với accountStatus: khoá ⇒ đặt lý do; mở lại ⇒ lý do về NULL
+  // (lý do mở lại nằm ở nhật ký quản trị và email, không ở cột này) còn mốc luôn cập nhật. VARCHAR(500) khớp
+  // ADMIN_USER_REASON_MAX_LENGTH ở packages/types; CHECK ở DB (viết tay trong migration) chặn thêm chuỗi rỗng. Cố ý KHÔNG có
+  // ràng buộc "ACTIVE ⇒ lý do NULL" ở DB: đó là luật nghiệp vụ nên ép ở tầng service (rules/backend.md mục 4).
+  statusReason    String?   @map("status_reason") @db.VarChar(500)
+  statusChangedAt DateTime? @map("status_changed_at")
+
   // Email verification (Tuần 2, Bước 2.10) — token dùng 1 lần, hash bằng SHA-256
   // giống refreshTokenHash (không dùng bcrypt, lý do xem AuthService.hashToken).
   // emailVerificationTokenHash null nghĩa là không có token verify nào đang chờ
