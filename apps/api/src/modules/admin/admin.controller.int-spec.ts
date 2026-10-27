@@ -301,8 +301,22 @@ describe('AdminController (HTTP thật)', () => {
       ['limit > 50', 'limit=51'],
       ['page = 0', 'page=0'],
       ['page không phải số', 'page=abc'],
+      // `page=1e21` từng qua Zod (`.int()` coi 1e21 là số nguyên) rồi Prisma ném "Unable to fit value 2e+22 into a 64-bit
+      // signed integer for field `skip`" ⇒ 500 thay vì 400.
+      ['page vượt trần', 'page=10001'],
+      ['page = 1e21 (từng làm Prisma tràn số nguyên ⇒ 500)', 'page=1e21'],
     ])('query sai (%s) — 400', async (_, query) => {
       await admin.get(`/api/v1/admin/shops?${query}`).expect(400);
+    });
+
+    it('page đúng trần vẫn là 200 và trả danh sách rỗng', async () => {
+      const res = await admin
+        .get('/api/v1/admin/shops?page=10000&limit=50')
+        .expect(200);
+
+      expect((res.body as { data: { items: unknown[] } }).data.items).toEqual(
+        [],
+      );
     });
   });
 

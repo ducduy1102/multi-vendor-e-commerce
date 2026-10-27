@@ -1,4 +1,5 @@
 // Zod schema / DTO type dùng chung giữa apps/web và apps/api.
+export * from './pagination';
 export * from './auth';
 export * from './shop';
 export * from './admin';

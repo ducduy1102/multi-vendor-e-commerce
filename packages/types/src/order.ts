@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { checkoutOrderItemSchema } from './checkout';
 import { optionalText } from './optional-text';
 import { orderActorTypeSchema, orderStatusSchema, type OrderStatus } from './order-status';
+import { LIST_MAX_PAGE } from './pagination';
 import { paymentMethodSchema, paymentStatusSchema } from './payment';
 import {
   buyerRefundRequestSchema,
@@ -46,7 +47,7 @@ export type SellerOrderTab = z.infer<typeof sellerOrderTabSchema>;
 // --- Query danh sách ---------------------------------------------------------------------------
 // Query param qua URL luôn là string — coerce number cho page/limit (rules/backend.md mục 2).
 const paginationShape = {
-  page: z.coerce.number().int().positive().default(1),
+  page: z.coerce.number().int().positive().max(LIST_MAX_PAGE).default(1),
   limit: z.coerce.number().int().positive().max(50).default(10),
 };
 
