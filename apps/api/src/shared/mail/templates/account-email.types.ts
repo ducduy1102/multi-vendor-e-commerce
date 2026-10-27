@@ -36,3 +36,22 @@ export interface ShopStatusEmailData {
   // Link tới trang quản lý shop của chủ shop.
   shopUrl: string;
 }
+
+// Email báo CHÍNH CHỦ khi Admin đổi trạng thái tài khoản (Week11.md 3.3). SUSPENDED: tạm khoá. BANNED: cấm (mở lại phải
+// được xét lại). REACTIVATED: mở lại về ACTIVE. Cố ý không có loại cho DEACTIVATED: người dùng tự xoá tài khoản không đi
+// qua Admin.
+export type AccountStatusEmailKind = 'SUSPENDED' | 'BANNED' | 'REACTIVATED';
+
+export interface AccountStatusEmailData {
+  locale: MailLocale;
+  name: string;
+  kind: AccountStatusEmailKind;
+  // Lý do Admin nhập (văn bản thuần, có thể nhiều dòng); luôn có ở cả ba loại vì lý do là bắt buộc khi khoá lẫn khi mở.
+  reason: string;
+  // Địa chỉ hỗ trợ từ ENV `SUPPORT_EMAIL` (xem `getSupportEmail`); null ⇒ không có dòng liên hệ nào. Chỉ hiện ở email khoá /
+  // cấm, vì chỉ lúc đó người nhận cần một đường để phản hồi.
+  supportEmail: string | null;
+  // Link trang đăng nhập (đã dựng bằng `frontendUrl`, đúng prefix ngôn ngữ). Chỉ dùng ở REACTIVATED: người bị khoá không
+  // đăng nhập được nên email khoá không có nút.
+  loginUrl: string;
+}

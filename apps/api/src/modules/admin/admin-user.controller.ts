@@ -1,12 +1,17 @@
 import {
+  Body,
   Controller,
   Get,
   Header,
+  HttpCode,
   Param,
+  Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBody,
   ApiCookieAuth,
   ApiOperation,
   ApiParam,
@@ -16,6 +21,9 @@ import {
 } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { accountStatusSchema, userRoleSchema } from '@ecommerce/types';
+import type { Request } from 'express';
+import { auditRequestContext } from '../../shared/audit/audit-request-context';
+import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { Roles } from '../../shared/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { RolesGuard } from '../../shared/guards/roles.guard';
@@ -25,11 +33,18 @@ import {
   FORBIDDEN_ROLE_EXAMPLE,
   UNAUTHORIZED_EXAMPLE,
 } from '../../shared/swagger/error-examples';
+import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
+import { AdminUserStatusService } from './admin-user-status.service';
 import { AdminUserService } from './admin-user.service';
 import {
   adminUserListQuerySchema,
   type ListUsersQueryDto,
 } from './dto/list-users-query.dto';
+import {
+  reactivateUserSchema,
+  type ReactivateUserDto,
+} from './dto/reactivate-user.dto';
+import { suspendUserSchema, type SuspendUserDto } from './dto/suspend-user.dto';
 
 // Ví dụ chỉ là annotation — khớp adminUserSchema / adminUserDetailSchema ở packages/types.
 const ADMIN_USER_EXAMPLE = {
@@ -62,7 +77,10 @@ const ADMIN_USER_EXAMPLE = {
   schema: { example: FORBIDDEN_ROLE_EXAMPLE },
 })
 export class AdminUserController {
-  constructor(private readonly adminUserService: AdminUserService) {}
+  constructor(
+    private readonly adminUserService: AdminUserService,
+    private readonly adminUserStatusService: AdminUserStatusService,
+  ) {}
 
   @Get()
   @Header('Cache-Control', 'no-store')
@@ -172,5 +190,149 @@ export class AdminUserController {
   })
   getUser(@Param('id') id: string) {
     return this.adminUserService.getUser(id);
+  }
+
+  // POST nhưng KHÔNG tạo tài nguyên nào ⇒ 200 tường minh (mặc định của @Post là 201; Swagger @ApiResponse không tự đọc lại).
+  @Post(':id/suspend')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Tạm khoá hoặc cấm một tài khoản người dùng (ACTIVE→SUSPENDED|BANNED, SUSPENDED→BANNED) — chỉ ADMIN',
+    description:
+      'Hiệu lực NGAY: refresh token bị thu hồi, access token cũ bị từ chối ở request kế tiếp (401 ACCOUNT_NOT_ACTIVE), mọi ' +
+      'kết nối real-time đang mở bị ngắt và không nối lại được, đăng nhập mới bị từ chối. `reason` bắt buộc (≤ 500 ký tự) và ' +
+      'được gửi cho chủ tài khoản trong email (theo ngôn ngữ của họ) — Admin nên viết với giả định người dùng sẽ đọc. Ghi một ' +
+      'dòng nhật ký quản trị trong cùng transaction. Không khoá được Admin hay chính mình; hai Admin thao tác cùng lúc thì ' +
+      'đúng một bên thắng, bên kia nhận 409. Gửi email / ngắt socket lỗi không làm request thất bại và không hoàn tác việc khoá.',
+  })
+  @ApiParam({ name: 'id', description: 'ID người dùng (UUID)' })
+  @ApiBody({
+    schema: {
+      example: { status: 'SUSPENDED', reason: 'Vi phạm điều khoản sử dụng' },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Người dùng sau khi đổi trạng thái',
+    schema: {
+      example: { success: true, data: { user: ADMIN_USER_EXAMPLE } },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Body không hợp lệ (status không phải SUSPENDED|BANNED, thiếu / rỗng / quá dài lý do, lý do có ký tự điều khiển)',
+    schema: { example: errorExample('reason: admin.validationReasonRequired') },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Người dùng không tồn tại (hoặc id sai dạng)',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'User not found',
+        code: 'USER_NOT_FOUND',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Cạnh không hợp lệ hoặc đã có người đổi trước (USER_INVALID_TRANSITION), mục tiêu là Admin (CANNOT_MODIFY_ADMIN), hoặc mục tiêu là chính mình (CANNOT_MODIFY_SELF)',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'Cannot change account status from SUSPENDED to SUSPENDED',
+        code: 'USER_INVALID_TRANSITION',
+      },
+    },
+  })
+  async suspendUser(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(suspendUserSchema)) dto: SuspendUserDto,
+    @Req() req: Request,
+  ) {
+    const user = await this.adminUserStatusService.suspend(
+      admin.userId,
+      id,
+      dto,
+      auditRequestContext(req),
+    );
+    return { user };
+  }
+
+  @Post(':id/reactivate')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Mở lại một tài khoản đang bị tạm khoá hoặc bị cấm (SUSPENDED|BANNED→ACTIVE) — chỉ ADMIN',
+    description:
+      '`reason` bắt buộc (≤ 500 ký tự) và được gửi cho chủ tài khoản trong email; cột lý do khoá của tài khoản được xoá (lý do mở ' +
+      'lại nằm ở nhật ký quản trị và email). Người dùng đăng nhập lại được ngay. Cùng các ràng buộc và mã lỗi với `suspend`.',
+  })
+  @ApiParam({ name: 'id', description: 'ID người dùng (UUID)' })
+  @ApiBody({ schema: { example: { reason: 'Khiếu nại được chấp nhận' } } })
+  @ApiResponse({
+    status: 200,
+    description: 'Người dùng sau khi mở lại',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          user: {
+            ...ADMIN_USER_EXAMPLE,
+            accountStatus: 'ACTIVE',
+            statusReason: null,
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Body không hợp lệ (thiếu / rỗng / quá dài lý do)',
+    schema: { example: errorExample('reason: admin.validationReasonRequired') },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Người dùng không tồn tại (hoặc id sai dạng)',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'User not found',
+        code: 'USER_NOT_FOUND',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Tài khoản không ở trạng thái SUSPENDED / BANNED (USER_INVALID_TRANSITION), mục tiêu là Admin (CANNOT_MODIFY_ADMIN), hoặc là chính mình (CANNOT_MODIFY_SELF)',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message: 'Cannot change account status from ACTIVE to ACTIVE',
+        code: 'USER_INVALID_TRANSITION',
+      },
+    },
+  })
+  async reactivateUser(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(reactivateUserSchema)) dto: ReactivateUserDto,
+    @Req() req: Request,
+  ) {
+    const user = await this.adminUserStatusService.reactivate(
+      admin.userId,
+      id,
+      dto,
+      auditRequestContext(req),
+    );
+    return { user };
   }
 }

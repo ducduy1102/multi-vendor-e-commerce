@@ -176,6 +176,22 @@ describe('MailService', () => {
       expect(message.html).toContain('Vi phạm chính sách');
     });
 
+    it('sendAccountStatusChanged: gửi đúng người, tiêu đề theo loại, lý do có trong nội dung', async () => {
+      await service.sendAccountStatusChanged('user@x.com', {
+        locale: 'vi',
+        name: 'An',
+        kind: 'BANNED',
+        reason: 'Gian lận thanh toán',
+        supportEmail: null,
+        loginUrl: 'http://localhost:3000/login',
+      });
+
+      const message = provider.send.mock.calls[0][0];
+      expect(message.to).toBe('user@x.com');
+      expect(message.subject).toBe('Tài khoản của bạn đã bị cấm');
+      expect(message.html).toContain('Gian lận thanh toán');
+    });
+
     it('sendOrderRefunded: nêu số tiền và mã đơn', async () => {
       await service.sendOrderRefunded('b@x.com', {
         locale: 'en',

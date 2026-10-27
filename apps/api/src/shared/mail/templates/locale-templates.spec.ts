@@ -1,11 +1,13 @@
 import { frontendUrl } from '../frontend-url';
 import type { MailLocale } from '../mail-locale';
 import type {
+  AccountStatusEmailData,
   PasswordChangedEmailData,
   PasswordResetEmailData,
   ShopStatusEmailData,
   ShopStatusEmailKind,
 } from './account-email.types';
+import { accountStatusTemplate } from './account-status.template';
 import type {
   OrderCancelledEmailData,
   OrderCompletedEmailData,
@@ -211,6 +213,21 @@ const BUILDERS: Array<
         forgotPasswordUrl: frontendUrl('/forgot-password', locale),
       } satisfies PasswordChangedEmailData),
   ],
+  ...(['SUSPENDED', 'BANNED', 'REACTIVATED'] as const).map(
+    (kind) =>
+      [
+        `account-status (${kind})`,
+        (locale: MailLocale) =>
+          accountStatusTemplate({
+            locale,
+            name: 'John',
+            kind,
+            reason: 'Policy violation',
+            supportEmail: null,
+            loginUrl: frontendUrl('/login', locale),
+          } satisfies AccountStatusEmailData),
+      ] as [string, (locale: MailLocale) => { subject: string; html: string }],
+  ),
   ...(['APPROVED', 'REJECTED', 'SUSPENDED', 'REINSTATED'] as const).map(
     (kind) =>
       [
@@ -304,15 +321,27 @@ describe('mọi template × mọi ngôn ngữ', () => {
     },
   );
 
+  // Email khoá / cấm tài khoản CỐ Ý không có nút hay link (người nhận không đăng nhập được, Week11.md 3.3). Khai tường minh
+  // thay vì nới điều kiện "có ít nhất một link" cho mọi template: template khác mất nút sẽ vẫn làm test đỏ.
+  const LINKLESS = new Set([
+    'account-status (SUSPENDED)',
+    'account-status (BANNED)',
+  ]);
+
   it.each(BUILDERS)(
     '%s: link trong email có đúng prefix ngôn ngữ (vi: không /en, en: /en)',
-    (_name, build) => {
+    (name, build) => {
       const hrefs = (html: string) =>
         [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
 
       const viLinks = hrefs(build('vi').html);
       const enLinks = hrefs(build('en').html);
 
+      if (LINKLESS.has(name)) {
+        expect(viLinks).toEqual([]);
+        expect(enLinks).toEqual([]);
+        return;
+      }
       expect(viLinks.length).toBeGreaterThan(0);
       expect(enLinks.length).toBeGreaterThan(0);
       for (const link of viLinks) expect(link).not.toContain('/en/');

@@ -11,13 +11,14 @@ import {
 } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { isUserId } from './admin-user-id';
 import { buildAdminUserWhere } from './admin-user-query';
 import type { ListUsersQueryDto } from './dto/list-users-query.dto';
 
 // Cột người dùng được đọc cho Admin. Chỉ những cột cần cho `AdminUser`: KHÔNG bao giờ `passwordHash`, `refreshTokenHash`
 // hay các cột token xác thực email / đặt lại mật khẩu — kể cả khi Zod ở FE sẽ bỏ chúng, chúng không được rời DB. Thêm cột
 // vào đây là thêm vào bề mặt lộ dữ liệu: phải kèm trường tương ứng ở `adminUserSchema` (packages/types).
-const adminUserSelect = {
+export const adminUserSelect = {
   id: true,
   email: true,
   name: true,
@@ -68,11 +69,6 @@ function toHistoryMeta(value: Prisma.JsonValue): AdminUserHistoryEntry['meta'] {
   return parsed.success ? parsed.data : {};
 }
 
-// Id người dùng luôn là UUID. Kiểm dạng TRƯỚC khi chạm DB để mọi id sai (kể cả có ký tự NUL mà Postgres không nhận và sẽ
-// thành 500) ra cùng một 404 như id không tồn tại — không có "oracle" phân biệt id sai dạng với id không có thật.
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 @Injectable()
 export class AdminUserService {
   constructor(private readonly prisma: PrismaService) {}
@@ -117,7 +113,7 @@ export class AdminUserService {
   // Chi tiết một người dùng: tài khoản + shop sở hữu + số đơn đã đặt + lịch sử nhật ký quản trị về CHÍNH tài khoản này
   // (mới nhất trước). `ip`/`user_agent` của Admin trong nhật ký không được chọn. Ghi chú nội bộ sẽ thêm ở 4.3.
   async getUser(id: string): Promise<AdminUserDetail> {
-    if (!UUID_PATTERN.test(id)) throw userNotFound();
+    if (!isUserId(id)) throw userNotFound();
 
     const [user, history] = await Promise.all([
       this.prisma.user.findUnique({

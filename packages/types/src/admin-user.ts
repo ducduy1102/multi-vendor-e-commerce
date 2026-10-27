@@ -150,6 +150,13 @@ export const adminUserSchema = z.object({
 });
 export type AdminUser = z.infer<typeof adminUserSchema>;
 
+// Response của POST /admin/users/:id/suspend và /reactivate: người dùng SAU khi đổi (cùng hình dạng một dòng danh sách) để
+// màn quản trị cập nhật dòng tại chỗ mà không phải tải lại cả trang.
+export const adminUserStatusChangeResponseSchema = z.object({
+  user: adminUserSchema,
+});
+export type AdminUserStatusChangeResponse = z.infer<typeof adminUserStatusChangeResponseSchema>;
+
 export const adminUserListResponseSchema = z.object({
   items: z.array(adminUserSchema),
   total: z.number().int().nonnegative(),
