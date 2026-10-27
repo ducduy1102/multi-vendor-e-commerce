@@ -1,5 +1,6 @@
 import {
   ADMIN_ACCOUNT_STATUS_TRANSITIONS,
+  ADMIN_USER_LIST_MAX_PAGE,
   ADMIN_USER_LIST_MAX_PAGE_SIZE,
   ADMIN_USER_REASON_MAX_LENGTH,
   ADMIN_USER_SEARCH_MAX_LENGTH,
@@ -7,6 +8,7 @@ import {
   accountStatusSchema,
   accountStatusTargets,
   adminUserDetailSchema,
+  adminUserHistoryEntrySchema,
   adminUserListQuerySchema,
   adminUserListResponseSchema,
   adminUserReasonSchema,
@@ -267,6 +269,21 @@ describe('adminUserListQuerySchema', () => {
     });
   });
 
+  it('page đúng trần thì qua, hơn một thì bị từ chối (trần chặn page=1e21 làm Postgres báo bigint out of range)', () => {
+    expect(
+      adminUserListQuerySchema.safeParse({
+        page: String(ADMIN_USER_LIST_MAX_PAGE),
+      }).success,
+    ).toBe(true);
+    for (const page of [
+      String(ADMIN_USER_LIST_MAX_PAGE + 1),
+      '1e21',
+      '1e300',
+    ]) {
+      expect(adminUserListQuerySchema.safeParse({ page }).success).toBe(false);
+    }
+  });
+
   it.each([
     ['page = 0', { page: '0' }],
     ['page âm', { page: '-1' }],
@@ -422,7 +439,24 @@ describe('response: allowlist, không lộ trường nhạy cảm', () => {
     expect(parsed.statusChangedAt).toBeNull();
   });
 
-  it('danh sách có total/page/limit; chi tiết thêm ngôn ngữ, số đơn và shop sở hữu', () => {
+  const detailBase = {
+    ...user,
+    locale: 'en',
+    orderCount: 7,
+    shops: [{ id: 's1', name: 'Shop A', slug: 'shop-a', status: 'SUSPENDED' }],
+    history: [],
+  };
+  const historyEntry = {
+    id: 'h1',
+    action: 'SUSPEND_USER',
+    actorId: 'admin-1',
+    actorName: 'Quản trị viên',
+    reason: 'Vi phạm điều khoản',
+    meta: { from: 'ACTIVE', to: 'SUSPENDED', orderCount: 3, notified: true },
+    createdAt: '2026-10-27T10:00:00.000Z',
+  };
+
+  it('danh sách có total/page/limit; chi tiết thêm ngôn ngữ, số đơn, shop sở hữu và lịch sử', () => {
     expect(
       adminUserListResponseSchema.parse({
         items: [user],
@@ -432,15 +466,73 @@ describe('response: allowlist, không lộ trường nhạy cảm', () => {
       }),
     ).toMatchObject({ total: 1, items: [{ id: 'user-1' }] });
     const detail = adminUserDetailSchema.parse({
-      ...user,
-      locale: 'en',
-      orderCount: 7,
-      shops: [
-        { id: 's1', name: 'Shop A', slug: 'shop-a', status: 'SUSPENDED' },
-      ],
+      ...detailBase,
+      history: [historyEntry],
     });
     expect(detail.shops[0].status).toBe('SUSPENDED');
     expect(detail.orderCount).toBe(7);
+    expect(detail.history).toEqual([historyEntry]);
+  });
+
+  describe('lịch sử nhật ký trong chi tiết', () => {
+    it('hình dạng một dòng: đúng bảy trường, KHÔNG có ip / userAgent của Admin', () => {
+      expect(Object.keys(adminUserHistoryEntrySchema.shape).sort()).toEqual([
+        'action',
+        'actorId',
+        'actorName',
+        'createdAt',
+        'id',
+        'meta',
+        'reason',
+      ]);
+
+      const parsed = adminUserHistoryEntrySchema.parse({
+        ...historyEntry,
+        ip: '203.0.113.7',
+        userAgent: 'Mozilla/5.0',
+      });
+      expect(JSON.stringify(parsed)).not.toMatch(/203\.0\.113|Mozilla/);
+    });
+
+    it('hành động lạ vẫn parse được (FE rơi về nhãn chung thay vì hỏng cả trang chi tiết)', () => {
+      expect(
+        adminUserHistoryEntrySchema.safeParse({
+          ...historyEntry,
+          action: 'SOME_FUTURE_ACTION',
+        }).success,
+      ).toBe(true);
+    });
+
+    it('Admin đã bị xoá (actorName null) và hành động không có lý do (reason null) đều hợp lệ', () => {
+      expect(
+        adminUserHistoryEntrySchema.safeParse({
+          ...historyEntry,
+          actorName: null,
+          reason: null,
+        }).success,
+      ).toBe(true);
+    });
+
+    it.each([
+      ['meta lồng nhau', { meta: { nested: { a: 1 } } }],
+      ['meta chứa mảng', { meta: { ids: ['a', 'b'] } }],
+      ['meta chứa null', { meta: { from: null } }],
+      ['thiếu actorId', { actorId: undefined }],
+    ])('từ chối %s', (_name, override) => {
+      expect(
+        adminUserHistoryEntrySchema.safeParse({ ...historyEntry, ...override })
+          .success,
+      ).toBe(false);
+    });
+
+    it('chi tiết thiếu `history` bị từ chối: BE luôn phải trả mảng (rỗng nếu chưa có gì)', () => {
+      const { history: _history, ...withoutHistory } = detailBase;
+
+      expect(adminUserDetailSchema.safeParse(withoutHistory).success).toBe(
+        false,
+      );
+      expect(adminUserDetailSchema.safeParse(detailBase).success).toBe(true);
+    });
   });
 
   it.each([

@@ -17,6 +17,10 @@ export const ADMIN_USER_REASON_MAX_LENGTH = 500;
 export const ADMIN_USER_SEARCH_MAX_LENGTH = 254;
 // Số dòng tối đa mỗi trang, như `/admin/shops`.
 export const ADMIN_USER_LIST_MAX_PAGE_SIZE = 50;
+// Trần của số trang (100.000 trang × 50 dòng = 5 triệu người dùng, xa hơn mọi quy mô thực tế). Không có trần thì `page=1e21`
+// vẫn qua `z.coerce.number().int()` (1e21 là "số nguyên" của JS) rồi `OFFSET 2e22` làm Postgres báo `bigint out of range` ⇒
+// 500 thay vì 400 (đã đo trên Postgres thật).
+export const ADMIN_USER_LIST_MAX_PAGE = 100_000;
 
 // --- Trạng thái tài khoản ---------------------------------------------------------------------------
 
@@ -120,7 +124,7 @@ export const adminUserListQuerySchema = z.object({
     .transform((value) => (value === '' ? undefined : value)),
   role: userRoleSchema.optional(),
   status: accountStatusSchema.optional(),
-  page: z.coerce.number().int().positive().default(1),
+  page: z.coerce.number().int().positive().max(ADMIN_USER_LIST_MAX_PAGE).default(1),
   limit: z.coerce.number().int().positive().max(ADMIN_USER_LIST_MAX_PAGE_SIZE).default(20),
 });
 export type AdminUserListQuery = z.infer<typeof adminUserListQuerySchema>;
@@ -154,8 +158,8 @@ export const adminUserListResponseSchema = z.object({
 });
 export type AdminUserListResponse = z.infer<typeof adminUserListResponseSchema>;
 
-// Chi tiết một người dùng (ngăn bên phải ở 3.5): thêm ngôn ngữ email, số đơn và các shop họ sở hữu. Lịch sử nhật ký quản
-// trị và ghi chú nội bộ của Admin sẽ thêm ở 3.2 / 4.3 khi các nguồn đó có.
+// Chi tiết một người dùng (ngăn bên phải ở 3.5): thêm ngôn ngữ email, số đơn, các shop họ sở hữu và lịch sử nhật ký quản
+// trị về chính tài khoản này. Ghi chú nội bộ của Admin sẽ thêm ở 4.3 khi nguồn đó có.
 export const adminUserShopSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -164,9 +168,32 @@ export const adminUserShopSchema = z.object({
 });
 export type AdminUserShop = z.infer<typeof adminUserShopSchema>;
 
+// Số shop và số dòng lịch sử tối đa trả trong chi tiết. Luật nghiệp vụ là tối đa 1 shop mỗi người (ép ở service, không
+// phải ràng buộc DB) nên mức 20 chỉ là chặn trên phòng thủ; lịch sử trả 20 dòng MỚI NHẤT (chưa cần phân trang: một tài
+// khoản hiếm khi bị đổi trạng thái quá vài lần).
+export const ADMIN_USER_DETAIL_SHOPS_LIMIT = 20;
+export const ADMIN_USER_HISTORY_LIMIT = 20;
+
+// Một dòng nhật ký quản trị về người dùng (Week11.md 3.2). ALLOWLIST: không có `ip`/`userAgent` của Admin (dấu vết kiểm
+// toán, không phải thứ để hiện ra màn hình). `action` là chuỗi chứ không phải enum để một hành động mà FE chưa biết
+// (hoặc đã bị bỏ) không làm hỏng cả trang chi tiết — FE rơi về nhãn chung. `actorName` null khi tài khoản Admin đã bị xoá
+// (nhật ký không có khoá ngoại nên dòng vẫn còn). `meta` chỉ chứa id / mã enum / số / cờ theo luật của nhật ký.
+export const adminUserHistoryEntrySchema = z.object({
+  id: z.string(),
+  action: z.string(),
+  actorId: z.string(),
+  actorName: z.string().nullable(),
+  reason: z.string().nullable(),
+  meta: z.record(z.union([z.string(), z.number(), z.boolean()])),
+  createdAt: z.string(),
+});
+export type AdminUserHistoryEntry = z.infer<typeof adminUserHistoryEntrySchema>;
+
 export const adminUserDetailSchema = adminUserSchema.extend({
   locale: z.enum(['vi', 'en']),
+  // Số đơn người này đã ĐẶT với tư cách người mua (mọi trạng thái, kể cả đã huỷ).
   orderCount: z.number().int().nonnegative(),
   shops: z.array(adminUserShopSchema),
+  history: z.array(adminUserHistoryEntrySchema),
 });
 export type AdminUserDetail = z.infer<typeof adminUserDetailSchema>;
