@@ -1,7 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import * as adminService from '../services/admin.service';
-import { adminRefundListsQueryKey, adminRefundablePaymentListsQueryKey } from './admin-query-keys';
+import {
+  adminOverviewQueryKey,
+  adminRefundListsQueryKey,
+  adminRefundablePaymentListsQueryKey,
+} from './admin-query-keys';
 
 interface RefundPaymentVariables {
   paymentId: string;
@@ -18,6 +22,7 @@ export function useRefundPayment() {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: adminRefundablePaymentListsQueryKey() }),
       queryClient.invalidateQueries({ queryKey: adminRefundListsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: adminOverviewQueryKey() }),
     ]);
 
   return useMutation({

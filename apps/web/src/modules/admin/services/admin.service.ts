@@ -1,4 +1,5 @@
 import {
+  adminOverviewSchema,
   adminRefundListResponseSchema,
   adminRefundRequestListResponseSchema,
   adminRefundRequestSchema,
@@ -8,6 +9,7 @@ import {
   adminShopSchema,
   type AdminDecideRefundRequestInput,
   type AdminMarkRefundCompletedInput,
+  type AdminOverview,
   type AdminRefund,
   type AdminRefundListQuery,
   type AdminRefundListResponse,
@@ -51,6 +53,13 @@ export async function listShops(
     method: 'GET',
   });
   return adminShopListResponseSchema.parse(data);
+}
+
+// Số việc đang chờ Admin (Week11.md 2.5/2.6): shop chờ duyệt, khiếu nại đã lên sàn, khoản hoàn cần xử lý, thanh toán
+// cần hoàn — mỗi số bằng `total` của tab tương ứng, BE đếm trực tiếp từ dữ liệu (không cache). Chỉ ADMIN gọi được.
+export async function getOverview(): Promise<AdminOverview> {
+  const data = await apiFetch<unknown>('/admin/overview', { method: 'GET' });
+  return adminOverviewSchema.parse(data);
 }
 
 // Duyệt / từ chối / khoá / mở khoá. Từ chối và khoá bắt buộc `reason` (BE trả 400 nếu thiếu); shop

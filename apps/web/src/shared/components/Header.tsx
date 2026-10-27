@@ -9,7 +9,6 @@ import {
   Search,
   ShieldCheck,
   ShoppingCart,
-  Undo2,
   UserRound,
   X,
 } from 'lucide-react';
@@ -252,19 +251,12 @@ export function Header() {
           </DropdownMenuItem>
         )}
         {/* "Quản trị" (Week8.md 3.9) chỉ hiện cho ADMIN — user thường không có link tới /admin. Đây
-            chỉ là lối vào cho gọn; chặn truy cập thật nằm ở proxy.ts (điều hướng) + RolesGuard (BE). */}
+            chỉ là lối vào cho gọn; chặn truy cập thật nằm ở proxy.ts (điều hướng) + RolesGuard (BE). Từ Week11.md 2.6
+            là MỘT mục trỏ /admin (trang tổng quan); Shop và Hoàn tiền đi tiếp từ thanh điều hướng của khu Admin. */}
         {user.role === 'ADMIN' && (
-          <DropdownMenuItem render={<Link href="/admin/shops" />}>
+          <DropdownMenuItem render={<Link href="/admin" />}>
             <ShieldCheck />
             {t('adminLink')}
-          </DropdownMenuItem>
-        )}
-        {/* "Hoàn tiền" (Week9.md 3.7): khiếu nại, hoàn tiền lỗi và thanh toán bất thường — cùng điều kiện ADMIN và
-            ngay sau "Quản trị". */}
-        {user.role === 'ADMIN' && (
-          <DropdownMenuItem render={<Link href="/admin/refunds" />}>
-            <Undo2 />
-            {t('adminRefundsLink')}
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />

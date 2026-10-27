@@ -146,14 +146,11 @@ describe('Header — menu tài khoản (desktop)', () => {
   });
 
   describe('mục "Quản trị" (Week8.md 3.9) — chỉ ADMIN', () => {
-    it('ADMIN -> có "Quản trị" trỏ /admin/shops, đứng sau mục người bán và trước Đăng xuất', async () => {
+    it('ADMIN -> có MỘT mục "Quản trị" trỏ /admin (trang tổng quan), đứng sau mục người bán và trước Đăng xuất', async () => {
       auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
       const menu = await openAccountMenu();
 
-      expect(screen.getByRole('menuitem', { name: 'Quản trị' })).toHaveAttribute(
-        'href',
-        '/admin/shops',
-      );
+      expect(screen.getByRole('menuitem', { name: 'Quản trị' })).toHaveAttribute('href', '/admin');
       const labels = Array.from(menu.querySelectorAll('[role="menuitem"], button')).map((el) =>
         el.textContent?.trim(),
       );
@@ -165,27 +162,17 @@ describe('Header — menu tài khoản (desktop)', () => {
         'Sản phẩm của tôi',
         'Tin nhắn của khách',
         'Quản trị',
-        'Hoàn tiền',
         'Đăng xuất',
       ]);
     });
 
-    it('ADMIN -> có "Hoàn tiền" trỏ /admin/refunds, ngay sau "Quản trị" (Week9.md 3.7)', async () => {
+    it('ADMIN -> KHÔNG còn mục "Hoàn tiền" riêng và không link thẳng vào /admin/shops, /admin/refunds (Week11.md 2.6: đi từ thanh điều hướng Admin)', async () => {
       auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
-      await openAccountMenu();
+      const menu = await openAccountMenu();
 
-      const refunds = screen.getByRole('menuitem', { name: 'Hoàn tiền' });
-      const admin = screen.getByRole('menuitem', { name: 'Quản trị' });
-      expect(refunds).toHaveAttribute('href', '/admin/refunds');
-      expect(
-        admin.compareDocumentPosition(refunds) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-    });
-
-    it('người dùng thường (USER) và khách -> KHÔNG có "Hoàn tiền" của Admin', async () => {
-      auth.user = { name: 'Nguyễn Văn A', role: 'USER' };
-      await openAccountMenu();
       expect(screen.queryByRole('menuitem', { name: 'Hoàn tiền' })).not.toBeInTheDocument();
+      expect(menu.querySelector('a[href="/admin/shops"], a[href="/admin/refunds"]')).toBeNull();
+      expect(menu.querySelectorAll('a[href^="/admin"]')).toHaveLength(1);
     });
 
     it('ADMIN nhưng chưa kịp biết shop (shopLink null) -> vẫn có "Quản trị"', async () => {

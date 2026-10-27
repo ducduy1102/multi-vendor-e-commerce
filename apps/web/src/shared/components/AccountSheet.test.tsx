@@ -174,45 +174,24 @@ describe('AccountSheet — mục "Trang cá nhân" và "Đơn hàng của tôi"'
   });
 
   describe('mục "Quản trị" (Week8.md 3.9) — chỉ ADMIN', () => {
-    it('ADMIN -> có link "Quản trị" trỏ /admin/shops, đứng sau mục người bán, cùng khối', () => {
+    it('ADMIN -> có MỘT link "Quản trị" trỏ /admin, đứng sau mục người bán, cùng khối', () => {
       auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
       openSheet();
 
       const admin = screen.getByRole('link', { name: 'Quản trị' });
       const shop = screen.getByRole('link', { name: 'Sản phẩm của tôi' });
-      expect(admin).toHaveAttribute('href', '/admin/shops');
+      expect(admin).toHaveAttribute('href', '/admin');
       expect(shop.compareDocumentPosition(admin) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(admin.parentElement).toBe(shop.parentElement);
     });
 
-    it('ADMIN -> có link "Hoàn tiền" trỏ /admin/refunds, ngay sau "Quản trị", cùng khối (Week9.md 3.7)', () => {
+    it('ADMIN -> KHÔNG còn link "Hoàn tiền" riêng và không link thẳng vào /admin/shops, /admin/refunds (Week11.md 2.6)', () => {
       auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
-      openSheet();
-
-      const refunds = screen.getByRole('link', { name: 'Hoàn tiền' });
-      const admin = screen.getByRole('link', { name: 'Quản trị' });
-      expect(refunds).toHaveAttribute('href', '/admin/refunds');
-      expect(
-        admin.compareDocumentPosition(refunds) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-      expect(refunds.parentElement).toBe(admin.parentElement);
-    });
-
-    it('bấm "Hoàn tiền" -> đóng Sheet', async () => {
-      const user = userEvent.setup();
-      auth.user = { name: 'Nguyễn Văn A', role: 'ADMIN' };
-      openSheet();
-
-      await user.click(screen.getByRole('link', { name: 'Hoàn tiền' }));
-
-      expect(useUIStore.getState().isAccountSheetOpen).toBe(false);
-    });
-
-    it('USER thường / khách -> KHÔNG có "Hoàn tiền" của Admin', () => {
-      auth.user = { name: 'Nguyễn Văn A', role: 'USER' };
       openSheet();
 
       expect(screen.queryByRole('link', { name: 'Hoàn tiền' })).not.toBeInTheDocument();
+      expect(document.querySelector('a[href="/admin/shops"], a[href="/admin/refunds"]')).toBeNull();
+      expect(document.querySelectorAll('a[href^="/admin"]')).toHaveLength(1);
     });
 
     it('bấm "Quản trị" -> đóng Sheet', async () => {
