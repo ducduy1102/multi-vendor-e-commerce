@@ -8,13 +8,16 @@ import {
   type PaymentStatus,
   type RefundRequestKind,
   type RefundRequestStatus,
+  type ShopStatus,
 } from '@prisma/client';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import {
   adminRefundListResponseSchema,
   adminRefundRequestListResponseSchema,
+  adminOverviewSchema,
   adminRefundRequestSchema,
   adminRefundSchema,
   adminRefundablePaymentListResponseSchema,
@@ -1255,6 +1258,221 @@ describe('AdminRefundController (HTTP thật)', () => {
           TOTAL,
         );
       }
+    });
+  });
+
+  // --- Trang tổng quan: số việc đang chờ (Week11.md 2.5) -----------------------------------------
+
+  describe('GET /admin/overview', () => {
+    const OVERVIEW_URL = '/api/v1/admin/overview';
+    const observedStatuses = new Set<number>();
+
+    const getOverview = (agent: Agent = admin) =>
+      agent.get(OVERVIEW_URL).then((res) => {
+        observedStatuses.add(res.status);
+        return res;
+      });
+    const overview = async () =>
+      adminOverviewSchema.strict().parse(data(await getOverview()));
+    // Tổng của từng tab ở khu quản trị: số đếm của /overview phải BẰNG các con số này.
+    const tabTotal = async (url: string) => {
+      const res = await admin.get(
+        `${url}${url.includes('?') ? '&' : '?'}limit=1`,
+      );
+      return (data(res) as { total: number }).total;
+    };
+    const tabTotals = async () => ({
+      pendingShops: await tabTotal('/api/v1/admin/shops?status=PENDING'),
+      escalatedRefundRequests: await tabTotal(
+        '/api/v1/admin/refund-requests?status=ESCALATED',
+      ),
+      refundsNeedingAction: await tabTotal('/api/v1/admin/refunds'),
+      refundablePayments: await tabTotal('/api/v1/admin/refundable-payments'),
+    });
+
+    async function seedShop(status: ShopStatus) {
+      const owner = await createUser(prisma, TAG);
+      const shop = await prisma.shop.create({
+        data: {
+          ownerId: owner.id,
+          name: `${TAG}shop-${status}`,
+          slug: `${TAG}${status.toLowerCase()}-${stamp}-${++seq}`,
+          status,
+        },
+        select: { id: true },
+      });
+      return shop.id;
+    }
+
+    // Dựng một tập việc đang chờ có số lượng biết trước (2 mỗi loại), xen lẫn dữ liệu KHÔNG được đếm (cùng loại nhưng
+    // sai trạng thái).
+    async function seedWorkload() {
+      const pendingShopIds = [
+        await seedShop('PENDING'),
+        await seedShop('PENDING'),
+      ];
+      await seedShop('APPROVED');
+      await seedShop('REJECTED');
+
+      const escalated = [
+        await seedRequest(await seedOrder({ status: 'COMPLETED' }), {
+          kind: 'RETURN',
+          status: 'ESCALATED',
+        }),
+        await seedRequest(await seedOrder({ status: 'COMPLETED' }), {
+          kind: 'RETURN',
+          status: 'ESCALATED',
+        }),
+      ];
+      await seedRequest(await seedOrder({ status: 'COMPLETED' }), {
+        kind: 'RETURN',
+        status: 'PENDING_SELLER',
+      });
+      await seedRequest(await seedOrder({ status: 'COMPLETED' }), {
+        kind: 'RETURN',
+        status: 'REJECTED',
+      });
+
+      const failedRefund = await seedRefund(
+        await seedOrder({ status: 'REFUNDED' }),
+        { status: 'FAILED' },
+      );
+      await seedRefund(await seedOrder({ status: 'REFUNDED' }), {
+        status: 'PENDING',
+        ageMs: 10 * MIN_MS, // bỏ dở quá 5 phút ⇒ đếm
+      });
+      await seedRefund(await seedOrder({ status: 'REFUNDED' }), {
+        status: 'PENDING',
+        ageMs: 1 * MIN_MS, // còn mới (cổng có thể vẫn đang chạy) ⇒ KHÔNG đếm
+      });
+      await seedRefund(await seedOrder({ status: 'REFUNDED' }), {
+        status: 'SUCCEEDED', // đã xong ⇒ KHÔNG đếm
+      });
+
+      const afterExpiry = await seedOrder({ status: 'CANCELLED' });
+      await seedOrder({
+        status: 'PENDING',
+        extraPayment: { paidAt: new Date() }, // khách trả hai lần ⇒ bản đến sau là thanh toán trùng
+      });
+      await seedOrder({ status: 'PENDING' }); // thanh toán bình thường ⇒ KHÔNG đếm
+      await seedOrder({ status: 'CANCELLED', method: 'COD' }); // COD ⇒ KHÔNG đếm
+      const alreadyRefunded = await seedOrder({ status: 'CANCELLED' });
+      await seedRefund(alreadyRefunded, { status: 'SUCCEEDED' }); // đã có dòng hoàn ⇒ KHÔNG đếm
+
+      return {
+        pendingShopIds,
+        escalated,
+        failedRefund,
+        refundablePaymentId: afterExpiry.paymentId,
+      };
+    }
+
+    it('khách ⇒ 401, người dùng thường ⇒ 403, Admin ⇒ 200 (RolesGuard thật)', async () => {
+      expect((await getOverview(anonymous)).status).toBe(401);
+      expect((await getOverview(plainUser)).status).toBe(403);
+      expect((await getOverview(admin)).status).toBe(200);
+    });
+
+    it('response parse được bằng đúng schema dùng chung, không thừa trường; Cache-Control: no-store', async () => {
+      const res = await getOverview();
+
+      expect(res.headers['cache-control']).toBe('no-store');
+      const parsed = adminOverviewSchema.strict().parse(data(res));
+      expect(Object.keys(parsed).sort()).toEqual([
+        'escalatedRefundRequests',
+        'pendingShops',
+        'refundablePayments',
+        'refundsNeedingAction',
+      ]);
+    });
+
+    it('đếm KHỚP dữ liệu dựng sẵn: chỉ những dòng đúng trạng thái được tính, không tính dòng cùng loại sai trạng thái', async () => {
+      const before = await overview();
+
+      await seedWorkload();
+
+      const after = await overview();
+      expect({
+        pendingShops: after.pendingShops - before.pendingShops,
+        escalatedRefundRequests:
+          after.escalatedRefundRequests - before.escalatedRefundRequests,
+        refundsNeedingAction:
+          after.refundsNeedingAction - before.refundsNeedingAction,
+        refundablePayments:
+          after.refundablePayments - before.refundablePayments,
+      }).toEqual({
+        pendingShops: 2,
+        escalatedRefundRequests: 2,
+        refundsNeedingAction: 2,
+        refundablePayments: 2,
+      });
+    });
+
+    it('mỗi số BẰNG `total` của tab tương ứng ở khu quản trị (trên cùng một trạng thái dữ liệu)', async () => {
+      await seedWorkload();
+
+      const counts = await overview();
+      const tabs = await tabTotals();
+
+      expect(counts).toEqual(tabs);
+    });
+
+    it('đếm trực tiếp từ dữ liệu, không cache: xử lý xong một việc thì số giảm đúng 1', async () => {
+      const work = await seedWorkload();
+      const start = await overview();
+
+      // duyệt một shop chờ duyệt
+      await admin
+        .patch(`/api/v1/admin/shops/${work.pendingShopIds[0]}/status`)
+        .send({ status: 'APPROVED' })
+        .expect(200);
+      expect((await overview()).pendingShops).toBe(start.pendingShops - 1);
+
+      // quyết định một khiếu nại đã lên sàn
+      await decide(work.escalated[0], {
+        decision: 'REJECT',
+        note: 'Không đủ căn cứ',
+      }).expect(200);
+      expect((await overview()).escalatedRefundRequests).toBe(
+        start.escalatedRefundRequests - 1,
+      );
+
+      // ghi nhận đã hoàn thủ công một khoản hoàn lỗi
+      await markCompleted(work.failedRefund, {
+        reference: `MANUAL-${stamp}-overview`,
+      }).expect(200);
+      expect((await overview()).refundsNeedingAction).toBe(
+        start.refundsNeedingAction - 1,
+      );
+
+      // hoàn một thanh toán bất thường
+      await refundPayment(work.refundablePaymentId).expect(200);
+      expect((await overview()).refundablePayments).toBe(
+        start.refundablePayments - 1,
+      );
+    });
+
+    it('Swagger khớp hành vi thật: route có tài liệu, khai báo 200/401/403 và mọi status đã quan sát được đều được khai báo', async () => {
+      await getOverview(anonymous);
+      await getOverview(plainUser);
+      await getOverview(admin);
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().setTitle('admin').setVersion('0').build(),
+      );
+
+      const operation = (
+        document.paths[OVERVIEW_URL] as
+          Record<string, { responses: Record<string, unknown> }> | undefined
+      )?.get;
+
+      expect(operation).toBeDefined();
+      const documented = Object.keys(operation?.responses ?? {}).map(Number);
+      expect(documented.filter((s) => s >= 200 && s < 300)).toEqual([200]);
+      for (const status of observedStatuses) {
+        expect(documented).toContain(status);
+      }
+      expect([...observedStatuses].sort()).toEqual([200, 401, 403]);
     });
   });
 });

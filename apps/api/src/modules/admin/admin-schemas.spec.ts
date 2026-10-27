@@ -1,6 +1,7 @@
 import {
   ADMIN_SHOP_REASON_MAX_LENGTH,
   ADMIN_SHOP_STATUSES_REQUIRING_REASON,
+  adminOverviewSchema,
   adminShopListQuerySchema,
   adminShopListResponseSchema,
   adminShopTargetStatusSchema,
@@ -251,5 +252,38 @@ describe('response schema', () => {
         limit: 20,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('adminOverviewSchema (GET /admin/overview, Week11.md 2.5)', () => {
+  const overview = {
+    pendingShops: 3,
+    escalatedRefundRequests: 1,
+    refundsNeedingAction: 0,
+    refundablePayments: 12,
+  };
+
+  it('parse được số đếm hợp lệ (kể cả 0)', () => {
+    expect(adminOverviewSchema.parse(overview)).toEqual(overview);
+  });
+
+  it.each([
+    ['âm', -1],
+    ['thập phân', 1.5],
+    ['chuỗi', '3'],
+    ['null', null],
+  ])('từ chối số đếm %s', (_name, value) => {
+    for (const key of Object.keys(overview)) {
+      expect(
+        adminOverviewSchema.safeParse({ ...overview, [key]: value }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('thiếu trường nào cũng không parse được (FE không được hiểu nhầm là 0)', () => {
+    for (const key of Object.keys(overview)) {
+      const { [key]: _omitted, ...rest } = overview as Record<string, number>;
+      expect(adminOverviewSchema.safeParse(rest).success).toBe(false);
+    }
   });
 });

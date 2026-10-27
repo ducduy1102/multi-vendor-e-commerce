@@ -421,6 +421,102 @@ describe('RefundQueryService', () => {
     });
   });
 
+  // GET /admin/overview (Week11.md 2.5): mỗi số phải dùng ĐÚNG điều kiện của tab tương ứng, nên các ca dưới đây so với
+  // điều kiện mà chính hàm danh sách đã gửi cho Prisma — một bên đổi mà bên kia không đổi là test đỏ.
+  describe('countOpenWork', () => {
+    const listQuery = (status: string) =>
+      ({ status, page: 1, limit: 20 }) as Parameters<
+        RefundQueryService['listRefunds']
+      >[0];
+
+    it('trả đủ ba số, mỗi số từ đúng truy vấn đếm của nó', async () => {
+      prisma.refundRequest.count.mockResolvedValue(4);
+      prisma.paymentRefund.count.mockResolvedValue(2);
+      prisma.$queryRaw.mockResolvedValue([{ count: BigInt(7) }]);
+
+      const result = await service.countOpenWork();
+
+      expect(result).toEqual({
+        escalatedRefundRequests: 4,
+        refundsNeedingAction: 2,
+        refundablePayments: 7,
+      });
+    });
+
+    it('khiếu nại: chỉ đếm ESCALATED (đúng tab mặc định của /admin/refund-requests)', async () => {
+      await service.countOpenWork();
+
+      expect(prisma.refundRequest.count).toHaveBeenCalledTimes(1);
+      expect(prisma.refundRequest.count).toHaveBeenCalledWith({
+        where: { status: 'ESCALATED' },
+      });
+    });
+
+    it('khoản hoàn cần xử lý: CÙNG điều kiện với tab NEEDS_ACTION (FAILED + PENDING bỏ dở ≥ 5 phút)', async () => {
+      await service.listRefunds(listQuery('NEEDS_ACTION'));
+      const tabWhere = (
+        prisma.paymentRefund.count.mock.calls[0] as [{ where: unknown }]
+      )[0].where;
+      prisma.paymentRefund.count.mockClear();
+
+      await service.countOpenWork();
+
+      expect(prisma.paymentRefund.count).toHaveBeenCalledTimes(1);
+      expect(prisma.paymentRefund.count).toHaveBeenCalledWith({
+        where: tabWhere,
+      });
+      expect(tabWhere).toEqual({
+        OR: [
+          { status: 'FAILED' },
+          {
+            status: 'PENDING',
+            updatedAt: {
+              lte: new Date(NOW.getTime() - REFUND_PENDING_STALE_MS),
+            },
+          },
+        ],
+      });
+    });
+
+    it('thanh toán cần hoàn: CÙNG bộ lọc SQL với danh sách /admin/refundable-payments', async () => {
+      prisma.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ count: BigInt(0) }]);
+      await service.listRefundablePayments({ page: 1, limit: 20 });
+      const [, countCall] = prisma.$queryRaw.mock.calls as [
+        TemplateStringsArray,
+        ...unknown[],
+      ][];
+      const listCountSql = countCall[0].join('?');
+      prisma.$queryRaw.mockClear();
+      prisma.$queryRaw.mockResolvedValue([{ count: BigInt(0) }]);
+
+      await service.countOpenWork();
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+      const [openWorkCall] = prisma.$queryRaw.mock.calls as [
+        TemplateStringsArray,
+        ...unknown[],
+      ][];
+      expect(openWorkCall[0].join('?')).toBe(listCountSql);
+      expect(listCountSql).toContain('COUNT(*)');
+    });
+
+    it('không có dòng đếm nào ⇒ 0 (không NaN)', async () => {
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      const result = await service.countOpenWork();
+
+      expect(result.refundablePayments).toBe(0);
+    });
+
+    it('lỗi của một truy vấn đếm lan ra (không trả số sai âm thầm)', async () => {
+      prisma.paymentRefund.count.mockRejectedValue(new Error('db down'));
+
+      await expect(service.countOpenWork()).rejects.toThrow('db down');
+    });
+  });
+
   describe('listRefundablePayments', () => {
     const query = (page = 1, limit = 20) => ({ page, limit });
 
