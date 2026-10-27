@@ -29,10 +29,14 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   // Query lại DB (không chỉ decode payload) để tài khoản bị khoá sau khi JWT
   // đã cấp mất hiệu lực ngay, không phải chờ access token hết hạn (~15p) —
   // đánh đổi có chủ đích, xem auth-shop-status-architecture.md mục 4.
+  //
+  // `role` cũng lấy từ DB chứ không từ payload: payload chỉ là bản chụp lúc cấp token, nên nâng/hạ quyền
+  // (kể cả sửa tay trong DB) sẽ chỉ có hiệu lực sau ≤ 15 phút. Cùng câu truy vấn nên không tốn thêm lượt nào.
+  // `role` trong JWT vẫn giữ để FE (`proxy.ts`) định tuyến mà không verify — quyền thật chỉ quyết ở đây.
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { accountStatus: true },
+      select: { accountStatus: true, role: true },
     });
     if (!user) {
       throw new UnauthorizedException();
@@ -41,6 +45,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new AppException(401, 'ACCOUNT_NOT_ACTIVE', 'ACCOUNT_NOT_ACTIVE');
     }
 
-    return { userId: payload.sub, role: payload.role };
+    return { userId: payload.sub, role: user.role };
   }
 }

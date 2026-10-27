@@ -1,6 +1,5 @@
 import { Logger } from '@nestjs/common';
 import { messageHandlersOf } from '../testing/message-handlers';
-import { Role } from '@prisma/client';
 import { REALTIME_EVENTS } from '@ecommerce/types';
 import type { IncomingHttpHeaders } from 'http';
 import { RealtimeAccessService } from './realtime-access.service';
@@ -24,7 +23,6 @@ const APP = 'https://app.example.com';
 const TOKEN = 'secret.access.token';
 const USER: VerifiedSocketToken = {
   userId: 'user-1',
-  role: Role.USER,
   exp: 2_000_000_000,
 };
 

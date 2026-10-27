@@ -1,6 +1,8 @@
 // Barrel export cho module admin — export những gì app/ cần (trang
 // /admin/shops, /admin/refunds). Không export sâu file nội bộ (shared/lib/module-boundaries.test.ts
 // kiểm điều này).
+export { AdminNav } from './components/AdminNav';
+export { AdminOverviewContainer } from './components/AdminOverviewContainer';
 export { AdminRefundsContainer } from './components/AdminRefundsContainer';
 export { AdminShopsContainer } from './components/AdminShopsContainer';
 export { parseAdminRefundsPageQuery } from './admin-refunds-href';

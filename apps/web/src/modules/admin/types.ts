@@ -4,6 +4,7 @@ export type {
   AbnormalPaymentKind,
   AdminDecideRefundRequestInput,
   AdminMarkRefundCompletedInput,
+  AdminOverview,
   AdminRefund,
   AdminRefundListFilter,
   AdminRefundListQuery,

@@ -977,3 +977,58 @@ model Notification {
   @@index([userId, readAt, createdAt(sort: Desc), id(sort: Desc)])
   @@map("notifications")
 }
+
+// =========================================================
+// Admin audit
+// =========================================================
+
+// Nhật ký quản trị (Week11.md 2.3, D4): MỘT bảng chung, CHỈ THÊM — không có UPDATE/DELETE nào trong mã nguồn
+// (`admin-audit-append-only.spec.ts` quét). Chỉ được ghi qua AdminAuditService (shared/audit), luôn CÙNG $transaction với
+// thay đổi nghiệp vụ nó mô tả (khác Notification: nhật ký phải khớp dữ liệu, không thể "đã đổi mà không có dấu vết").
+// Không đọc qua API công khai; Admin xem lịch sử theo đối tượng ở màn quản trị.
+model AdminAuditLog {
+  id String @id @default(uuid())
+
+  // Admin thực hiện (lấy từ phiên, không bao giờ từ client). KHÔNG khai khoá ngoại tới users có chủ đích — cùng tiền
+  // lệ `actorId` của OrderStatusHistory/ShopStatusHistory: nhật ký phải còn nguyên khi tài khoản bị xoá/ẩn danh sau
+  // này, và một khoá ngoại RESTRICT sẽ chặn xoá user, CASCADE sẽ xoá luôn dấu vết (đúng điều nhật ký sinh ra để tránh).
+  actorId String @map("actor_id")
+
+  // Hành động và loại đối tượng là String (không phải enum Postgres) — cùng tinh thần Notification.type: thêm giá trị
+  // mới không cần migration. Danh sách ĐÓNG và cặp (hành động → loại đối tượng) hợp lệ chỉ nằm ở packages/types
+  // (ADMIN_AUDIT_ACTION_TARGETS), được Zod kiểm lúc ghi. CHECK ở DB (viết tay trong migration) chỉ chặn dạng và độ dài.
+  action     String
+  targetType String @map("target_type")
+
+  // Đối tượng bị tác động (đa hình theo targetType nên không có khoá ngoại). Luôn là UUID; DB chỉ chặn độ dài.
+  targetId String @map("target_id")
+
+  // Lý do do Admin nhập (≤ 500 ký tự, văn bản thuần), NULL nếu hành động không cần lý do (vd đọc chat).
+  reason String?
+
+  // Dữ liệu phụ nhỏ: CHỈ id, mã dạng enum, số đếm, cờ (Zod ép, không chuỗi tự do); CHECK ở DB: phải là object và ≤ 2 KB.
+  meta Json @default("{}")
+
+  // "Từ đâu" của hành động (trường chuẩn của nhật ký kiểm toán — OWASP Logging Cheat Sheet): IP và User-Agent của request
+  // Admin. NULL khi hành động không xuất phát từ một request HTTP. IP lấy từ `req.ip`, chỉ đáng tin khi ENV TRUST_PROXY khớp
+  // số chặng proxy thật (main.ts); User-Agent do client tự khai nên chỉ là dấu vết tham khảo, đã cắt gọn và lọc ký tự lạ
+  // (auditRequestContext). CHECK ở DB chỉ chặn độ dài.
+  ip        String? @map("ip")
+  userAgent String? @map("user_agent")
+
+  // Giờ do ĐỒNG HỒ DB đóng dấu (UTC), KHÔNG phải `@default(now())` — cái đó do query engine của Prisma sinh ở tiến trình API
+  // (rules/backend.md mục 6, bài học từ chat), nên nhiều instance lệch giờ sẽ ghi sai thứ tự. `clock_timestamp()` (không
+  // phải `now()`): thời điểm thật của câu INSERT chứ không phải lúc transaction bắt đầu, nên hai dòng ghi trong cùng một
+  // transaction vẫn có giờ khác nhau và đúng thứ tự. `timezone('UTC', …)` để giá trị không phụ thuộc múi giờ của phiên DB
+  // (cột là TIMESTAMP không múi giờ, Prisma luôn đọc nó là UTC).
+  createdAt DateTime @default(dbgenerated("timezone('UTC'::text, clock_timestamp())")) @map("created_at")
+
+  // Hai chỉ mục, mỗi cái phục vụ một họ truy vấn: (1) lịch sử của MỘT đối tượng, mới nhất trước:
+  // WHERE target_type = ? AND target_id = ? ORDER BY created_at DESC, id DESC; (2) việc một Admin đã làm:
+  // WHERE actor_id = ? ORDER BY created_at DESC, id DESC. id là khoá phụ để phân trang con trỏ không trùng/mất khi
+  // hai dòng cùng mili-giây. Mẫu D4 là (targetType, targetId, createdAt) và (actorId, createdAt); thêm chiều giảm dần
+  // và id cho khớp thứ tự ORDER BY như `notifications`.
+  @@index([targetType, targetId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("admin_audit_logs")
+}

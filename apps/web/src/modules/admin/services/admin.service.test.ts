@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   decideRefundRequest,
+  getOverview,
   listRefundablePayments,
   listRefundRequests,
   listRefunds,
@@ -566,4 +567,49 @@ describe('admin.service — listRefundablePayments / refundPayment', () => {
       code: 'PAYMENT_NOT_REFUNDABLE',
     });
   });
+});
+
+describe('admin.service — getOverview', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const OVERVIEW = {
+    pendingShops: 3,
+    escalatedRefundRequests: 1,
+    refundsNeedingAction: 0,
+    refundablePayments: 12,
+  };
+
+  it('GET /admin/overview (không query, không body), trả đúng 4 số', async () => {
+    mockFetchOnce({ success: true, data: OVERVIEW });
+
+    const result = await getOverview();
+
+    expect(result).toEqual(OVERVIEW);
+    const [url, init] = lastCall();
+    expect(url).toMatch(/\/admin\/overview$/);
+    expect(init.method).toBe('GET');
+    expect(init.body).toBeUndefined();
+  });
+
+  it.each([
+    ['thiếu một số', { pendingShops: 1 }],
+    ['số âm', { ...OVERVIEW, pendingShops: -1 }],
+    ['số thập phân', { ...OVERVIEW, refundablePayments: 1.5 }],
+    ['số dạng chuỗi', { ...OVERVIEW, refundablePayments: '3' }],
+  ])('response sai hình dạng (%s) -> ném lỗi, không trả số sai cho UI', async (_name, body) => {
+    mockFetchOnce({ success: true, data: body });
+
+    await expect(getOverview()).rejects.toThrow();
+  });
+
+  it.each([401, 403])(
+    '%i (chưa đăng nhập / không phải ADMIN) -> giữ nguyên status để UI xử lý',
+    async (status) => {
+      mockFetchOnce({ success: false, data: null, message: 'Forbidden' }, status);
+
+      await expect(getOverview()).rejects.toMatchObject({ status });
+    },
+  );
 });

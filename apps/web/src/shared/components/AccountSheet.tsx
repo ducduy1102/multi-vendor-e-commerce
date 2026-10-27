@@ -7,7 +7,6 @@ import {
   MessagesSquare,
   Package,
   ShieldCheck,
-  Undo2,
   User,
   UserRound,
 } from 'lucide-react';
@@ -171,18 +170,12 @@ export function AccountSheet({ triggerClassName }: AccountSheetProps) {
                     <LazyChatUnreadBadge scope="shop" className="static ml-auto" />
                   </Link>
                 )}
-                {/* "Quản trị" chỉ hiện cho ADMIN, cùng thứ tự với dropdown desktop của Header. */}
+                {/* "Quản trị" chỉ hiện cho ADMIN, cùng thứ tự với dropdown desktop của Header; một mục trỏ /admin
+                    (Week11.md 2.6) — Shop và Hoàn tiền nằm ở thanh điều hướng của khu Admin. */}
                 {user.role === 'ADMIN' && (
-                  <Link href="/admin/shops" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
+                  <Link href="/admin" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
                     <ShieldCheck className="size-4" aria-hidden="true" />
                     {t('adminLink')}
-                  </Link>
-                )}
-                {/* "Hoàn tiền" (Week9.md 3.7), cùng điều kiện và thứ tự với dropdown desktop của Header. */}
-                {user.role === 'ADMIN' && (
-                  <Link href="/admin/refunds" onClick={closeSheet} className={ACCOUNT_LINK_CLASS}>
-                    <Undo2 className="size-4" aria-hidden="true" />
-                    {t('adminRefundsLink')}
                   </Link>
                 )}
               </div>

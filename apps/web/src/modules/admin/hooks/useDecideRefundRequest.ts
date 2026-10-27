@@ -2,7 +2,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import * as adminService from '../services/admin.service';
 import type { AdminDecideRefundRequestInput } from '../types';
-import { adminRefundListsQueryKey, adminRefundRequestListsQueryKey } from './admin-query-keys';
+import {
+  adminOverviewQueryKey,
+  adminRefundListsQueryKey,
+  adminRefundRequestListsQueryKey,
+} from './admin-query-keys';
 
 interface DecideRefundRequestVariables extends AdminDecideRefundRequestInput {
   requestId: string;
@@ -19,6 +23,7 @@ export function useDecideRefundRequest() {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: adminRefundRequestListsQueryKey() }),
       queryClient.invalidateQueries({ queryKey: adminRefundListsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: adminOverviewQueryKey() }),
     ]);
 
   return useMutation({

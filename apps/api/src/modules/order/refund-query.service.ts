@@ -161,6 +161,19 @@ const ABNORMAL_PAYMENT_FILTER = Prisma.sql`
     )
   )`;
 
+// Khoản hoàn "cần Admin xử lý" = FAILED + PENDING bị bỏ dở (`updatedAt <=` ngưỡng, khớp biên `>=` của
+// getAdminRefundActions/RefundService) — đúng tập thử lại / ghi nhận thủ công được. MỘT nơi định nghĩa cho cả tab
+// /admin/refunds lẫn số đếm ở /admin/overview, để hai con số không thể lệch nhau.
+const needsActionWhere = (now: Date): Prisma.PaymentRefundWhereInput => ({
+  OR: [
+    { status: 'FAILED' },
+    {
+      status: 'PENDING',
+      updatedAt: { lte: new Date(now.getTime() - REFUND_PENDING_STALE_MS) },
+    },
+  ],
+});
+
 const toAdminRequest = (request: LoadedAdminRequest): AdminRefundRequest => {
   const latest = request.order.checkoutGroup.payments[0] ?? null;
   return {
@@ -308,15 +321,9 @@ export class RefundQueryService {
     query: AdminRefundListQuery,
   ): Promise<AdminRefundListResponse> {
     const now = new Date();
-    const staleCutoff = new Date(now.getTime() - REFUND_PENDING_STALE_MS);
     const where: Prisma.PaymentRefundWhereInput =
       query.status === 'NEEDS_ACTION'
-        ? {
-            OR: [
-              { status: 'FAILED' },
-              { status: 'PENDING', updatedAt: { lte: staleCutoff } },
-            ],
-          }
+        ? needsActionWhere(now)
         : { status: query.status };
     const direction = query.status === 'SUCCEEDED' ? 'desc' : 'asc';
 
@@ -362,15 +369,13 @@ export class RefundQueryService {
     query: AdminRefundablePaymentListQuery,
   ): Promise<AdminRefundablePaymentListResponse> {
     const offset = (query.page - 1) * query.limit;
-    const [rows, counts] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.$queryRaw<{ id: string }[]>`
         SELECT p.id FROM payments p
         WHERE ${ABNORMAL_PAYMENT_FILTER}
         ORDER BY p.paid_at ASC NULLS LAST, p.id ASC
         LIMIT ${query.limit} OFFSET ${offset}`,
-      this.prisma.$queryRaw<{ count: bigint }[]>`
-        SELECT COUNT(*)::bigint AS count FROM payments p
-        WHERE ${ABNORMAL_PAYMENT_FILTER}`,
+      this.countAbnormalPayments(),
     ]);
 
     const ids = rows.map((row) => row.id);
@@ -395,9 +400,40 @@ export class RefundQueryService {
 
     return {
       items,
-      total: Number(counts[0]?.count ?? 0),
+      total,
       page: query.page,
       limit: query.limit,
+    };
+  }
+
+  // Số thanh toán bất thường chưa có dòng hoàn nào — cùng bộ lọc SQL với danh sách nên `total` của tab và số đếm ở
+  // /admin/overview là MỘT con số.
+  private async countAbnormalPayments(): Promise<number> {
+    const counts = await this.prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint AS count FROM payments p
+      WHERE ${ABNORMAL_PAYMENT_FILTER}`;
+    return Number(counts[0]?.count ?? 0);
+  }
+
+  // Phần tiền hoàn của GET /admin/overview: số việc đang chờ Admin, đếm bằng ĐÚNG điều kiện của ba tab ở khu hoàn tiền
+  // (khiếu nại đã lên sàn, khoản hoàn cần xử lý, thanh toán cần hoàn). Ba truy vấn độc lập chạy song song.
+  async countOpenWork(): Promise<{
+    escalatedRefundRequests: number;
+    refundsNeedingAction: number;
+    refundablePayments: number;
+  }> {
+    const [escalatedRefundRequests, refundsNeedingAction, refundablePayments] =
+      await Promise.all([
+        this.prisma.refundRequest.count({ where: { status: 'ESCALATED' } }),
+        this.prisma.paymentRefund.count({
+          where: needsActionWhere(new Date()),
+        }),
+        this.countAbnormalPayments(),
+      ]);
+    return {
+      escalatedRefundRequests,
+      refundsNeedingAction,
+      refundablePayments,
     };
   }
 

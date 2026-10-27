@@ -46,9 +46,9 @@ describe('JwtSocketAuthenticator', () => {
   });
 
   describe('verifyToken', () => {
-    it('access token hợp lệ ⇒ userId, role và exp (giây)', async () => {
+    it('access token hợp lệ ⇒ userId và exp (giây)', async () => {
       const token = await sign(
-        { sub: 'user-1', role: Role.ADMIN },
+        { sub: 'user-1', role: Role.USER },
         { expiresIn: '15m' },
       );
 
@@ -56,12 +56,24 @@ describe('JwtSocketAuthenticator', () => {
 
       expect(verified).toEqual({
         userId: 'user-1',
-        role: Role.ADMIN,
         exp: expect.any(Number) as number,
       });
       const secondsLeft = (verified?.exp ?? 0) - Date.now() / 1000;
       expect(secondsLeft).toBeGreaterThan(14 * 60);
       expect(secondsLeft).toBeLessThanOrEqual(15 * 60);
+    });
+
+    it('KHÔNG trả role của payload: đó chỉ là bản chụp lúc cấp token, không phải căn cứ phân quyền', async () => {
+      const token = await sign(
+        { sub: 'user-1', role: Role.ADMIN },
+        { expiresIn: '15m' },
+      );
+
+      const verified = await authenticator.verifyToken(token);
+
+      expect(verified).not.toBeNull();
+      expect(verified).not.toHaveProperty('role');
+      expect(JSON.stringify(verified)).not.toContain(Role.ADMIN);
     });
 
     it('ký bằng secret khác ⇒ null', async () => {

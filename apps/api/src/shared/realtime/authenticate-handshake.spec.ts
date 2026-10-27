@@ -1,10 +1,8 @@
-import { Role } from '@prisma/client';
 import { authenticateHandshake } from './authenticate-handshake';
 import type { VerifiedSocketToken } from './socket-authenticator';
 
 const USER: VerifiedSocketToken = {
   userId: 'user-1',
-  role: Role.USER,
   exp: 1_900_000_000,
 };
 

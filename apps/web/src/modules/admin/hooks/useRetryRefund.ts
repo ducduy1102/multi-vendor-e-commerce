@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import * as adminService from '../services/admin.service';
-import { adminRefundListsQueryKey } from './admin-query-keys';
+import { adminOverviewQueryKey, adminRefundListsQueryKey } from './admin-query-keys';
 
 interface RetryRefundVariables {
   refundId: string;
@@ -13,7 +13,11 @@ interface RetryRefundVariables {
 // (409 PAYMENT_REFUND_NOT_RETRYABLE — Admin khác vừa xử lý) thì danh sách đang hiển thị đã cũ.
 export function useRetryRefund() {
   const queryClient = useQueryClient();
-  const refresh = () => queryClient.invalidateQueries({ queryKey: adminRefundListsQueryKey() });
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: adminRefundListsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: adminOverviewQueryKey() }),
+    ]);
 
   return useMutation({
     mutationFn: ({ refundId }: RetryRefundVariables) => adminService.retryRefund(refundId),

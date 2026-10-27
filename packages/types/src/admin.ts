@@ -74,3 +74,17 @@ export const adminShopListResponseSchema = z.object({
   limit: z.number().int(),
 });
 export type AdminShopListResponse = z.infer<typeof adminShopListResponseSchema>;
+
+// --- Việc cần xử lý (Week11.md 2.5) ------------------------------------------------------------------
+
+// GET /admin/overview — số việc đang chờ Admin, đếm TRỰC TIẾP từ dữ liệu (không cache) và khớp đúng `total` của tab
+// tương ứng ở các màn quản trị: pendingShops = /admin/shops?status=PENDING; escalatedRefundRequests =
+// /admin/refund-requests?status=ESCALATED; refundsNeedingAction = /admin/refunds (mặc định NEEDS_ACTION);
+// refundablePayments = /admin/refundable-payments. Số của báo cáo / người dùng sẽ thêm vào đây ở Bước 3 và 5.
+export const adminOverviewSchema = z.object({
+  pendingShops: z.number().int().nonnegative(),
+  escalatedRefundRequests: z.number().int().nonnegative(),
+  refundsNeedingAction: z.number().int().nonnegative(),
+  refundablePayments: z.number().int().nonnegative(),
+});
+export type AdminOverview = z.infer<typeof adminOverviewSchema>;

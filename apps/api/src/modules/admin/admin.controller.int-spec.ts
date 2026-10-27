@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { PrismaClient, type ShopStatus } from '@prisma/client';
 import cookieParser from 'cookie-parser';
+import { randomUUID } from 'crypto';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import {
@@ -208,6 +209,39 @@ describe('AdminController (HTTP thật)', () => {
 
     it('ADMIN — 200', async () => {
       await admin.get('/api/v1/admin/shops').expect(200);
+    });
+  });
+
+  // JwtStrategy đọc `role` từ DB ở mọi request (Week11.md 2.2): cookie access_token giữ NGUYÊN, chỉ đổi cột
+  // `users.role` giữa hai request. Mỗi test dùng tài khoản riêng vì đổi role là đổi trạng thái chung của tài khoản đó.
+  describe('role lấy từ DB, không phải payload JWT', () => {
+    it('token cấp khi còn USER, sau đó DB nâng lên ADMIN ⇒ vào được khu Admin ngay, không phải đăng nhập lại', async () => {
+      const promoted = await registerAndLogin('promoted');
+      await promoted.agent.get('/api/v1/admin/shops').expect(403);
+
+      await prisma.user.update({
+        where: { id: promoted.userId },
+        data: { role: 'ADMIN' },
+      });
+
+      await promoted.agent.get('/api/v1/admin/shops').expect(200);
+    });
+
+    it('token cấp khi còn ADMIN, sau đó DB hạ xuống USER ⇒ 403 ngay ở cả route đọc lẫn ghi, không đợi token hết hạn', async () => {
+      const email = `${TAG}${stamp}demoted@test.local`;
+      expect(await seedAdmin(prisma, { email, password: PASSWORD })).toBe(
+        'created',
+      );
+      const demoted = newAgent();
+      await login(demoted, email);
+      await demoted.get('/api/v1/admin/shops').expect(200);
+
+      await prisma.user.update({ where: { email }, data: { role: 'USER' } });
+
+      await demoted.get('/api/v1/admin/shops').expect(403);
+      await patchStatus(randomUUID(), { status: 'APPROVED' }, demoted).expect(
+        403,
+      );
     });
   });
 
