@@ -19,6 +19,7 @@ describe('JwtStrategy', () => {
   it('trả về AuthenticatedUser nếu tài khoản đang ACTIVE', async () => {
     prisma.user.findUnique.mockResolvedValue({
       accountStatus: AccountStatus.ACTIVE,
+      role: Role.USER,
     });
 
     await expect(
@@ -26,9 +27,47 @@ describe('JwtStrategy', () => {
     ).resolves.toEqual({ userId: 'user-1', role: Role.USER });
   });
 
+  it('role lấy từ DB, không phải payload: token cấp khi còn USER nhưng DB đã nâng lên ADMIN ⇒ ADMIN', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      accountStatus: AccountStatus.ACTIVE,
+      role: Role.ADMIN,
+    });
+
+    await expect(
+      strategy.validate({ sub: 'user-1', role: Role.USER }),
+    ).resolves.toEqual({ userId: 'user-1', role: Role.ADMIN });
+  });
+
+  it('role lấy từ DB, không phải payload: token cấp khi còn ADMIN nhưng DB đã hạ xuống USER ⇒ USER', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      accountStatus: AccountStatus.ACTIVE,
+      role: Role.USER,
+    });
+
+    await expect(
+      strategy.validate({ sub: 'user-1', role: Role.ADMIN }),
+    ).resolves.toEqual({ userId: 'user-1', role: Role.USER });
+  });
+
+  it('đọc role trong CÙNG một truy vấn với accountStatus (không thêm lượt DB nào mỗi request)', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      accountStatus: AccountStatus.ACTIVE,
+      role: Role.USER,
+    });
+
+    await strategy.validate({ sub: 'user-1', role: Role.USER });
+
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      select: { accountStatus: true, role: true },
+    });
+  });
+
   it('báo lỗi 401 ACCOUNT_NOT_ACTIVE nếu tài khoản bị SUSPENDED (JWT cũ đã cấp trước khi bị khoá)', async () => {
     prisma.user.findUnique.mockResolvedValue({
       accountStatus: AccountStatus.SUSPENDED,
+      role: Role.USER,
     });
 
     await expect(

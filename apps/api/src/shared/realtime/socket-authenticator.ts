@@ -7,9 +7,13 @@ import { PrismaService } from '../prisma/prisma.service';
 // Cổng xác thực của hạ tầng real-time (Week10.md 3.2, "Nguyên tắc để tách microservice sau"): gateway chỉ biết
 // giao diện này, không biết JWT hay Prisma. Khi tách cổng real-time thành service riêng, chỉ thay bản cài đặt
 // (vd gọi HTTP sang API, hoặc verify bằng khoá công khai) mà không sửa gateway.
+//
+// Cố ý KHÔNG mang `role`: payload JWT chỉ là bản chụp lúc cấp token (có thể cũ tới ~15 phút, và một socket sống ít
+// nhất tới hạn token), trong khi REST đã đọc role từ DB ở mọi request (JwtStrategy). Để role cũ nằm sẵn trong
+// `socket.data.user` là cái bẫy cho ai đó dùng nó làm căn cứ phân quyền; không nơi nào cần nó (mọi lệnh ghi đi qua
+// REST). Cần role thì đọc từ DB đúng lúc cần, đừng thêm lại từ payload.
 export interface VerifiedSocketToken {
   userId: string;
-  role: Role;
   // Thời điểm access token hết hạn, giây kể từ epoch (claim `exp` của JWT).
   exp: number;
 }
@@ -25,7 +29,8 @@ export interface SocketAuthenticator {
 export const SOCKET_AUTHENTICATOR = Symbol('SOCKET_AUTHENTICATOR');
 
 // Payload do chính server ký (JwtPayload ở modules/auth) nhưng vẫn kiểm hình dạng: verify chữ ký đúng chưa đủ
-// để tin các trường có đủ và đúng kiểu (rules/general.md mục 4 — validate mọi input bằng Zod).
+// để tin các trường có đủ và đúng kiểu (rules/general.md mục 4 — validate mọi input bằng Zod). `role` vẫn được
+// kiểm (token thiếu hoặc mang role lạ không phải token do server ký) nhưng giá trị không được trả ra.
 const tokenPayloadSchema = z.object({
   sub: z.string().min(1),
   role: z.nativeEnum(Role),
@@ -63,11 +68,7 @@ export class JwtSocketAuthenticator implements SocketAuthenticator {
 
     const parsed = tokenPayloadSchema.safeParse(payload);
     if (!parsed.success) return null;
-    return {
-      userId: parsed.data.sub,
-      role: parsed.data.role,
-      exp: parsed.data.exp,
-    };
+    return { userId: parsed.data.sub, exp: parsed.data.exp };
   }
 
   async isUserActive(userId: string): Promise<boolean> {
