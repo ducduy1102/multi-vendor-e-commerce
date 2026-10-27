@@ -3,13 +3,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   decideRefundRequest,
   getOverview,
+  getUser,
   listRefundablePayments,
   listRefundRequests,
   listRefunds,
   listShops,
+  listUsers,
   markRefundCompleted,
   refundPayment,
+  reactivateUser,
   retryRefund,
+  suspendUser,
   updateShopStatus,
 } from './admin.service';
 
@@ -610,6 +614,163 @@ describe('admin.service — getOverview', () => {
       mockFetchOnce({ success: false, data: null, message: 'Forbidden' }, status);
 
       await expect(getOverview()).rejects.toMatchObject({ status });
+    },
+  );
+});
+
+const USER = {
+  id: '3f2a9c1e-5b7d-4e8a-9c3b-1a2b3c4d5e6f',
+  email: 'an@example.com',
+  name: 'Nguyễn Văn An',
+  role: 'USER',
+  accountStatus: 'ACTIVE',
+  statusReason: null,
+  statusChangedAt: null,
+  isEmailVerified: true,
+  createdAt: '2026-03-02T08:00:00.000Z',
+};
+
+describe('admin.service — người dùng', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('listUsers: không tham số -> GET /admin/users trơn, kèm cookie, parse đúng schema', async () => {
+    mockFetchOnce({ success: true, data: { items: [USER], total: 1, page: 1, limit: 20 } });
+
+    const result = await listUsers();
+
+    expect(result.items[0].email).toBe('an@example.com');
+    const [url, init] = lastCall();
+    expect(url).toMatch(/\/admin\/users$/);
+    expect(init.method).toBe('GET');
+    expect(init.credentials).toBe('include');
+  });
+
+  it('listUsers: gửi status/role/q/page/limit, bỏ field undefined và từ khoá rỗng, mã hoá từ khoá', async () => {
+    mockFetchOnce({ success: true, data: { items: [], total: 0, page: 2, limit: 5 } });
+
+    await listUsers({ status: 'BANNED', role: 'USER', q: 'Nguyễn & Co', page: 2, limit: 5 });
+    expect(lastCall()[0]).toMatch(
+      /\/admin\/users\?status=BANNED&role=USER&q=Nguy%E1%BB%85n\+%26\+Co&page=2&limit=5$/,
+    );
+
+    vi.unstubAllGlobals();
+    mockFetchOnce({ success: true, data: { items: [], total: 0, page: 1, limit: 20 } });
+    await listUsers({ status: undefined, q: '', page: 3 });
+    expect(lastCall()[0]).toMatch(/\/admin\/users\?page=3$/);
+  });
+
+  it('listUsers: response lộ trường nhạy cảm bị Zod loại bỏ (allowlist), response sai hình dạng bị từ chối', async () => {
+    mockFetchOnce({
+      success: true,
+      data: {
+        items: [{ ...USER, passwordHash: 'secret', refreshTokenHash: 'secret' }],
+        total: 1,
+        page: 1,
+        limit: 20,
+      },
+    });
+    const result = await listUsers();
+    expect(result.items[0]).not.toHaveProperty('passwordHash');
+    expect(result.items[0]).not.toHaveProperty('refreshTokenHash');
+
+    vi.unstubAllGlobals();
+    const { email, ...withoutEmail } = USER;
+    void email;
+    mockFetchOnce({ success: true, data: { items: [withoutEmail], total: 1, page: 1, limit: 20 } });
+    await expect(listUsers()).rejects.toThrow();
+  });
+
+  it('listUsers: 403 (không phải ADMIN) -> ApiError giữ status để hook không thử lại', async () => {
+    mockFetchOnce({ success: false, data: null, message: 'Forbidden' }, 403);
+
+    await expect(listUsers()).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('getUser: GET /admin/users/:id, BE trả thẳng đối tượng chi tiết', async () => {
+    mockFetchOnce({
+      success: true,
+      data: { ...USER, locale: 'vi', orderCount: 3, shops: [], history: [] },
+    });
+
+    const detail = await getUser(USER.id);
+
+    expect(detail.orderCount).toBe(3);
+    const [url, init] = lastCall();
+    expect(url).toMatch(new RegExp(`/admin/users/${USER.id}$`));
+    expect(init.method).toBe('GET');
+  });
+
+  it('getUser: 404 -> ApiError mang status và mã USER_NOT_FOUND', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: () =>
+          Promise.resolve({
+            success: false,
+            data: null,
+            message: 'User not found',
+            code: 'USER_NOT_FOUND',
+          }),
+      }),
+    );
+
+    await expect(getUser(USER.id)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('suspendUser: POST /admin/users/:id/suspend với {status, reason}, lấy người dùng trong { user }', async () => {
+    mockFetchOnce({
+      success: true,
+      data: { user: { ...USER, accountStatus: 'BANNED', statusReason: 'Lừa đảo' } },
+    });
+
+    const user = await suspendUser(USER.id, { status: 'BANNED', reason: 'Lừa đảo' });
+
+    expect(user.accountStatus).toBe('BANNED');
+    const [url, init] = lastCall();
+    expect(url).toMatch(new RegExp(`/admin/users/${USER.id}/suspend$`));
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ status: 'BANNED', reason: 'Lừa đảo' });
+  });
+
+  it('reactivateUser: POST /admin/users/:id/reactivate chỉ với {reason}', async () => {
+    mockFetchOnce({ success: true, data: { user: USER } });
+
+    const user = await reactivateUser(USER.id, { reason: 'Đã xét lại' });
+
+    expect(user.accountStatus).toBe('ACTIVE');
+    const [url, init] = lastCall();
+    expect(url).toMatch(new RegExp(`/admin/users/${USER.id}/reactivate$`));
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ reason: 'Đã xét lại' });
+  });
+
+  it.each([
+    [409, 'USER_INVALID_TRANSITION'],
+    [409, 'CANNOT_MODIFY_ADMIN'],
+    [409, 'CANNOT_MODIFY_SELF'],
+    [404, 'USER_NOT_FOUND'],
+  ])(
+    'suspendUser: %i %s -> ApiError mang status và mã lỗi để giao diện dịch',
+    async (status, code) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: false,
+          status,
+          json: () => Promise.resolve({ success: false, data: null, message: 'x', code }),
+        }),
+      );
+
+      await expect(
+        suspendUser(USER.id, { status: 'SUSPENDED', reason: 'x' }),
+      ).rejects.toMatchObject({
+        status,
+        code,
+      });
     },
   );
 });

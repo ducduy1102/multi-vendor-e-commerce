@@ -1,3 +1,4 @@
+import { SHOP_CASCADE_SUSPEND_REASON } from '@ecommerce/types';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -211,5 +212,36 @@ describe('AdminShopRow', () => {
         expect(screen.queryByText(/Đã gửi lại/)).not.toBeInTheDocument();
       },
     );
+  });
+
+  it('shop bị TỰ ĐỘNG tạm ngừng vì chủ tài khoản bị khoá/cấm: mã SHOP_CASCADE_SUSPEND_REASON được dịch, mã thô không bao giờ hiện', () => {
+    renderRow({ status: 'SUSPENDED', statusReason: SHOP_CASCADE_SUSPEND_REASON });
+
+    expect(screen.getByText('Lý do: tài khoản chủ shop bị khoá hoặc bị cấm')).toBeInTheDocument();
+    expect(screen.queryByText(/OWNER_ACCOUNT_SUSPENDED/)).not.toBeInTheDocument();
+  });
+
+  it('bản tiếng Anh của lý do tự động: không lộ tiếng Việt, không lộ mã thô', () => {
+    render(
+      withIntl(
+        <ul>
+          <AdminShopRow
+            shop={{ ...SHOP, status: 'SUSPENDED', statusReason: SHOP_CASCADE_SUSPEND_REASON }}
+          />
+        </ul>,
+        'en',
+      ),
+    );
+
+    expect(
+      screen.getByText('Reason: the owner’s account is suspended or banned'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/OWNER_ACCOUNT_SUSPENDED|tài khoản/)).not.toBeInTheDocument();
+  });
+
+  it('lý do Admin tự nhập vẫn hiện nguyên văn (không bị nhầm với mã tự động)', () => {
+    renderRow({ status: 'SUSPENDED', statusReason: 'Bán hàng cấm' });
+
+    expect(screen.getByText('Lý do: Bán hàng cấm')).toBeInTheDocument();
   });
 });

@@ -5,6 +5,7 @@ import {
   Scale,
   Store,
   Undo2,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -86,8 +87,7 @@ export interface AdminNavItem {
   count: (overview: AdminOverview) => number | null;
 }
 
-// Chỉ liệt kê trang ĐÃ CÓ (không link tới trang chưa tồn tại). Người dùng, Báo cáo, Kháng nghị... thêm vào đây khi
-// trang tương ứng có.
+// Chỉ liệt kê trang ĐÃ CÓ (không link tới trang chưa tồn tại). Báo cáo, Kháng nghị... thêm vào đây khi trang tương ứng có.
 export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   {
     href: '/admin',
@@ -102,6 +102,14 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
     icon: Store,
     exact: false,
     count: (overview) => overview.pendingShops,
+  },
+  {
+    href: '/admin/users',
+    labelKey: 'navUsers',
+    icon: Users,
+    exact: false,
+    // Người dùng không có hàng chờ nên không có số trên nav (không hiện số tổng — đó không phải việc cần xử lý).
+    count: () => null,
   },
   {
     href: '/admin/refunds',

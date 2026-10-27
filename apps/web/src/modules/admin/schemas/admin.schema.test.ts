@@ -1,4 +1,8 @@
-import { adminUpdateShopStatusSchema } from '@ecommerce/types';
+import {
+  adminUpdateShopStatusSchema,
+  reactivateUserSchema,
+  suspendUserSchema,
+} from '@ecommerce/types';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -8,6 +12,7 @@ import {
   adminMarkRefundCompletedSchema,
   adminRefundPaymentSchema,
   shopReasonFormSchema,
+  userReasonFormSchema,
 } from './admin.schema';
 
 describe('shopReasonFormSchema', () => {
@@ -142,6 +147,55 @@ describe('adminRefundPaymentSchema', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toBe('admin.validationReasonTooLong');
+    }
+  });
+});
+
+describe('userReasonFormSchema', () => {
+  it('lý do hợp lệ -> giữ nguyên (đã trim)', () => {
+    const result = userReasonFormSchema.safeParse({ reason: '  Vi phạm điều khoản  ' });
+
+    expect(result.success && result.data.reason).toBe('Vi phạm điều khoản');
+  });
+
+  it.each(['', '   ', '\n\t '])(
+    'lý do %j (trống/chỉ khoảng trắng) -> key i18n "bắt buộc"',
+    (reason) => {
+      const result = userReasonFormSchema.safeParse({ reason });
+
+      expect(result.success).toBe(false);
+      expect(!result.success && result.error.issues[0].message).toBe(
+        'admin.validationReasonRequired',
+      );
+    },
+  );
+
+  it('lý do dài đúng 500 ký tự hợp lệ, 501 thì báo "quá dài"', () => {
+    expect(userReasonFormSchema.safeParse({ reason: 'a'.repeat(500) }).success).toBe(true);
+
+    const result = userReasonFormSchema.safeParse({ reason: 'a'.repeat(501) });
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues[0].message).toBe('admin.validationReasonTooLong');
+  });
+
+  it('chặn ký tự điều khiển / bidi-override, cho phép xuống dòng', () => {
+    expect(userReasonFormSchema.safeParse({ reason: 'dòng 1\ndòng 2' }).success).toBe(true);
+    for (const reason of ['a\u0000b', 'a\u202Eb', 'a\tb']) {
+      const result = userReasonFormSchema.safeParse({ reason });
+      expect(result.success, JSON.stringify(reason)).toBe(false);
+      expect(!result.success && result.error.issues[0].message).toBe(
+        'admin.validationReasonUnsafe',
+      );
+    }
+  });
+
+  it('đầu ra của form luôn được schema BE chấp nhận (khoá/cấm và mở lại), không lệch luật', () => {
+    for (const reason of ['  Lý do  ', 'dòng 1\r\ndòng 2', 'a'.repeat(500)]) {
+      const form = userReasonFormSchema.parse({ reason });
+
+      expect(suspendUserSchema.safeParse({ status: 'SUSPENDED', ...form }).success).toBe(true);
+      expect(suspendUserSchema.safeParse({ status: 'BANNED', ...form }).success).toBe(true);
+      expect(reactivateUserSchema.safeParse(form).success).toBe(true);
     }
   });
 });

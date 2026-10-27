@@ -7,6 +7,9 @@ import {
   adminRefundablePaymentListResponseSchema,
   adminShopListResponseSchema,
   adminShopSchema,
+  adminUserDetailSchema,
+  adminUserListResponseSchema,
+  adminUserStatusChangeResponseSchema,
   type AdminDecideRefundRequestInput,
   type AdminMarkRefundCompletedInput,
   type AdminOverview,
@@ -23,6 +26,12 @@ import {
   type AdminShopListQuery,
   type AdminShopListResponse,
   type AdminUpdateShopStatusInput,
+  type AdminUser,
+  type AdminUserDetail,
+  type AdminUserListQuery,
+  type AdminUserListResponse,
+  type ReactivateUserInput,
+  type SuspendUserInput,
 } from '@ecommerce/types';
 
 import { apiFetch } from '@/shared/lib/api-client';
@@ -74,6 +83,59 @@ export async function updateShopStatus(
     body: JSON.stringify(input),
   });
   return adminShopSchema.parse(data.shop);
+}
+
+// --- Người dùng (Week11.md 3.2, 3.3) ---------------------------------------------------------------
+
+// Bộ lọc của danh sách người dùng. Khác toListQueryString (chỉ status/page/limit) ở chỗ có thêm vai và từ khoá; field nào
+// bỏ trống thì không gửi để BE tự áp default.
+function toUserListQueryString(params: Partial<AdminUserListQuery>): string {
+  const searchParams = new URLSearchParams();
+  if (params.status !== undefined) searchParams.set('status', params.status);
+  if (params.role !== undefined) searchParams.set('role', params.role);
+  if (params.q) searchParams.set('q', params.q);
+  if (params.page !== undefined) searchParams.set('page', String(params.page));
+  if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+  const query = searchParams.toString();
+  return query ? `?${query}` : '';
+}
+
+export async function listUsers(
+  params: Partial<AdminUserListQuery> = {},
+): Promise<AdminUserListResponse> {
+  const data = await apiFetch<unknown>(`/admin/users${toUserListQueryString(params)}`, {
+    method: 'GET',
+  });
+  return adminUserListResponseSchema.parse(data);
+}
+
+// Chi tiết một người dùng: BE trả thẳng đối tượng chi tiết (không bọc). Id không tồn tại hoặc sai dạng ⇒ 404 USER_NOT_FOUND.
+export async function getUser(userId: string): Promise<AdminUserDetail> {
+  const data = await apiFetch<unknown>(`/admin/users/${userId}`, { method: 'GET' });
+  return adminUserDetailSchema.parse(data);
+}
+
+// Tạm khoá hoặc cấm (`input.status` chọn mức), lý do bắt buộc. Tài khoản không còn ở trạng thái hợp lệ (có Admin khác vừa
+// xử lý) ⇒ 409 USER_INVALID_TRANSITION; Admin/chính mình ⇒ 409 CANNOT_MODIFY_ADMIN / CANNOT_MODIFY_SELF. BE bọc kết quả
+// trong { user } (người dùng SAU khi đổi).
+export async function suspendUser(userId: string, input: SuspendUserInput): Promise<AdminUser> {
+  const data = await apiFetch<unknown>(`/admin/users/${userId}/suspend`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return adminUserStatusChangeResponseSchema.parse(data).user;
+}
+
+// Mở lại (tạm khoá → hoạt động) hoặc gỡ cấm (cấm → hoạt động): cùng endpoint vì đích luôn là ACTIVE; lý do bắt buộc.
+export async function reactivateUser(
+  userId: string,
+  input: ReactivateUserInput,
+): Promise<AdminUser> {
+  const data = await apiFetch<unknown>(`/admin/users/${userId}/reactivate`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return adminUserStatusChangeResponseSchema.parse(data).user;
 }
 
 // --- Hoàn tiền (Week9.md 2.9) ---------------------------------------------------------------------

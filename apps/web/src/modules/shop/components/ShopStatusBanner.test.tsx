@@ -1,3 +1,4 @@
+import { SHOP_CASCADE_SUSPEND_REASON } from '@ecommerce/types';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -64,5 +65,25 @@ describe('ShopStatusBanner', () => {
     render(withIntl(<ShopStatusBanner status="REJECTED" reason={'a'.repeat(500)} />));
 
     expect(screen.getByText(/^Lý do:/)).toHaveClass('break-words');
+  });
+
+  it('shop bị TỰ ĐỘNG tạm ngừng vì tài khoản chủ shop bị khoá/cấm: hiện câu giải thích thay vì mã thô', () => {
+    render(withIntl(<ShopStatusBanner status="SUSPENDED" reason={SHOP_CASCADE_SUSPEND_REASON} />));
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/tài khoản của bạn đang bị khoá hoặc bị cấm/);
+    expect(alert).toHaveTextContent(/email/);
+    expect(alert).not.toHaveTextContent(/OWNER_ACCOUNT_SUSPENDED/);
+    expect(screen.queryByText(/^Lý do:/)).not.toBeInTheDocument();
+  });
+
+  it('bản tiếng Anh của lý do tự động: không lộ tiếng Việt, không lộ mã thô', () => {
+    render(
+      withIntl(<ShopStatusBanner status="SUSPENDED" reason={SHOP_CASCADE_SUSPEND_REASON} />, 'en'),
+    );
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/your account is suspended or banned/);
+    expect(alert).not.toHaveTextContent(/OWNER_ACCOUNT_SUSPENDED|tài khoản/);
   });
 });

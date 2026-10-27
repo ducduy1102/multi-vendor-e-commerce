@@ -1,5 +1,6 @@
 'use client';
 
+import { SHOP_CASCADE_SUSPEND_REASON } from '@ecommerce/types';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 
@@ -73,11 +74,15 @@ export function AdminShopRow({ shop, actions }: AdminShopRowProps) {
         <AdminShopStatusBadge status={shop.status} />
         {shop.statusReason ? (
           // Lý do tối đa 500 ký tự — kẹp 2 dòng cho bảng gọn, đủ nội dung ở `title` khi rê chuột.
+          // Shop bị TỰ ĐỘNG tạm ngừng vì chủ tài khoản bị khoá/cấm: BE lưu MÃ (SHOP_CASCADE_SUSPEND_REASON), FE dịch ra câu
+          // theo ngôn ngữ — mã thô không bao giờ hiện cho người xem.
           <p
             title={shop.statusReason}
             className="line-clamp-2 text-xs break-words text-muted-foreground"
           >
-            {t('rowReason', { reason: shop.statusReason })}
+            {shop.statusReason === SHOP_CASCADE_SUSPEND_REASON
+              ? t('rowReasonOwnerAccountSuspended')
+              : t('rowReason', { reason: shop.statusReason })}
           </p>
         ) : null}
         {showPreviousRejection ? (

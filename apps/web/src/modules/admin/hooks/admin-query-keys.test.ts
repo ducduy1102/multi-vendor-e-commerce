@@ -9,6 +9,10 @@ import {
   adminRefundablePaymentListsQueryKey,
   adminShopListQueryKey,
   adminShopListsQueryKey,
+  adminUserDetailQueryKey,
+  adminUserDetailsQueryKey,
+  adminUserListQueryKey,
+  adminUserListsQueryKey,
 } from './admin-query-keys';
 
 describe('admin query keys', () => {
@@ -59,5 +63,33 @@ describe('admin query keys', () => {
     expect(adminRefundablePaymentListQueryKey({ page: 1 })).not.toEqual(
       adminRefundablePaymentListQueryKey({ page: 2 }),
     );
+  });
+});
+
+describe('admin user query keys', () => {
+  it('key danh sách bắt đầu bằng đúng tiền tố dùng để invalidate mọi tab/bộ lọc/trang', () => {
+    expect(
+      adminUserListQueryKey({ status: 'BANNED', role: 'USER', q: 'an', page: 2 }).slice(0, 3),
+    ).toEqual(adminUserListsQueryKey());
+  });
+
+  it('mỗi bộ lọc, từ khoá và trang là một key riêng (không dùng chung cache)', () => {
+    const base = adminUserListQueryKey({ status: 'ACTIVE' });
+
+    expect(base).not.toEqual(adminUserListQueryKey({ status: 'BANNED' }));
+    expect(base).not.toEqual(adminUserListQueryKey({ status: 'ACTIVE', role: 'ADMIN' }));
+    expect(base).not.toEqual(adminUserListQueryKey({ status: 'ACTIVE', q: 'an' }));
+    expect(base).not.toEqual(adminUserListQueryKey({ status: 'ACTIVE', page: 2 }));
+  });
+
+  it('danh sách và chi tiết là hai nhánh riêng: làm mới một bên không bắt buộc kéo theo bên kia', () => {
+    expect(adminUserListsQueryKey()).toEqual(['admin', 'users', 'list']);
+    expect(adminUserDetailsQueryKey()).toEqual(['admin', 'users', 'detail']);
+    expect(adminUserDetailQueryKey('u-1').slice(0, 3)).toEqual(adminUserDetailsQueryKey());
+    expect(adminUserDetailQueryKey('u-1')).not.toEqual(adminUserDetailQueryKey('u-2'));
+  });
+
+  it('không đụng nhánh shop', () => {
+    expect(adminUserListsQueryKey().slice(0, 2)).not.toEqual(adminShopListsQueryKey().slice(0, 2));
   });
 });

@@ -31,23 +31,33 @@ describe('AdminNav', () => {
     overview.current = undefined;
   });
 
-  it('một landmark điều hướng có tên, đủ 3 mục trỏ đúng route (chỉ trang đã có)', () => {
+  it('một landmark điều hướng có tên, đủ 4 mục trỏ đúng route (chỉ trang đã có), Người dùng ngay sau Shop', () => {
     renderNav();
 
     expect(screen.getAllByRole('navigation')).toHaveLength(1);
     expect(screen.getByRole('navigation', { name: 'Khu quản trị' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Tổng quan' })).toHaveAttribute('href', '/admin');
     expect(screen.getByRole('link', { name: /^Shop/ })).toHaveAttribute('href', '/admin/shops');
+    expect(screen.getByRole('link', { name: 'Người dùng' })).toHaveAttribute(
+      'href',
+      '/admin/users',
+    );
     expect(screen.getByRole('link', { name: /^Hoàn tiền/ })).toHaveAttribute(
       'href',
       '/admin/refunds',
     );
-    expect(screen.getAllByRole('link')).toHaveLength(3);
+    expect(screen.getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([
+      '/admin',
+      '/admin/shops',
+      '/admin/users',
+      '/admin/refunds',
+    ]);
   });
 
   it.each([
     ['/admin', 'Tổng quan'],
     ['/admin/shops', /^Shop/],
+    ['/admin/users', 'Người dùng'],
     ['/admin/refunds', /^Hoàn tiền/],
   ] as const)('ở %s chỉ MỘT mục có aria-current="page"', (path, name) => {
     renderNav(path);

@@ -1,5 +1,6 @@
 'use client';
 
+import { SHOP_CASCADE_SUSPEND_REASON } from '@ecommerce/types';
 import { useTranslations } from 'next-intl';
 
 import { Alert } from '@/shared/components/ui/alert';
@@ -18,7 +19,8 @@ const SHOP_STATUS_ALERT = {
 
 interface ShopStatusBannerProps {
   status: Shop['status'];
-  // Lý do Admin nhập khi từ chối/khoá (Shop.statusReason) — null khi chờ duyệt/đã duyệt.
+  // Lý do Admin nhập khi từ chối/khoá (Shop.statusReason) — null khi chờ duyệt/đã duyệt. Khi shop bị tự động tạm ngừng
+  // vì tài khoản chủ shop bị khoá/cấm, giá trị là MÃ SHOP_CASCADE_SUSPEND_REASON (không phải văn bản) và được dịch ở đây.
   reason: string | null;
 }
 
@@ -38,7 +40,11 @@ export function ShopStatusBanner({ status, reason }: ShopStatusBannerProps) {
     <Alert variant={alert.variant}>
       <p>{t(alert.messageKey)}</p>
       {reason ? (
-        <p className="mt-1 font-medium break-words">{t('shopStatusReason', { reason })}</p>
+        <p className="mt-1 font-medium break-words">
+          {reason === SHOP_CASCADE_SUSPEND_REASON
+            ? t('shopStatusReasonOwnerSuspended')
+            : t('shopStatusReason', { reason })}
+        </p>
       ) : null}
     </Alert>
   );

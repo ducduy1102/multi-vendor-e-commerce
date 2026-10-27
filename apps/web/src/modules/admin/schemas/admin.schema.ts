@@ -1,7 +1,11 @@
-import { ADMIN_SHOP_REASON_MAX_LENGTH } from '@ecommerce/types';
+import {
+  ADMIN_SHOP_REASON_MAX_LENGTH,
+  ADMIN_USER_REASON_MAX_LENGTH,
+  adminUserReasonSchema,
+} from '@ecommerce/types';
 import { z } from 'zod';
 
-export { ADMIN_SHOP_REASON_MAX_LENGTH };
+export { ADMIN_SHOP_REASON_MAX_LENGTH, ADMIN_USER_REASON_MAX_LENGTH };
 
 // Hoàn tiền: dùng thẳng schema BE (Week9.md 2.9) — quyết định yêu cầu (ghi chú bắt buộc khi từ chối, ràng buộc
 // bằng `superRefine` đặt SAU object nên input/output type vẫn là { decision, note? }), mã tham chiếu khi ghi
@@ -27,3 +31,10 @@ export const shopReasonFormSchema = z.object({
     .max(ADMIN_SHOP_REASON_MAX_LENGTH, 'admin.validationReasonTooLong'),
 });
 export type ShopReasonFormInput = z.infer<typeof shopReasonFormSchema>;
+
+// Form hộp thoại khoá / cấm / mở lại / gỡ cấm tài khoản: MỘT field `reason` BẮT BUỘC ở cả bốn hành động (lý do đi vào nhật ký
+// quản trị và email gửi cho chủ tài khoản). Dùng thẳng `adminUserReasonSchema` của BE (chuẩn hoá xuống dòng, cắt khoảng trắng
+// hai đầu, 1..500 ký tự, chặn ký tự điều khiển) nên đầu ra của form luôn được BE chấp nhận; message lỗi là key i18n
+// `admin.validation*`. Input và output cùng kiểu `string` nên khớp generic `useForm<T>` của zodResolver dù schema có transform.
+export const userReasonFormSchema = z.object({ reason: adminUserReasonSchema });
+export type UserReasonFormInput = z.infer<typeof userReasonFormSchema>;

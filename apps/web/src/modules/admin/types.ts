@@ -2,6 +2,7 @@
 // không định nghĩa lại (rules/general.md mục 4).
 export type {
   AbnormalPaymentKind,
+  AccountStatus,
   AdminDecideRefundRequestInput,
   AdminMarkRefundCompletedInput,
   AdminOverview,
@@ -21,8 +22,18 @@ export type {
   AdminShopListResponse,
   AdminShopTargetStatus,
   AdminUpdateShopStatusInput,
+  AdminUser,
+  AdminUserDetail,
+  AdminUserHistoryEntry,
+  AdminUserListQuery,
+  AdminUserListResponse,
+  AdminUserShop,
+  AdminUserSuspendTarget,
   PaymentRefundStatus,
+  ReactivateUserInput,
   RefundRequestKind,
   RefundRequestStatus,
   ShopStatus,
+  SuspendUserInput,
+  UserRole,
 } from '@ecommerce/types';
