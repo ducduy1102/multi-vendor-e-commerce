@@ -4,6 +4,7 @@ import {
   type AdminAuditEntryInput,
 } from '@ecommerce/types';
 import type { TxClient } from '../prisma/tx-client';
+import { redactWriteError } from '../utils/redact-write-error';
 
 // Client mà `record` cần: chỉ delegate của bảng nhật ký. Cả `tx` của một `$transaction` lẫn `PrismaService` đều thoả.
 export type AdminAuditClient = Pick<TxClient, 'adminAuditLog'>;
@@ -26,7 +27,8 @@ export class InvalidAdminAuditEntryError extends Error {
 //    Nhật ký phải khớp dữ liệu: không có chuyện "đã khoá người dùng mà không có dấu vết" hay ngược lại. Chỉ truyền
 //    `PrismaService` khi hành động không đổi dữ liệu nào (vd Admin đọc chat — ghi TRƯỚC khi đọc, Week11.md 6.1);
 //  - `record` THROW khi mục sai hình dạng hoặc DB từ chối, không nuốt lỗi: nơi gọi để lỗi lan ra để transaction
-//    rollback (hành động không có dấu vết thì không được xảy ra);
+//    rollback (hành động không có dấu vết thì không được xảy ra). Lỗi ghi của Prisma mang giá trị đã ghi (lý do, cả hàng
+//    vi phạm CHECK) được che bằng redactWriteError trước khi ném;
 //  - chỉ THÊM: service này không có phương thức sửa/xoá và `admin-audit-append-only.spec.ts` quét toàn bộ mã nguồn.
 @Injectable()
 export class AdminAuditService {
@@ -53,19 +55,25 @@ export class AdminAuditService {
       ip,
       userAgent,
     } = parsed.data;
-    // Không truyền `createdAt`: giờ do đồng hồ DB đóng dấu (xem comment ở schema.prisma).
-    await client.adminAuditLog.create({
-      data: {
-        actorId,
-        action,
-        targetType,
-        targetId,
-        reason: reason ?? null,
-        meta: meta ?? {},
-        ip: ip ?? null,
-        userAgent: userAgent ?? null,
-      },
-      select: { id: true },
-    });
+    try {
+      // Không truyền `createdAt`: giờ do đồng hồ DB đóng dấu (xem comment ở schema.prisma).
+      await client.adminAuditLog.create({
+        data: {
+          actorId,
+          action,
+          targetType,
+          targetId,
+          reason: reason ?? null,
+          meta: meta ?? {},
+          ip: ip ?? null,
+          userAgent: userAgent ?? null,
+        },
+        select: { id: true },
+      });
+    } catch (error) {
+      // Lý do do Admin nhập là dữ liệu riêng tư: lỗi ghi của Prisma (vd vi phạm CHECK in nguyên cả hàng) không được
+      // đẩy nó vào log. Lỗi vẫn được ném lại (không nuốt) để transaction nghiệp vụ rollback.
+      throw redactWriteError(error, 'admin audit log');
+    }
   }
 }

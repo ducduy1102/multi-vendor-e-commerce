@@ -29,6 +29,7 @@ import {
 } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { redactWriteError } from '../../shared/utils/redact-write-error';
 import {
   REALTIME_EMITTER,
   type RealtimeEmitter,
@@ -237,7 +238,8 @@ export class ChatService {
           };
         }
       }
-      throw redactWriteError(error);
+      // Lỗi ghi của Prisma có thể mang nguyên nội dung tin vào message/stack (xem shared/utils/redact-write-error.ts).
+      throw redactWriteError(error, 'chat message');
     }
 
     await this.publishMessage(conversation, shop, created, role);
@@ -921,21 +923,6 @@ function isConversationUniqueViolation(error: unknown): boolean {
     Array.isArray(meta.target) &&
     (meta.target as unknown[]).includes('buyer_id')
   );
-}
-
-// AllExceptionsFilter log toàn bộ `stack` của mọi lỗi không phải HttpException, và lỗi kiểm tra tham số của Prisma
-// (PrismaClientValidationError) IN NGUYÊN các giá trị đã truyền vào câu ghi — tức là cả NỘI DUNG tin riêng tư —
-// vào message/stack (đã kiểm bằng thí nghiệm: giá trị thử xuất hiện trong message; còn lỗi DB như khoá ngoại sai
-// hay UUID sai kiểu thì KHÔNG chứa giá trị). Hiện tại Zod đã đảm bảo kiểu nên lỗi này không xảy ra, nhưng một lỗi
-// lập trình sau này (vd quên truyền senderId) sẽ âm thầm đẩy nội dung tin vào log. Thay bằng lỗi chung không mang
-// dữ liệu; mọi lỗi khác giữ nguyên để không mất thông tin chẩn đoán.
-function redactWriteError(error: unknown): unknown {
-  if (error instanceof Prisma.PrismaClientValidationError) {
-    return new Error(
-      'Prisma rejected the chat message write (details omitted: they contain the message content)',
-    );
-  }
-  return error;
 }
 
 function isMessageUniqueViolation(error: unknown): boolean {

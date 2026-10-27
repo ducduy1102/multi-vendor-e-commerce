@@ -5,6 +5,7 @@ import { cleanupByTag, createUser } from '../testing/db-fixtures';
 import {
   AdminAuditService,
   InvalidAdminAuditEntryError,
+  type AdminAuditClient,
 } from './admin-audit.service';
 
 // Integration test trên Postgres THẬT cho nhật ký quản trị (Week11.md 2.3). Chứng minh điều unit test với client giả
@@ -671,6 +672,92 @@ describe('AdminAuditService + bảng admin_audit_logs (DB thật)', () => {
       expect(await rowsOf(subject.id)).toHaveLength(0);
       expect(await rowsOf(shop.id)).toHaveLength(0);
       expect(await rowsOf(unrelatedTarget)).toHaveLength(1);
+    });
+  });
+
+  describe('lỗi ghi thật của Prisma/Postgres không làm lộ lý do (Week11.md 2.4)', () => {
+    const SECRET = `secret-${randomUUID()}`;
+    const entryFor = (targetId: string) =>
+      ({
+        actorId: ACTOR,
+        action: 'SUSPEND_USER',
+        targetType: 'USER',
+        targetId,
+        reason: SECRET,
+      }) as const;
+
+    // Chạy một thao tác PHẢI thất bại và trả lỗi (thao tác không lỗi ⇒ test đỏ, không xanh giả).
+    const failureOf = async (run: () => Promise<unknown>): Promise<Error> => {
+      try {
+        await run();
+      } catch (error) {
+        return error as Error;
+      }
+      throw new Error('expected the operation to fail');
+    };
+
+    // Bọc client: sửa dữ liệu SAU khi Zod đã cho qua, để ép Prisma/Postgres từ chối đúng cách một lỗi lập trình hay một
+    // dòng CHECK bị lọt sẽ làm. Cùng bọc này gọi TRỰC TIẾP (không qua record) là đối chứng: phải làm lộ SECRET.
+    const corrupting = (change: Record<string, unknown>) => {
+      const create = (args: { data: Record<string, unknown> }) =>
+        prisma.adminAuditLog.create({
+          ...args,
+          data: { ...args.data, ...change },
+        } as never);
+      return {
+        client: { adminAuditLog: { create } } as unknown as AdminAuditClient,
+        create,
+      };
+    };
+
+    it('PrismaClientValidationError thật: đối chứng lộ lý do, qua record thì không', async () => {
+      const targetId = randomUUID();
+      const { client, create } = corrupting({ noSuchColumn: 1 });
+
+      const raw = await failureOf(() =>
+        create({ data: { ...entryFor(targetId) } }),
+      );
+      const redacted = await failureOf(() =>
+        service.record(client, entryFor(targetId)),
+      );
+
+      expect(`${raw.message}\n${raw.stack}`).toContain(SECRET);
+      expect(redacted.message).toContain('admin audit log');
+      expect(`${redacted.message}\n${redacted.stack}`).not.toContain(SECRET);
+      expect(await rowsOf(targetId)).toHaveLength(0);
+    });
+
+    it('vi phạm CHECK thật (Postgres in cả hàng): đối chứng lộ lý do, qua record thì không nhưng vẫn cho biết ràng buộc nào', async () => {
+      const targetId = randomUUID();
+      const { client, create } = corrupting({ action: 'not-an-action' });
+
+      const raw = await failureOf(() =>
+        create({ data: { ...entryFor(targetId) } }),
+      );
+      const redacted = await failureOf(() =>
+        service.record(client, entryFor(targetId)),
+      );
+
+      expect(`${raw.message}\n${raw.stack}`).toContain(SECRET);
+      expect(`${redacted.message}\n${redacted.stack}`).not.toContain(SECRET);
+      expect(redacted.message).toContain(
+        'constraint admin_audit_logs_action_format',
+      );
+      expect(await rowsOf(targetId)).toHaveLength(0);
+    });
+
+    it('lỗi trigger chỉ-thêm KHÔNG bị che (không mang giá trị): vẫn đọc được lý do thất bại', async () => {
+      const row = await insert({ reason: 'gốc' });
+
+      const error = await failureOf(() =>
+        prisma.adminAuditLog.update({
+          where: { id: row.id },
+          data: { reason: SECRET },
+        }),
+      );
+
+      expect(error.message).toContain('append-only');
+      expect(error.message).not.toContain(SECRET);
     });
   });
 
