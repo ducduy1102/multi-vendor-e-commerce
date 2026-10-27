@@ -314,9 +314,11 @@ describe('AdminUser suspend / reactivate (HTTP thật)', () => {
         statusReason: 'Nâng lên cấm',
         refreshTokenHash: null,
       });
+      // `shopsSuspended` (Week11.md 3.4): người dùng này không có shop APPROVED nào nên 0.
       expect((await auditRows(escalated.id))[0].meta).toEqual({
         from: 'SUSPENDED',
         to: 'BANNED',
+        shopsSuspended: 0,
       });
     });
 
@@ -805,6 +807,7 @@ describe('AdminUser suspend / reactivate (HTTP thật)', () => {
           expect(rows[0].meta).toEqual({
             from: 'ACTIVE',
             to: final.accountStatus,
+            shopsSuspended: 0,
           });
           expect(rows[0].actorId).toBe(winner === a ? adminId : secondAdminId);
           expect(final.statusReason).toBe(rows[0].reason);

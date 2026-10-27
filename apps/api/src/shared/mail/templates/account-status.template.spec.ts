@@ -23,6 +23,7 @@ function build(
     kind,
     reason: 'Policy violation',
     supportEmail: null,
+    shopNotice: null,
     loginUrl:
       locale === 'vi'
         ? 'https://app.example.com/login'
@@ -30,6 +31,10 @@ function build(
     ...overrides,
   });
 }
+
+const NOTICES = ['SUSPENDED', 'REOPENED', 'STILL_SUSPENDED'] as const;
+const VIETNAMESE_LETTERS =
+  /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
 
 describe('accountStatusTemplate', () => {
   describe.each(LOCALES)('%s', (locale) => {
@@ -69,6 +74,59 @@ describe('accountStatusTemplate', () => {
           : 'https://app.example.com/en/login',
       ]);
     });
+  });
+
+  describe('câu nói thêm về shop của người nhận (Week11.md 3.4)', () => {
+    it.each(KINDS)(
+      '%s: không có shopNotice ⇒ không có câu nào nhắc tới shop',
+      (kind) => {
+        for (const locale of LOCALES) {
+          const { html } = build(kind, locale, { shopNotice: null });
+
+          expect(html).not.toMatch(/shop/i);
+        }
+      },
+    );
+
+    it.each(NOTICES)(
+      '%s: ba câu khác nhau, mỗi câu có đủ ở vi và en',
+      (notice) => {
+        const vi = build('SUSPENDED', 'vi', { shopNotice: notice }).html;
+        const en = build('SUSPENDED', 'en', { shopNotice: notice }).html;
+
+        expect(vi).toMatch(/Shop của bạn/);
+        expect(en).toMatch(/Your shop/);
+        // Bản en không lẫn chữ Việt.
+        expect(en).not.toMatch(VIETNAMESE_LETTERS);
+      },
+    );
+
+    it('ba loại thông báo cho ra ba câu khác nhau (không dùng chung một chuỗi)', () => {
+      for (const locale of LOCALES) {
+        const sentences = NOTICES.map((notice) => {
+          const withNotice = build('REACTIVATED', locale, {
+            shopNotice: notice,
+          }).html;
+          const without = build('REACTIVATED', locale).html;
+          return withNotice.replace(without, '');
+        });
+
+        expect(new Set(sentences).size).toBe(3);
+        for (const sentence of sentences)
+          expect(sentence.length).toBeGreaterThan(0);
+      }
+    });
+
+    it.each(LOCALES)(
+      '%s: câu về shop là văn bản thuần, không thêm link nào vào email khoá',
+      (locale) => {
+        for (const kind of ['SUSPENDED', 'BANNED'] as const) {
+          const { html } = build(kind, locale, { shopNotice: 'SUSPENDED' });
+
+          expect(html).not.toMatch(/href=/i);
+        }
+      },
+    );
   });
 
   describe('dòng liên hệ hỗ trợ', () => {

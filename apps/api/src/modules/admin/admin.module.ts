@@ -8,6 +8,7 @@ import { ShopModule } from '../shop/shop.module';
 import { AdminOverviewController } from './admin-overview.controller';
 import { AdminOverviewService } from './admin-overview.service';
 import { AdminRefundController } from './admin-refund.controller';
+import { AdminUserShopCascadeService } from './admin-user-shop-cascade.service';
 import { AdminUserStatusService } from './admin-user-status.service';
 import { AdminUserController } from './admin-user.controller';
 import { AdminUserService } from './admin-user.service';
@@ -39,6 +40,7 @@ import { AdminService } from './admin.service';
     AdminOverviewService,
     AdminUserService,
     AdminUserStatusService,
+    AdminUserShopCascadeService,
   ],
 })
 export class AdminModule {}

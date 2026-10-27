@@ -54,4 +54,12 @@ export interface AccountStatusEmailData {
   // Link trang đăng nhập (đã dựng bằng `frontendUrl`, đúng prefix ngôn ngữ). Chỉ dùng ở REACTIVATED: người bị khoá không
   // đăng nhập được nên email khoá không có nút.
   loginUrl: string;
+  // Một câu nói thêm về SHOP của người nhận khi việc đổi trạng thái tài khoản kéo theo shop (Week11.md 3.4); null ⇒ không có
+  // câu nào (người nhận không có shop, hoặc shop không bị động tới). SUSPENDED: shop cũng bị tạm ngừng. REOPENED: shop do
+  // chính lần khoá này khoá đã được mở lại. STILL_SUSPENDED: tài khoản được mở lại từ trạng thái bị CẤM nên shop KHÔNG tự mở,
+  // báo trước để người dùng khỏi ngạc nhiên khi vào lại thấy shop vẫn bị khoá.
+  shopNotice: AccountStatusShopNotice | null;
 }
+
+export type AccountStatusShopNotice =
+  'SUSPENDED' | 'REOPENED' | 'STILL_SUSPENDED';

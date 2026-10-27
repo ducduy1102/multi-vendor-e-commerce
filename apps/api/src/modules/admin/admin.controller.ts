@@ -172,7 +172,8 @@ export class AdminController {
   @ApiResponse({
     status: 409,
     description:
-      'Shop không còn ở trạng thái cho phép chuyển (đã có người xử lý, hoặc cạnh không hợp lệ)',
+      'Shop không còn ở trạng thái cho phép chuyển (đã có người xử lý, hoặc cạnh không hợp lệ: SHOP_INVALID_TRANSITION), ' +
+      'hoặc tài khoản chủ shop không còn ACTIVE khi duyệt / mở khoá (SHOP_OWNER_NOT_ACTIVE)',
     schema: {
       example: {
         success: false,

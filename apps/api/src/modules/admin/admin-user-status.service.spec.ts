@@ -6,6 +6,7 @@ import {
 } from '@ecommerce/types';
 import type { MailService } from '../../shared/mail/mail.service';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
+import { AdminUserShopCascadeService } from './admin-user-shop-cascade.service';
 import { AdminUserStatusService } from './admin-user-status.service';
 
 // Logic không cần DB của khoá / mở tài khoản (Week11.md 3.3): bảng chuyển trạng thái được áp đủ 16 cặp, điều kiện của UPDATE
@@ -25,7 +26,11 @@ interface Row {
   email: string;
   name: string;
   locale: 'vi' | 'en';
+  statusChangedAt: Date | null;
 }
+
+// Mốc tài khoản vào trạng thái hiện tại (cột `statusChangedAt`) — dùng để biết shop nào bị khoá bởi CHÍNH lần khoá này.
+const LOCK_STARTED = new Date('2026-10-20T00:00:00.000Z');
 
 function row(overrides: Partial<Row> = {}): Row {
   return {
@@ -35,11 +40,20 @@ function row(overrides: Partial<Row> = {}): Row {
     email: EMAIL,
     name: 'Nguyễn Văn An',
     locale: 'vi',
+    statusChangedAt: LOCK_STARTED,
     ...overrides,
   };
 }
 
-function build(current: Row | null, options: { updateCount?: number } = {}) {
+interface BuildOptions {
+  updateCount?: number;
+  // Số shop mỗi nhánh cascade báo đã xử lý / đang còn khoá.
+  shopsSuspended?: number;
+  shopsReopened?: number;
+  shopsStillSuspended?: number;
+}
+
+function build(current: Row | null, options: BuildOptions = {}) {
   const calls: string[] = [];
   const tx = {
     user: {
@@ -87,13 +101,28 @@ function build(current: Row | null, options: { updateCount?: number } = {}) {
     }),
     emitToUser: jest.fn(),
   };
+  const shopCascade = {
+    suspendOwnedShops: jest.fn().mockImplementation(() => {
+      calls.push('cascade');
+      return Promise.resolve(options.shopsSuspended ?? 0);
+    }),
+    reopenCascadeSuspendedShops: jest.fn().mockImplementation(() => {
+      calls.push('cascade');
+      return Promise.resolve(options.shopsReopened ?? 0);
+    }),
+    countSuspendedShops: jest.fn().mockImplementation(() => {
+      calls.push('cascade');
+      return Promise.resolve(options.shopsStillSuspended ?? 0);
+    }),
+  };
   const service = new AdminUserStatusService(
     prisma as unknown as PrismaService,
     audit,
     mail as unknown as MailService,
     realtime,
+    shopCascade as unknown as AdminUserShopCascadeService,
   );
-  return { service, tx, prisma, audit, mail, realtime, calls };
+  return { service, tx, prisma, audit, mail, realtime, shopCascade, calls };
 }
 
 type Built = ReturnType<typeof build>;
@@ -174,6 +203,12 @@ describe('AdminUserStatusService', () => {
         expect(built.audit.record).not.toHaveBeenCalled();
         expect(built.mail.sendAccountStatusChanged).not.toHaveBeenCalled();
         expect(built.realtime.disconnectUser).not.toHaveBeenCalled();
+        // Cạnh sai ⇒ không đụng shop nào.
+        expect(built.shopCascade.suspendOwnedShops).not.toHaveBeenCalled();
+        expect(
+          built.shopCascade.reopenCascadeSuspendedShops,
+        ).not.toHaveBeenCalled();
+        expect(built.shopCascade.countSuspendedShops).not.toHaveBeenCalled();
       }
     });
   });
@@ -219,7 +254,7 @@ describe('AdminUserStatusService', () => {
         targetType: 'USER',
         targetId: USER_ID,
         reason: REASON,
-        meta: { from: 'ACTIVE', to: 'BANNED' },
+        meta: { from: 'ACTIVE', to: 'BANNED', shopsSuspended: 0 },
         ip: '203.0.113.7',
         userAgent: 'UnitTest/1.0',
       });
@@ -243,6 +278,7 @@ describe('AdminUserStatusService', () => {
       expect(auditArgs(built)[1].meta).toEqual({
         from: 'SUSPENDED',
         to: 'BANNED',
+        shopsSuspended: 0,
       });
     });
 
@@ -305,6 +341,168 @@ describe('AdminUserStatusService', () => {
         locale: 'en',
         loginUrl: 'https://app.example.com/en/login',
       });
+    });
+  });
+
+  describe('kéo theo shop của chủ tài khoản (Week11.md 3.4)', () => {
+    it('khoá: suspendOwnedShops chạy trên CHÍNH tx, SAU UPDATE user và TRƯỚC nhật ký; số shop vào meta và email báo shop tạm ngừng', async () => {
+      const built = build(row(), { shopsSuspended: 2 });
+
+      await built.service.suspend(ADMIN_ID, USER_ID, {
+        status: 'SUSPENDED',
+        reason: REASON,
+      });
+
+      expect(built.shopCascade.suspendOwnedShops).toHaveBeenCalledWith(
+        built.tx,
+        USER_ID,
+      );
+      expect(
+        built.shopCascade.reopenCascadeSuspendedShops,
+      ).not.toHaveBeenCalled();
+      expect(built.shopCascade.countSuspendedShops).not.toHaveBeenCalled();
+      const order = (name: string) => built.calls.indexOf(name);
+      expect(order('updateMany')).toBeLessThan(order('cascade'));
+      expect(order('cascade')).toBeLessThan(order('audit'));
+      expect(auditArgs(built)[1].meta).toEqual({
+        from: 'ACTIVE',
+        to: 'SUSPENDED',
+        shopsSuspended: 2,
+      });
+      expect(mailArgs(built)[1]).toMatchObject({ shopNotice: 'SUSPENDED' });
+    });
+
+    it.each([
+      ['ACTIVE', 'SUSPENDED'],
+      ['ACTIVE', 'BANNED'],
+      ['SUSPENDED', 'BANNED'],
+    ] as const)('%s → %s đều kéo theo shop', async (from, status) => {
+      const built = build(row({ accountStatus: from }), { shopsSuspended: 1 });
+
+      await built.service.suspend(ADMIN_ID, USER_ID, {
+        status,
+        reason: REASON,
+      });
+
+      expect(built.shopCascade.suspendOwnedShops).toHaveBeenCalledTimes(1);
+    });
+
+    it('khoá người không có shop APPROVED nào: meta 0 và email KHÔNG có câu về shop', async () => {
+      const built = build(row(), { shopsSuspended: 0 });
+
+      await built.service.suspend(ADMIN_ID, USER_ID, {
+        status: 'SUSPENDED',
+        reason: REASON,
+      });
+
+      expect(auditArgs(built)[1].meta).toMatchObject({ shopsSuspended: 0 });
+      expect(mailArgs(built)[1]).toMatchObject({ shopNotice: null });
+    });
+
+    it('mở lại từ TẠM KHOÁ: mở lại shop do lần khoá này khoá, truyền đúng mốc vào trạng thái khoá; email báo shop được mở lại', async () => {
+      const built = build(row({ accountStatus: 'SUSPENDED' }), {
+        shopsReopened: 1,
+      });
+
+      await built.service.reactivate(ADMIN_ID, USER_ID, { reason: REASON });
+
+      expect(
+        built.shopCascade.reopenCascadeSuspendedShops,
+      ).toHaveBeenCalledWith(built.tx, USER_ID, LOCK_STARTED);
+      expect(built.shopCascade.suspendOwnedShops).not.toHaveBeenCalled();
+      expect(built.shopCascade.countSuspendedShops).not.toHaveBeenCalled();
+      expect(auditArgs(built)[1].meta).toEqual({
+        from: 'SUSPENDED',
+        to: 'ACTIVE',
+        shopsReopened: 1,
+      });
+      expect(mailArgs(built)[1]).toMatchObject({ shopNotice: 'REOPENED' });
+    });
+
+    it('mở lại từ TẠM KHOÁ nhưng không shop nào đủ điều kiện mở lại: email KHÔNG có câu về shop', async () => {
+      const built = build(row({ accountStatus: 'SUSPENDED' }), {
+        shopsReopened: 0,
+      });
+
+      await built.service.reactivate(ADMIN_ID, USER_ID, { reason: REASON });
+
+      expect(mailArgs(built)[1]).toMatchObject({ shopNotice: null });
+    });
+
+    it('thiếu mốc trạng thái (dữ liệu dựng tay) ⇒ truyền null xuống, không tự bịa mốc', async () => {
+      const built = build(
+        row({ accountStatus: 'SUSPENDED', statusChangedAt: null }),
+      );
+
+      await built.service.reactivate(ADMIN_ID, USER_ID, { reason: REASON });
+
+      expect(
+        built.shopCascade.reopenCascadeSuspendedShops,
+      ).toHaveBeenCalledWith(built.tx, USER_ID, null);
+    });
+
+    it('mở lại từ BỊ CẤM: KHÔNG mở shop nào (chỉ đếm); còn shop bị khoá thì email báo trước, hết thì im lặng', async () => {
+      const withShops = build(row({ accountStatus: 'BANNED' }), {
+        shopsStillSuspended: 2,
+      });
+      await withShops.service.reactivate(ADMIN_ID, USER_ID, {
+        reason: REASON,
+      });
+
+      expect(
+        withShops.shopCascade.reopenCascadeSuspendedShops,
+      ).not.toHaveBeenCalled();
+      expect(withShops.shopCascade.suspendOwnedShops).not.toHaveBeenCalled();
+      expect(withShops.shopCascade.countSuspendedShops).toHaveBeenCalledWith(
+        withShops.tx,
+        USER_ID,
+      );
+      expect(auditArgs(withShops)[1].meta).toEqual({
+        from: 'BANNED',
+        to: 'ACTIVE',
+        shopsStillSuspended: 2,
+      });
+      expect(mailArgs(withShops)[1]).toMatchObject({
+        shopNotice: 'STILL_SUSPENDED',
+      });
+
+      const noShops = build(row({ accountStatus: 'BANNED' }), {
+        shopsStillSuspended: 0,
+      });
+      await noShops.service.reactivate(ADMIN_ID, USER_ID, { reason: REASON });
+      expect(mailArgs(noShops)[1]).toMatchObject({ shopNotice: null });
+    });
+
+    it('cascade lỗi ⇒ cả request lỗi: không nhật ký, không ngắt socket, không email (tài khoản không bị khoá nửa vời)', async () => {
+      const built = build(row());
+      built.shopCascade.suspendOwnedShops.mockRejectedValueOnce(
+        new Error('cascade down'),
+      );
+
+      await expect(
+        built.service.suspend(ADMIN_ID, USER_ID, {
+          status: 'SUSPENDED',
+          reason: REASON,
+        }),
+      ).rejects.toThrow('cascade down');
+
+      expect(built.audit.record).not.toHaveBeenCalled();
+      expect(built.realtime.disconnectUser).not.toHaveBeenCalled();
+      expect(built.mail.sendAccountStatusChanged).not.toHaveBeenCalled();
+      expect(built.calls).not.toContain('commit');
+    });
+
+    it('thua đua (UPDATE user không khớp dòng nào) ⇒ không kéo theo shop nào', async () => {
+      const built = build(row(), { updateCount: 0 });
+
+      await expect(
+        built.service.suspend(ADMIN_ID, USER_ID, {
+          status: 'SUSPENDED',
+          reason: REASON,
+        }),
+      ).rejects.toMatchObject({ code: 'USER_INVALID_TRANSITION' });
+
+      expect(built.shopCascade.suspendOwnedShops).not.toHaveBeenCalled();
     });
   });
 
@@ -422,6 +620,7 @@ describe('AdminUserStatusService', () => {
 
       expect(built.calls).toEqual([
         'updateMany',
+        'cascade',
         'audit',
         'commit',
         'disconnect',

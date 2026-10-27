@@ -3,6 +3,7 @@ import { escapeHtml } from './html';
 import type {
   AccountStatusEmailData,
   AccountStatusEmailKind,
+  AccountStatusShopNotice,
 } from './account-email.types';
 import { button, paragraph, renderEmail } from './order-email.layout';
 
@@ -18,6 +19,8 @@ interface Copy {
   supportLabel: string;
   signIn: string;
   kinds: Record<AccountStatusEmailKind, KindCopy>;
+  // Mỗi câu là MỘT CÂU TRỌN VẸN (không ghép từ theo thứ tự của một ngôn ngữ).
+  shopNotices: Record<AccountStatusShopNotice, string>;
 }
 
 const COPY: Record<MailLocale, Copy> = {
@@ -26,6 +29,14 @@ const COPY: Record<MailLocale, Copy> = {
     reasonLabel: 'Lý do',
     supportLabel: 'Liên hệ hỗ trợ',
     signIn: 'Đăng nhập',
+    shopNotices: {
+      SUSPENDED:
+        'Shop của bạn cũng bị tạm ngừng: shop không còn hiển thị công khai và không nhận đơn mới.',
+      REOPENED:
+        'Shop của bạn cũng đã được mở lại và hiển thị công khai trở lại.',
+      STILL_SUSPENDED:
+        'Shop của bạn vẫn đang bị tạm ngừng và sẽ được quản trị viên xem xét riêng.',
+    },
     kinds: {
       SUSPENDED: {
         subject: 'Tài khoản của bạn đã bị tạm khoá',
@@ -49,6 +60,14 @@ const COPY: Record<MailLocale, Copy> = {
     reasonLabel: 'Reason',
     supportLabel: 'Contact support',
     signIn: 'Sign in',
+    shopNotices: {
+      SUSPENDED:
+        'Your shop has also been suspended: it is no longer publicly visible and cannot receive new orders.',
+      REOPENED:
+        'Your shop has also been reinstated and is publicly visible again.',
+      STILL_SUSPENDED:
+        'Your shop remains suspended and will be reviewed separately by an administrator.',
+    },
     kinds: {
       SUSPENDED: {
         subject: 'Your account has been suspended',
@@ -85,6 +104,9 @@ export function accountStatusTemplate(data: AccountStatusEmailData): {
     isLock && data.supportEmail
       ? `<p style="margin:0 0 12px"><strong>${escapeHtml(copy.supportLabel)}:</strong> ${escapeHtml(data.supportEmail)}</p>`
       : '';
+  const shopNotice = data.shopNotice
+    ? paragraph(copy.shopNotices[data.shopNotice])
+    : '';
   const action = isLock ? '' : button(data.loginUrl, copy.signIn);
 
   const html = renderEmail(
@@ -93,6 +115,7 @@ export function accountStatusTemplate(data: AccountStatusEmailData): {
       ${paragraph(copy.greeting(data.name))}
       ${paragraph(kind.lead)}
       ${reason}
+      ${shopNotice}
       ${support}
       ${action}
     `,

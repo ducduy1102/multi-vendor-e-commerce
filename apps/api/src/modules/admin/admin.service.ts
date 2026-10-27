@@ -1,10 +1,13 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, type ShopStatus } from '@prisma/client';
+import { canActorTransitionShop } from '@ecommerce/types';
+import { AppException } from '../../shared/exceptions/app.exception';
 import { frontendUrl } from '../../shared/mail/frontend-url';
 import type { MailLocale } from '../../shared/mail/mail-locale';
 import { MailService } from '../../shared/mail/mail.service';
 import { NotificationService } from '../../shared/notification/notification.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import type { TxClient } from '../../shared/prisma/tx-client';
 import { ShopStatusService } from '../shop/shop-status.service';
 import type { ListShopsQueryDto } from './dto/list-shops-query.dto';
 import type { UpdateShopStatusDto } from './dto/update-shop-status.dto';
@@ -127,10 +130,19 @@ export class AdminService {
     const from = await this.prisma.$transaction(async (tx) => {
       const current = await tx.shop.findUnique({
         where: { id: shopId },
-        select: { status: true },
+        select: { status: true, ownerId: true },
       });
       if (!current) {
         throw new NotFoundException('Shop not found');
+      }
+      // Duyệt (PENDING → APPROVED) và mở khoá (SUSPENDED → APPROVED) cho shop nhận đơn trở lại, nên chủ shop phải đang
+      // ACTIVE (Week11.md 3.4). Chỉ kiểm khi đây là một cạnh hợp lệ của Admin: cạnh sai vẫn ra SHOP_INVALID_TRANSITION chứ
+      // không bị che bởi lỗi chủ shop. Từ chối (REJECTED) và khoá (SUSPENDED) không bị chặn.
+      if (
+        dto.status === 'APPROVED' &&
+        canActorTransitionShop('ADMIN', current.status, 'APPROVED')
+      ) {
+        await this.assertOwnerActive(tx, current.ownerId);
       }
       await this.shopStatusService.transition(
         tx,
@@ -173,6 +185,27 @@ export class AdminService {
     await this.notifyOwnerSafely(shopId, from, dto, recipient);
 
     return toAdminShop(shop);
+  }
+
+  // `FOR SHARE` trên hàng user: giữ khoá chia sẻ đến khi transaction duyệt commit. Việc khoá tài khoản (AdminUserStatusService)
+  // UPDATE hàng user — cần khoá độc quyền — nên nó PHẢI chờ lần duyệt này xong, rồi mới quét "shop APPROVED của chủ" để khoá
+  // theo; thiếu khoá này, một lần duyệt chạy song song với một lần khoá tài khoản có thể để lại shop APPROVED của chủ đã bị
+  // khoá (lần quét của việc khoá không thấy shop còn PENDING chưa commit). Ngược lại nếu việc khoá commit trước, đọc ở đây
+  // thấy trạng thái mới và trả 409. Chủ shop không còn (đã xoá) cũng coi là không ACTIVE.
+  private async assertOwnerActive(
+    tx: TxClient,
+    ownerId: string,
+  ): Promise<void> {
+    const rows = await tx.$queryRaw<{ account_status: string }[]>(
+      Prisma.sql`SELECT account_status FROM users WHERE id = ${ownerId} FOR SHARE`,
+    );
+    if (rows[0]?.account_status !== 'ACTIVE') {
+      throw new AppException(
+        409,
+        'SHOP_OWNER_NOT_ACTIVE',
+        'The shop owner account is not active',
+      );
+    }
   }
 
   // Báo chủ shop kết quả Admin vừa xử lý (Week9.md 1.13), theo `User.locale` của họ. Chỉ 4 cạnh của Admin

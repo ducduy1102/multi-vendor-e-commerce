@@ -64,6 +64,17 @@ describe('ShopStatusService (DB thật)', () => {
 
   const ADMIN: ShopActor = { type: 'ADMIN', id: 'admin-int-1' };
   const OWNER = (id: string): ShopActor => ({ type: 'OWNER', id });
+  const SYSTEM: ShopActor = { type: 'SYSTEM' };
+  // Mỗi cạnh của bảng chạy bằng ĐÚNG actor của nó (Week11.md 3.4 thêm hai cạnh SYSTEM: trước đó mọi cạnh không phải OWNER đều là ADMIN).
+  const actorFor = (
+    actorType: 'OWNER' | 'ADMIN' | 'SYSTEM',
+    ownerId: string,
+  ) =>
+    actorType === 'OWNER'
+      ? OWNER(ownerId)
+      : actorType === 'SYSTEM'
+        ? SYSTEM
+        : ADMIN;
 
   describe('transition — từng cạnh của bảng trên Postgres thật', () => {
     it.each(
@@ -79,7 +90,7 @@ describe('ShopStatusService (DB thật)', () => {
           from === 'REJECTED' || from === 'SUSPENDED' ? 'lý do cũ' : null,
         );
         const before = await shopOf(shopId);
-        const actor: ShopActor = actorType === 'OWNER' ? OWNER(ownerId) : ADMIN;
+        const actor = actorFor(actorType, ownerId);
 
         await prisma.$transaction((tx) =>
           service.transition(tx, shopId, from, to, actor, 'lý do mới'),

@@ -225,6 +225,32 @@ const BUILDERS: Array<
             reason: 'Policy violation',
             supportEmail: null,
             loginUrl: frontendUrl('/login', locale),
+            shopNotice: null,
+          } satisfies AccountStatusEmailData),
+      ] as [string, (locale: MailLocale) => { subject: string; html: string }],
+  ),
+  // Cùng ba loại email nhưng kèm câu nói thêm về SHOP của người nhận (Week11.md 3.4): khoá ⇒ shop tạm ngừng, mở lại ⇒ shop
+  // được mở lại, mở lại từ bị cấm ⇒ shop vẫn bị khoá.
+  ...(
+    [
+      ['SUSPENDED', 'SUSPENDED'],
+      ['BANNED', 'SUSPENDED'],
+      ['REACTIVATED', 'REOPENED'],
+      ['REACTIVATED', 'STILL_SUSPENDED'],
+    ] as const
+  ).map(
+    ([kind, shopNotice]) =>
+      [
+        `account-status (${kind}, shop ${shopNotice})`,
+        (locale: MailLocale) =>
+          accountStatusTemplate({
+            locale,
+            name: 'John',
+            kind,
+            reason: 'Policy violation',
+            supportEmail: null,
+            loginUrl: frontendUrl('/login', locale),
+            shopNotice,
           } satisfies AccountStatusEmailData),
       ] as [string, (locale: MailLocale) => { subject: string; html: string }],
   ),
@@ -326,6 +352,8 @@ describe('mọi template × mọi ngôn ngữ', () => {
   const LINKLESS = new Set([
     'account-status (SUSPENDED)',
     'account-status (BANNED)',
+    'account-status (SUSPENDED, shop SUSPENDED)',
+    'account-status (BANNED, shop SUSPENDED)',
   ]);
 
   it.each(BUILDERS)(

@@ -184,6 +184,7 @@ describe('MailService', () => {
         reason: 'Gian lận thanh toán',
         supportEmail: null,
         loginUrl: 'http://localhost:3000/login',
+        shopNotice: null,
       });
 
       const message = provider.send.mock.calls[0][0];
