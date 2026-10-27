@@ -3,6 +3,7 @@ export * from './auth';
 export * from './shop';
 export * from './admin';
 export * from './admin-refund';
+export * from './admin-audit';
 export * from './product';
 export * from './category';
 export * from './wishlist';

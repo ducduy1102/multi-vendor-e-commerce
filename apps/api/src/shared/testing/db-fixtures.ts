@@ -4,6 +4,7 @@ import type {
   PrismaClient,
   UserLocale,
 } from '@prisma/client';
+import { deleteAdminAuditLogsForTests } from './admin-audit-cleanup';
 
 // Dữ liệu dựng cho các integration test (`*.int-spec.ts`, chạy bằng `pnpm test:int`) trên DB dev
 // thật. Mọi bản ghi mang tiền tố `tag` riêng của từng file spec và được dọn theo tiền tố đó, để
@@ -265,6 +266,20 @@ export async function cleanupByTag(prisma: PrismaClient, tag: string) {
     select: { id: true },
   });
   const userIds = users.map((u) => u.id);
+  // Nhật ký quản trị (Tuần 11) KHÔNG có khoá ngoại tới users/shops (có chủ đích, để nhật ký sống lâu hơn tài khoản) nên
+  // xoá người dùng không kéo theo dòng nào — phải dọn riêng, nếu không mỗi lượt int-spec để lại rác trong DB dev. Dọn
+  // theo Admin thực hiện (actorId) hoặc theo đối tượng là chính người dùng/shop có tiền tố (targetId).
+  const shops = await prisma.shop.findMany({
+    where: { slug: { startsWith: tag } },
+    select: { id: true },
+  });
+  // Bảng chỉ thêm ngay ở DB (trigger) nên phải đi qua helper đặt cờ dọn dẹp của test.
+  await deleteAdminAuditLogsForTests(prisma, {
+    OR: [
+      { actorId: { in: userIds } },
+      { targetId: { in: [...userIds, ...shops.map((s) => s.id)] } },
+    ],
+  });
   // Thứ tự xoá theo chiều FK RESTRICT (Payment/Order/VoucherUsage → CheckoutGroup → User;
   // Order/OrderItem → Shop/ProductVariant): xoá "lá" trước "gốc". Cart/CartItem/Address cascade
   // tự động theo User (onDelete: Cascade) nên không cần dọn riêng.
