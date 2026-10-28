@@ -42,6 +42,38 @@ describe('AdminShopListSkeleton', () => {
     },
   );
 
+  it.each([
+    ['PENDING', 3, true],
+    ['SUSPENDED', 3, true],
+    ['APPROVED', 2, false],
+    ['REJECTED', 1, false],
+  ] as const)(
+    'tab %s: cột Thao tác có %i thanh nút, xếp dọc đủ cột = %s — cùng quy tắc với nút thật để không nhảy layout',
+    (status, buttons, isStacked) => {
+      const { container } = render(withIntl(<AdminShopListSkeleton status={status} count={1} />));
+
+      const cell = container.querySelector('li > div:last-child');
+      expect(cell?.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(buttons);
+      if (isStacked) {
+        expect(cell).toHaveClass('lg:flex-col', 'lg:items-stretch');
+      } else {
+        expect(cell).toHaveClass('lg:justify-end');
+        expect(cell).not.toHaveClass('lg:flex-col');
+      }
+    },
+  );
+
+  it('thẻ 2 cột như bảng thật: ô shop, trạng thái và thao tác chiếm cả hàng, chủ shop và ngày chia đôi (không nhảy layout)', () => {
+    const { container } = render(withIntl(<AdminShopListSkeleton status="PENDING" count={1} />));
+
+    const cells = Array.from(container.querySelector('li')?.children ?? []);
+    expect(cells).toHaveLength(5);
+    const [shop, owner, date, status, actions] = cells;
+    for (const cell of [shop, status, actions])
+      expect(cell).toHaveClass('col-span-2', 'lg:col-span-1');
+    for (const cell of [owner, date]) expect(cell).not.toHaveClass('col-span-2');
+  });
+
   it('skeleton tôn trọng prefers-reduced-motion', () => {
     const { container } = render(withIntl(<AdminShopListSkeleton status="PENDING" count={1} />));
 

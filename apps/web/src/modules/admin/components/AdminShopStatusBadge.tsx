@@ -17,7 +17,12 @@ export const TONE_STYLE: Record<
 > = {
   warning: { variant: 'outline', className: 'border-warning/40 bg-warning/15 text-foreground' },
   success: { variant: 'outline', className: 'border-success/30 bg-success/10 text-success' },
-  destructive: { variant: 'destructive', className: '' },
+  // Nền hồng nhạt của variant `destructive` chỉ đạt 3,97:1 với chữ 12px ở chế độ sáng: nền trắng + viền đỏ nhạt giữ nguyên chữ
+  // `--destructive` (4,77:1). Chế độ tối giữ nền/viền cũ (đã đạt).
+  destructive: {
+    variant: 'destructive',
+    className: 'border-destructive/30 bg-background dark:border-transparent',
+  },
   muted: { variant: 'outline', className: 'text-muted-foreground' },
 };
 

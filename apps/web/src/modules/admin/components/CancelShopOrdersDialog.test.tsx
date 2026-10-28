@@ -302,3 +302,30 @@ describe('CancelShopOrdersDialog — kết quả', () => {
     expect(screen.queryByText(/Hủy|Đã|đơn/)).not.toBeInTheDocument();
   });
 });
+
+describe('CancelShopOrdersDialog — nút nền đỏ đặc (Week11.md 4.5)', () => {
+  const isSolidRed = (button: HTMLElement) =>
+    button.classList.contains('bg-destructive') &&
+    button.classList.contains('text-background') &&
+    // Chế độ tối: không có hai lớp này thì variant destructive giữ nền `dark:bg-destructive/20` (nhạt) đè lên nền đặc.
+    button.classList.contains('dark:bg-destructive') &&
+    !button.classList.contains('dark:bg-destructive/20') &&
+    !button.classList.contains('text-destructive') &&
+    !/(^|\s)bg-destructive\//.test(
+      button.className
+        .replace(/hover:bg-destructive\/90/g, '')
+        .replace(/dark:hover:bg-destructive\/90/g, ''),
+    );
+
+  it('nút "Hủy các đơn chưa giao" là nền đỏ đặc + chữ nền', () => {
+    setup();
+
+    expect(isSolidRed(confirmButton())).toBe(true);
+  });
+
+  it('nút "Hủy tiếp N đơn" ở màn kết quả cũng nền đỏ đặc', () => {
+    setup({ summary: summary({ cancelled: 20, remaining: 7 }) });
+
+    expect(isSolidRed(screen.getByRole('button', { name: 'Hủy tiếp 7 đơn' }))).toBe(true);
+  });
+});

@@ -34,6 +34,7 @@ import {
   createCancelShopOrdersFormSchema,
   type CancelShopOrdersFormInput,
 } from '../schemas/admin.schema';
+import { ADMIN_DESTRUCTIVE_CONFIRM_BUTTON_CLASS } from './admin-caution-button.constants';
 import { AdminConsequenceItem } from './AdminConsequenceItem';
 
 function ErrorBlock({ message }: { message: string }) {
@@ -170,6 +171,7 @@ function CancelOrdersForm({ shopName, isPending, error, onConfirm }: CancelOrder
         <Button
           type="submit"
           variant="destructive"
+          className={ADMIN_DESTRUCTIVE_CONFIRM_BUTTON_CLASS}
           disabled={isPending}
           aria-busy={isPending || undefined}
         >
@@ -294,6 +296,7 @@ function CancelOrdersResult({ summary, isPending, error, onContinue }: CancelOrd
           <Button
             type="button"
             variant="destructive"
+            className={ADMIN_DESTRUCTIVE_CONFIRM_BUTTON_CLASS}
             disabled={isPending}
             aria-busy={isPending || undefined}
             onClick={onContinue}

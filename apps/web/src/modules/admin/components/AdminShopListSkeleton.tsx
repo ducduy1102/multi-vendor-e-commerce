@@ -1,7 +1,11 @@
 import { Skeleton } from '@/shared/components/ui/skeleton';
 import { cn } from '@/shared/lib/utils';
 
+import { getAdminShopActions, shouldStackShopActions } from '../admin-shop-actions';
 import {
+  ADMIN_SHOP_ACTIONS_INLINE_CLASS,
+  ADMIN_SHOP_ACTIONS_STACKED_CLASS,
+  ADMIN_SHOP_FULL_ROW_CELL_CLASS,
   ADMIN_SHOP_GRID_CLASS,
   ADMIN_SHOP_LOGO_CLASS,
   ADMIN_SHOP_ROW_CLASS,
@@ -21,13 +25,17 @@ interface AdminShopListSkeletonProps {
 // Khớp bố cục bảng thật (cùng khung, cùng template cột, cùng dòng tiêu đề) để không nhảy layout khi
 // dữ liệu về. Chỉ mang tính trang trí (aria-hidden) — vùng bọc ở Container có aria-busy + dòng sr-only.
 export function AdminShopListSkeleton({ status, count = 5 }: AdminShopListSkeletonProps) {
+  // Cùng quy tắc với AdminShopActions: số nút = hành động của trạng thái (+ "Hủy đơn chưa giao" khi bị khoá) + "Ghi chú".
+  const buttonCount = getAdminShopActions(status).length + (status === 'SUSPENDED' ? 1 : 0) + 1;
+  const isStacked = shouldStackShopActions(buttonCount);
+
   return (
     <div aria-hidden="true" className={ADMIN_SHOP_TABLE_CLASS}>
       <AdminShopListHeader status={status} />
       <ul className="divide-y divide-border">
         {Array.from({ length: count }, (_, index) => (
           <li key={index} className={cn(ADMIN_SHOP_GRID_CLASS, ADMIN_SHOP_ROW_CLASS)}>
-            <div className="flex items-center gap-3">
+            <div className={cn('flex items-center gap-3', ADMIN_SHOP_FULL_ROW_CELL_CLASS)}>
               <Skeleton className={cn(ADMIN_SHOP_LOGO_CLASS, SKELETON_CLASS)} />
               <div className="flex flex-col gap-1.5">
                 <Skeleton className={cn('h-4 w-32', SKELETON_CLASS)} />
@@ -39,10 +47,21 @@ export function AdminShopListSkeleton({ status, count = 5 }: AdminShopListSkelet
               <Skeleton className={cn('h-3 w-40', SKELETON_CLASS)} />
             </div>
             <Skeleton className={cn('h-4 w-20', SKELETON_CLASS)} />
-            <Skeleton className={cn('h-5 w-20 rounded-4xl', SKELETON_CLASS)} />
-            <div className="flex gap-2 md:justify-end">
-              <Skeleton className={cn('h-8 w-16', SKELETON_CLASS)} />
-              <Skeleton className={cn('h-8 w-20', SKELETON_CLASS)} />
+            <Skeleton
+              className={cn('h-5 w-20 rounded-4xl', ADMIN_SHOP_FULL_ROW_CELL_CLASS, SKELETON_CLASS)}
+            />
+            <div
+              className={cn(
+                isStacked ? ADMIN_SHOP_ACTIONS_STACKED_CLASS : ADMIN_SHOP_ACTIONS_INLINE_CLASS,
+                ADMIN_SHOP_FULL_ROW_CELL_CLASS,
+              )}
+            >
+              {Array.from({ length: buttonCount }, (_, buttonIndex) => (
+                <Skeleton
+                  key={buttonIndex}
+                  className={cn('h-9 w-20', isStacked && 'lg:w-full', SKELETON_CLASS)}
+                />
+              ))}
             </div>
           </li>
         ))}

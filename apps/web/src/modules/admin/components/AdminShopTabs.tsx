@@ -9,6 +9,7 @@ import { getTabLinkClass } from '@/shared/lib/tab-link-class';
 import { ADMIN_SHOP_STATUS_DISPLAY, ADMIN_SHOP_TAB_STATUSES } from '../admin-status-display';
 import { buildAdminShopsHref } from '../admin-shops-href';
 import type { ShopStatus } from '../types';
+import { ADMIN_TAB_SCROLL_CLASS } from './admin-tab-fade.constants';
 
 interface AdminShopTabsProps {
   activeStatus: ShopStatus;
@@ -24,7 +25,7 @@ export function AdminShopTabs({ activeStatus }: AdminShopTabsProps) {
   const tDynamic = t as unknown as LooseTranslator;
 
   return (
-    <nav aria-label={t('tabsLabel')} className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+    <nav aria-label={t('tabsLabel')} className={ADMIN_TAB_SCROLL_CLASS}>
       <ul className="flex min-w-max gap-1 border-b border-border">
         {ADMIN_SHOP_TAB_STATUSES.map((status) => {
           const isActive = status === activeStatus;

@@ -159,3 +159,30 @@ describe('ShopReasonDialog', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 });
+
+describe('ShopReasonDialog — nút xác nhận nền đỏ đặc (Week11.md 4.5)', () => {
+  const isSolidRed = (button: HTMLElement) =>
+    button.classList.contains('bg-destructive') &&
+    button.classList.contains('text-background') &&
+    // Chế độ tối: không có hai lớp này thì variant destructive giữ nền `dark:bg-destructive/20` (nhạt) đè lên nền đặc.
+    button.classList.contains('dark:bg-destructive') &&
+    !button.classList.contains('dark:bg-destructive/20') &&
+    !button.classList.contains('text-destructive') &&
+    !/(^|\s)bg-destructive\//.test(
+      button.className
+        .replace(/hover:bg-destructive\/90/g, '')
+        .replace(/dark:hover:bg-destructive\/90/g, ''),
+    );
+
+  it.each([
+    ['reject', 'Từ chối shop'],
+    ['suspend', 'Khoá shop'],
+  ] as const)(
+    '%s: nút "%s" là nền đỏ đặc + chữ nền, không phải nền đỏ nhạt 3,81:1',
+    (kind, name) => {
+      setup({ kind });
+
+      expect(isSolidRed(screen.getByRole('button', { name }))).toBe(true);
+    },
+  );
+});

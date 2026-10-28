@@ -1,12 +1,9 @@
-import {
-  ADMIN_SHOP_HEADER_CLASS,
-  ADMIN_SHOP_ROW_CLASS,
-  ADMIN_SHOP_TABLE_CLASS,
-} from './admin-shop-row.constants';
+import { ADMIN_SHOP_ROW_CLASS, ADMIN_SHOP_TABLE_CLASS } from './admin-shop-row.constants';
 
 // Dùng chung giữa bảng người dùng thật (AdminUserRow + AdminUserListHeader) và AdminUserListSkeleton để hai bên không lệch
-// kích thước/cột khi dữ liệu về (rules/frontend.md mục 10). Khung bảng, padding dòng và dòng tiêu đề lấy lại của bảng shop
-// để hai màn Admin cùng một dáng.
+// kích thước/cột khi dữ liệu về (rules/frontend.md mục 10). Khung bảng và padding dòng lấy lại của bảng shop để hai màn Admin cùng
+// một dáng. Dòng tiêu đề tự khai ngưỡng `md` vì bảng người dùng KHÔNG đổi sang `lg` như bảng shop/hoàn tiền (Week11.md 4.5, dòng 3):
+// bảng chỉ 4 cột, ít chữ dài nên ở 768–1023px vẫn đủ chỗ.
 
 // MỘT template cột cho cả dòng tiêu đề lẫn từng dòng dữ liệu (rules/frontend.md mục 5): từ `md` là bảng 4 cột
 // (người dùng | trạng thái | thời điểm | thao tác), dưới `md` mỗi dòng là một thẻ xếp dọc. Cột cuối PHẢI có độ rộng cố
@@ -17,7 +14,8 @@ export const ADMIN_USER_GRID_CLASS =
 
 export const ADMIN_USER_TABLE_CLASS = ADMIN_SHOP_TABLE_CLASS;
 export const ADMIN_USER_ROW_CLASS = ADMIN_SHOP_ROW_CLASS;
-export const ADMIN_USER_HEADER_CLASS = ADMIN_SHOP_HEADER_CLASS;
+export const ADMIN_USER_HEADER_CLASS =
+  'hidden border-b border-border bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground sm:px-4 md:grid';
 
 // Nhãn trường chỉ cho trình đọc màn hình: huy hiệu trạng thái và chú thích ("Tham gia", "Khoá lúc") đã tự nói rõ, thêm nhãn
 // nhìn thấy chỉ làm thẻ mobile dài ra.

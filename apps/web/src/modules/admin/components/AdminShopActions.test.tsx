@@ -143,6 +143,132 @@ describe('AdminShopActions — hủy hàng loạt đơn chưa giao (Week11.md 4.
   });
 });
 
+describe('AdminShopActions — phân cấp nút và bố cục cột Thao tác (Week11.md 4.5)', () => {
+  function setupFull(status: ShopStatus) {
+    render(
+      withIntl(
+        <AdminShopActions
+          status={status}
+          shopName="Shop A"
+          isDisabled={false}
+          onApprove={vi.fn()}
+          onReject={vi.fn()}
+          onSuspend={vi.fn()}
+          onUnsuspend={vi.fn()}
+          onCancelOrders={vi.fn()}
+          onOpenNotes={vi.fn()}
+        />,
+      ),
+    );
+  }
+
+  const isSolid = (name: string) =>
+    screen.getByRole('button', { name }).className.includes('bg-primary');
+
+  it('shop chờ duyệt: "Duyệt" là nút đặc đứng đầu, "Từ chối" và "Ghi chú" là nút phụ bên dưới', () => {
+    setupFull('PENDING');
+
+    expect(buttonNames()).toEqual(['Duyệt', 'Từ chối', 'Ghi chú']);
+    expect(isSolid('Duyệt: Shop A')).toBe(true);
+    expect(isSolid('Từ chối: Shop A')).toBe(false);
+    expect(isSolid('Ghi chú: Shop A')).toBe(false);
+  });
+
+  it('shop đang bị khoá: "Mở khoá" là nút đặc đứng đầu (hành động chính, như "Duyệt"), hủy đơn và ghi chú ở dưới', () => {
+    setupFull('SUSPENDED');
+
+    expect(buttonNames()).toEqual(['Mở khoá', 'Hủy đơn chưa giao', 'Ghi chú']);
+    expect(isSolid('Mở khoá: Shop A')).toBe(true);
+    expect(isSolid('Hủy đơn chưa giao: Shop A')).toBe(false);
+    expect(isSolid('Ghi chú: Shop A')).toBe(false);
+  });
+
+  it('shop đã duyệt: "Khoá" mang tính cẩn trọng nên KHÔNG là nút đặc dù là hành động duy nhất', () => {
+    setupFull('APPROVED');
+
+    expect(buttonNames()).toEqual(['Khoá', 'Ghi chú']);
+    expect(isSolid('Khoá: Shop A')).toBe(false);
+  });
+
+  it('mọi nút cùng chiều cao tối thiểu 36px; từ 3 nút cụm xếp dọc và giãn đủ bề rộng cột từ `lg` (như bảng hoàn tiền)', () => {
+    setupFull('SUSPENDED');
+
+    for (const button of screen.getAllByRole('button')) {
+      expect(button).toHaveClass('min-h-9');
+    }
+    const group = screen.getAllByRole('button')[0].parentElement;
+    expect(group).toHaveClass('lg:flex-col', 'lg:items-stretch');
+    expect(group).not.toHaveClass('lg:justify-end');
+  });
+
+  it.each<[ShopStatus, boolean]>([
+    ['PENDING', true], // Duyệt + Từ chối + Ghi chú
+    ['SUSPENDED', true], // Mở khoá + Hủy đơn + Ghi chú
+    ['APPROVED', false], // Khoá + Ghi chú: một hàng gọn, hàng bảng không cao lên
+    ['REJECTED', false], // chỉ Ghi chú
+  ])('shop %s: xếp dọc đủ cột = %s, ngược lại một hàng gọn căn phải', (status, isStacked) => {
+    setupFull(status);
+
+    const group = screen.getAllByRole('button')[0].parentElement;
+    if (isStacked) {
+      expect(group).toHaveClass('lg:flex-col', 'lg:items-stretch');
+      expect(group).not.toHaveClass('lg:justify-end');
+    } else {
+      expect(group).toHaveClass('lg:justify-end');
+      expect(group).not.toHaveClass('lg:flex-col');
+    }
+  });
+
+  it('số nút tính theo nút thật sự có: chờ duyệt mà nơi dùng không truyền Ghi chú chỉ có 2 nút ⇒ một hàng gọn', () => {
+    setup('PENDING');
+
+    const group = screen.getAllByRole('button')[0].parentElement;
+    expect(group).toHaveClass('lg:justify-end');
+  });
+
+  it.each<[ShopStatus, string]>([
+    ['APPROVED', 'Khoá: Shop A'],
+    ['PENDING', 'Từ chối: Shop A'],
+    ['SUSPENDED', 'Hủy đơn chưa giao: Shop A'],
+  ])(
+    'shop %s: "%s" là nút viền cảnh báo — viền + chữ màu destructive, KHÔNG nền đỏ nhạt (3,97:1), rê chuột không đổi nền sang xám',
+    (status, name) => {
+      setupFull(status);
+
+      const button = screen.getByRole('button', { name });
+      expect(button).toHaveClass('border-destructive/30', 'text-destructive');
+      expect(button).toHaveClass('hover:bg-background', 'hover:text-destructive');
+      expect(button.className).not.toMatch(/(^|s)bg-destructive/);
+      expect(button.className).not.toContain('bg-primary');
+    },
+  );
+
+  it.each<[ShopStatus, string]>([
+    ['PENDING', 'Duyệt: Shop A'],
+    ['PENDING', 'Ghi chú: Shop A'],
+    ['SUSPENDED', 'Mở khoá: Shop A'],
+    ['SUSPENDED', 'Ghi chú: Shop A'],
+    ['APPROVED', 'Ghi chú: Shop A'],
+  ])(
+    'shop %s: "%s" KHÔNG mang màu cảnh báo (nút chính và nút ghi chú giữ kiểu riêng)',
+    (status, name) => {
+      setupFull(status);
+
+      expect(screen.getByRole('button', { name }).className).not.toContain('text-destructive');
+    },
+  );
+
+  it('cặp đồng ý / từ chối của shop chờ duyệt tách bạch: "Duyệt" nút đặc, "Từ chối" nút viền đỏ', () => {
+    setupFull('PENDING');
+
+    expect(screen.getByRole('button', { name: 'Duyệt: Shop A' })).toHaveClass('bg-primary');
+    expect(screen.getByRole('button', { name: 'Từ chối: Shop A' })).toHaveClass(
+      'text-destructive',
+      'bg-background',
+    );
+  });
+});
+
 describe('AdminShopActions — nút Ghi chú (Week11.md 4.3)', () => {
   function setupWithNotes(status: ShopStatus, isDisabled = false) {
     const onOpenNotes = vi.fn();
