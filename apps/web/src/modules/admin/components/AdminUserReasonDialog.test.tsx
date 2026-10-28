@@ -98,6 +98,14 @@ describe('AdminUserReasonDialog', () => {
     });
   });
 
+  it('hộp thoại giới hạn theo chiều cao khung nhìn và tự cuộn (màn thấp không làm nút xác nhận rơi ra ngoài)', () => {
+    setup();
+
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveClass('overflow-y-auto');
+    expect(dialog.className).toContain('max-h-[calc(100dvh-2rem)]');
+  });
+
   describe('lý do bắt buộc', () => {
     it.each<AdminUserAction>(['suspend', 'ban', 'reactivate', 'unban'])(
       '%s: bỏ trống -> báo lỗi theo field, KHÔNG gọi onConfirm',

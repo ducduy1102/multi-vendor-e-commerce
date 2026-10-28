@@ -14,7 +14,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useId, type ReactNode } from 'react';
+import { useId } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
 import {
@@ -39,6 +39,7 @@ import {
   type UserReasonFormInput,
 } from '../schemas/admin.schema';
 import type { AdminUserActionTarget } from '../hooks/useAdminUserActionFlow';
+import { AdminConsequenceItem } from './AdminConsequenceItem';
 
 // Chữ + hậu quả của từng hành động. Câu nói về shop CỐ Ý chung chung ("nếu có"): hộp thoại mở từ danh sách không tải thêm chi
 // tiết chỉ để biết người này có shop hay không (số shop chính xác nằm ở ngăn chi tiết). Gỡ cấm là câu duy nhất nói NGƯỢC lại với
@@ -111,25 +112,6 @@ interface AdminUserReasonDialogProps {
   onConfirm: (reason: string) => void;
 }
 
-function Consequence({
-  Icon,
-  children,
-  className,
-}: {
-  Icon: LucideIcon;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <li className={cn('flex items-start gap-2.5 text-sm', className)}>
-      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-        <Icon aria-hidden="true" className="size-3" />
-      </span>
-      <span className="min-w-0 text-foreground/90 [overflow-wrap:anywhere]">{children}</span>
-    </li>
-  );
-}
-
 // Form chỉ mount khi hộp thoại mở (mỗi lần mở là một form trống). Nút xác nhận KHÔNG phải AlertDialogAction — action đó tự
 // đóng ngay khi bấm, còn ở đây phải giữ hộp thoại mở (và khoá) tới khi yêu cầu xong; lỗi cũng giữ hộp thoại mở để Admin không
 // mất lý do vừa gõ.
@@ -163,7 +145,7 @@ function AdminUserReasonForm({
       noValidate
       className="flex flex-col gap-4"
     >
-      <AlertDialogHeader>
+      <AlertDialogHeader className="place-items-start text-left">
         <AlertDialogTitle>{t(copy.titleKey)}</AlertDialogTitle>
         <AlertDialogDescription className="[overflow-wrap:anywhere]">
           <span className="block font-medium text-foreground">
@@ -177,17 +159,19 @@ function AdminUserReasonForm({
         aria-label={t('usersConsequencesLabel')}
         className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3"
       >
-        <Consequence Icon={copy.isLocking ? LogOut : LogIn}>
+        <AdminConsequenceItem Icon={copy.isLocking ? LogOut : LogIn}>
           {t(copy.isLocking ? 'usersConsequenceSignOut' : 'usersConsequenceSignIn')}
-        </Consequence>
-        <Consequence Icon={Store}>{t(copy.shopKey)}</Consequence>
-        <Consequence Icon={Mail}>{t('usersConsequenceEmail', { email: user.email })}</Consequence>
+        </AdminConsequenceItem>
+        <AdminConsequenceItem Icon={Store}>{t(copy.shopKey)}</AdminConsequenceItem>
+        <AdminConsequenceItem Icon={Mail}>
+          {t('usersConsequenceEmail', { email: user.email })}
+        </AdminConsequenceItem>
         {action === 'unban' && user.statusReason ? (
-          <Consequence Icon={TriangleAlert}>
+          <AdminConsequenceItem Icon={TriangleAlert}>
             <span title={user.statusReason} className="line-clamp-3">
               {t('usersDialogUnbanWarning', { reason: user.statusReason })}
             </span>
-          </Consequence>
+          </AdminConsequenceItem>
         ) : null}
       </ul>
 
@@ -266,7 +250,9 @@ export function AdminUserReasonDialog({
 }: AdminUserReasonDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="data-[size=default]:sm:max-w-md">
+      {/* Giới hạn theo chiều cao khung nhìn và tự cuộn: màn thấp (điện thoại ngang, iPhone SE) không được làm nút xác nhận rơi ra
+          ngoài màn hình. */}
+      <AlertDialogContent className="data-[size=default]:sm:max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <AdminUserReasonForm {...formProps} />
       </AlertDialogContent>
     </AlertDialog>
