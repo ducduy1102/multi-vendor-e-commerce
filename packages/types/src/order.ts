@@ -12,6 +12,7 @@ import {
   sellerRefundRequestSummarySchema,
 } from './refund';
 import { orderItemReviewSchema } from './review';
+import { isSafeMessageText } from './text-safety';
 
 // Số tiền VND luôn là chuỗi số nguyên đồng trong RESPONSE (cùng quy ước CartView/CheckoutGroup).
 const moneySchema = z.string();
@@ -209,6 +210,9 @@ export const sellerOrderDetailSchema = sellerOrderListItemSchema.extend({
   history: z.array(orderHistoryEntrySchema),
   // Chi tiết: đủ lý do của người mua + dòng thời gian + cờ duyệt/từ chối (ghi đè bản tóm tắt ở danh sách).
   refundRequest: sellerRefundRequestSchema.nullable(),
+  // Ghi chú NỘI BỘ của shop trên đơn (Week11.md 4.4), null khi chưa có. CHỈ ở chi tiết đơn của Seller: không có trong danh sách
+  // đơn của Seller, trong `orderDetailSchema`/`orderListItemSchema` của người mua, hay bất kỳ response nào của Admin.
+  internalNote: z.string().nullable(),
 });
 export type SellerOrderDetail = z.infer<typeof sellerOrderDetailSchema>;
 
@@ -236,6 +240,38 @@ export type RejectOrderInput = z.infer<typeof rejectOrderSchema>;
 // POST /shops/:shopId/orders/:orderId/cancel — Seller tự hủy đơn đã xác nhận/đóng gói (kèm hoàn tiền nếu đã
 // thu), lý do BẮT BUỘC như từ chối đơn: người mua đọc được lý do này.
 export const sellerCancelOrderSchema = rejectOrderSchema;
+
+// --- Ghi chú nội bộ của shop trên đơn (Week11.md 4.4) ---------------------------------------------------------------------
+
+// Độ dài tối đa. PHẢI khớp cột `orders.internal_note VARCHAR(500)` và CHECK `orders_internal_note_length_in_range` (migration
+// `add_order_internal_note`): `order-internal-note-schemas.spec.ts` đọc file migration và so cận trên, nên lệch là test đỏ. Zod đếm
+// đơn vị UTF-16, Postgres đếm ký tự nên Zod luôn chặt hơn hoặc bằng DB.
+export const ORDER_INTERNAL_NOTE_MAX_LENGTH = 500;
+
+// Nội dung ghi chú: văn bản thuần, có thể nhiều dòng, CÓ THỂ RỖNG (rỗng = xoá ghi chú; BE lưu NULL). Cùng cách chuẩn hoá của ghi chú
+// Admin và tin nhắn chat: `\r\n`/`\r` → `\n`, cắt khoảng trắng hai đầu, rồi kiểm độ dài và ký tự (chặn NUL, điều khiển, bidi-override,
+// BOM, dấu phân dòng Unicode). Không chặn `<` `>`: ghi chú hiển thị nguyên văn như chữ (React tự escape). Input và output cùng kiểu
+// `string` nên ô nhập của FE dùng thẳng schema này với zodResolver. Thông điệp lỗi là KEY i18n (namespace `order`).
+export const orderInternalNoteTextSchema = z
+  .string({
+    required_error: 'order.validationInternalNoteInvalid',
+    invalid_type_error: 'order.validationInternalNoteInvalid',
+  })
+  .transform((value) => value.replace(/\r\n?/g, '\n'))
+  .pipe(
+    z
+      .string()
+      .trim()
+      .max(ORDER_INTERNAL_NOTE_MAX_LENGTH, 'order.validationInternalNoteTooLong')
+      .refine(isSafeMessageText, 'order.validationInternalNoteUnsafe'),
+  );
+
+// PATCH /shops/:shopId/orders/:orderId/internal-note — `note` BẮT BUỘC có mặt (thiếu ⇒ 400, để client quên gửi không vô tình xoá
+// ghi chú): chuỗi rỗng hoặc `null` = xoá, còn lại = đặt thành nội dung đó (thay hẳn ghi chú cũ).
+export const updateOrderInternalNoteSchema = z.object({
+  note: orderInternalNoteTextSchema.nullable(),
+});
+export type UpdateOrderInternalNoteInput = z.infer<typeof updateOrderInternalNoteSchema>;
 export type SellerCancelOrderInput = RejectOrderInput;
 
 // POST /shops/:shopId/orders/:orderId/ship — thông tin vận chuyển nhập tay, cả 2 tuỳ chọn.

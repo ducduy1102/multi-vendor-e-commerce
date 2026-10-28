@@ -444,6 +444,7 @@ describe('response schema', () => {
       shippingFee: '20000',
       carrier: null,
       trackingCode: null,
+      internalNote: null,
       history,
     };
 
@@ -609,6 +610,7 @@ describe('response schema', () => {
       shippingFee: '20000',
       carrier: null,
       trackingCode: null,
+      internalNote: null,
       history,
     };
 
@@ -689,6 +691,7 @@ describe('response schema', () => {
       shippingFee: '20000',
       carrier: null,
       trackingCode: null,
+      internalNote: null,
       buyerNote: null,
       history,
       userId: 'buyer-id',

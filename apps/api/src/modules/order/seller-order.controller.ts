@@ -2,9 +2,11 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -25,10 +27,12 @@ import {
   sellerOrderListQuerySchema,
   sellerOrderTabSchema,
   shipOrderSchema,
+  updateOrderInternalNoteSchema,
   type RejectOrderInput,
   type SellerCancelOrderInput,
   type SellerOrderListQuery,
   type ShipOrderInput,
+  type UpdateOrderInternalNoteInput,
 } from '@ecommerce/types';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { ShopOwnerContext } from '../../shared/decorators/shop-owner-context.decorator';
@@ -41,6 +45,7 @@ import {
 } from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { OrderActionService } from './order-action.service';
+import { OrderInternalNoteService } from './order-internal-note.service';
 import {
   ORDER_NOT_FOUND_EXAMPLE,
   SHOP_ID_PARAM,
@@ -86,6 +91,7 @@ const SELLER_ORDER_DETAIL_EXAMPLE = {
   shippingFee: '20000',
   carrier: null,
   trackingCode: null,
+  internalNote: 'Đã gọi khách xác nhận địa chỉ, hàng dễ vỡ — bọc kỹ',
   history: [
     {
       fromStatus: null,
@@ -148,6 +154,7 @@ export class SellerOrderController {
   constructor(
     private readonly orderQueryService: OrderQueryService,
     private readonly orderActionService: OrderActionService,
+    private readonly orderInternalNoteService: OrderInternalNoteService,
   ) {}
 
   @Get('shops/:shopId/orders')
@@ -209,7 +216,10 @@ export class SellerOrderController {
     return this.orderQueryService.listForSeller(shopId, query);
   }
 
+  // `no-store`: chi tiết đơn của Seller mang SĐT/địa chỉ người nhận và ghi chú nội bộ của shop (Week11.md 4.4) — dữ liệu riêng tư không
+  // được để trình duyệt/proxy lưu bản sao (cùng quy ước của chat, thông báo và khu Admin).
   @Get('shops/:shopId/orders/:orderId')
+  @Header('Cache-Control', 'no-store')
   @ApiParam(SHOP_ID_PARAM)
   @ApiParam({ name: 'orderId', description: 'ID đơn hàng' })
   @UseGuards(JwtAuthGuard, ShopOwnerGuard)
@@ -234,6 +244,56 @@ export class SellerOrderController {
   ) {
     return this.orderQueryService.getForSeller(shopId, orderId);
   }
+  // Ghi chú NỘI BỘ của shop trên đơn (Week11.md 4.4): đặt hoặc xoá, sửa được nhiều lần. KHÔNG phải hành động đổi trạng thái nên không
+  // bị chặn bởi trạng thái đơn hay yêu cầu hủy của người mua; chỉ bị chặn bởi quyền (đơn phải thuộc shop và Seller được thấy).
+  @Patch('shops/:shopId/orders/:orderId/internal-note')
+  @Header('Cache-Control', 'no-store')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam(SHOP_ID_PARAM)
+  @ApiParam({ name: 'orderId', description: 'ID đơn hàng' })
+  @UseGuards(JwtAuthGuard, ShopOwnerGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({
+    summary:
+      'Đặt hoặc xoá ghi chú NỘI BỘ của shop trên đơn — thay hẳn ghi chú cũ; `note` rỗng hoặc null = xoá. Chỉ chủ shop thấy ghi chú (chi tiết đơn của Seller), không bao giờ người mua hay Admin. Trả CHI TIẾT đơn mới nhất',
+  })
+  @ApiBody({
+    schema: {
+      example: { note: 'Đã gọi khách xác nhận địa chỉ, hàng dễ vỡ — bọc kỹ' },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: { success: true, data: SELLER_ORDER_DETAIL_EXAMPLE } },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Thiếu `note`, quá 500 ký tự hoặc có ký tự điều khiển (thiếu `note` bị từ chối để một client quên gửi không vô tình xoá ghi chú)',
+    schema: {
+      example: errorExample('note: order.validationInternalNoteTooLong'),
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Shop không tồn tại; hoặc đơn không tồn tại / thuộc shop khác / chưa từng được thanh toán (kể cả đã bị hủy) — không phân biệt',
+    schema: { example: ORDER_NOT_FOUND_EXAMPLE },
+  })
+  async setInternalNote(
+    @ShopOwnerContext() { shopId }: { shopId: string },
+    @Param('orderId') orderId: string,
+    @Body(new ZodValidationPipe(updateOrderInternalNoteSchema))
+    body: UpdateOrderInternalNoteInput,
+  ) {
+    await this.orderInternalNoteService.setInternalNote(
+      shopId,
+      orderId,
+      body.note,
+    );
+    return this.orderQueryService.getForSeller(shopId, orderId);
+  }
+
   // Hành động trả lại CHI TIẾT đơn mới nhất (đọc lại sau khi commit). Không kiểm trạng thái shop: shop bị
   // khoá tạm vẫn xử lý được đơn đã có (Week8.md 1.8).
   @Post('shops/:shopId/orders/:orderId/confirm')

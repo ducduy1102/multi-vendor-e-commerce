@@ -572,6 +572,13 @@ model Order {
   // Khác OrderStatusHistory.note (lý do đổi trạng thái do shop/hệ thống ghi).
   buyerNote String? @map("buyer_note") @db.VarChar(500)
 
+  // Ghi chú NỘI BỘ của shop trên đơn này (Week11.md 4.4) — khác `buyerNote` (người mua viết cho shop) và khác
+  // OrderStatusHistory.note (lý do đổi trạng thái, người mua đọc được). CHỈ chủ shop đọc/ghi, qua chi tiết đơn của Seller
+  // (`sellerDetailSelect`): KHÔNG được thêm vào select nào của người mua hay Admin, và KHÔNG vào danh sách đơn của Seller.
+  // Văn bản thuần, đã trim, 1..500 ký tự (ORDER_INTERNAL_NOTE_MAX_LENGTH); rỗng ⇒ NULL (xoá ghi chú). Khác `buyerNote` ở chỗ
+  // SỬA ĐƯỢC (không phải nhật ký — shop muốn đổi ý/cập nhật việc đã làm).
+  internalNote String? @map("internal_note") @db.VarChar(500)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
