@@ -4,6 +4,7 @@ import { Ban, Ellipsis, Lock, LockOpen, type LucideIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/shared/components/ui/button';
+import { cn } from '@/shared/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +14,7 @@ import {
 
 import { getAdminUserActions, type AdminUserAction } from '../admin-user-actions';
 import type { AdminUser } from '../types';
+import { ADMIN_CAUTION_BUTTON_CLASS } from './admin-caution-button.constants';
 
 const ACTION_META = {
   suspend: { labelKey: 'usersActionSuspend', Icon: Lock },
@@ -20,6 +22,17 @@ const ACTION_META = {
   unban: { labelKey: 'usersActionUnban', Icon: LockOpen },
   ban: { labelKey: 'usersActionBan', Icon: Ban },
 } as const satisfies Record<AdminUserAction, { labelKey: string; Icon: LucideIcon }>;
+
+// Cùng phân cấp với bảng duyệt shop: hành động HỒI PHỤC (đưa tài khoản về hoạt động) là nút chính — nút đặc, như "Duyệt"/"Mở
+// khoá" ở shop; hành động tiêu cực (khoá, cấm) dùng kiểu cảnh báo chung của khu Admin (viền + chữ `--destructive`, ADMIN_CAUTION_
+// BUTTON_CLASS).
+const PRIMARY_ACTIONS: ReadonlySet<AdminUserAction> = new Set(['reactivate', 'unban']);
+const CAUTION_ACTIONS: ReadonlySet<AdminUserAction> = new Set(['suspend', 'ban']);
+
+const buttonVariant = (action: AdminUserAction) =>
+  PRIMARY_ACTIONS.has(action) ? 'default' : 'outline';
+const cautionClass = (action: AdminUserAction) =>
+  CAUTION_ACTIONS.has(action) ? ADMIN_CAUTION_BUTTON_CLASS : undefined;
 
 interface AdminUserActionsProps {
   user: Pick<AdminUser, 'name' | 'role' | 'accountStatus'>;
@@ -33,8 +46,8 @@ interface AdminUserActionsProps {
 
 // Component THUẦN: hiện nút theo trạng thái hiện tại (getAdminUserActions — suy từ bảng chuyển trạng thái dùng chung với BE,
 // nên không bao giờ hiện hành động BE sẽ từ chối) và gọi callback; hộp thoại, mutation, xử lý lỗi nằm ở Container. Hành động
-// thường dùng (Khoá / Mở lại / Gỡ cấm) là nút outline trung tính; Cấm — mức nặng nhất — nằm trong menu `…` với màu cảnh báo,
-// màu đỏ chỉ xuất hiện ở đó và ở nút xác nhận trong hộp thoại, accent cam không dùng cho nút nguy hiểm. Không có hành động nào
+// thường dùng ở dòng: Khoá là nút viền cảnh báo, Mở lại / Gỡ cấm là nút đặc; Cấm — mức nặng nhất — nằm trong menu `…` với màu
+// cảnh báo (ở chân ngăn chi tiết là nút viền cảnh báo như Khoá). Accent cam không dùng cho nút nguy hiểm. Không có hành động nào
 // (Quản trị viên, tài khoản đã tự xoá) thì không vẽ gì.
 export function AdminUserActions({
   user,
@@ -58,8 +71,8 @@ export function AdminUserActions({
         {primary ? (
           <Button
             type="button"
-            variant="outline"
-            className="flex-1"
+            variant={buttonVariant(primary)}
+            className={cn('flex-1', cautionClass(primary))}
             disabled={isDisabled}
             aria-label={label(primary)}
             onClick={() => onAction(primary)}
@@ -72,8 +85,8 @@ export function AdminUserActions({
           <Button
             key={action}
             type="button"
-            variant="destructive"
-            className="flex-1"
+            variant={buttonVariant(action)}
+            className={cn('flex-1', cautionClass(action))}
             disabled={isDisabled}
             aria-label={label(action)}
             onClick={() => onAction(action)}
@@ -91,7 +104,8 @@ export function AdminUserActions({
       {primary ? (
         <Button
           type="button"
-          variant="outline"
+          variant={buttonVariant(primary)}
+          className={cautionClass(primary)}
           disabled={isDisabled}
           aria-label={label(primary)}
           onClick={() => onAction(primary)}

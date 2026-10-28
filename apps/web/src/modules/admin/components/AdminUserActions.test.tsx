@@ -84,6 +84,50 @@ describe('AdminUserActions — hàng trong bảng', () => {
   });
 });
 
+describe('AdminUserActions — phân cấp nút cùng kiểu với bảng shop', () => {
+  const isSolid = (name: string) =>
+    screen.getByRole('button', { name }).className.split(/\s+/).includes('bg-primary');
+
+  it.each<[AccountStatus, string]>([
+    ['SUSPENDED', 'Mở lại: Nguyễn Văn An'],
+    ['BANNED', 'Gỡ cấm: Nguyễn Văn An'],
+  ])(
+    '%s: "%s" là nút chính — nút đặc, không màu cảnh báo (như "Mở khoá" của shop)',
+    (accountStatus, name) => {
+      setup({ accountStatus });
+
+      expect(isSolid(name)).toBe(true);
+      expect(screen.getByRole('button', { name }).className).not.toContain('text-destructive');
+    },
+  );
+
+  it('tài khoản đang hoạt động: "Khoá" là nút viền cảnh báo — viền + chữ destructive, không nền đỏ nhạt, rê chuột không đổi nền sang xám', () => {
+    setup({ accountStatus: 'ACTIVE' });
+
+    const suspend = screen.getByRole('button', { name: 'Khoá: Nguyễn Văn An' });
+    expect(isSolid('Khoá: Nguyễn Văn An')).toBe(false);
+    expect(suspend).toHaveClass('border-destructive/30', 'text-destructive', 'hover:bg-background');
+    expect(suspend.className).not.toMatch(/(^|\s)bg-destructive/);
+  });
+
+  it('chân ngăn: "Khoá" và "Cấm tài khoản" đều là nút viền cảnh báo (không còn nền đỏ nhạt 3,81:1), "Mở lại" là nút đặc', () => {
+    const { unmount } = setup({ accountStatus: 'ACTIVE', layout: 'sheet' });
+    expect(screen.getByRole('button', { name: 'Khoá: Nguyễn Văn An' })).toHaveClass(
+      'text-destructive',
+    );
+    const ban = screen.getByRole('button', { name: 'Cấm tài khoản: Nguyễn Văn An' });
+    expect(ban).toHaveClass('border-destructive/30', 'text-destructive', 'hover:bg-background');
+    expect(ban.className).not.toMatch(/(^|\s)bg-destructive/);
+    unmount();
+
+    setup({ accountStatus: 'SUSPENDED', layout: 'sheet' });
+    expect(isSolid('Mở lại: Nguyễn Văn An')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Cấm tài khoản: Nguyễn Văn An' })).toHaveClass(
+      'text-destructive',
+    );
+  });
+});
+
 describe('AdminUserActions — chân ngăn chi tiết', () => {
   it('mọi hành động là nút rõ ràng (không phải tìm trong menu): Khoá + Cấm tài khoản', async () => {
     const user = userEvent.setup();

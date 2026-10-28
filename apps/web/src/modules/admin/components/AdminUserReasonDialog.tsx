@@ -39,6 +39,7 @@ import {
   type UserReasonFormInput,
 } from '../schemas/admin.schema';
 import type { AdminUserActionTarget } from '../hooks/useAdminUserActionFlow';
+import { ADMIN_DESTRUCTIVE_CONFIRM_BUTTON_CLASS } from './admin-caution-button.constants';
 import { AdminConsequenceItem } from './AdminConsequenceItem';
 
 // Chữ + hậu quả của từng hành động. Câu nói về shop CỐ Ý chung chung ("nếu có"): hộp thoại mở từ danh sách không tải thêm chi
@@ -222,6 +223,11 @@ function AdminUserReasonForm({
         <Button
           type="submit"
           variant={copy.confirmVariant}
+          className={
+            copy.confirmVariant === 'destructive'
+              ? ADMIN_DESTRUCTIVE_CONFIRM_BUTTON_CLASS
+              : undefined
+          }
           disabled={isPending}
           aria-busy={isPending || undefined}
         >

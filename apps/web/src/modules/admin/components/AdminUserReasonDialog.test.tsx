@@ -251,3 +251,38 @@ describe('AdminUserReasonDialog', () => {
     expect(screen.queryByText(/Cấm|Đăng xuất|tài khoản/)).not.toBeInTheDocument();
   });
 });
+
+describe('AdminUserReasonDialog — nút xác nhận (Week11.md 4.5)', () => {
+  const isSolidRed = (button: HTMLElement) =>
+    button.classList.contains('bg-destructive') &&
+    button.classList.contains('text-background') &&
+    // Chế độ tối: không có hai lớp này thì variant destructive giữ nền `dark:bg-destructive/20` (nhạt) đè lên nền đặc.
+    button.classList.contains('dark:bg-destructive') &&
+    !button.classList.contains('dark:bg-destructive/20') &&
+    !button.classList.contains('text-destructive') &&
+    !/(^|\s)bg-destructive\//.test(
+      button.className
+        .replace(/hover:bg-destructive\/90/g, '')
+        .replace(/dark:hover:bg-destructive\/90/g, ''),
+    );
+
+  it.each([
+    ['suspend', 'Tạm khoá'],
+    ['ban', 'Cấm tài khoản'],
+  ] as const)('%s: nút "%s" là nền đỏ đặc + chữ nền', (action, name) => {
+    setup({ action });
+
+    expect(isSolidRed(screen.getByRole('button', { name }))).toBe(true);
+  });
+
+  it.each([
+    ['reactivate', 'Mở lại'],
+    ['unban', 'Gỡ cấm'],
+  ] as const)('%s: nút "%s" là nút chính (primary), không đỏ', (action, name) => {
+    setup({ action });
+
+    const confirm = screen.getByRole('button', { name });
+    expect(confirm).toHaveClass('bg-primary');
+    expect(confirm).not.toHaveClass('bg-destructive', 'text-background', 'text-destructive');
+  });
+});
