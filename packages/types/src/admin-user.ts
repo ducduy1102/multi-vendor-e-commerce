@@ -166,7 +166,8 @@ export const adminUserListResponseSchema = z.object({
 export type AdminUserListResponse = z.infer<typeof adminUserListResponseSchema>;
 
 // Chi tiết một người dùng (ngăn bên phải ở 3.5): thêm ngôn ngữ email, số đơn, các shop họ sở hữu và lịch sử nhật ký quản
-// trị về chính tài khoản này. Ghi chú nội bộ của Admin sẽ thêm ở 4.3 khi nguồn đó có.
+// trị về chính tài khoản này. Ghi chú nội bộ của Admin KHÔNG nằm trong response này: có route riêng `GET /admin/notes` (xem
+// admin-note.ts) để ghi chú không bao giờ đi cùng dữ liệu tài khoản ra khỏi đường duy nhất của nó.
 export const adminUserShopSchema = z.object({
   id: z.string(),
   name: z.string(),

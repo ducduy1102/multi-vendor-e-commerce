@@ -17,3 +17,16 @@ export async function deleteAdminAuditLogsForTests(
     return count;
   });
 }
+
+// Cùng cơ chế cho ghi chú nội bộ của Admin (Week11.md 4.3): bảng `admin_notes` cũng chỉ thêm ngay ở DB (trigger
+// `admin_notes_no_update_delete`) và dùng CHUNG MỘT cờ dọn dẹp, nên test dọn dữ liệu chỉ cần một cơ chế.
+export async function deleteAdminNotesForTests(
+  prisma: PrismaClient,
+  where: Prisma.AdminNoteWhereInput,
+): Promise<number> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT set_config('app.allow_audit_cleanup', 'on', true)`;
+    const { count } = await tx.adminNote.deleteMany({ where });
+    return count;
+  });
+}

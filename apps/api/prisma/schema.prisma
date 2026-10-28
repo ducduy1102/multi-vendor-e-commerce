@@ -1041,3 +1041,38 @@ model AdminAuditLog {
   @@index([actorId, createdAt(sort: Desc), id(sort: Desc)])
   @@map("admin_audit_logs")
 }
+
+// Loại đối tượng có thể gắn ghi chú nội bộ của Admin (Week11.md 4.3). Khớp ADMIN_NOTE_TARGET_TYPES ở packages/types (test
+// parity). Là enum Postgres (khác `AdminAuditLog.targetType`) vì tập này nhỏ và đóng: DB tự từ chối loại lạ, không cần CHECK.
+enum AdminNoteTargetType {
+  USER
+  SHOP
+}
+
+// Ghi chú nội bộ của Admin (Week11.md 4.3, D15): vài dòng chữ để Admin kế tiếp biết bối cảnh của một người dùng / shop. CHỈ
+// THÊM — không có UPDATE/DELETE nào trong mã nguồn (`admin-note-append-only.spec.ts` quét) và trigger ở DB (migration
+// `add_admin_notes`) từ chối cả câu SQL lẻ. CHỈ Admin đọc, qua `/admin/notes`: cố ý KHÔNG khai quan hệ ngược từ User/Shop tới bảng
+// này, để không có đường `include: { notes: true }` nào vô tình đưa ghi chú vào response của route khác.
+model AdminNote {
+  id String @id @default(uuid())
+
+  targetType AdminNoteTargetType @map("target_type")
+
+  // Đối tượng được ghi chú (đa hình theo targetType nên không có khoá ngoại). Luôn là UUID; DB chỉ chặn độ dài. KHÔNG có
+  // khoá ngoại có chủ đích, như `AdminAuditLog`: ghi chú về một tài khoản/shop đã bị xoá vẫn là dấu vết của quyết định đã qua.
+  targetId String @map("target_id")
+
+  // Admin viết (lấy từ phiên, không bao giờ từ client). Không khoá ngoại: ghi chú còn nguyên khi tài khoản Admin bị xoá.
+  authorId String @map("author_id")
+
+  // Văn bản thuần, 1..1000 ký tự (CHECK viết tay trong migration; Zod ép ở packages/types).
+  content String
+
+  // Giờ do ĐỒNG HỒ DB đóng dấu (UTC), cùng lý do và cách viết với `AdminAuditLog.createdAt`.
+  createdAt DateTime @default(dbgenerated("timezone('UTC'::text, clock_timestamp())")) @map("created_at")
+
+  // Đọc theo từng đối tượng, mới nhất trước: WHERE target_type = ? AND target_id = ? ORDER BY created_at DESC, id DESC. id là
+  // khoá phụ để phân trang không trùng/mất khi hai ghi chú cùng mili-giây.
+  @@index([targetType, targetId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("admin_notes")
+}
