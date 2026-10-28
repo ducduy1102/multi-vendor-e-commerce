@@ -29,13 +29,13 @@ describe('AdminRefundListHeader', () => {
     const { container } = render(withIntl(<AdminRefundListHeader tab="disputes" />));
 
     const header = container.firstElementChild as HTMLElement;
-    expect(header).toHaveClass('hidden', 'md:grid');
+    expect(header).toHaveClass('hidden', 'lg:grid');
     for (const cls of ADMIN_REFUND_GRID_CLASS.split(' ').filter((c) =>
-      c.startsWith('md:grid-cols'),
+      c.startsWith('lg:grid-cols'),
     )) {
       expect(header).toHaveClass(cls);
     }
-    expect(header.lastElementChild).toHaveClass('md:text-right');
+    expect(header.lastElementChild).toHaveClass('lg:text-right');
   });
 
   it('mọi tab đều có đúng 4 nhãn cột (khớp lưới 4 cột)', () => {

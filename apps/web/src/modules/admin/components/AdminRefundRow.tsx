@@ -46,6 +46,19 @@ export function AdminRefundRow({
   const tDynamic = t as unknown as LooseTranslator;
   const formatDateTime = useFormatAdminDateTime();
   const { payment, order } = refund;
+  // Các dòng bị cắt (`truncate` / `line-clamp`) mang bản đầy đủ ở `title`.
+  const methodLine = `${tDynamic(ADMIN_PAYMENT_METHOD_LABEL_KEYS[payment.method])} · ${t('refundsCreatedAt', { date: formatDateTime(refund.createdAt) })}`;
+  const buyerLine = t('refundsBuyerLine', { name: refund.buyer.name, email: refund.buyer.email });
+  const reasonLine = refund.reason ? t('refundsReasonLine', { reason: refund.reason }) : null;
+  const failureLine = refund.failureReason
+    ? t('refundsFailureReason', { reason: refund.failureReason })
+    : null;
+  const orderLine = order
+    ? t('refundsOrderLine', {
+        code: order.id.slice(0, ADMIN_REFUND_SHORT_CODE_LENGTH),
+        name: order.recipientName,
+      })
+    : t('refundsNoOrder');
   const target = order
     ? `#${order.id.slice(0, ADMIN_REFUND_SHORT_CODE_LENGTH)}`
     : `#${payment.txnRef.slice(0, ADMIN_REFUND_SHORT_CODE_LENGTH)}`;
@@ -55,17 +68,18 @@ export function AdminRefundRow({
       <div className="grid min-w-0 grid-cols-1 gap-1">
         <span className={ADMIN_REFUND_FIELD_LABEL_CLASS}>{t('refundsColumnRefund')}</span>
         <p className="text-sm font-semibold text-foreground">{formatPrice(refund.amount)}</p>
-        <p className="truncate text-xs text-muted-foreground">
-          {tDynamic(ADMIN_PAYMENT_METHOD_LABEL_KEYS[payment.method])}
-          {' · '}
-          {t('refundsCreatedAt', { date: formatDateTime(refund.createdAt) })}
+        <p title={methodLine} className="truncate text-xs text-muted-foreground">
+          {methodLine}
         </p>
-        <p className="truncate text-xs text-muted-foreground">
-          {t('refundsBuyerLine', { name: refund.buyer.name, email: refund.buyer.email })}
+        <p title={buyerLine} className="truncate text-xs text-muted-foreground">
+          {buyerLine}
         </p>
-        {refund.reason ? (
-          <p className="line-clamp-2 text-xs break-words whitespace-pre-line text-muted-foreground">
-            {t('refundsReasonLine', { reason: refund.reason })}
+        {reasonLine ? (
+          <p
+            title={reasonLine}
+            className="line-clamp-2 text-xs break-words whitespace-pre-line text-muted-foreground"
+          >
+            {reasonLine}
           </p>
         ) : null}
         <p className="text-xs text-muted-foreground">
@@ -75,13 +89,8 @@ export function AdminRefundRow({
 
       <div className="grid min-w-0 grid-cols-1 gap-1">
         <span className={ADMIN_REFUND_FIELD_LABEL_CLASS}>{t('refundsColumnPayment')}</span>
-        <p className="truncate text-sm text-foreground">
-          {order
-            ? t('refundsOrderLine', {
-                code: order.id.slice(0, ADMIN_REFUND_SHORT_CODE_LENGTH),
-                name: order.recipientName,
-              })
-            : t('refundsNoOrder')}
+        <p title={orderLine} className="truncate text-sm text-foreground">
+          {orderLine}
         </p>
         <p className="text-xs break-all text-muted-foreground">
           {t('refundsTxnRef', { value: payment.txnRef })}
@@ -103,9 +112,9 @@ export function AdminRefundRow({
         <div>
           <AdminToneBadge display={ADMIN_REFUND_STATUS_DISPLAY[refund.status]} />
         </div>
-        {refund.failureReason ? (
-          <p className="line-clamp-3 text-xs break-words text-muted-foreground">
-            {t('refundsFailureReason', { reason: refund.failureReason })}
+        {failureLine ? (
+          <p title={failureLine} className="line-clamp-3 text-xs break-words text-muted-foreground">
+            {failureLine}
           </p>
         ) : null}
         <p className="text-xs text-muted-foreground">
@@ -116,7 +125,7 @@ export function AdminRefundRow({
       </div>
 
       {/* `empty:hidden`: khoản không còn hành động nào (đã hoàn, hoặc PENDING còn mới) thì ô trống không chiếm chỗ. */}
-      <div className="flex flex-wrap items-center gap-2 empty:hidden md:flex-col md:items-stretch">
+      <div className="flex flex-wrap items-center gap-2 empty:hidden lg:flex-col lg:items-stretch">
         {refund.canRetry ? (
           <Button
             type="button"

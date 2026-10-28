@@ -39,8 +39,8 @@ interface AdminRefundListHeaderProps {
   tab: AdminRefundTab;
 }
 
-// Dòng tiêu đề của bảng — chỉ từ `md` (dưới đó mỗi dòng tự có nhãn từng trường). `aria-hidden` vì mỗi ô của dòng
-// dữ liệu đã có nhãn riêng cho trình đọc màn hình (`md:sr-only`); để dòng này cũng đọc ra sẽ nhắc nhãn 2 lần. Dùng
+// Dòng tiêu đề của bảng — chỉ từ `lg` (dưới đó mỗi dòng tự có nhãn từng trường). `aria-hidden` vì mỗi ô của dòng
+// dữ liệu đã có nhãn riêng cho trình đọc màn hình (`lg:sr-only`); để dòng này cũng đọc ra sẽ nhắc nhãn 2 lần. Dùng
 // chung cả ở bảng thật lẫn skeleton để cột không nhảy khi dữ liệu về.
 export function AdminRefundListHeader({ tab }: AdminRefundListHeaderProps) {
   const t = useTranslations('admin');
@@ -52,7 +52,7 @@ export function AdminRefundListHeader({ tab }: AdminRefundListHeaderProps) {
       <span>{tDynamic(first)}</span>
       <span>{tDynamic(second)}</span>
       <span>{tDynamic(third)}</span>
-      <span className="md:text-right">{tDynamic(last)}</span>
+      <span className="lg:text-right">{tDynamic(last)}</span>
     </div>
   );
 }

@@ -46,20 +46,22 @@ export function AdminRefundablePaymentRow({
   const formatDateTime = useFormatAdminDateTime();
   const kind = ADMIN_ABNORMAL_PAYMENT_KIND_DISPLAY[payment.kind];
   const target = `#${payment.txnRef.slice(0, ADMIN_REFUND_SHORT_CODE_LENGTH)}`;
+  // Các dòng bị cắt (`truncate`) mang bản đầy đủ ở `title`.
+  const methodLine = `${tDynamic(ADMIN_PAYMENT_METHOD_LABEL_KEYS[payment.method])}${
+    payment.paidAt ? ` · ${t('refundsPaidAt', { date: formatDateTime(payment.paidAt) })}` : ''
+  }`;
+  const buyerLine = t('refundsBuyerLine', { name: payment.buyer.name, email: payment.buyer.email });
 
   return (
     <li className={cn(ADMIN_REFUND_GRID_CLASS, ADMIN_REFUND_ROW_CLASS)}>
       <div className="grid min-w-0 grid-cols-1 gap-1">
         <span className={ADMIN_REFUND_FIELD_LABEL_CLASS}>{t('refundsColumnPayment')}</span>
         <p className="text-sm font-semibold text-foreground">{formatPrice(payment.amount)}</p>
-        <p className="truncate text-xs text-muted-foreground">
-          {tDynamic(ADMIN_PAYMENT_METHOD_LABEL_KEYS[payment.method])}
-          {payment.paidAt
-            ? ` · ${t('refundsPaidAt', { date: formatDateTime(payment.paidAt) })}`
-            : ''}
+        <p title={methodLine} className="truncate text-xs text-muted-foreground">
+          {methodLine}
         </p>
-        <p className="truncate text-xs text-muted-foreground">
-          {t('refundsBuyerLine', { name: payment.buyer.name, email: payment.buyer.email })}
+        <p title={buyerLine} className="truncate text-xs text-muted-foreground">
+          {buyerLine}
         </p>
         <p className="text-xs break-all text-muted-foreground">
           {t('refundsTxnRef', { value: payment.txnRef })}
@@ -74,15 +76,22 @@ export function AdminRefundablePaymentRow({
       <div className="grid min-w-0 grid-cols-1 gap-1">
         <span className={ADMIN_REFUND_FIELD_LABEL_CLASS}>{t('refundsColumnOrders')}</span>
         <ul className="grid grid-cols-1 gap-1">
-          {payment.orders.map((order) => (
-            <li key={order.id} className="truncate text-xs text-muted-foreground">
-              {t('refundsPaymentOrderLine', {
-                code: order.id.slice(0, ADMIN_REFUND_SHORT_CODE_LENGTH),
-                status: tOrderDynamic(ADMIN_ORDER_STATUS_LABEL_KEYS[order.status]),
-                amount: formatPrice(order.totalAmount),
-              })}
-            </li>
-          ))}
+          {payment.orders.map((order) => {
+            const orderLine = t('refundsPaymentOrderLine', {
+              code: order.id.slice(0, ADMIN_REFUND_SHORT_CODE_LENGTH),
+              status: tOrderDynamic(ADMIN_ORDER_STATUS_LABEL_KEYS[order.status]),
+              amount: formatPrice(order.totalAmount),
+            });
+            return (
+              <li
+                key={order.id}
+                title={orderLine}
+                className="truncate text-xs text-muted-foreground"
+              >
+                {orderLine}
+              </li>
+            );
+          })}
         </ul>
       </div>
 
@@ -94,7 +103,7 @@ export function AdminRefundablePaymentRow({
         <p className="text-xs text-muted-foreground">{tDynamic(kind.hintKey)}</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 md:flex-col md:items-stretch">
+      <div className="flex flex-wrap items-center gap-2 lg:flex-col lg:items-stretch">
         <Button
           type="button"
           className="min-h-9"

@@ -43,6 +43,26 @@ function setup(overrides: Partial<AdminRefundablePayment> = {}, isDisabled = fal
   return { ...utils, onRefund };
 }
 
+describe('AdminRefundablePaymentRow — title cho chữ bị cắt (Week11.md 4.5, dòng 7)', () => {
+  it('mỗi dòng đơn của lần đặt mang bản đầy đủ (kèm số tiền) ở title — số tiền không bị nuốt sau dấu …', () => {
+    const { container } = setup();
+
+    const lines = Array.from(container.querySelectorAll('li li'));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(line).toHaveAttribute('title', line.textContent ?? '');
+      expect(line.getAttribute('title')).toMatch(/₫/);
+    }
+  });
+
+  it('dòng cách thanh toán và dòng người mua (truncate) mang bản đầy đủ ở title', () => {
+    setup();
+
+    const buyer = screen.getByText(/a@example.com/);
+    expect(buyer).toHaveAttribute('title', buyer.textContent ?? '');
+  });
+});
+
 describe('AdminRefundablePaymentRow', () => {
   it('cột thanh toán: số tiền, cách thanh toán + lúc trả, người mua, các mã tìm giao dịch bên cổng', () => {
     setup();
@@ -116,13 +136,13 @@ describe('AdminRefundablePaymentRow', () => {
     expect(screen.getByText(`Mã giao dịch của cổng: ${'G'.repeat(200)}`)).toHaveClass('break-all');
   });
 
-  it('dùng đúng hằng số lưới dùng chung với tiêu đề; mỗi trường có nhãn (md:sr-only)', () => {
+  it('dùng đúng hằng số lưới dùng chung với tiêu đề; mỗi trường có nhãn (lg:sr-only)', () => {
     setup();
 
     const row = screen.getAllByRole('listitem')[0];
     for (const cls of ADMIN_REFUND_GRID_CLASS.split(' ')) expect(row).toHaveClass(cls);
     for (const name of ['Thanh toán', 'Các đơn của lần đặt', 'Vì sao bất thường']) {
-      expect(within(row).getByText(name, { selector: 'span' })).toHaveClass('md:sr-only');
+      expect(within(row).getByText(name, { selector: 'span' })).toHaveClass('lg:sr-only');
     }
   });
 });

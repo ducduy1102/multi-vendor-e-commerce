@@ -63,6 +63,21 @@ function setup(overrides: Partial<AdminRefund> = {}, isDisabled = false) {
   return { ...utils, onRetry, onMarkCompleted };
 }
 
+describe('AdminRefundRow — title cho chữ bị cắt (Week11.md 4.5, dòng 7)', () => {
+  it('lý do hoàn, lý do lỗi của cổng, dòng người mua và dòng đơn mang bản đầy đủ ở title', () => {
+    const reason = 'Khách trả hai lần cho cùng một đơn hàng. '.repeat(6).trim();
+    const failure = 'Gateway rejected: duplicate request id. '.repeat(6).trim();
+    setup({ reason, failureReason: failure });
+
+    const reasonEl = screen.getByText(`Lý do hoàn: ${reason}`);
+    expect(reasonEl).toHaveAttribute('title', `Lý do hoàn: ${reason}`);
+    const failureEl = screen.getByText(`Lý do lỗi: ${failure}`);
+    expect(failureEl).toHaveAttribute('title', `Lý do lỗi: ${failure}`);
+    const buyer = screen.getByText(/a@example.com/);
+    expect(buyer).toHaveAttribute('title', buyer.textContent ?? '');
+  });
+});
+
 describe('AdminRefundRow — nội dung', () => {
   it('cột khoản hoàn: số tiền, cách thanh toán + lúc tạo, người mua, số lần đã gọi cổng', () => {
     setup();

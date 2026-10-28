@@ -8,6 +8,19 @@ import { AdminRefundTabs } from './AdminRefundTabs';
 
 const nav = () => screen.getByRole('navigation', { name: 'Các màn hoàn tiền' });
 
+describe('AdminRefundTabs — hàng cuộn ngang có lớp mờ ở mép phải (Week11.md 4.5, dòng 5)', () => {
+  it('dưới sm: mờ 32px ở mép phải và chừa 32px sau tab cuối; từ sm không mờ', () => {
+    render(withIntl(<AdminRefundTabs activeTab="disputes" />));
+
+    const nav = screen.getByRole('navigation');
+    expect(nav).toHaveClass('overflow-x-auto', 'pr-8', 'pl-4', 'sm:px-0');
+    expect(nav.className).toContain(
+      'max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%_-_2rem),transparent)]',
+    );
+    expect(nav.className).not.toMatch(/(^|\s)\[mask-image/);
+  });
+});
+
 describe('AdminRefundTabs', () => {
   it('ba tab theo thứ tự Khiếu nại / Hoàn tiền lỗi / Thanh toán cần hoàn, link tới đúng URL (tab mặc định không có ?tab=)', () => {
     render(withIntl(<AdminRefundTabs activeTab="disputes" />));

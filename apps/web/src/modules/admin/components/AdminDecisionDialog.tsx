@@ -20,6 +20,7 @@ import { useValidationMessage } from '@/shared/hooks/useValidationMessage';
 
 import { adminDecideRefundRequestSchema } from '../schemas/admin.schema';
 import type { AdminDecideRefundRequestInput, RefundRequestKind } from '../types';
+import { ADMIN_DESTRUCTIVE_CONFIRM_BUTTON_CLASS } from './admin-caution-button.constants';
 
 export type AdminDecisionVariant = 'approve' | 'reject';
 
@@ -112,6 +113,7 @@ function AdminDecisionForm({
         <Button
           type="submit"
           variant={variant === 'reject' ? 'destructive' : 'default'}
+          className={variant === 'reject' ? ADMIN_DESTRUCTIVE_CONFIRM_BUTTON_CLASS : undefined}
           disabled={isPending}
         >
           {t(copy.confirm)}
