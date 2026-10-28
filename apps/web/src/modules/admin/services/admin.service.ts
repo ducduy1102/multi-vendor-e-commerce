@@ -1,5 +1,7 @@
 import {
   adminCancelShopOrdersResultSchema,
+  adminNoteCreatedResponseSchema,
+  adminNoteListResponseSchema,
   adminOverviewSchema,
   adminRefundListResponseSchema,
   adminRefundRequestListResponseSchema,
@@ -15,6 +17,9 @@ import {
   type AdminCancelShopOrdersResult,
   type AdminDecideRefundRequestInput,
   type AdminMarkRefundCompletedInput,
+  type AdminNote,
+  type AdminNoteListQuery,
+  type AdminNoteListResponse,
   type AdminOverview,
   type AdminRefund,
   type AdminRefundListQuery,
@@ -33,6 +38,7 @@ import {
   type AdminUserDetail,
   type AdminUserListQuery,
   type AdminUserListResponse,
+  type CreateAdminNoteInput,
   type ReactivateUserInput,
   type SuspendUserInput,
 } from '@ecommerce/types';
@@ -152,6 +158,35 @@ export async function reactivateUser(
     body: JSON.stringify(input),
   });
   return adminUserStatusChangeResponseSchema.parse(data).user;
+}
+
+// --- Ghi chú nội bộ (Week11.md 4.3) ----------------------------------------------------------------
+
+// Ghi chú của MỘT người dùng hoặc shop, mới nhất trước. Đối tượng không tồn tại ⇒ 404 `ADMIN_NOTE_TARGET_NOT_FOUND`. Cả
+// `targetType` lẫn `targetId` đều bắt buộc (BE không có API đọc ghi chú toàn sàn).
+export async function listAdminNotes(
+  params: Pick<AdminNoteListQuery, 'targetType' | 'targetId'> & Partial<AdminNoteListQuery>,
+): Promise<AdminNoteListResponse> {
+  const searchParams = new URLSearchParams({
+    targetType: params.targetType,
+    targetId: params.targetId,
+  });
+  if (params.page !== undefined) searchParams.set('page', String(params.page));
+  if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+  const data = await apiFetch<unknown>(`/admin/notes?${searchParams.toString()}`, {
+    method: 'GET',
+  });
+  return adminNoteListResponseSchema.parse(data);
+}
+
+// Thêm một ghi chú (chỉ thêm, không sửa hay xoá được). Tác giả là Admin của phiên — không gửi trong body. BE bọc kết quả trong
+// `{ note }`.
+export async function createAdminNote(input: CreateAdminNoteInput): Promise<AdminNote> {
+  const data = await apiFetch<unknown>('/admin/notes', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return adminNoteCreatedResponseSchema.parse(data).note;
 }
 
 // --- Hoàn tiền (Week9.md 2.9) ---------------------------------------------------------------------

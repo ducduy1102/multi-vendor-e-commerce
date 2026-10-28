@@ -246,3 +246,37 @@ describe('AdminUserDetailSheet — dữ liệu', () => {
     expect(screen.queryByText(/tài khoản|Lịch sử|Tham gia|shop bị/i)).not.toBeInTheDocument();
   });
 });
+
+describe('AdminUserDetailSheet — ghi chú nội bộ (Week11.md 4.3)', () => {
+  function setupWithNotes(notes?: React.ReactNode) {
+    return render(
+      withIntl(
+        <AdminUserDetailSheet
+          open
+          onOpenChange={vi.fn()}
+          state={success()}
+          onRetry={vi.fn()}
+          actions={null}
+          notes={notes}
+        />,
+      ),
+    );
+  }
+
+  it('có slot notes: hiện mục "Ghi chú nội bộ" chứa slot, đứng TRƯỚC lịch sử quản trị', () => {
+    setupWithNotes(<p>nội dung ghi chú</p>);
+
+    const section = screen.getByRole('region', { name: 'Ghi chú nội bộ' });
+    expect(within(section).getByText('nội dung ghi chú')).toBeInTheDocument();
+    const history = screen.getByRole('region', { name: 'Lịch sử quản trị' });
+    expect(
+      section.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('không truyền notes ⇒ không có mục ghi chú (ngăn của nơi chưa nối ghi chú không bị đổi)', () => {
+    setupWithNotes();
+
+    expect(screen.queryByRole('region', { name: 'Ghi chú nội bộ' })).not.toBeInTheDocument();
+  });
+});

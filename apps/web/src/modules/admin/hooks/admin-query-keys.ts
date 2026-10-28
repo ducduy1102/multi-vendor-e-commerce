@@ -2,6 +2,7 @@ import type {
   AdminRefundListQuery,
   AdminRefundRequestListQuery,
   AdminRefundablePaymentListQuery,
+  AdminNoteTargetType,
   AdminShopListQuery,
   AdminUserListQuery,
 } from '../types';
@@ -47,6 +48,14 @@ export function adminUserDetailsQueryKey() {
 
 export function adminUserDetailQueryKey(userId: string) {
   return [...adminUserDetailsQueryKey(), userId] as const;
+}
+
+// --- Ghi chú nội bộ (Week11.md 4.3) --------------------------------------------------------------
+
+// Ghi chú của MỘT đối tượng (người dùng hoặc shop). Thêm ghi chú làm mới đúng khoá này; các trang đã tải thêm (`useInfiniteQuery`)
+// nằm chung một mục cache nên làm mới một lần là đủ.
+export function adminNotesQueryKey(targetType: AdminNoteTargetType, targetId: string) {
+  return ['admin', 'notes', targetType, targetId] as const;
 }
 
 // --- Hoàn tiền (Week9.md 3.1) --------------------------------------------------------------------

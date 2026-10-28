@@ -1,16 +1,19 @@
 import {
   adminCancelShopOrdersSchema,
   adminUpdateShopStatusSchema,
+  createAdminNoteSchema,
   reactivateUserSchema,
   suspendUserSchema,
 } from '@ecommerce/types';
 import { describe, expect, it } from 'vitest';
 
 import {
+  ADMIN_NOTE_CONTENT_MAX_LENGTH,
   ADMIN_REFUND_REFERENCE_MAX_LENGTH,
   ADMIN_SHOP_REASON_MAX_LENGTH,
   adminDecideRefundRequestSchema,
   adminMarkRefundCompletedSchema,
+  adminNoteFormSchema,
   adminRefundPaymentSchema,
   createCancelShopOrdersFormSchema,
   shopReasonFormSchema,
@@ -257,5 +260,43 @@ describe('createCancelShopOrdersFormSchema', () => {
 
       expect(adminCancelShopOrdersSchema.safeParse({ reason: form.reason }).success).toBe(true);
     }
+  });
+});
+
+describe('adminNoteFormSchema (Week11.md 4.3)', () => {
+  it('cắt khoảng trắng hai đầu và chuẩn hoá CRLF → LF', () => {
+    const parsed = adminNoteFormSchema.parse({ content: '  dòng 1\r\ndòng 2  ' });
+
+    expect(parsed.content).toBe('dòng 1\ndòng 2');
+  });
+
+  it.each([
+    ['rỗng', '', 'admin.validationNoteRequired'],
+    ['chỉ khoảng trắng', '  \n ', 'admin.validationNoteRequired'],
+    [
+      'quá 1000 ký tự',
+      'a'.repeat(ADMIN_NOTE_CONTENT_MAX_LENGTH + 1),
+      'admin.validationNoteTooLong',
+    ],
+    ['có ký tự NUL', `a${String.fromCharCode(0)}b`, 'admin.validationNoteUnsafe'],
+  ])('%s -> lỗi theo key i18n của field content', (_name, content, message) => {
+    const result = adminNoteFormSchema.safeParse({ content });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({ path: ['content'], message });
+  });
+
+  it('đúng cận 1000 ký tự thì qua; đầu ra của form luôn được schema BE chấp nhận', () => {
+    const parsed = adminNoteFormSchema.parse({
+      content: 'a'.repeat(ADMIN_NOTE_CONTENT_MAX_LENGTH),
+    });
+
+    expect(
+      createAdminNoteSchema.safeParse({
+        targetType: 'SHOP',
+        targetId: '11111111-1111-4111-8111-111111111111',
+        content: parsed.content,
+      }).success,
+    ).toBe(true);
   });
 });

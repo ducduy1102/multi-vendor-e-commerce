@@ -124,7 +124,7 @@ function DetailMessage({
   );
 }
 
-function DetailBody({ user }: { user: AdminUserDetail }) {
+function DetailBody({ user, notes }: { user: AdminUserDetail; notes?: ReactNode }) {
   const t = useTranslations('admin');
   const tDynamic = t as unknown as LooseTranslator;
   const formatDate = useFormatAdminDate();
@@ -251,6 +251,13 @@ function DetailBody({ user }: { user: AdminUserDetail }) {
           ) : null}
         </section>
 
+        {notes ? (
+          <section aria-label={t('notesSectionTitle')} className="flex flex-col gap-2">
+            <SectionTitle>{t('notesSectionTitle')}</SectionTitle>
+            {notes}
+          </section>
+        ) : null}
+
         <section aria-label={t('usersSectionHistory')} className="flex flex-col gap-2">
           <SectionTitle>{t('usersSectionHistory')}</SectionTitle>
           {user.history.length === 0 ? (
@@ -313,6 +320,9 @@ interface AdminUserDetailSheetProps {
   onRetry: () => void;
   // Nút hành động ở chân ngăn (AdminUserActions layout="sheet") — rỗng thì chân ngăn tự ẩn (`empty:hidden`).
   actions: ReactNode;
+  // Ghi chú nội bộ của Admin (AdminNotesSection, Week11.md 4.3) do Container truyền vào — ngăn không biết hook nào. Bỏ trống thì
+  // không có mục ghi chú.
+  notes?: ReactNode;
 }
 
 // Ngăn chi tiết người dùng (Sheet bên phải, mở bằng `?u=<id>` nên đồng bộ URL và nút Back/Forward). Bốn trạng thái: đang tải
@@ -325,6 +335,7 @@ export function AdminUserDetailSheet({
   state,
   onRetry,
   actions,
+  notes,
 }: AdminUserDetailSheetProps) {
   const t = useTranslations('admin');
 
@@ -351,7 +362,7 @@ export function AdminUserDetailSheet({
         {state.status === 'success' ? (
           <>
             <div className="flex-1 overflow-y-auto">
-              <DetailBody user={state.user} />
+              <DetailBody user={state.user} notes={notes} />
             </div>
             <div className="flex gap-2 border-t border-border bg-muted/50 p-4 empty:hidden">
               {actions}

@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   cancelShopOpenOrders,
+  createAdminNote,
   decideRefundRequest,
   getOverview,
   getUser,
+  listAdminNotes,
   listRefundablePayments,
   listRefundRequests,
   listRefunds,
@@ -831,5 +833,98 @@ describe('admin.service — cancelShopOpenOrders', () => {
       status,
       code,
     });
+  });
+});
+
+describe('admin.service — ghi chú nội bộ (Week11.md 4.3)', () => {
+  const TARGET_ID = '11111111-1111-4111-8111-111111111111';
+  const NOTE = {
+    id: 'note-1',
+    targetType: 'SHOP',
+    targetId: TARGET_ID,
+    content: 'Chủ shop đã gọi lại',
+    authorId: 'admin-1',
+    authorName: 'Quản trị viên',
+    createdAt: '2026-10-28T10:00:00.000Z',
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('listAdminNotes: GET /admin/notes với targetType + targetId, kèm cookie, parse đúng schema', async () => {
+    mockFetchOnce({ success: true, data: { items: [NOTE], total: 1, page: 1, limit: 20 } });
+
+    const result = await listAdminNotes({ targetType: 'SHOP', targetId: TARGET_ID });
+
+    const [url, init] = lastCall();
+    expect(url).toContain(`/admin/notes?targetType=SHOP&targetId=${TARGET_ID}`);
+    expect(url).not.toContain('page=');
+    expect(init).toMatchObject({ method: 'GET', credentials: 'include' });
+    expect(result.items[0]).toEqual(NOTE);
+  });
+
+  it('listAdminNotes: page và limit chỉ gửi khi được truyền (BE tự áp mặc định)', async () => {
+    mockFetchOnce({ success: true, data: { items: [], total: 0, page: 2, limit: 20 } });
+
+    await listAdminNotes({ targetType: 'USER', targetId: TARGET_ID, page: 2, limit: 20 });
+
+    expect(lastCall()[0]).toContain('targetType=USER');
+    expect(lastCall()[0]).toContain('page=2');
+    expect(lastCall()[0]).toContain('limit=20');
+  });
+
+  it('listAdminNotes: 404 -> ApiError mang status và mã ADMIN_NOTE_TARGET_NOT_FOUND', async () => {
+    mockFetchOnce(
+      {
+        success: false,
+        data: null,
+        message: 'Note target not found',
+        code: 'ADMIN_NOTE_TARGET_NOT_FOUND',
+      },
+      404,
+    );
+
+    await expect(listAdminNotes({ targetType: 'SHOP', targetId: TARGET_ID })).rejects.toMatchObject(
+      { status: 404, code: 'ADMIN_NOTE_TARGET_NOT_FOUND' },
+    );
+  });
+
+  it('listAdminNotes: response thiếu trường (không có authorId) -> Zod từ chối thay vì để UI đọc undefined', async () => {
+    const broken = { ...NOTE, authorId: undefined };
+    mockFetchOnce({ success: true, data: { items: [broken], total: 1, page: 1, limit: 20 } });
+
+    await expect(listAdminNotes({ targetType: 'SHOP', targetId: TARGET_ID })).rejects.toThrow();
+  });
+
+  it('createAdminNote: POST /admin/notes với đúng ba trường, lấy ghi chú trong { note }', async () => {
+    mockFetchOnce({ success: true, data: { note: NOTE } }, 201);
+
+    const result = await createAdminNote({
+      targetType: 'SHOP',
+      targetId: TARGET_ID,
+      content: 'Chủ shop đã gọi lại',
+    });
+
+    const [url, init] = lastCall();
+    expect(url).toContain('/admin/notes');
+    expect(init).toMatchObject({ method: 'POST', credentials: 'include' });
+    expect(JSON.parse(init.body as string)).toEqual({
+      targetType: 'SHOP',
+      targetId: TARGET_ID,
+      content: 'Chủ shop đã gọi lại',
+    });
+    expect(result).toEqual(NOTE);
+  });
+
+  it('createAdminNote: 400 -> ApiError giữ status (form hiện lỗi, không treo)', async () => {
+    mockFetchOnce(
+      { success: false, data: null, message: 'content: admin.validationNoteRequired' },
+      400,
+    );
+
+    await expect(
+      createAdminNote({ targetType: 'USER', targetId: TARGET_ID, content: 'x' }),
+    ).rejects.toMatchObject({ status: 400 });
   });
 });

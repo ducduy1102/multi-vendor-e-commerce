@@ -142,3 +142,56 @@ describe('AdminShopActions — hủy hàng loạt đơn chưa giao (Week11.md 4.
     expect(screen.getByRole('button', { name: 'Hủy đơn chưa giao: Shop A' })).toBeDisabled();
   });
 });
+
+describe('AdminShopActions — nút Ghi chú (Week11.md 4.3)', () => {
+  function setupWithNotes(status: ShopStatus, isDisabled = false) {
+    const onOpenNotes = vi.fn();
+    render(
+      withIntl(
+        <AdminShopActions
+          status={status}
+          shopName="Shop A"
+          isDisabled={isDisabled}
+          onApprove={vi.fn()}
+          onReject={vi.fn()}
+          onSuspend={vi.fn()}
+          onUnsuspend={vi.fn()}
+          onOpenNotes={onOpenNotes}
+        />,
+      ),
+    );
+    return { onOpenNotes };
+  }
+
+  it.each(['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED'] as const)(
+    'shop %s: có nút "Ghi chú" gắn tên shop và bấm gọi onOpenNotes',
+    async (status) => {
+      const user = userEvent.setup();
+      const { onOpenNotes } = setupWithNotes(status);
+
+      await user.click(screen.getByRole('button', { name: 'Ghi chú: Shop A' }));
+
+      expect(onOpenNotes).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('shop đã bị từ chối (không còn hành động nào) vẫn có nút Ghi chú — chỉ nút đó', () => {
+    setupWithNotes('REJECTED');
+
+    expect(buttonNames()).toEqual(['Ghi chú']);
+  });
+
+  it('không truyền onOpenNotes ⇒ không có nút, và shop REJECTED vẫn không render gì (hành vi cũ)', () => {
+    const { container } = setup('REJECTED');
+
+    expect(screen.queryByRole('button', { name: /Ghi chú/ })).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('khi một hành động khác đang chạy (isDisabled) nút Ghi chú vẫn dùng được: chỉ mở ngăn đọc, không đổi dữ liệu', () => {
+    setupWithNotes('APPROVED', true);
+
+    expect(screen.getByRole('button', { name: 'Khoá: Shop A' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Ghi chú: Shop A' })).toBeEnabled();
+  });
+});

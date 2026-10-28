@@ -13,6 +13,7 @@ import { useAdminUserDetail } from '../hooks/useAdminUserDetail';
 import { useAdminUsers } from '../hooks/useAdminUsers';
 import { ADMIN_USER_TABLE_CLASS } from './admin-user-row.constants';
 import { AdminShopPagination } from './AdminShopPagination';
+import { AdminNotesSection } from './AdminNotesSection';
 import { AdminUserActions } from './AdminUserActions';
 import { AdminUserDetailSheet } from './AdminUserDetailSheet';
 import { AdminUserListHeader } from './AdminUserListHeader';
@@ -153,6 +154,11 @@ export function AdminUsersContainer({ query }: AdminUsersContainerProps) {
         onOpenChange={closeSheet}
         state={detailState}
         onRetry={() => void detailQuery.refetch()}
+        notes={
+          detailUser ? (
+            <AdminNotesSection key={detailUser.id} targetType="USER" targetId={detailUser.id} />
+          ) : null
+        }
         actions={
           detailUser ? (
             <AdminUserActions

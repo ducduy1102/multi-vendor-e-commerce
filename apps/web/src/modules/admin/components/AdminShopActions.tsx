@@ -1,5 +1,6 @@
 'use client';
 
+import { StickyNote } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/shared/components/ui/button';
@@ -28,6 +29,9 @@ interface AdminShopActionsProps {
   // Hủy hàng loạt đơn chưa giao (Week11.md 4.1): CHỈ hiện ở shop đang bị khoá và khi nơi dùng truyền callback. Không phải cạnh của
   // bảng chuyển trạng thái shop nên không suy từ getAdminShopActions.
   onCancelOrders?: () => void;
+  // Mở ngăn ghi chú nội bộ của shop (Week11.md 4.3). Hiện ở MỌI trạng thái (kể cả shop không còn hành động nào — vd đã bị từ chối),
+  // vì ghi chú là việc của Admin chứ không phải cạnh của bảng chuyển trạng thái.
+  onOpenNotes?: () => void;
 }
 
 // Component THUẦN: hiện nút theo trạng thái hiện tại của shop (getAdminShopActions — suy từ bảng
@@ -43,11 +47,12 @@ export function AdminShopActions({
   onSuspend,
   onUnsuspend,
   onCancelOrders,
+  onOpenNotes,
 }: AdminShopActionsProps) {
   const t = useTranslations('admin');
   const actions = getAdminShopActions(status);
 
-  if (actions.length === 0) {
+  if (actions.length === 0 && !onOpenNotes) {
     return null;
   }
 
@@ -84,6 +89,17 @@ export function AdminShopActions({
           onClick={onCancelOrders}
         >
           {t('actionCancelOrders')}
+        </Button>
+      ) : null}
+      {onOpenNotes ? (
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label={t('actionLabelWithShop', { action: t('actionNotes'), name: shopName })}
+          onClick={onOpenNotes}
+        >
+          <StickyNote aria-hidden="true" data-icon="inline-start" />
+          {t('actionNotes')}
         </Button>
       ) : null}
     </div>

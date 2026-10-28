@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
 import { Alert } from '@/shared/components/ui/alert';
 import { Button } from '@/shared/components/ui/button';
@@ -11,15 +12,17 @@ import { buildAdminShopsPagination } from '../admin-shops-href';
 import { useAdminShopActionFlow } from '../hooks/useAdminShopActionFlow';
 import { useAdminShops } from '../hooks/useAdminShops';
 import { useCancelShopOrdersFlow } from '../hooks/useCancelShopOrdersFlow';
-import type { ShopStatus } from '../types';
+import type { AdminShop, ShopStatus } from '../types';
 import { ADMIN_SHOP_TABLE_CLASS } from './admin-shop-row.constants';
 import { AdminShopActionDialogs } from './AdminShopActionDialogs';
 import { AdminShopActions } from './AdminShopActions';
 import { AdminShopListHeader } from './AdminShopListHeader';
 import { AdminShopListSkeleton } from './AdminShopListSkeleton';
+import { AdminShopNotesSheet } from './AdminShopNotesSheet';
 import { AdminShopPagination } from './AdminShopPagination';
 import { AdminShopRow } from './AdminShopRow';
 import { AdminShopTabs } from './AdminShopTabs';
+import { AdminNotesSection } from './AdminNotesSection';
 import { CancelShopOrdersDialog } from './CancelShopOrdersDialog';
 
 interface AdminShopsContainerProps {
@@ -40,6 +43,9 @@ export function AdminShopsContainer({ status, page }: AdminShopsContainerProps) 
   const shopsQuery = useAdminShops({ status, page });
   const flow = useAdminShopActionFlow();
   const cancelOrdersFlow = useCancelShopOrdersFlow();
+  // Ngăn ghi chú nội bộ (Week11.md 4.3). Giữ shop cả sau khi đóng để nội dung không đổi giữa chừng lúc chạy hiệu ứng đóng.
+  const [notesShop, setNotesShop] = useState<AdminShop | null>(null);
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
   // Khoá mọi nút của danh sách khi MỘT thao tác đang chạy (tránh hai hành động chồng nhau trên cùng shop).
   const isAnyActionPending = flow.isActionPending || cancelOrdersFlow.isPending;
 
@@ -107,6 +113,10 @@ export function AdminShopsContainer({ status, page }: AdminShopsContainerProps) 
                     onSuspend={() => flow.openSuspendDialog(shop)}
                     onUnsuspend={() => flow.openUnsuspendDialog(shop)}
                     onCancelOrders={() => cancelOrdersFlow.open(shop)}
+                    onOpenNotes={() => {
+                      setNotesShop(shop);
+                      setIsNotesOpen(true);
+                    }}
                   />
                 }
               />
@@ -124,6 +134,11 @@ export function AdminShopsContainer({ status, page }: AdminShopsContainerProps) 
 
       <AdminShopActionDialogs {...flow.dialogs} />
       <CancelShopOrdersDialog {...cancelOrdersFlow.dialogState} />
+      {notesShop ? (
+        <AdminShopNotesSheet open={isNotesOpen} onOpenChange={setIsNotesOpen} shop={notesShop}>
+          <AdminNotesSection key={notesShop.id} targetType="SHOP" targetId={notesShop.id} />
+        </AdminShopNotesSheet>
+      ) : null}
     </div>
   );
 }
