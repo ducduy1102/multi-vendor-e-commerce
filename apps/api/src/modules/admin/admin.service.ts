@@ -5,6 +5,7 @@ import { AppException } from '../../shared/exceptions/app.exception';
 import { frontendUrl } from '../../shared/mail/frontend-url';
 import type { MailLocale } from '../../shared/mail/mail-locale';
 import { MailService } from '../../shared/mail/mail.service';
+import { getSupportEmail } from '../../shared/mail/support-email';
 import { NotificationService } from '../../shared/notification/notification.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { TxClient } from '../../shared/prisma/tx-client';
@@ -230,6 +231,7 @@ export class AdminService {
         kind,
         reason: shopStatusEmailReason(kind, dto.reason),
         shopUrl: frontendUrl(shopStatusEmailPath(kind), locale),
+        supportEmail: getSupportEmail(),
       });
     } catch (error) {
       this.logger.error(

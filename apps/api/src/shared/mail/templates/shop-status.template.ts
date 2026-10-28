@@ -18,6 +18,7 @@ interface KindCopy {
 interface Copy {
   greeting: (name: string) => string;
   reasonLabel: string;
+  supportLabel: string;
   kinds: Record<ShopStatusEmailKind, KindCopy>;
 }
 
@@ -25,6 +26,7 @@ const COPY: Record<MailLocale, Copy> = {
   vi: {
     greeting: (name) => `Chào ${name},`,
     reasonLabel: 'Lý do',
+    supportLabel: 'Liên hệ hỗ trợ',
     kinds: {
       APPROVED: {
         subject: (shopName) => `Shop ${shopName} đã được duyệt`,
@@ -61,6 +63,7 @@ const COPY: Record<MailLocale, Copy> = {
   en: {
     greeting: (name) => `Hi ${name},`,
     reasonLabel: 'Reason',
+    supportLabel: 'Contact support',
     kinds: {
       APPROVED: {
         subject: (shopName) => `Your shop ${shopName} has been approved`,
@@ -97,7 +100,8 @@ const COPY: Record<MailLocale, Copy> = {
 };
 
 // Báo chủ shop khi Admin đổi trạng thái shop (Week9.md 1.13). Tên shop và LÝ DO do người dùng/Admin tự nhập
-// — đi qua paragraph()/escapeHtml (html.ts), kể cả khi người nhận chính là người đã nhập tên shop.
+// — đi qua paragraph()/escapeHtml (html.ts), kể cả khi người nhận chính là người đã nhập tên shop. Dòng "Liên hệ hỗ trợ" (Week11.md
+// 4.2) chỉ có ở từ chối / khoá và chỉ khi `supportEmail` có giá trị — duyệt / mở khoá là tin vui, không cần đường khiếu nại.
 export function shopStatusTemplate(data: ShopStatusEmailData): {
   subject: string;
   html: string;
@@ -108,6 +112,11 @@ export function shopStatusTemplate(data: ShopStatusEmailData): {
     ? `<p style="margin:0 0 12px"><strong>${escapeHtml(copy.reasonLabel)}:</strong> ${escapeHtml(data.reason)}</p>`
     : '';
   const followUp = kind.followUp ? paragraph(kind.followUp) : '';
+  const isLock = data.kind === 'REJECTED' || data.kind === 'SUSPENDED';
+  const support =
+    isLock && data.supportEmail
+      ? `<p style="margin:0 0 12px"><strong>${escapeHtml(copy.supportLabel)}:</strong> ${escapeHtml(data.supportEmail)}</p>`
+      : '';
 
   const html = renderEmail(
     kind.title,
@@ -117,6 +126,7 @@ export function shopStatusTemplate(data: ShopStatusEmailData): {
       <p style="margin:0 0 12px"><strong>${escapeHtml(data.shopName)}</strong></p>
       ${reason}
       ${followUp}
+      ${support}
       ${button(data.shopUrl, kind.action)}
     `,
     data.locale,

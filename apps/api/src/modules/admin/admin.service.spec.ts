@@ -711,6 +711,16 @@ describe('AdminService', () => {
       locale: 'vi' as 'vi' | 'en',
     };
 
+    // `supportEmail` đọc từ ENV mỗi lần gửi — ép không đặt để kết quả không phụ thuộc máy chạy test.
+    const savedSupport = process.env.SUPPORT_EMAIL;
+    beforeEach(() => {
+      delete process.env.SUPPORT_EMAIL;
+    });
+    afterEach(() => {
+      if (savedSupport === undefined) delete process.env.SUPPORT_EMAIL;
+      else process.env.SUPPORT_EMAIL = savedSupport;
+    });
+
     // findUnique được gọi 2 lần: trong transaction (đọc trạng thái hiện tại, select { status }) và sau đó
     // (đọc người nhận mail). Phân biệt theo `select` thay vì thứ tự gọi.
     function givenShop(
@@ -761,10 +771,40 @@ describe('AdminService', () => {
               kind === 'APPROVED' || kind === 'REINSTATED'
                 ? 'http://localhost:3000/seller/products'
                 : 'http://localhost:3000/seller/shop',
+            supportEmail: null,
           },
         );
       },
     );
+
+    it('có SUPPORT_EMAIL ⇒ truyền vào email; ENV sai định dạng hay chỉ có khoảng trắng ⇒ coi như không có, vẫn gửi', async () => {
+      process.env.SUPPORT_EMAIL = '  support@example.com  ';
+      givenShop('APPROVED');
+      await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+        status: 'SUSPENDED',
+        reason: 'Vi phạm',
+      });
+      expect(mailService.sendShopStatusChanged).toHaveBeenLastCalledWith(
+        'owner@example.com',
+        expect.objectContaining({
+          kind: 'SUSPENDED',
+          supportEmail: 'support@example.com',
+        }),
+      );
+
+      for (const invalid of ['không phải email', '   ']) {
+        process.env.SUPPORT_EMAIL = invalid;
+        givenShop('APPROVED');
+        await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+          status: 'SUSPENDED',
+          reason: 'Vi phạm',
+        });
+        expect(mailService.sendShopStatusChanged).toHaveBeenLastCalledWith(
+          'owner@example.com',
+          expect.objectContaining({ supportEmail: null }),
+        );
+      }
+    });
 
     it('theo ngôn ngữ của CHỦ SHOP: en ⇒ locale en và link có /en', async () => {
       givenShop('PENDING', { ...OWNER, locale: 'en' });

@@ -168,12 +168,15 @@ describe('MailService', () => {
         kind: 'SUSPENDED',
         reason: 'Vi phạm chính sách',
         shopUrl: 'http://localhost:3000/seller/shop',
+        supportEmail: 'support@example.com',
       });
 
       const message = provider.send.mock.calls[0][0];
       expect(message.to).toBe('owner@x.com');
       expect(message.subject).toBe('Shop Shop A đã bị tạm khoá');
       expect(message.html).toContain('Vi phạm chính sách');
+      expect(message.html).toContain('Liên hệ hỗ trợ');
+      expect(message.html).toContain('support@example.com');
     });
 
     it('sendAccountStatusChanged: gửi đúng người, tiêu đề theo loại, lý do có trong nội dung', async () => {
@@ -315,6 +318,7 @@ describe('MailService', () => {
         kind: 'APPROVED',
         reason: null,
         shopUrl: 'http://localhost:3000/en/seller/shop',
+        supportEmail: null,
       });
 
       const { subject } = provider.send.mock.calls[0][0];

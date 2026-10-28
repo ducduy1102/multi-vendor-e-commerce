@@ -119,7 +119,7 @@ const BUILDERS: Array<
         trackingCode: 'T123',
       } satisfies OrderShippedEmailData),
   ],
-  ...(['SELLER', 'BUYER', 'SYSTEM'] as const).map(
+  ...(['SELLER', 'BUYER', 'SYSTEM', 'ADMIN'] as const).map(
     (cancelledBy) =>
       [
         `order-cancelled (${cancelledBy})`,
@@ -269,6 +269,8 @@ const BUILDERS: Array<
                 ? 'Missing documents'
                 : null,
             shopUrl: frontendUrl('/seller/shop', locale),
+            // Có địa chỉ hỗ trợ để các kiểm tra chung bên dưới chạy cả trên nhánh có dòng liên hệ.
+            supportEmail: 'support@example.com',
           } satisfies ShopStatusEmailData),
       ] as [string, (locale: MailLocale) => { subject: string; html: string }],
   ),
@@ -344,6 +346,21 @@ describe('mọi template × mọi ngôn ngữ', () => {
       expect(en.html).not.toMatch(VIETNAMESE_LETTERS);
       // Hai bản không được trùng nhau (bản dịch thật chứ không phải cùng một chuỗi).
       expect(en.subject).not.toBe(vi.subject);
+    },
+  );
+
+  // Không nhánh nào được để lọt chỗ giữ chỗ chưa thay (`{name}`) hay giá trị rỗng bị in ra chữ (`undefined`, `null`, `NaN`,
+  // `[object Object]`) — lỗi này chỉ lộ ra ở nhánh ít chạy (vd người hủy là Admin, có/không có dòng hỗ trợ).
+  it.each(BUILDERS)(
+    '%s: không còn {placeholder} hay giá trị rỗng bị in ra chữ ở cả vi và en',
+    (_name, build) => {
+      for (const locale of LOCALES) {
+        const { subject, html } = build(locale);
+        for (const text of [subject, html]) {
+          expect(text).not.toMatch(/\{[A-Za-z_]\w*\}/);
+          expect(text).not.toMatch(/\bundefined\b|\bnull\b|\bNaN\b|\[object /);
+        }
+      }
     },
   );
 
@@ -477,6 +494,7 @@ describe('chống chèn HTML ở mọi ngôn ngữ', () => {
         kind: 'REJECTED',
         reason: HOSTILE,
         shopUrl: frontendUrl('/seller/shop', locale),
+        supportEmail: null,
       });
       expectEscaped(html);
       // Ba chỗ chèn (tên chủ, tên shop, lý do) ⇒ ba lần xuất hiện đã escape.
@@ -578,6 +596,7 @@ describe('shop-status', () => {
     locale: MailLocale,
     kind: ShopStatusEmailKind,
     reason: string | null,
+    supportEmail: string | null = null,
   ): ShopStatusEmailData => ({
     locale,
     ownerName: 'John',
@@ -585,6 +604,7 @@ describe('shop-status', () => {
     kind,
     reason,
     shopUrl: frontendUrl('/seller/shop', locale),
+    supportEmail,
   });
 
   it.each([
@@ -625,6 +645,55 @@ describe('shop-status', () => {
     expect(
       shopStatusTemplate(base('en', 'REINSTATED', null)).html,
     ).not.toContain('Reason');
+  });
+
+  describe('dòng liên hệ hỗ trợ (Week11.md 4.2)', () => {
+    const SUPPORT = 'support@example.com';
+
+    it.each(['REJECTED', 'SUSPENDED'] as const)(
+      '%s có địa chỉ hỗ trợ: vi hiện "Liên hệ hỗ trợ", en hiện "Contact support", đúng địa chỉ',
+      (kind) => {
+        const vi = shopStatusTemplate(base('vi', kind, 'Lý do', SUPPORT)).html;
+        const en = shopStatusTemplate(base('en', kind, 'Reason', SUPPORT)).html;
+
+        expect(vi).toContain(`Liên hệ hỗ trợ:</strong> ${SUPPORT}`);
+        expect(en).toContain(`Contact support:</strong> ${SUPPORT}`);
+      },
+    );
+
+    it.each(['REJECTED', 'SUSPENDED'] as const)(
+      '%s không đặt địa chỉ hỗ trợ (null) ⇒ không có dòng liên hệ nào',
+      (kind) => {
+        for (const locale of ['vi', 'en'] as const) {
+          const { html } = shopStatusTemplate(base(locale, kind, 'x', null));
+          expect(html).not.toContain('Liên hệ hỗ trợ');
+          expect(html).not.toContain('Contact support');
+        }
+      },
+    );
+
+    it.each(['APPROVED', 'REINSTATED'] as const)(
+      '%s là tin vui: dù có địa chỉ hỗ trợ cũng không hiện dòng liên hệ',
+      (kind) => {
+        for (const locale of ['vi', 'en'] as const) {
+          const { html } = shopStatusTemplate(
+            base(locale, kind, null, SUPPORT),
+          );
+          expect(html).not.toContain(SUPPORT);
+          expect(html).not.toContain('Liên hệ hỗ trợ');
+          expect(html).not.toContain('Contact support');
+        }
+      },
+    );
+
+    it('địa chỉ hỗ trợ bị escape như mọi chuỗi chèn vào email', () => {
+      const { html } = shopStatusTemplate(
+        base('vi', 'SUSPENDED', 'x', '<script>alert(1)</script>'),
+      );
+
+      expect(html).not.toContain('<script>');
+      expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    });
   });
 
   it('vi: có link tới trang quản lý shop không prefix; en: có /en', () => {

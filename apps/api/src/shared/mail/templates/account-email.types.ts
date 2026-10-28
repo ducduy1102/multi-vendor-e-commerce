@@ -35,6 +35,10 @@ export interface ShopStatusEmailData {
   reason: string | null;
   // Link tới trang quản lý shop của chủ shop.
   shopUrl: string;
+  // Địa chỉ hỗ trợ từ ENV `SUPPORT_EMAIL` (xem `getSupportEmail`); null ⇒ không có dòng liên hệ nào. Chỉ hiện ở email từ chối /
+  // khoá, vì chỉ lúc đó chủ shop cần một đường để hỏi lại hay khiếu nại. BẮT BUỘC (không tuỳ chọn) để quên truyền là lỗi
+  // biên dịch chứ không âm thầm mất dòng liên hệ.
+  supportEmail: string | null;
 }
 
 // Email báo CHÍNH CHỦ khi Admin đổi trạng thái tài khoản (Week11.md 3.3). SUSPENDED: tạm khoá. BANNED: cấm (mở lại phải
