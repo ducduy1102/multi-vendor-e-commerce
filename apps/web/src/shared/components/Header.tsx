@@ -98,7 +98,11 @@ function HeaderSearchForm() {
   }
 
   return (
-    <form role="search" onSubmit={handleSubmit} className="flex w-full sm:w-auto sm:flex-1">
+    <form
+      role="search"
+      onSubmit={handleSubmit}
+      className="flex w-full sm:w-auto sm:min-w-0 sm:flex-1"
+    >
       <label htmlFor="header-search" className="sr-only">
         {t('searchLabel')}
       </label>
@@ -200,7 +204,9 @@ export function Header() {
               <UserAvatar name={user.name} />
               <LazyChatUnreadBadge scope="shop" />
             </span>
-            <span className="max-w-32 truncate text-sm font-medium text-foreground">
+            {/* Dưới `lg` chỉ còn avatar + mũi tên (chữ tên vẫn có trong cây trợ năng: `sr-only`): ở 640–1023px cụm icon + chữ
+                tên chiếm hết chỗ của ô tìm kiếm (còn 0–106px) hoặc đẩy trang cuộn ngang (Week11.md 4.5, dòng 4). */}
+            <span className="max-w-32 truncate text-sm font-medium text-foreground max-lg:sr-only">
               {user.name}
             </span>
             <ChevronDown className="size-4 text-muted-foreground" />
