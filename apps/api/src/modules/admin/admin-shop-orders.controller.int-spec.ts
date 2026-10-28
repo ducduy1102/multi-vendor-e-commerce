@@ -579,6 +579,35 @@ describe('Hủy hàng loạt đơn của shop bị khoá (HTTP thật)', () => {
       expect(payment.status).toBe('SUCCESS');
       expect(Number(payment.refundedAmount)).toBe(mine.total);
     });
+
+    // Week11.md 4.2: trước đây Admin rơi vào 'SYSTEM' nên người mua được báo "hết hạn thanh toán" dù đã trả tiền.
+    it('người mua nhận email do QUẢN TRỊ VIÊN hủy kèm lý do; đơn online có đoạn "đang hoàn", đơn COD thì không; không còn câu "hết hạn thanh toán"', async () => {
+      const shop = await createShop();
+      const online = await seedOrder({ base: shop, method: 'VNPAY' });
+      const cod = await seedOrder({ base: shop, method: 'COD' });
+      const emailOf = async (buyerId: string) => {
+        const { email } = await prisma.user.findUniqueOrThrow({
+          where: { id: buyerId },
+          select: { email: true },
+        });
+        return fakeMail.sent.filter((message) => message.to === email);
+      };
+
+      const res = await cancel(admin, shop.shopId);
+
+      expect(res.status).toBe(200);
+      const [onlineMail, ...onlineExtra] = await emailOf(online.buyerId);
+      const [codMail, ...codExtra] = await emailOf(cod.buyerId);
+      expect([onlineExtra, codExtra]).toEqual([[], []]);
+      for (const mail of [onlineMail, codMail]) {
+        expect(mail.subject).toBe('Đơn hàng của bạn đã bị quản trị viên hủy');
+        expect(mail.html).toContain(REASON);
+        expect(mail.html).not.toContain('hết hạn thanh toán');
+        expect(mail.html).not.toContain('thời hạn giữ hàng');
+      }
+      expect(onlineMail.html).toContain('Chúng tôi đang hoàn');
+      expect(codMail.html).not.toContain('Chúng tôi đang hoàn');
+    }, 60_000);
   });
 
   describe('khoản hoàn qua cổng không thành công', () => {

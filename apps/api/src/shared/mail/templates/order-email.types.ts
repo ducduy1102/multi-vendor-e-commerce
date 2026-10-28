@@ -48,7 +48,9 @@ export interface OrderShippedEmailData extends OrderEmailBase {
   trackingCode: string | null;
 }
 
-export type OrderCancelledBy = 'SELLER' | 'BUYER' | 'SYSTEM';
+// ADMIN: quản trị viên của sàn hủy (hiện là hủy hàng loạt đơn chưa giao của shop bị khoá, Week11.md 4.1). Tách khỏi SYSTEM vì
+// SYSTEM là hết hạn thanh toán — câu dẫn "chưa thanh toán trong thời hạn giữ hàng" sai với đơn đã trả tiền bị Admin hủy.
+export type OrderCancelledBy = 'SELLER' | 'BUYER' | 'SYSTEM' | 'ADMIN';
 
 export interface OrderCancelledEmailData extends OrderEmailBase {
   orders: OrderEmailOrder[];

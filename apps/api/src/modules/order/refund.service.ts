@@ -168,13 +168,16 @@ const toSummary = (row: {
 const isStalePending = (updatedAt: Date): boolean =>
   Date.now() - updatedAt.getTime() >= REFUND_PENDING_STALE_MS;
 
-// Người nhận email "đơn bị hủy" thấy ai là người hủy: yêu cầu của người mua được duyệt ⇒ "theo yêu cầu của bạn".
+// Người nhận email "đơn bị hủy" thấy ai là người hủy: yêu cầu của người mua được duyệt ⇒ "theo yêu cầu của bạn" (kể cả khi
+// chính Admin là người duyệt — người mua mới là người đề nghị hủy). Admin tự hủy (không có yêu cầu nào) ⇒ 'ADMIN', không rơi
+// vào 'SYSTEM' (câu dẫn của SYSTEM là hết hạn thanh toán).
 function cancelledByOf(
   actor: OrderActor,
   closedRequest: boolean,
 ): OrderCancelledBy {
   if (closedRequest || actor.type === 'BUYER') return 'BUYER';
-  return actor.type === 'SELLER' ? 'SELLER' : 'SYSTEM';
+  if (actor.type === 'SELLER') return 'SELLER';
+  return actor.type === 'ADMIN' ? 'ADMIN' : 'SYSTEM';
 }
 
 const orderNotFound = () =>

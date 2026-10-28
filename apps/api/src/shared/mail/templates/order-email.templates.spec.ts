@@ -192,6 +192,11 @@ describe('orderCancelledTemplate', () => {
     ],
     ['BUYER', 'Bạn đã hủy đơn hàng', 'theo yêu cầu của bạn'],
     ['SYSTEM', 'Đơn hàng đã bị hủy do hết hạn thanh toán', 'thời hạn giữ hàng'],
+    [
+      'ADMIN',
+      'Đơn hàng của bạn đã bị quản trị viên hủy',
+      'quản trị viên của sàn hủy vì shop này đang bị tạm ngừng hoạt động',
+    ],
   ] as const)('%s: đúng tiêu đề và câu dẫn', (cancelledBy, subject, lead) => {
     const result = orderCancelledTemplate({
       ...BASE,
@@ -214,6 +219,67 @@ describe('orderCancelledTemplate', () => {
     });
 
     expect(html).toContain('<strong>Lý do:</strong> Hết hàng');
+  });
+
+  describe('Admin hủy (Week11.md 4.2)', () => {
+    it('Admin KHÔNG còn bị nói là "hết hạn thanh toán" như khi rơi vào SYSTEM', () => {
+      const { subject, html } = orderCancelledTemplate({
+        ...BASE,
+        orders: [ORDER],
+        cancelledBy: 'ADMIN',
+        reason: null,
+      });
+
+      expect(subject).not.toContain('hết hạn thanh toán');
+      expect(html).not.toContain('thời hạn giữ hàng');
+      expect(html).not.toContain('theo yêu cầu của bạn');
+    });
+
+    it('kèm lý do của Admin và đoạn "đang hoàn" khi đơn đã trả online', () => {
+      const { html } = orderCancelledTemplate({
+        ...BASE,
+        orders: [ORDER],
+        cancelledBy: 'ADMIN',
+        reason: 'Shop vi phạm chính sách',
+        refundAmount: 410_000,
+      });
+
+      expect(html).toContain('<strong>Lý do:</strong> Shop vi phạm chính sách');
+      expect(html).toContain(
+        `Chúng tôi đang hoàn ${formatVnd(410_000)} về phương thức thanh toán ban đầu`,
+      );
+    });
+
+    it('đơn COD (không có khoản hoàn) → không có đoạn hoàn tiền', () => {
+      const { html } = orderCancelledTemplate({
+        ...BASE,
+        orders: [ORDER],
+        cancelledBy: 'ADMIN',
+        reason: 'Shop vi phạm chính sách',
+        refundAmount: null,
+      });
+
+      expect(html).not.toContain('đang hoàn');
+    });
+
+    it('bản tiếng Anh nói rõ do quản trị viên, không lẫn "payment expired"', () => {
+      const { subject, html } = orderCancelledTemplate({
+        ...BASE,
+        locale: 'en',
+        orders: [ORDER],
+        cancelledBy: 'ADMIN',
+        reason: null,
+      });
+
+      expect(subject).toBe(
+        'Your order was cancelled by a marketplace administrator',
+      );
+      expect(html).toContain(
+        'a marketplace administrator has cancelled your order',
+      );
+      expect(html).not.toContain('payment expired');
+      expect(html).not.toContain('hold period');
+    });
   });
 
   describe('đoạn hoàn tiền (Week9.md 1.5)', () => {

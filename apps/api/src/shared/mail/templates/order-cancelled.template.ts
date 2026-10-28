@@ -27,6 +27,7 @@ const COPY: Record<MailLocale, Copy> = {
       SELLER: 'Đơn hàng của bạn đã bị shop từ chối',
       BUYER: 'Bạn đã hủy đơn hàng',
       SYSTEM: 'Đơn hàng đã bị hủy do hết hạn thanh toán',
+      ADMIN: 'Đơn hàng của bạn đã bị quản trị viên hủy',
     },
     leads: {
       SELLER:
@@ -34,6 +35,8 @@ const COPY: Record<MailLocale, Copy> = {
       BUYER: 'Đơn hàng của bạn đã được hủy theo yêu cầu của bạn.',
       SYSTEM:
         'Đơn hàng chưa được thanh toán trong thời hạn giữ hàng nên đã bị hủy và hàng đã được trả lại kho.',
+      ADMIN:
+        'Rất tiếc, đơn hàng của bạn đã bị quản trị viên của sàn hủy vì shop này đang bị tạm ngừng hoạt động.',
     },
     title: 'Đơn hàng đã bị hủy',
     greeting: (name) => `Chào ${name},`,
@@ -47,6 +50,7 @@ const COPY: Record<MailLocale, Copy> = {
       SELLER: 'The shop has declined your order',
       BUYER: 'You cancelled your order',
       SYSTEM: 'Your order was cancelled because the payment expired',
+      ADMIN: 'Your order was cancelled by a marketplace administrator',
     },
     leads: {
       SELLER:
@@ -54,6 +58,8 @@ const COPY: Record<MailLocale, Copy> = {
       BUYER: 'Your order has been cancelled at your request.',
       SYSTEM:
         'Your order was not paid within the hold period, so it has been cancelled and the items returned to stock.',
+      ADMIN:
+        'Unfortunately a marketplace administrator has cancelled your order because this shop is currently suspended.',
     },
     title: 'Your order has been cancelled',
     greeting: (name) => `Hi ${name},`,
@@ -64,7 +70,7 @@ const COPY: Record<MailLocale, Copy> = {
   },
 };
 
-// Đơn bị hủy (seller từ chối / buyer hủy / hết hạn thanh toán). Từ Tuần 9 đơn đã thanh toán online cũng hủy
+// Đơn bị hủy (seller từ chối / buyer hủy / hết hạn thanh toán / Admin hủy). Từ Tuần 9 đơn đã thanh toán online cũng hủy
 // được: khi đó có thêm đoạn "đang hoàn tiền" (refundAmount). Email gửi ngay sau khi hủy, lúc cổng có thể
 // chưa xác nhận nên chỉ nói "đang hoàn", không khẳng định tiền đã về.
 export function orderCancelledTemplate(data: OrderCancelledEmailData): {
@@ -73,7 +79,7 @@ export function orderCancelledTemplate(data: OrderCancelledEmailData): {
 } {
   const copy = COPY[data.locale];
   const subject = copy.subjects[data.cancelledBy];
-  // Lý do do seller/buyer tự nhập — escape (xem html.ts).
+  // Lý do do seller/buyer/Admin tự nhập — escape (xem html.ts).
   const reason = data.reason
     ? `<p style="margin:0 0 12px"><strong>${escapeHtml(copy.reasonLabel)}:</strong> ${escapeHtml(data.reason)}</p>`
     : '';
