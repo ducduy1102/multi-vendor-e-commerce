@@ -90,3 +90,55 @@ describe('AdminShopActions', () => {
     expect(onReject).not.toHaveBeenCalled();
   });
 });
+
+describe('AdminShopActions — hủy hàng loạt đơn chưa giao (Week11.md 4.1)', () => {
+  function setupWithCancel(status: ShopStatus, isDisabled = false) {
+    const onCancelOrders = vi.fn();
+    render(
+      withIntl(
+        <AdminShopActions
+          status={status}
+          shopName="Shop A"
+          isDisabled={isDisabled}
+          onApprove={vi.fn()}
+          onReject={vi.fn()}
+          onSuspend={vi.fn()}
+          onUnsuspend={vi.fn()}
+          onCancelOrders={onCancelOrders}
+        />,
+      ),
+    );
+    return { onCancelOrders };
+  }
+
+  it('shop đang bị khoá: có thêm nút "Hủy đơn chưa giao" (sau "Mở khoá"), bấm gọi đúng callback', async () => {
+    const user = userEvent.setup();
+    const { onCancelOrders } = setupWithCancel('SUSPENDED');
+
+    expect(buttonNames()).toEqual(['Mở khoá', 'Hủy đơn chưa giao']);
+    await user.click(screen.getByRole('button', { name: 'Hủy đơn chưa giao: Shop A' }));
+
+    expect(onCancelOrders).toHaveBeenCalledTimes(1);
+  });
+
+  it.each<ShopStatus>(['PENDING', 'APPROVED', 'REJECTED'])(
+    'shop %s: KHÔNG bao giờ có nút này dù nơi dùng truyền callback (chỉ shop đang bị khoá)',
+    (status) => {
+      setupWithCancel(status);
+
+      expect(screen.queryByRole('button', { name: /Hủy đơn chưa giao/ })).not.toBeInTheDocument();
+    },
+  );
+
+  it('nơi dùng không truyền callback -> shop bị khoá chỉ có "Mở khoá" như trước', () => {
+    setup('SUSPENDED');
+
+    expect(buttonNames()).toEqual(['Mở khoá']);
+  });
+
+  it('đang có thao tác chạy -> khoá cả nút này', () => {
+    setupWithCancel('SUSPENDED', true);
+
+    expect(screen.getByRole('button', { name: 'Hủy đơn chưa giao: Shop A' })).toBeDisabled();
+  });
+});

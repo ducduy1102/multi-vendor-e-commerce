@@ -2,9 +2,12 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Patch,
+  Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -18,6 +21,8 @@ import {
 } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { shopStatusSchema } from '@ecommerce/types';
+import type { Request } from 'express';
+import { auditRequestContext } from '../../shared/audit/audit-request-context';
 import { CurrentUser } from '../../shared/decorators/current-user.decorator';
 import { Roles } from '../../shared/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
@@ -29,7 +34,12 @@ import {
   UNAUTHORIZED_EXAMPLE,
 } from '../../shared/swagger/error-examples';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
+import { AdminShopOrdersService } from './admin-shop-orders.service';
 import { AdminService } from './admin.service';
+import {
+  adminCancelShopOrdersSchema,
+  type CancelShopOpenOrdersDto,
+} from './dto/cancel-shop-open-orders.dto';
 import {
   adminShopListQuerySchema,
   type ListShopsQueryDto,
@@ -78,7 +88,10 @@ const ADMIN_SHOP_EXAMPLE = {
   schema: { example: FORBIDDEN_ROLE_EXAMPLE },
 })
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly adminShopOrdersService: AdminShopOrdersService,
+  ) {}
 
   @Get('shops')
   @ApiOperation({
@@ -195,5 +208,95 @@ export class AdminController {
       dto,
     );
     return { shop };
+  }
+
+  // POST nhưng KHÔNG tạo tài nguyên nào ⇒ 200 tường minh (mặc định của @Post là 201; Swagger @ApiResponse không tự đọc lại).
+  @Post('shops/:id/cancel-open-orders')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Hủy hàng loạt các đơn CHƯA GIAO (PENDING / CONFIRMED / PACKED) của một shop đang bị khoá — chỉ ADMIN',
+    description:
+      'Chỉ dùng được khi shop ĐANG SUSPENDED. Hủy TUẦN TỰ từng đơn bằng đúng luồng hủy của người bán (trạng thái đơn, ' +
+      'cộng lại kho, trả lượt voucher, hoàn tiền về nguồn thanh toán với đơn đã trả online) với actor ADMIN; đơn COD chỉ ' +
+      'đổi trạng thái. Mỗi lần gọi xử lý tối đa 20 đơn (cũ nhất trước) — còn đơn thì `remaining > 0` và gọi lại để xử lý ' +
+      'phần còn lại (idempotent: đơn đã hủy không còn được chọn). `needsManualRefund`: đơn ĐÃ hủy nhưng cổng thanh toán ' +
+      'từ chối khoản hoàn (vd sandbox VNPay chỉ cho một lần hoàn mỗi giao dịch) — xử lý tiếp ở màn hoàn tiền; ' +
+      '`refundsPending`: số đơn mà khoản hoàn còn chờ cổng (job tự thử lại). `failed`: đơn không hủy được kèm MÃ lỗi ' +
+      '(ORDER_INVALID_TRANSITION khi đơn vừa chuyển trạng thái, ORDER_ALREADY_CHANGED, PAYMENT_NOT_REFUNDABLE, UNKNOWN). ' +
+      '`reason` bắt buộc (≤ 500 ký tự), hiện trong dòng thời gian của đơn và email gửi người mua. Nhật ký quản trị ghi hai ' +
+      'dòng CANCEL_SHOP_OPEN_ORDERS: STARTED (trước khi hủy; không ghi được thì không hủy) và FINISHED (kèm số đếm). ' +
+      'Admin khác mở lại shop giữa chừng thì việc hủy dừng ngay.',
+  })
+  @ApiParam({ name: 'id', description: 'ID shop (UUID)' })
+  @ApiBody({
+    schema: {
+      example: { reason: 'Shop bị khoá do vi phạm; hủy các đơn chưa giao.' },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Kết quả của lần gọi này',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          cancelled: 18,
+          failed: [
+            {
+              orderId: 'a1b2c3d4-1234-4a5b-8c9d-abcdef123456',
+              code: 'ORDER_INVALID_TRANSITION',
+            },
+          ],
+          needsManualRefund: [
+            {
+              orderId: 'b2c3d4e5-1234-4a5b-8c9d-abcdef123456',
+              refundId: 'c3d4e5f6-1234-4a5b-8c9d-abcdef123456',
+              amount: '220000',
+            },
+          ],
+          refundsPending: 0,
+          remaining: 3,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Body không hợp lệ (thiếu / rỗng / quá dài lý do, lý do có ký tự điều khiển)',
+    schema: { example: errorExample('reason: admin.validationReasonRequired') },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Shop không tồn tại (hoặc id sai dạng)',
+    schema: { example: errorExample('Shop not found') },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Shop không ở trạng thái SUSPENDED (SHOP_NOT_SUSPENDED)',
+    schema: {
+      example: {
+        success: false,
+        data: null,
+        message:
+          'Open orders can only be cancelled in bulk while the shop is suspended',
+        code: 'SHOP_NOT_SUSPENDED',
+      },
+    },
+  })
+  cancelOpenOrders(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(adminCancelShopOrdersSchema))
+    dto: CancelShopOpenOrdersDto,
+    @Req() req: Request,
+  ) {
+    return this.adminShopOrdersService.cancelOpenOrders(
+      admin.userId,
+      id,
+      dto,
+      auditRequestContext(req),
+    );
   }
 }

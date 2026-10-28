@@ -1,4 +1,5 @@
 import {
+  adminCancelShopOrdersResultSchema,
   adminOverviewSchema,
   adminRefundListResponseSchema,
   adminRefundRequestListResponseSchema,
@@ -10,6 +11,8 @@ import {
   adminUserDetailSchema,
   adminUserListResponseSchema,
   adminUserStatusChangeResponseSchema,
+  type AdminCancelShopOrdersInput,
+  type AdminCancelShopOrdersResult,
   type AdminDecideRefundRequestInput,
   type AdminMarkRefundCompletedInput,
   type AdminOverview,
@@ -83,6 +86,19 @@ export async function updateShopStatus(
     body: JSON.stringify(input),
   });
   return adminShopSchema.parse(data.shop);
+}
+
+// Hủy hàng loạt đơn chưa giao của shop ĐANG bị khoá (Week11.md 4.1). Mỗi lần gọi xử lý tối đa một lô (BE giới hạn) — còn đơn thì
+// `remaining > 0` và gọi lại. Shop không ở SUSPENDED ⇒ 409 `SHOP_NOT_SUSPENDED`; shop không tồn tại ⇒ 404.
+export async function cancelShopOpenOrders(
+  shopId: string,
+  input: AdminCancelShopOrdersInput,
+): Promise<AdminCancelShopOrdersResult> {
+  const data = await apiFetch<unknown>(`/admin/shops/${shopId}/cancel-open-orders`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return adminCancelShopOrdersResultSchema.parse(data);
 }
 
 // --- Người dùng (Week11.md 3.2, 3.3) ---------------------------------------------------------------

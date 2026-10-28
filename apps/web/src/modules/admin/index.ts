@@ -27,6 +27,7 @@ export { useAdminRefundablePayments } from './hooks/useAdminRefundablePayments';
 export { useAdminRefundRequests } from './hooks/useAdminRefundRequests';
 export { useAdminRefunds } from './hooks/useAdminRefunds';
 export { useAdminShops } from './hooks/useAdminShops';
+export { useCancelShopOpenOrders } from './hooks/useCancelShopOpenOrders';
 export { useAdminUserDetail } from './hooks/useAdminUserDetail';
 export { useAdminUsers } from './hooks/useAdminUsers';
 export { useChangeUserStatus } from './hooks/useChangeUserStatus';
@@ -38,6 +39,8 @@ export { useUpdateShopStatus } from './hooks/useUpdateShopStatus';
 export * as adminService from './services/admin.service';
 export type {
   AbnormalPaymentKind,
+  AdminCancelShopOrdersInput,
+  AdminCancelShopOrdersResult,
   AdminDecideRefundRequestInput,
   AdminMarkRefundCompletedInput,
   AdminRefund,

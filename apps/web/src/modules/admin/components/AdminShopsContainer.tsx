@@ -10,6 +10,7 @@ import { ADMIN_SHOP_STATUS_DISPLAY } from '../admin-status-display';
 import { buildAdminShopsPagination } from '../admin-shops-href';
 import { useAdminShopActionFlow } from '../hooks/useAdminShopActionFlow';
 import { useAdminShops } from '../hooks/useAdminShops';
+import { useCancelShopOrdersFlow } from '../hooks/useCancelShopOrdersFlow';
 import type { ShopStatus } from '../types';
 import { ADMIN_SHOP_TABLE_CLASS } from './admin-shop-row.constants';
 import { AdminShopActionDialogs } from './AdminShopActionDialogs';
@@ -19,6 +20,7 @@ import { AdminShopListSkeleton } from './AdminShopListSkeleton';
 import { AdminShopPagination } from './AdminShopPagination';
 import { AdminShopRow } from './AdminShopRow';
 import { AdminShopTabs } from './AdminShopTabs';
+import { CancelShopOrdersDialog } from './CancelShopOrdersDialog';
 
 interface AdminShopsContainerProps {
   // Đã được page.tsx đọc + chuẩn hoá từ searchParams (parseAdminShopsPageQuery).
@@ -37,6 +39,9 @@ export function AdminShopsContainer({ status, page }: AdminShopsContainerProps) 
 
   const shopsQuery = useAdminShops({ status, page });
   const flow = useAdminShopActionFlow();
+  const cancelOrdersFlow = useCancelShopOrdersFlow();
+  // Khoá mọi nút của danh sách khi MỘT thao tác đang chạy (tránh hai hành động chồng nhau trên cùng shop).
+  const isAnyActionPending = flow.isActionPending || cancelOrdersFlow.isPending;
 
   // Tab + thông báo lỗi hành động luôn hiện, dù danh sách đang tải/lỗi/rỗng.
   const controls = (
@@ -96,11 +101,12 @@ export function AdminShopsContainer({ status, page }: AdminShopsContainerProps) 
                   <AdminShopActions
                     status={shop.status}
                     shopName={shop.name}
-                    isDisabled={flow.isActionPending}
+                    isDisabled={isAnyActionPending}
                     onApprove={() => void flow.approve(shop)}
                     onReject={() => flow.openRejectDialog(shop)}
                     onSuspend={() => flow.openSuspendDialog(shop)}
                     onUnsuspend={() => flow.openUnsuspendDialog(shop)}
+                    onCancelOrders={() => cancelOrdersFlow.open(shop)}
                   />
                 }
               />
@@ -117,6 +123,7 @@ export function AdminShopsContainer({ status, page }: AdminShopsContainerProps) 
       />
 
       <AdminShopActionDialogs {...flow.dialogs} />
+      <CancelShopOrdersDialog {...cancelOrdersFlow.dialogState} />
     </div>
   );
 }

@@ -25,6 +25,9 @@ interface AdminShopActionsProps {
   onReject: () => void;
   onSuspend: () => void;
   onUnsuspend: () => void;
+  // Hủy hàng loạt đơn chưa giao (Week11.md 4.1): CHỈ hiện ở shop đang bị khoá và khi nơi dùng truyền callback. Không phải cạnh của
+  // bảng chuyển trạng thái shop nên không suy từ getAdminShopActions.
+  onCancelOrders?: () => void;
 }
 
 // Component THUẦN: hiện nút theo trạng thái hiện tại của shop (getAdminShopActions — suy từ bảng
@@ -39,6 +42,7 @@ export function AdminShopActions({
   onReject,
   onSuspend,
   onUnsuspend,
+  onCancelOrders,
 }: AdminShopActionsProps) {
   const t = useTranslations('admin');
   const actions = getAdminShopActions(status);
@@ -71,6 +75,17 @@ export function AdminShopActions({
           </Button>
         );
       })}
+      {status === 'SUSPENDED' && onCancelOrders ? (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={isDisabled}
+          aria-label={t('actionLabelWithShop', { action: t('actionCancelOrders'), name: shopName })}
+          onClick={onCancelOrders}
+        >
+          {t('actionCancelOrders')}
+        </Button>
+      ) : null}
     </div>
   );
 }

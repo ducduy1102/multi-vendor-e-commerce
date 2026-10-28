@@ -3,6 +3,10 @@
 export type {
   AbnormalPaymentKind,
   AccountStatus,
+  AdminCancelShopOrdersFailure,
+  AdminCancelShopOrdersInput,
+  AdminCancelShopOrdersManualRefund,
+  AdminCancelShopOrdersResult,
   AdminDecideRefundRequestInput,
   AdminMarkRefundCompletedInput,
   AdminOverview,

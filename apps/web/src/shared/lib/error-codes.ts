@@ -88,6 +88,7 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   CANNOT_MODIFY_ADMIN: 'admin.errorCannotModifyAdmin',
   CANNOT_MODIFY_SELF: 'admin.errorCannotModifySelf',
   SHOP_OWNER_NOT_ACTIVE: 'admin.errorShopOwnerNotActive',
+  SHOP_NOT_SUSPENDED: 'admin.errorShopNotSuspended',
   // Lỗi CLIENT tự sinh (mất mạng / phản hồi hỏng) — Week7.md 1.11/1.16: nghĩa là
   // "chưa rõ kết quả", khác các mã nghiệp vụ ở trên (luôn là kết quả chắc chắn).
   NETWORK_ERROR: 'common.errorNetwork',

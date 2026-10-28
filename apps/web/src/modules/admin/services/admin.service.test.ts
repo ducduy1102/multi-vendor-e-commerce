@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  cancelShopOpenOrders,
   decideRefundRequest,
   getOverview,
   getUser,
@@ -773,4 +774,62 @@ describe('admin.service — người dùng', () => {
       });
     },
   );
+});
+
+describe('admin.service — cancelShopOpenOrders', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const RESULT = {
+    cancelled: 18,
+    failed: [{ orderId: 'o-1', code: 'ORDER_INVALID_TRANSITION' }],
+    needsManualRefund: [{ orderId: 'o-2', refundId: 'r-1', amount: '220000' }],
+    refundsPending: 1,
+    remaining: 3,
+  };
+
+  it('POST /admin/shops/:id/cancel-open-orders với body { reason }, kèm cookie, parse đúng kết quả', async () => {
+    mockFetchOnce({ success: true, data: RESULT });
+
+    const result = await cancelShopOpenOrders('shop-1', { reason: 'Shop bị khoá' });
+
+    expect(result).toEqual(RESULT);
+    const [url, init] = lastCall();
+    expect(url).toMatch(/\/admin\/shops\/shop-1\/cancel-open-orders$/);
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(JSON.parse(init.body as string)).toEqual({ reason: 'Shop bị khoá' });
+  });
+
+  it('response sai hình dạng (thiếu remaining, hoặc số âm) -> Zod từ chối thay vì để UI đọc undefined', async () => {
+    const { remaining, ...withoutRemaining } = RESULT;
+    void remaining;
+    mockFetchOnce({ success: true, data: withoutRemaining });
+    await expect(cancelShopOpenOrders('shop-1', { reason: 'x' })).rejects.toThrow();
+
+    vi.unstubAllGlobals();
+    mockFetchOnce({ success: true, data: { ...RESULT, cancelled: -1 } });
+    await expect(cancelShopOpenOrders('shop-1', { reason: 'x' })).rejects.toThrow();
+  });
+
+  it.each([
+    [404, undefined],
+    [409, 'SHOP_NOT_SUSPENDED'],
+    [403, undefined],
+  ])('%i %s -> ApiError mang status và mã lỗi để giao diện dịch', async (status, code) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status,
+        json: () => Promise.resolve({ success: false, data: null, message: 'x', code }),
+      }),
+    );
+
+    await expect(cancelShopOpenOrders('shop-1', { reason: 'x' })).rejects.toMatchObject({
+      status,
+      code,
+    });
+  });
 });

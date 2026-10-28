@@ -6,6 +6,7 @@ export * from './admin';
 export * from './admin-refund';
 export * from './admin-audit';
 export * from './admin-user';
+export * from './admin-shop-orders';
 export * from './product';
 export * from './category';
 export * from './wishlist';

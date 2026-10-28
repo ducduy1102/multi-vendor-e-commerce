@@ -1,4 +1,5 @@
 import {
+  adminCancelShopOrdersSchema,
   adminUpdateShopStatusSchema,
   reactivateUserSchema,
   suspendUserSchema,
@@ -11,6 +12,7 @@ import {
   adminDecideRefundRequestSchema,
   adminMarkRefundCompletedSchema,
   adminRefundPaymentSchema,
+  createCancelShopOrdersFormSchema,
   shopReasonFormSchema,
   userReasonFormSchema,
 } from './admin.schema';
@@ -196,6 +198,64 @@ describe('userReasonFormSchema', () => {
       expect(suspendUserSchema.safeParse({ status: 'SUSPENDED', ...form }).success).toBe(true);
       expect(suspendUserSchema.safeParse({ status: 'BANNED', ...form }).success).toBe(true);
       expect(reactivateUserSchema.safeParse(form).success).toBe(true);
+    }
+  });
+});
+
+describe('createCancelShopOrdersFormSchema', () => {
+  const schema = createCancelShopOrdersFormSchema('Thời Trang Thảo');
+  const valid = { reason: 'Shop vi phạm', confirmName: 'Thời Trang Thảo' };
+
+  it('lý do + tên shop gõ đúng -> hợp lệ, lý do được chuẩn hoá (trim)', () => {
+    const result = schema.safeParse({ ...valid, reason: '  Shop vi phạm  ' });
+
+    expect(result.success && result.data.reason).toBe('Shop vi phạm');
+  });
+
+  it.each([
+    ['để trống', ''],
+    ['sai một ký tự', 'Thời Trang Thao'],
+    ['sai chữ hoa/thường', 'thời trang thảo'],
+    ['chỉ một phần', 'Thời Trang'],
+    ['thừa chữ', 'Thời Trang Thảo 2'],
+  ])('tên shop %s -> key i18n "không khớp" ở field confirmName', (_name, confirmName) => {
+    const result = schema.safeParse({ ...valid, confirmName });
+
+    expect(result.success).toBe(false);
+    const issue = !result.success ? result.error.issues[0] : null;
+    expect(issue?.path).toEqual(['confirmName']);
+    expect(issue?.message).toBe('admin.validationShopNameMismatch');
+  });
+
+  it('khoảng trắng hai đầu và dạng Unicode (dấu rời / dấu liền) không làm lệch tên', () => {
+    expect(schema.safeParse({ ...valid, confirmName: '  Thời Trang Thảo  ' }).success).toBe(true);
+    expect(
+      schema.safeParse({ ...valid, confirmName: 'Thời Trang Thảo'.normalize('NFD') }).success,
+    ).toBe(true);
+  });
+
+  it('schema theo TỪNG shop: tên của shop khác không dùng được', () => {
+    const other = createCancelShopOrdersFormSchema('Shop Khác');
+
+    expect(other.safeParse(valid).success).toBe(false);
+    expect(other.safeParse({ ...valid, confirmName: 'Shop Khác' }).success).toBe(true);
+  });
+
+  it.each(['', '   ', 'a'.repeat(501), 'a\u0000b'])(
+    'lý do %j không hợp lệ -> báo ở field reason',
+    (reason) => {
+      const result = schema.safeParse({ ...valid, reason });
+
+      expect(result.success).toBe(false);
+      expect(!result.success && result.error.issues[0].path).toEqual(['reason']);
+    },
+  );
+
+  it('đầu ra của form luôn được schema BE chấp nhận (cùng luật lý do), không lệch', () => {
+    for (const reason of ['  Lý do  ', 'dòng 1\r\ndòng 2', 'a'.repeat(500)]) {
+      const form = schema.parse({ ...valid, reason });
+
+      expect(adminCancelShopOrdersSchema.safeParse({ reason: form.reason }).success).toBe(true);
     }
   });
 });

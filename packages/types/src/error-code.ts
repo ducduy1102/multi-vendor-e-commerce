@@ -109,6 +109,9 @@ export const SERVER_ERROR_CODES = [
   'CANNOT_MODIFY_ADMIN',
   'CANNOT_MODIFY_SELF',
   'SHOP_OWNER_NOT_ACTIVE',
+  // Hủy hàng loạt đơn của shop (Week11.md 4.1): chỉ làm được khi shop ĐANG bị khoá (409) — shop đã được mở lại hoặc chưa từng
+  // bị khoá thì đơn của nó vẫn là việc bình thường của chủ shop, không được Admin hủy hàng loạt.
+  'SHOP_NOT_SUSPENDED',
 ] as const;
 export type ServerErrorCode = (typeof SERVER_ERROR_CODES)[number];
 

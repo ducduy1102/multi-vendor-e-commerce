@@ -38,3 +38,21 @@ export type ShopReasonFormInput = z.infer<typeof shopReasonFormSchema>;
 // `admin.validation*`. Input và output cùng kiểu `string` nên khớp generic `useForm<T>` của zodResolver dù schema có transform.
 export const userReasonFormSchema = z.object({ reason: adminUserReasonSchema });
 export type UserReasonFormInput = z.infer<typeof userReasonFormSchema>;
+
+// Form hộp thoại hủy hàng loạt đơn của shop (Week11.md 4.1): lý do bắt buộc (cùng luật lý do khoá tài khoản) và PHẢI gõ lại đúng
+// tên shop — thao tác không hoàn tác được và động tới nhiều người mua cùng lúc, nên một cú bấm nhầm không đủ. So sánh sau khi cắt
+// khoảng trắng hai đầu và chuẩn hoá Unicode NFC (cùng một tên tiếng Việt gõ bằng dấu rời hay dấu liền đều khớp), PHÂN BIỆT chữ
+// hoa/thường như mọi ô "gõ tên để xác nhận". Tên shop khác nhau theo từng shop nên là hàm tạo schema chứ không phải hằng.
+const normaliseName = (value: string) => value.trim().normalize('NFC');
+
+export function createCancelShopOrdersFormSchema(shopName: string) {
+  return z.object({
+    reason: adminUserReasonSchema,
+    confirmName: z.string().refine((value) => normaliseName(value) === normaliseName(shopName), {
+      message: 'admin.validationShopNameMismatch',
+    }),
+  });
+}
+export type CancelShopOrdersFormInput = z.infer<
+  ReturnType<typeof createCancelShopOrdersFormSchema>
+>;
