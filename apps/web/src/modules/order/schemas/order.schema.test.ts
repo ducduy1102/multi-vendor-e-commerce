@@ -4,11 +4,14 @@ import {
   REFUND_REASON_CODES_BY_KIND,
   approveRefundRequestSchema,
   cancelOrderSchema,
+  ORDER_INTERNAL_NOTE_MAX_LENGTH,
   createRefundRequestSchema,
+  orderInternalNoteFormSchema,
   rejectOrderSchema,
   rejectRefundRequestSchema,
   sellerCancelOrderSchema,
   shipOrderSchema,
+  updateOrderInternalNoteSchema,
 } from './order.schema';
 
 // Regression: React Hook Form gửi "" cho input bỏ trống (không phải undefined) — field tuỳ chọn
@@ -206,5 +209,49 @@ describe('rejectRefundRequestSchema', () => {
     if (!result.success) {
       expect(result.error.issues[0].message).toBe('order.validationReasonTooLong');
     }
+  });
+});
+
+describe('orderInternalNoteFormSchema (Week11.md 4.4)', () => {
+  it('cắt khoảng trắng hai đầu và chuẩn hoá CRLF → LF', () => {
+    expect(orderInternalNoteFormSchema.parse({ note: '  dòng 1\r\ndòng 2  ' }).note).toBe(
+      'dòng 1\ndòng 2',
+    );
+  });
+
+  it('chuỗi rỗng HỢP LỆ (đó là cách xoá ghi chú) và ra chuỗi rỗng', () => {
+    expect(orderInternalNoteFormSchema.parse({ note: '' }).note).toBe('');
+    expect(orderInternalNoteFormSchema.parse({ note: '  \n ' }).note).toBe('');
+  });
+
+  it('đúng cận 500 ký tự thì qua; 501 bị từ chối với key i18n của field note', () => {
+    expect(
+      orderInternalNoteFormSchema.safeParse({ note: 'a'.repeat(ORDER_INTERNAL_NOTE_MAX_LENGTH) })
+        .success,
+    ).toBe(true);
+
+    const result = orderInternalNoteFormSchema.safeParse({
+      note: 'a'.repeat(ORDER_INTERNAL_NOTE_MAX_LENGTH + 1),
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({
+      path: ['note'],
+      message: 'order.validationInternalNoteTooLong',
+    });
+  });
+
+  it('ký tự điều khiển (NUL) bị từ chối với key "không hợp lệ"', () => {
+    const result = orderInternalNoteFormSchema.safeParse({
+      note: `a${String.fromCharCode(0)}b`,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].message).toBe('order.validationInternalNoteUnsafe');
+  });
+
+  it('đầu ra của form luôn được schema BE của PATCH chấp nhận', () => {
+    const parsed = orderInternalNoteFormSchema.parse({ note: '  ghi chú  ' });
+
+    expect(updateOrderInternalNoteSchema.safeParse(parsed).success).toBe(true);
   });
 });

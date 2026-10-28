@@ -1,16 +1,20 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { Alert } from '@/shared/components/ui/alert';
 import { Button } from '@/shared/components/ui/button';
 import { ApiError } from '@/shared/lib/api-client';
 
+import { useDescribeOrderError } from '../hooks/useDescribeOrderError';
 import { useSellerOrder } from '../hooks/useSellerOrder';
 import { useSellerOrderActionFlow } from '../hooks/useSellerOrderActionFlow';
+import { useUpdateOrderInternalNote } from '../hooks/useUpdateOrderInternalNote';
 import { SELLER_ORDERS_PATH } from '../orders-href';
 import { OrderDetailSkeleton } from './OrderDetailSkeleton';
+import { OrderInternalNoteSection } from './OrderInternalNoteSection';
 import { SellerOrderActionDialogs } from './SellerOrderActionDialogs';
 import { SellerOrderActions } from './SellerOrderActions';
 import { SellerOrderDetailView } from './SellerOrderDetailView';
@@ -48,6 +52,11 @@ function SellerOrderDetailLoader({ shopId, orderId }: { shopId: string; orderId:
 
   const orderQuery = useSellerOrder(shopId, orderId);
   const flow = useSellerOrderActionFlow(shopId);
+  const describeError = useDescribeOrderError();
+  const updateNote = useUpdateOrderInternalNote(shopId);
+  // Kết quả lần lưu ghi chú gần nhất. Lưu ở đây (không trong form) để `Đã lưu`/lỗi sống qua việc form đặt lại giá trị sau khi lưu.
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [isNoteSaved, setIsNoteSaved] = useState(false);
 
   // Có dữ liệu thì luôn hiện dữ liệu — lần tải lại ngầm lỗi (đổi tab về, mạng chớp) không được xoá
   // mất đơn đang xem; chỉ báo lỗi khi chưa có gì để hiện.
@@ -81,6 +90,19 @@ function SellerOrderDetailLoader({ shopId, orderId }: { shopId: string; orderId:
 
   const refundRequest = order.refundRequest;
 
+  const saveNote = async (note: string): Promise<string | null> => {
+    setNoteError(null);
+    setIsNoteSaved(false);
+    try {
+      const updated = await updateNote.mutateAsync({ orderId: order.id, note });
+      setIsNoteSaved(true);
+      return updated.internalNote ?? '';
+    } catch (error) {
+      setNoteError(describeError(error));
+      return null;
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {flow.actionError ? <Alert variant="destructive">{flow.actionError}</Alert> : null}
@@ -106,6 +128,16 @@ function SellerOrderDetailLoader({ shopId, orderId }: { shopId: string; orderId:
               onReject={() => flow.openRejectRefundDialog(refundRequest)}
             />
           ) : null
+        }
+        internalNoteSection={
+          <OrderInternalNoteSection
+            key={order.id}
+            note={order.internalNote}
+            isSaving={updateNote.isPending}
+            isSaved={isNoteSaved}
+            error={noteError}
+            onSave={saveNote}
+          />
         }
       />
       <SellerOrderActionDialogs {...flow.dialogs} />

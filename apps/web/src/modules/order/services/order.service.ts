@@ -23,6 +23,7 @@ import {
   type SellerRefundRequestListQuery,
   type SellerRefundRequestListResponse,
   type ShipOrderInput,
+  type UpdateOrderInternalNoteInput,
 } from '@ecommerce/types';
 
 import { apiFetch } from '@/shared/lib/api-client';
@@ -178,6 +179,20 @@ export async function cancelSellerOrder(
 ): Promise<SellerOrderDetail> {
   const data = await apiFetch<unknown>(`/shops/${shopId}/orders/${orderId}/cancel`, {
     method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return sellerOrderDetailSchema.parse(data);
+}
+
+// Đặt / sửa / xoá ghi chú NỘI BỘ của shop trên đơn (Week11.md 4.4): `note` rỗng = xoá. Thay hẳn ghi chú cũ. BE trả CHI TIẾT đơn mới
+// nhất. Đơn không còn trong tầm nhìn của shop (khác shop, chưa thanh toán, không tồn tại) ⇒ 404 `ORDER_NOT_FOUND`.
+export async function updateOrderInternalNote(
+  shopId: string,
+  orderId: string,
+  input: UpdateOrderInternalNoteInput,
+): Promise<SellerOrderDetail> {
+  const data = await apiFetch<unknown>(`/shops/${shopId}/orders/${orderId}/internal-note`, {
+    method: 'PATCH',
     body: JSON.stringify(input),
   });
   return sellerOrderDetailSchema.parse(data);
