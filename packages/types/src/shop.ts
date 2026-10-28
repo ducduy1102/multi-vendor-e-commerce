@@ -177,6 +177,15 @@ export const shopSchema = z.object({
 });
 export type Shop = z.infer<typeof shopSchema>;
 
+// Response `GET /shops/me` (chủ shop xem shop của mình): `shopSchema` kèm địa chỉ hỗ trợ từ ENV `SUPPORT_EMAIL` của BE
+// (Week11.md 4.2). Địa chỉ nằm ở BE chứ không phải biến `NEXT_PUBLIC_*` của FE để chỉ có MỘT nơi cấu hình, đúng cái email
+// khoá/từ chối cũng dùng; null ⇒ không đặt ENV ⇒ banner không có dòng liên hệ. Chỉ `GET /shops/me` trả field này — tạo / sửa /
+// nộp lại vẫn trả `shopSchema` (sau mỗi lần ghi FE làm mới truy vấn `GET /shops/me`, không dùng response ghi làm "shop của tôi").
+export const myShopSchema = shopSchema.extend({
+  supportEmail: z.string().nullable(),
+});
+export type MyShop = z.infer<typeof myShopSchema>;
+
 // Response `GET /shops/:slug` (công khai — Week9.md 1.10): chỉ shop APPROVED, KHÔNG có thông tin chủ shop
 // (ownerId, email), status hay statusReason. Khác `shopSchema` ở trên (chủ shop/Admin) — tách schema riêng
 // thay vì `shopSchema.pick`: hợp đồng công khai là danh sách field khai tường minh, thêm field nội bộ vào Shop

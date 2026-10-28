@@ -114,10 +114,21 @@ export class ShopController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiCookieAuth('access_token')
-  @ApiOperation({ summary: 'Lấy shop của user hiện tại' })
+  @ApiOperation({
+    summary: 'Lấy shop của user hiện tại',
+    description:
+      'Kèm `supportEmail` (từ ENV SUPPORT_EMAIL của BE, null khi không đặt) để banner trạng thái hiện dòng "Liên hệ hỗ trợ".',
+  })
   @ApiResponse({
     status: 200,
-    schema: { example: { success: true, data: { shop: SHOP_EXAMPLE } } },
+    schema: {
+      example: {
+        success: true,
+        data: {
+          shop: { ...SHOP_EXAMPLE, supportEmail: 'support@example.com' },
+        },
+      },
+    },
   })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 404, description: 'User chưa có shop' })

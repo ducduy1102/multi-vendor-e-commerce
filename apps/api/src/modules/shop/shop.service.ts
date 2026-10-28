@@ -13,6 +13,7 @@ import {
   type PublicShop,
 } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
+import { getSupportEmail } from '../../shared/mail/support-email';
 import { NotificationService } from '../../shared/notification/notification.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { slugify } from '../../shared/utils/slugify';
@@ -37,6 +38,7 @@ const shopSelect = {
 } satisfies Prisma.ShopSelect;
 
 type ShopSummary = Prisma.ShopGetPayload<{ select: typeof shopSelect }>;
+type MyShopView = ShopSummary & { supportEmail: string | null };
 
 // Trang shop CÔNG KHAI (Week9.md 1.10): select CHỈ các field công khai — không có ownerId/status/statusReason
 // nên chúng không thể lọt ra, kể cả khi mapper sau này lỡ spread.
@@ -116,7 +118,9 @@ export class ShopService {
     return created;
   }
 
-  async getMyShop(userId: string): Promise<ShopSummary> {
+  // Kèm `supportEmail` (ENV tuỳ chọn, null khi không đặt) để banner trạng thái của chủ shop có dòng "Liên hệ hỗ trợ" giống email
+  // từ chối / khoá (Week11.md 4.2). Đọc ENV mỗi lần gọi, không cache.
+  async getMyShop(userId: string): Promise<MyShopView> {
     const shop = await this.prisma.shop.findFirst({
       where: { ownerId: userId },
       select: shopSelect,
@@ -124,7 +128,7 @@ export class ShopService {
     if (!shop) {
       throw new NotFoundException('Shop not found');
     }
-    return shop;
+    return { ...shop, supportEmail: getSupportEmail() };
   }
 
   // GET /shops/:slug — trang shop công khai (Week9.md 1.10). Chỉ shop APPROVED; mọi trường hợp khác (không có,

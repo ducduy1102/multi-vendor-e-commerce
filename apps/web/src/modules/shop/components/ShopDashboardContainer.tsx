@@ -120,7 +120,11 @@ export function ShopDashboardContainer() {
         </div>
       </div>
 
-      <ShopStatusBanner status={shop.status} reason={shop.statusReason} />
+      <ShopStatusBanner
+        status={shop.status}
+        reason={shop.statusReason}
+        supportEmail={shop.supportEmail}
+      />
 
       {error && (
         <Alert variant="destructive" role="alert">

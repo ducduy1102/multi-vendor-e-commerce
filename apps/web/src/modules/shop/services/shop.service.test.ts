@@ -56,15 +56,30 @@ describe('shop.service', () => {
   });
 
   it('getMyShop returns the parsed shop when the user has one', async () => {
-    mockFetchOnce({ success: true, data: { shop: mockShop } });
+    mockFetchOnce({ success: true, data: { shop: { ...mockShop, supportEmail: null } } });
 
     const result = await getMyShop();
 
-    expect(result).toEqual(mockShop);
+    expect(result).toEqual({ ...mockShop, supportEmail: null });
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining('/shops/me'),
       expect.objectContaining({ method: 'GET', credentials: 'include' }),
     );
+  });
+
+  it('getMyShop keeps the support address the API sends for the status banner', async () => {
+    mockFetchOnce({
+      success: true,
+      data: { shop: { ...mockShop, supportEmail: 'support@example.com' } },
+    });
+
+    await expect(getMyShop()).resolves.toMatchObject({ supportEmail: 'support@example.com' });
+  });
+
+  it('getMyShop rejects a response that lost supportEmail (contract: null or a string, never absent)', async () => {
+    mockFetchOnce({ success: true, data: { shop: mockShop } });
+
+    await expect(getMyShop()).rejects.toThrow();
   });
 
   it('getMyShop returns null on 404 instead of throwing (user has no shop yet)', async () => {

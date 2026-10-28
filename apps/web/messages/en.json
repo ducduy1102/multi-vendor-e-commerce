@@ -183,7 +183,8 @@
     "publicProductsTitle": "Shop products",
     "publicNoProducts": "This shop has no products yet.",
     "publicMetaDescription": "Products and reviews from {name}.",
-    "shopStatusReasonOwnerSuspended": "Your shop is paused because your account is suspended or banned. Check the email we sent you for the reason."
+    "shopStatusReasonOwnerSuspended": "Your shop is paused because your account is suspended or banned. Check the email we sent you for the reason.",
+    "shopSupportLabel": "Contact support"
   },
   "product": {
     "validationNameRequired": "Product name is required",

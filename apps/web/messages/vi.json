@@ -183,7 +183,8 @@
     "publicProductsTitle": "Sản phẩm của shop",
     "publicNoProducts": "Shop chưa có sản phẩm nào.",
     "publicMetaDescription": "Sản phẩm và đánh giá của {name}.",
-    "shopStatusReasonOwnerSuspended": "Shop tạm ngừng vì tài khoản của bạn đang bị khoá hoặc bị cấm. Xem email gửi tới bạn để biết lý do."
+    "shopStatusReasonOwnerSuspended": "Shop tạm ngừng vì tài khoản của bạn đang bị khoá hoặc bị cấm. Xem email gửi tới bạn để biết lý do.",
+    "shopSupportLabel": "Liên hệ hỗ trợ"
   },
   "product": {
     "validationNameRequired": "Tên sản phẩm không được để trống",
