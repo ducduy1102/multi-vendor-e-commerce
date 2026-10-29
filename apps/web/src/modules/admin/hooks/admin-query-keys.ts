@@ -1,4 +1,5 @@
 import type {
+  AdminAppealListQuery,
   AdminRefundListQuery,
   AdminRefundRequestListQuery,
   AdminRefundablePaymentListQuery,
@@ -27,6 +28,18 @@ export function adminShopListsQueryKey() {
 
 export function adminShopListQueryKey(query: Partial<AdminShopListQuery>) {
   return [...adminShopListsQueryKey(), query] as const;
+}
+
+// --- Kháng nghị của shop (Week11.md 4.6) --------------------------------------------------------
+
+// Tiền tố của MỌI danh sách kháng nghị (mọi tab/trang) — dùng để invalidate: quyết định một kháng nghị làm dòng đó rời tab này
+// sang tab khác nên mọi tab đều cũ.
+export function adminAppealListsQueryKey() {
+  return ['admin', 'appeals', 'list'] as const;
+}
+
+export function adminAppealListQueryKey(query: Partial<AdminAppealListQuery>) {
+  return [...adminAppealListsQueryKey(), query] as const;
 }
 
 // --- Người dùng (Week11.md 3.5) -----------------------------------------------------------------

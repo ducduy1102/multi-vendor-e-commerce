@@ -24,6 +24,12 @@ export {
   adminRefundPaymentSchema,
 } from '@ecommerce/types';
 
+// Kháng nghị của shop (Week11.md 4.6): form quyết định dùng THẲNG schema BE — ghi chú bắt buộc khi từ chối (superRefine đặt sau
+// object), tuỳ chọn khi chấp nhận, `""` / chỉ khoảng trắng từ ô nhập bỏ trống được coi là chưa nhập (transform ở cuối chuỗi nên
+// input và output cùng kiểu `string | undefined`, khớp generic `useForm<T>` của zodResolver). Message lỗi là key i18n
+// `admin.validationAppealNote*`.
+export { APPEAL_DECISION_NOTE_MAX_LENGTH, decideAppealSchema } from '@ecommerce/types';
+
 // Form hộp thoại từ chối/khoá chỉ có 1 field `reason` BẮT BUỘC. Không dùng thẳng
 // adminUpdateShopStatusSchema vì schema đó mang cả `status` (+ superRefine, không `.pick()` được) và
 // coi lý do là tuỳ chọn với duyệt/mở khoá. Dùng chung hằng độ dài và 2 key i18n `admin.validation*`

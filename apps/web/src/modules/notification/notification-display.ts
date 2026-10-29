@@ -58,6 +58,12 @@ export const NOTIFICATION_MESSAGE_KEYS = [
   'bodyShopStatusChanged',
   'titleAdminShopPending',
   'bodyAdminShopPending',
+  'titleAdminAppealPending',
+  'bodyAdminAppealPending',
+  'titleAppealAccepted',
+  'bodyAppealAccepted',
+  'titleAppealRejected',
+  'bodyAppealRejected',
   'titleUnknown',
   'bodyUnknown',
 ] as const;
@@ -287,6 +293,29 @@ export function describeNotification(notification: Notification): NotificationDi
         params: { shopName: notification.data.shopName },
         // Tab mặc định của /admin/shops là "Chờ duyệt".
         href: '/admin/shops',
+      };
+
+    case 'ADMIN_APPEAL_PENDING':
+      return {
+        icon: 'shop',
+        titleKey: 'titleAdminAppealPending',
+        bodyKey: 'bodyAdminAppealPending',
+        params: { shopName: notification.data.shopName },
+        // Hàng đợi kháng nghị của sàn, tab mặc định là "Chờ xử lý".
+        href: '/admin/appeals',
+      };
+
+    case 'APPEAL_DECIDED':
+      return {
+        icon: 'shop',
+        // Mỗi kết quả một cặp tiêu đề/nội dung trọn vẹn (không `select`): chủ shop thấy ngay kết quả, ghi chú của Admin nằm ở
+        // trang shop chứ không trong thông báo (D15: thông báo chỉ mang id và quyết định).
+        titleKey:
+          notification.data.decision === 'ACCEPTED' ? 'titleAppealAccepted' : 'titleAppealRejected',
+        bodyKey:
+          notification.data.decision === 'ACCEPTED' ? 'bodyAppealAccepted' : 'bodyAppealRejected',
+        params: {},
+        href: '/seller/shop',
       };
 
     case 'UNKNOWN':

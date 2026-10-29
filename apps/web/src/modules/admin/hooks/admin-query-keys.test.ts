@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  adminAppealListQueryKey,
+  adminAppealListsQueryKey,
   adminRefundListQueryKey,
   adminRefundListsQueryKey,
   adminRefundRequestListQueryKey,
@@ -91,5 +93,25 @@ describe('admin user query keys', () => {
 
   it('không đụng nhánh shop', () => {
     expect(adminUserListsQueryKey().slice(0, 2)).not.toEqual(adminShopListsQueryKey().slice(0, 2));
+  });
+});
+
+describe('admin query keys — kháng nghị (Week11.md 4.6)', () => {
+  it('key danh sách bắt đầu bằng đúng tiền tố dùng để làm mới mọi tab/trang', () => {
+    expect(adminAppealListQueryKey({ status: 'CLOSED', page: 2 }).slice(0, 3)).toEqual(
+      adminAppealListsQueryKey(),
+    );
+  });
+
+  it('mỗi tab và mỗi trang là một key riêng (không dùng chung cache)', () => {
+    expect(adminAppealListQueryKey({ status: 'PENDING' })).not.toEqual(
+      adminAppealListQueryKey({ status: 'CLOSED' }),
+    );
+    expect(adminAppealListQueryKey({ page: 1 })).not.toEqual(adminAppealListQueryKey({ page: 2 }));
+  });
+
+  it('nhánh "appeals" riêng — làm mới kháng nghị không kéo theo cache danh sách shop hay người dùng', () => {
+    expect(adminAppealListsQueryKey().slice(0, 2)).toEqual(['admin', 'appeals']);
+    expect(adminAppealListsQueryKey()).not.toEqual(adminShopListsQueryKey());
   });
 });

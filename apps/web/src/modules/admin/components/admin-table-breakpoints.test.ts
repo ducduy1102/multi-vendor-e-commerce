@@ -4,6 +4,13 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  ADMIN_APPEAL_ACTIONS_CLASS,
+  ADMIN_APPEAL_FIELD_LABEL_CLASS,
+  ADMIN_APPEAL_FULL_ROW_CELL_CLASS,
+  ADMIN_APPEAL_GRID_CLASS,
+  ADMIN_APPEAL_HEADER_CLASS,
+} from './admin-appeal-row.constants';
+import {
   ADMIN_REFUND_FIELD_LABEL_CLASS,
   ADMIN_REFUND_GRID_CLASS,
   ADMIN_REFUND_HEADER_CLASS,
@@ -34,6 +41,12 @@ describe('ngưỡng bảng của /admin/shops và /admin/refunds', () => {
     'lưới hoàn tiền': ADMIN_REFUND_GRID_CLASS,
     'tiêu đề hoàn tiền': ADMIN_REFUND_HEADER_CLASS,
     'nhãn trường hoàn tiền': ADMIN_REFUND_FIELD_LABEL_CLASS,
+    // Bảng kháng nghị (Week11.md 4.6) cùng ngưỡng bảng với shop/hoàn tiền: cột lời kháng nghị cần rộng, dưới lg là thẻ.
+    'lưới kháng nghị': ADMIN_APPEAL_GRID_CLASS,
+    'tiêu đề kháng nghị': ADMIN_APPEAL_HEADER_CLASS,
+    'nhãn trường kháng nghị': ADMIN_APPEAL_FIELD_LABEL_CLASS,
+    'nút xếp dọc (kháng nghị)': ADMIN_APPEAL_ACTIONS_CLASS,
+    'ô chiếm cả hàng (kháng nghị)': ADMIN_APPEAL_FULL_ROW_CELL_CLASS,
   } as const;
 
   it.each(Object.entries(TABLE_CLASSES))('%s: dùng ngưỡng lg, không còn md:', (_name, classes) => {
@@ -52,6 +65,10 @@ describe('ngưỡng bảng của /admin/shops và /admin/refunds', () => {
       'AdminRefundablePaymentRow.tsx',
       'AdminRefundListHeader.tsx',
       'AdminRefundListSkeleton.tsx',
+      'AdminAppealRow.tsx',
+      'AdminAppealActions.tsx',
+      'AdminAppealListHeader.tsx',
+      'AdminAppealListSkeleton.tsx',
     ];
     for (const file of files) {
       const source = readFileSync(resolve(__dirname, file), 'utf8');

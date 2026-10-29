@@ -164,6 +164,24 @@ const CASES: { name: string; notification: Notification; toast: boolean }[] = [
     notification: { ...BASE, type: 'ADMIN_SHOP_PENDING', data: { shopId: SHOP_ID, shopName: 's' } },
     toast: true,
   },
+  {
+    name: 'ADMIN_APPEAL_PENDING',
+    notification: {
+      ...BASE,
+      type: 'ADMIN_APPEAL_PENDING',
+      data: { appealId: SHOP_ID, shopId: SHOP_ID, shopName: 's' },
+    },
+    toast: true,
+  },
+  {
+    name: 'APPEAL_DECIDED',
+    notification: {
+      ...BASE,
+      type: 'APPEAL_DECIDED',
+      data: { appealId: SHOP_ID, shopId: SHOP_ID, decision: 'REJECTED' },
+    },
+    toast: true,
+  },
   { name: 'UNKNOWN', notification: makeUnknownNotification(), toast: false },
 ];
 

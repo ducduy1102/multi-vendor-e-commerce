@@ -73,7 +73,7 @@ describe('AdminNav', () => {
     overview.current = undefined;
   });
 
-  it('một landmark điều hướng có tên, đủ 4 mục trỏ đúng route (chỉ trang đã có), Người dùng ngay sau Shop', () => {
+  it('một landmark điều hướng có tên, đủ 5 mục trỏ đúng route (chỉ trang đã có), Người dùng ngay sau Shop', () => {
     renderNav();
 
     expect(screen.getAllByRole('navigation')).toHaveLength(1);
@@ -88,11 +88,16 @@ describe('AdminNav', () => {
       'href',
       '/admin/refunds',
     );
+    expect(screen.getByRole('link', { name: 'Kháng nghị' })).toHaveAttribute(
+      'href',
+      '/admin/appeals',
+    );
     expect(screen.getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([
       '/admin',
       '/admin/shops',
       '/admin/users',
       '/admin/refunds',
+      '/admin/appeals',
     ]);
   });
 
@@ -101,6 +106,7 @@ describe('AdminNav', () => {
     ['/admin/shops', /^Shop/],
     ['/admin/users', 'Người dùng'],
     ['/admin/refunds', /^Hoàn tiền/],
+    ['/admin/appeals', 'Kháng nghị'],
   ] as const)('ở %s chỉ MỘT mục có aria-current="page"', (path, name) => {
     renderNav(path);
 

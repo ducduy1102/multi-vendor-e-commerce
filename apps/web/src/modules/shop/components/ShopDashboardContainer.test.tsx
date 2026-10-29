@@ -104,3 +104,27 @@ describe('ShopDashboardContainer — dòng liên hệ hỗ trợ ở banner (Wee
     expect(screen.queryByText(/Liên hệ hỗ trợ/)).not.toBeInTheDocument();
   });
 });
+
+describe('ShopDashboardContainer — slot kháng nghị do page ghép (Week11.md 4.6)', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('hiện slot NGAY SAU banner trạng thái và TRƯỚC form', () => {
+    mocks.shop.current = makeShop('SUSPENDED');
+    render(withIntl(<ShopDashboardContainer appealSlot={<div data-testid="appeal-slot" />} />));
+
+    const banner = document.querySelector('[data-slot="alert"]') as HTMLElement;
+    const slot = screen.getByTestId('appeal-slot');
+    const form = document.querySelector('form') as HTMLFormElement;
+    expect(banner.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('không truyền slot -> không vẽ gì thêm (trang chạy như cũ)', () => {
+    mocks.shop.current = makeShop('SUSPENDED');
+    render(withIntl(<ShopDashboardContainer />));
+
+    expect(screen.queryByTestId('appeal-slot')).not.toBeInTheDocument();
+  });
+});

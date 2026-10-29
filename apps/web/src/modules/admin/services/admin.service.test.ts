@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { makeAppeal } from '../admin-appeal.fixtures';
 import {
   cancelShopOpenOrders,
   createAdminNote,
+  decideAppeal,
   decideRefundRequest,
   getOverview,
   getUser,
   listAdminNotes,
+  listAppeals,
   listRefundablePayments,
   listRefundRequests,
   listRefunds,
@@ -926,5 +929,114 @@ describe('admin.service — ghi chú nội bộ (Week11.md 4.3)', () => {
     await expect(
       createAdminNote({ targetType: 'USER', targetId: TARGET_ID, content: 'x' }),
     ).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe('admin.service — listAppeals', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('không tham số -> GET /admin/appeals (không tự gửi default), kèm cookie, parse đúng schema', async () => {
+    mockFetchOnce({
+      success: true,
+      data: { items: [makeAppeal()], total: 1, page: 1, limit: 20 },
+    });
+
+    const result = await listAppeals();
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].owner.email).toBe('nguyenvana@example.com');
+    const [url, init] = lastCall();
+    expect(url).toMatch(/\/admin\/appeals$/);
+    expect(init.method).toBe('GET');
+    expect(init.credentials).toBe('include');
+  });
+
+  it('gửi status/page/limit lên query string, bỏ qua field undefined', async () => {
+    mockFetchOnce({ success: true, data: { items: [], total: 0, page: 2, limit: 5 } });
+
+    await listAppeals({ status: 'CLOSED', page: 2, limit: 5 });
+
+    expect(lastCall()[0]).toMatch(/\/admin\/appeals\?status=CLOSED&page=2&limit=5$/);
+  });
+
+  it('field thừa của BE (vd id người kháng nghị) bị bỏ khi parse', async () => {
+    mockFetchOnce({
+      success: true,
+      data: {
+        items: [{ ...makeAppeal(), appellantId: 'user-1', decidedById: 'admin-1' }],
+        total: 1,
+        page: 1,
+        limit: 20,
+      },
+    });
+
+    const result = await listAppeals();
+
+    expect(JSON.stringify(result)).not.toMatch(/appellantId|decidedById|user-1|admin-1/);
+  });
+
+  it('403 (không phải ADMIN) -> ném ApiError mang status', async () => {
+    mockFetchOnce({ success: false, data: null, message: 'Forbidden' }, 403);
+
+    await expect(listAppeals()).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('admin.service — decideAppeal', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('POST /admin/appeals/:id/decide với đúng body, trả kháng nghị sau khi quyết định (BE bọc trong { appeal })', async () => {
+    const decided = makeAppeal({
+      state: 'REJECTED',
+      decisionNote: 'Chưa đủ giấy tờ',
+      decidedByName: 'Quản trị viên',
+      decidedAt: '2026-10-29T09:00:00.000Z',
+    });
+    mockFetchOnce({ success: true, data: { appeal: decided } });
+
+    const result = await decideAppeal('appeal-1', { decision: 'REJECT', note: 'Chưa đủ giấy tờ' });
+
+    expect(result).toMatchObject({ state: 'REJECTED', decisionNote: 'Chưa đủ giấy tờ' });
+    const [url, init] = lastCall();
+    expect(url).toMatch(/\/admin\/appeals\/appeal-1\/decide$/);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({
+      decision: 'REJECT',
+      note: 'Chưa đủ giấy tờ',
+    });
+  });
+
+  it('chấp nhận không ghi chú: body không có field note', async () => {
+    mockFetchOnce({ success: true, data: { appeal: makeAppeal({ state: 'ACCEPTED' }) } });
+
+    await decideAppeal('appeal-1', { decision: 'ACCEPT' });
+
+    expect(JSON.parse(lastCall()[1].body as string)).toEqual({ decision: 'ACCEPT' });
+  });
+
+  it('id đưa vào đường dẫn được mã hoá (không thể chèn đoạn đường dẫn khác)', async () => {
+    mockFetchOnce({ success: true, data: { appeal: makeAppeal() } });
+
+    await decideAppeal('a/../b?x=1', { decision: 'ACCEPT' });
+
+    expect(lastCall()[0]).toMatch(/\/admin\/appeals\/a%2F\.\.%2Fb%3Fx%3D1\/decide$/);
+  });
+
+  it.each([
+    [409, 'APPEAL_ALREADY_DECIDED'],
+    [409, 'APPEAL_TARGET_CHANGED'],
+    [409, 'SHOP_OWNER_NOT_ACTIVE'],
+    [404, 'APPEAL_NOT_FOUND'],
+  ])('%i %s -> ném ApiError mang đúng status và mã lỗi nghiệp vụ', async (status, code) => {
+    mockFetchOnce({ success: false, data: null, message: code, code }, status);
+
+    await expect(decideAppeal('appeal-1', { decision: 'ACCEPT' })).rejects.toMatchObject({
+      status,
+      code,
+    });
   });
 });

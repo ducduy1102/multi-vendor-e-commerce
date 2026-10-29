@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { Link, useRouter } from '@/i18n/navigation';
 import { Alert } from '@/shared/components/ui/alert';
@@ -17,10 +17,16 @@ import { ShopFormFieldsSkeleton } from './ShopFormFieldsSkeleton';
 import { ShopStatusBanner } from './ShopStatusBanner';
 import { UpdateShopForm } from './UpdateShopForm';
 
+interface ShopDashboardContainerProps {
+  // Mục kháng nghị (Week11.md 4.6) do page.tsx ghép vào ngay dưới banner trạng thái — module `shop` không import `appeal`
+  // (rules/general.md mục 1). ReactNode tĩnh, không phải hàm render: nó đi qua ranh giới Server → Client.
+  appealSlot?: ReactNode;
+}
+
 // Nối UpdateShopForm (Bước 3.8) với useMyShop/useUpdateShop (Bước 3.5) — đặt
 // trong modules/ để app/seller/shop/page.tsx chỉ compose, không viết logic
 // nghiệp vụ trực tiếp (rules/frontend.md mục 1).
-export function ShopDashboardContainer() {
+export function ShopDashboardContainer({ appealSlot }: ShopDashboardContainerProps = {}) {
   const t = useTranslations('shop');
   const describeError = useDescribeShopError();
   const tProduct = useTranslations('product');
@@ -125,6 +131,8 @@ export function ShopDashboardContainer() {
         reason={shop.statusReason}
         supportEmail={shop.supportEmail}
       />
+
+      {appealSlot}
 
       {error && (
         <Alert variant="destructive" role="alert">

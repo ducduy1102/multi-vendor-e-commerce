@@ -91,6 +91,12 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   SHOP_NOT_SUSPENDED: 'admin.errorShopNotSuspended',
   // Ghi chú nội bộ của Admin (Week11.md 4.3)
   ADMIN_NOTE_TARGET_NOT_FOUND: 'admin.errorNoteTargetNotFound',
+  // Kháng nghị của shop (Week11.md 4.6)
+  APPEAL_NOT_ALLOWED: 'appeal.errorNotAllowed',
+  APPEAL_ALREADY_SENT: 'appeal.errorAlreadySent',
+  APPEAL_NOT_FOUND: 'admin.errorAppealNotFound',
+  APPEAL_ALREADY_DECIDED: 'admin.errorAppealAlreadyDecided',
+  APPEAL_TARGET_CHANGED: 'admin.errorAppealTargetChanged',
   // Lỗi CLIENT tự sinh (mất mạng / phản hồi hỏng) — Week7.md 1.11/1.16: nghĩa là
   // "chưa rõ kết quả", khác các mã nghiệp vụ ở trên (luôn là kết quả chắc chắn).
   NETWORK_ERROR: 'common.errorNetwork',

@@ -35,12 +35,17 @@ import { describe, expect, it } from 'vitest';
 //      ngược lại, không module nào import `notification` (kể cả qua barrel) — chuông, huy hiệu và đồng bộ real-time ghép
 //      ở `shared/` (nạp động cho người đã đăng nhập, xem shared/components/lazy-notification.tsx), trang `/notifications`
 //      chỉ compose ở page.tsx. BE có luật `notification` tương ứng ở apps/api/src/module-boundaries.spec.ts.
+//   8. `modules/appeal` (kháng nghị của shop, Week11.md 4.6) cũng là LÁ: không import module nghiệp vụ nào (kể cả `shop`, nên mục
+//      kháng nghị không tự biết trạng thái shop) và không module nào import `appeal` — mục kháng nghị ghép vào `/seller/shop`
+//      ở `app/[locale]/seller/shop/_components/SellerShopAppealEntry` qua slot của `ShopDashboardContainer`. Hàng đợi của Admin
+//      nằm trong `modules/admin` (không phải `appeal`). BE có luật `appeal` tương ứng ở apps/api/src/module-boundaries.spec.ts.
 
 const SRC_ROOT = resolve(__dirname, '..', '..'); // apps/web/src
 
 const BUSINESS_MODULES_OTHER_THAN_CHAT = [
   'account',
   'admin',
+  'appeal',
   'auth',
   'cart',
   'checkout',
@@ -54,19 +59,21 @@ const BUSINESS_MODULES_OTHER_THAN_CHAT = [
 
 // module (khoá) KHÔNG được import module (giá trị) — kể cả qua barrel.
 export const FORBIDDEN_MODULE_IMPORTS: Record<string, string[]> = {
-  account: ['chat', 'notification'],
-  admin: ['chat', 'notification'],
-  auth: ['account', 'chat', 'notification'],
-  cart: ['checkout', 'chat', 'notification'],
+  account: ['appeal', 'chat', 'notification'],
+  admin: ['appeal', 'chat', 'notification'],
+  // Lá: không import module nào khác (danh sách đã gồm cả chính nó — import nội bộ của module luôn hợp lệ nên không ảnh hưởng).
+  appeal: [...BUSINESS_MODULES_OTHER_THAN_CHAT, 'chat', 'notification'],
+  auth: ['account', 'appeal', 'chat', 'notification'],
+  cart: ['checkout', 'appeal', 'chat', 'notification'],
   chat: [...BUSINESS_MODULES_OTHER_THAN_CHAT, 'notification'],
-  checkout: ['account', 'chat', 'notification'],
+  checkout: ['account', 'appeal', 'chat', 'notification'],
   notification: [...BUSINESS_MODULES_OTHER_THAN_CHAT, 'chat'],
-  order: ['checkout', 'cart', 'chat', 'notification'],
-  product: ['chat', 'notification'],
-  review: ['product', 'order', 'cart', 'checkout', 'voucher', 'chat', 'notification'],
-  shop: ['chat', 'notification'],
-  voucher: ['chat', 'notification'],
-  wishlist: ['chat', 'notification'],
+  order: ['checkout', 'cart', 'appeal', 'chat', 'notification'],
+  product: ['appeal', 'chat', 'notification'],
+  review: ['product', 'order', 'cart', 'checkout', 'voucher', 'appeal', 'chat', 'notification'],
+  shop: ['appeal', 'chat', 'notification'],
+  voucher: ['appeal', 'chat', 'notification'],
+  wishlist: ['appeal', 'chat', 'notification'],
 };
 
 const BARREL_ONLY_NAMES = new Set(['index', 'index.ts', 'index.tsx']);
@@ -388,6 +395,77 @@ describe('module boundaries (FE)', () => {
         file(
           'modules/notification/a.ts',
           "import { apiFetch } from '@/shared/lib/api-client';\nimport { scheduleInvalidate } from '@/shared/lib/schedule-invalidate';\nimport type { Notification } from '@ecommerce/types';",
+        ),
+      ]);
+      expect(v).toEqual([]);
+    });
+
+    it('modules/appeal là lá: cấm import mọi module nghiệp vụ (kể cả shop), chat và notification, kể cả qua barrel', () => {
+      const v = findViolations([
+        file('modules/appeal/a.ts', "import { useMyShop } from '@/modules/shop';"),
+        file('modules/appeal/b.ts', "import { useAuthStore } from '@/modules/auth';"),
+        file('modules/appeal/c.ts', "import { formatPrice } from '@/modules/product';"),
+        file('modules/appeal/d.ts', "import { useChatBadges } from '@/modules/chat';"),
+        file('modules/appeal/e.ts', "import { NotificationBell } from '@/modules/notification';"),
+        file('modules/appeal/f.ts', "import { AdminShopsContainer } from '@/modules/admin';"),
+      ]);
+      expect(v).toHaveLength(6);
+      expect(v[0]).toContain("'appeal' không được phụ thuộc module 'shop'");
+      expect(v[3]).toContain("'appeal' không được phụ thuộc module 'chat'");
+      expect(v[4]).toContain("'appeal' không được phụ thuộc module 'notification'");
+      expect(v[5]).toContain("'appeal' không được phụ thuộc module 'admin'");
+    });
+
+    it('không module nào import modules/appeal, kể cả qua barrel (chỉ page.tsx / app/_components ghép)', () => {
+      const v = findViolations(
+        [
+          'account',
+          'admin',
+          'auth',
+          'cart',
+          'chat',
+          'checkout',
+          'notification',
+          'order',
+          'product',
+          'review',
+          'shop',
+          'voucher',
+          'wishlist',
+        ].map((name) =>
+          file(`modules/${name}/a.ts`, "import { ShopAppealSection } from '@/modules/appeal';"),
+        ),
+      );
+      expect(v).toHaveLength(13);
+      for (const violation of v) {
+        expect(violation).toContain("không được phụ thuộc module 'appeal'");
+      }
+    });
+
+    it('app/ và shared/ vẫn được import barrel modules/appeal, cấm import sâu', () => {
+      const ok = findViolations([
+        file(
+          'app/[locale]/seller/shop/_components/SellerShopAppealEntry.tsx',
+          "import { ShopAppealSection } from '@/modules/appeal';",
+        ),
+      ]);
+      expect(ok).toEqual([]);
+
+      const deep = findViolations([
+        file(
+          'app/[locale]/seller/shop/_components/X.tsx',
+          "import { ShopAppealSection } from '@/modules/appeal/components/ShopAppealSection';",
+        ),
+      ]);
+      expect(deep).toHaveLength(1);
+      expect(deep[0]).toContain('import sâu vào modules/appeal/components/ShopAppealSection');
+    });
+
+    it('modules/appeal vẫn được import shared/ và @ecommerce/types', () => {
+      const v = findViolations([
+        file(
+          'modules/appeal/a.ts',
+          "import { apiFetch } from '@/shared/lib/api-client';\nimport { shouldRetryQuery } from '@/shared/lib/should-retry-query';\nimport type { OwnerAppeal } from '@ecommerce/types';",
         ),
       ]);
       expect(v).toEqual([]);

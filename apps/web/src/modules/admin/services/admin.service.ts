@@ -1,4 +1,5 @@
 import {
+  adminAppealListResponseSchema,
   adminCancelShopOrdersResultSchema,
   adminNoteCreatedResponseSchema,
   adminNoteListResponseSchema,
@@ -13,6 +14,10 @@ import {
   adminUserDetailSchema,
   adminUserListResponseSchema,
   adminUserStatusChangeResponseSchema,
+  decideAppealResponseSchema,
+  type AdminAppeal,
+  type AdminAppealListQuery,
+  type AdminAppealListResponse,
   type AdminCancelShopOrdersInput,
   type AdminCancelShopOrdersResult,
   type AdminDecideRefundRequestInput,
@@ -39,6 +44,7 @@ import {
   type AdminUserListQuery,
   type AdminUserListResponse,
   type CreateAdminNoteInput,
+  type DecideAppealInput,
   type ReactivateUserInput,
   type SuspendUserInput,
 } from '@ecommerce/types';
@@ -187,6 +193,34 @@ export async function createAdminNote(input: CreateAdminNoteInput): Promise<Admi
     body: JSON.stringify(input),
   });
   return adminNoteCreatedResponseSchema.parse(data).note;
+}
+
+// --- Kháng nghị của shop (Week11.md 4.6) -----------------------------------------------------------
+
+// Hàng đợi kháng nghị theo bộ lọc (mặc định PENDING: còn chờ VÀ lần khoá còn diễn ra; CLOSED: còn chờ nhưng lần khoá đã kết thúc).
+// Mỗi dòng mang sẵn shop và chủ shop để quyết định mà không phải mở trang khác. Chỉ ADMIN gọi được.
+export async function listAppeals(
+  params: Partial<AdminAppealListQuery> = {},
+): Promise<AdminAppealListResponse> {
+  const data = await apiFetch<unknown>(`/admin/appeals${toListQueryString(params)}`, {
+    method: 'GET',
+  });
+  return adminAppealListResponseSchema.parse(data);
+}
+
+// Chấp nhận (mở khoá shop ngay, ghi chú tuỳ chọn) hoặc từ chối (ghi chú BẮT BUỘC — BE trả 400 theo field `note`). Mỗi kháng nghị
+// chỉ quyết định được MỘT lần: Admin khác đã quyết trước ⇒ 409 `APPEAL_ALREADY_DECIDED`; lần khoá đã kết thúc ⇒ 409
+// `APPEAL_TARGET_CHANGED`; chấp nhận khi chủ shop đang bị khoá tài khoản ⇒ 409 `SHOP_OWNER_NOT_ACTIVE`. BE bọc kết quả trong
+// `{ appeal }` (kháng nghị SAU khi quyết định).
+export async function decideAppeal(
+  appealId: string,
+  input: DecideAppealInput,
+): Promise<AdminAppeal> {
+  const data = await apiFetch<unknown>(`/admin/appeals/${encodeURIComponent(appealId)}/decide`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return decideAppealResponseSchema.parse(data).appeal;
 }
 
 // --- Hoàn tiền (Week9.md 2.9) ---------------------------------------------------------------------
