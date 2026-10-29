@@ -749,6 +749,20 @@ describe('RefundService', () => {
       );
     });
 
+    // Week11.md 4.2: trước đây Admin rơi vào 'SYSTEM' ⇒ email nói "hết hạn thanh toán" với đơn đã trả tiền.
+    it('Admin hủy (hủy hàng loạt đơn của shop bị khoá) ⇒ email người hủy ADMIN, KHÔNG phải SYSTEM; lý do và số tiền hoàn đi kèm', async () => {
+      await service.cancelOrderWithRefund(ADMIN, 'o1', {
+        reason: 'Shop bị khoá',
+      });
+
+      expect(orderEmailService.notifyCancelled).toHaveBeenCalledWith(
+        { orderIds: ['o1'] },
+        'ADMIN',
+        'Shop bị khoá',
+        410_000,
+      );
+    });
+
     it.each(['CONFIRMED', 'PACKED'] as const)(
       'đơn %s cũng hủy được (seller tự hủy / duyệt yêu cầu hủy)',
       async (status) => {
@@ -1013,6 +1027,28 @@ describe('RefundService', () => {
         );
       });
 
+      // Admin duyệt yêu cầu hủy của người mua (kháng cáo lên sàn): người mua mới là người đề nghị hủy nên email vẫn nói
+      // "theo yêu cầu của bạn" — nhánh ADMIN chỉ dành cho Admin tự hủy khi KHÔNG có yêu cầu nào đang mở.
+      it('Admin duyệt yêu cầu hủy đang mở của người mua ⇒ email vẫn là BUYER, không phải ADMIN', async () => {
+        prisma.order.findUnique.mockResolvedValue(
+          orderRow({ status: 'CONFIRMED' }),
+        );
+        groupRows = [{ id: 'o1', status: 'CONFIRMED' }];
+        tx.refundRequest.findFirst.mockResolvedValue({
+          id: 'req-1',
+          status: 'ESCALATED',
+        });
+
+        await service.cancelOrderWithRefund(ADMIN, 'o1', { reason: 'Đồng ý' });
+
+        expect(orderEmailService.notifyCancelled).toHaveBeenCalledWith(
+          { orderIds: ['o1'] },
+          'BUYER',
+          'Đồng ý',
+          410_000,
+        );
+      });
+
       it('yêu cầu đã lên sàn (ESCALATED) được seller "nhượng bộ" đóng bằng chính việc tự hủy đơn', async () => {
         prisma.order.findUnique.mockResolvedValue(
           orderRow({ status: 'PACKED' }),
@@ -1178,6 +1214,19 @@ describe('RefundService', () => {
         { orderIds: ['o1'] },
         'SELLER',
         'Hết hàng',
+        null,
+      );
+    });
+
+    it('Admin hủy đơn COD ⇒ email người hủy ADMIN và không có đoạn hoàn tiền (refundAmount null)', async () => {
+      await service.cancelOrderWithRefund(ADMIN, 'o1', {
+        reason: 'Shop bị khoá',
+      });
+
+      expect(orderEmailService.notifyCancelled).toHaveBeenCalledWith(
+        { orderIds: ['o1'] },
+        'ADMIN',
+        'Shop bị khoá',
         null,
       );
     });

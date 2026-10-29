@@ -32,6 +32,9 @@ interface SellerOrderDetailViewProps {
   // Thẻ yêu cầu hủy/trả hàng của người mua (SellerRefundRequestCard) do Container dựng khi đơn có yêu cầu —
   // đặt NGAY TRÊN danh sách dòng hàng vì là thứ shop cần xem đầu tiên khi có yêu cầu đang chờ mình.
   refundRequestSection?: ReactNode;
+  // Khối ghi chú nội bộ của shop (OrderInternalNoteSection) do Container dựng — view không biết mutation nào. Đặt ở cột phụ ngay dưới
+  // lời nhắn của người mua: hai thứ cùng loại "chữ về đơn này" nhưng một của người mua, một của riêng shop.
+  internalNoteSection?: ReactNode;
 }
 
 // Chi tiết 1 đơn của shop — component THUẦN từ `SellerOrderDetail`. Seller cần đủ thông tin để đóng
@@ -43,6 +46,7 @@ export function SellerOrderDetailView({
   order,
   actions,
   refundRequestSection,
+  internalNoteSection,
 }: SellerOrderDetailViewProps) {
   const t = useTranslations('order');
   const formatDate = useFormatOrderDate();
@@ -78,6 +82,7 @@ export function SellerOrderDetailView({
         <div className={ORDER_DETAIL_COLUMN_CLASS}>
           <OrderAddressSection order={order} />
           <OrderBuyerNoteSection note={order.buyerNote} viewer="seller" />
+          {internalNoteSection}
           <OrderPaymentSection order={order} />
           <OrderShippingSection order={order} />
         </div>

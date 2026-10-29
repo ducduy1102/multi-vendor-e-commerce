@@ -138,6 +138,15 @@ model User {
   locale           UserLocale    @default(vi)
   refreshTokenHash String?       @map("refresh_token_hash")
 
+  // Lý do và mốc của LẦN Admin đổi trạng thái tài khoản gần nhất (Week11.md 3.1, D2) — cùng mẫu Shop.statusReason /
+  // statusChangedAt. Cả hai NULL cho tới lần Admin đầu tiên đổi (không backfill: người dùng cũ chưa từng bị đổi). Chỉ ghi
+  // qua luồng khoá/mở của Admin (3.3), trong cùng $transaction với accountStatus: khoá ⇒ đặt lý do; mở lại ⇒ lý do về NULL
+  // (lý do mở lại nằm ở nhật ký quản trị và email, không ở cột này) còn mốc luôn cập nhật. VARCHAR(500) khớp
+  // ADMIN_USER_REASON_MAX_LENGTH ở packages/types; CHECK ở DB (viết tay trong migration) chặn thêm chuỗi rỗng. Cố ý KHÔNG có
+  // ràng buộc "ACTIVE ⇒ lý do NULL" ở DB: đó là luật nghiệp vụ nên ép ở tầng service (rules/backend.md mục 4).
+  statusReason    String?   @map("status_reason") @db.VarChar(500)
+  statusChangedAt DateTime? @map("status_changed_at")
+
   // Email verification (Tuần 2, Bước 2.10) — token dùng 1 lần, hash bằng SHA-256
   // giống refreshTokenHash (không dùng bcrypt, lý do xem AuthService.hashToken).
   // emailVerificationTokenHash null nghĩa là không có token verify nào đang chờ
@@ -562,6 +571,13 @@ model Order {
   // (ORDER_NOTE_MAX_LENGTH), không bao giờ là chuỗi rỗng (rỗng ⇒ NULL), đặt xong không sửa.
   // Khác OrderStatusHistory.note (lý do đổi trạng thái do shop/hệ thống ghi).
   buyerNote String? @map("buyer_note") @db.VarChar(500)
+
+  // Ghi chú NỘI BỘ của shop trên đơn này (Week11.md 4.4) — khác `buyerNote` (người mua viết cho shop) và khác
+  // OrderStatusHistory.note (lý do đổi trạng thái, người mua đọc được). CHỈ chủ shop đọc/ghi, qua chi tiết đơn của Seller
+  // (`sellerDetailSelect`): KHÔNG được thêm vào select nào của người mua hay Admin, và KHÔNG vào danh sách đơn của Seller.
+  // Văn bản thuần, đã trim, 1..500 ký tự (ORDER_INTERNAL_NOTE_MAX_LENGTH); rỗng ⇒ NULL (xoá ghi chú). Khác `buyerNote` ở chỗ
+  // SỬA ĐƯỢC (không phải nhật ký — shop muốn đổi ý/cập nhật việc đã làm).
+  internalNote String? @map("internal_note") @db.VarChar(500)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1031,4 +1047,88 @@ model AdminAuditLog {
   @@index([targetType, targetId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([actorId, createdAt(sort: Desc), id(sort: Desc)])
   @@map("admin_audit_logs")
+}
+
+// Loại đối tượng có thể gắn ghi chú nội bộ của Admin (Week11.md 4.3). Khớp ADMIN_NOTE_TARGET_TYPES ở packages/types (test
+// parity). Là enum Postgres (khác `AdminAuditLog.targetType`) vì tập này nhỏ và đóng: DB tự từ chối loại lạ, không cần CHECK.
+enum AdminNoteTargetType {
+  USER
+  SHOP
+}
+
+// Ghi chú nội bộ của Admin (Week11.md 4.3, D15): vài dòng chữ để Admin kế tiếp biết bối cảnh của một người dùng / shop. CHỈ
+// THÊM — không có UPDATE/DELETE nào trong mã nguồn (`admin-note-append-only.spec.ts` quét) và trigger ở DB (migration
+// `add_admin_notes`) từ chối cả câu SQL lẻ. CHỈ Admin đọc, qua `/admin/notes`: cố ý KHÔNG khai quan hệ ngược từ User/Shop tới bảng
+// này, để không có đường `include: { notes: true }` nào vô tình đưa ghi chú vào response của route khác.
+model AdminNote {
+  id String @id @default(uuid())
+
+  targetType AdminNoteTargetType @map("target_type")
+
+  // Đối tượng được ghi chú (đa hình theo targetType nên không có khoá ngoại). Luôn là UUID; DB chỉ chặn độ dài. KHÔNG có
+  // khoá ngoại có chủ đích, như `AdminAuditLog`: ghi chú về một tài khoản/shop đã bị xoá vẫn là dấu vết của quyết định đã qua.
+  targetId String @map("target_id")
+
+  // Admin viết (lấy từ phiên, không bao giờ từ client). Không khoá ngoại: ghi chú còn nguyên khi tài khoản Admin bị xoá.
+  authorId String @map("author_id")
+
+  // Văn bản thuần, 1..1000 ký tự (CHECK viết tay trong migration; Zod ép ở packages/types).
+  content String
+
+  // Giờ do ĐỒNG HỒ DB đóng dấu (UTC), cùng lý do và cách viết với `AdminAuditLog.createdAt`.
+  createdAt DateTime @default(dbgenerated("timezone('UTC'::text, clock_timestamp())")) @map("created_at")
+
+  // Đọc theo từng đối tượng, mới nhất trước: WHERE target_type = ? AND target_id = ? ORDER BY created_at DESC, id DESC. id là
+  // khoá phụ để phân trang không trùng/mất khi hai ghi chú cùng mili-giây.
+  @@index([targetType, targetId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("admin_notes")
+}
+
+// Kháng nghị của chủ shop sau khi bị khoá (Week11.md 4.6, D15). Mỗi LẦN BỊ XỬ LÝ chỉ kháng nghị MỘT lần: `moderationEventAt` là mốc
+// `Shop.statusChangedAt` của lần khoá đó (server đọc từ shop, client không gửi) và `@@unique([targetType, targetId, moderationEventAt])`
+// là trọng tài cuối cho hai request đồng thời. Shop được mở rồi khoá lại có `statusChangedAt` khác nên có quyền kháng nghị mới.
+enum AppealTargetType {
+  SHOP
+  PRODUCT
+}
+
+enum AppealStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model Appeal {
+  id String @id @default(uuid())
+
+  // Đối tượng bị xử lý (đa hình theo targetType nên không có khoá ngoại; luôn là UUID, DB chỉ chặn độ dài). `PRODUCT` có sẵn cho bước
+  // kháng nghị sản phẩm bị gỡ (Week11.md 5.8) — đến lúc đó không cần migration thêm. KHÔNG khoá ngoại có chủ đích, như AdminNote: lời
+  // kháng nghị về một shop đã bị xoá vẫn là dấu vết của quyết định đã qua.
+  targetType AppealTargetType @map("target_type")
+  targetId   String           @map("target_id")
+
+  // Người gửi (lấy từ phiên, không bao giờ từ client). Không khoá ngoại và không có quan hệ ngược ở User: không có đường `include`
+  // nào vô tình đưa lời kháng nghị (nội dung riêng tư) vào response khác — đường đọc duy nhất là AppealService và AdminAppealService.
+  appellantId String @map("appellant_id")
+
+  // Văn bản thuần, 1..1000 ký tự (CHECK viết tay trong migration; Zod ép ở packages/types).
+  message String
+
+  status AppealStatus @default(PENDING)
+
+  // Mốc `Shop.statusChangedAt` của lần bị khoá mà kháng nghị nhắm tới. TIMESTAMP(3) như cột nguồn nên so bằng được.
+  moderationEventAt DateTime @map("moderation_event_at")
+
+  // Người quyết định (Admin) và ghi chú gửi lại chủ shop; null khi còn PENDING. Quan hệ giữa `status` và các cột này do CHECK ở DB giữ.
+  decidedById  String? @map("decided_by_id")
+  decisionNote String? @map("decision_note")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  decidedAt DateTime? @map("decided_at")
+
+  // Cũng là chỉ mục phục vụ lịch sử của một shop: WHERE target_type = ? AND target_id = ? ORDER BY moderation_event_at DESC.
+  @@unique([targetType, targetId, moderationEventAt])
+  // Hàng đợi của Admin: WHERE status = 'PENDING' ORDER BY created_at.
+  @@index([status, createdAt])
+  @@map("appeals")
 }

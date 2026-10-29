@@ -1,7 +1,9 @@
 import {
+  myShopSchema,
   publicShopSchema,
   shopSchema,
   type CreateShopInput,
+  type MyShop,
   type PublicShop,
   type ResubmitShopInput,
   type Shop,
@@ -19,13 +21,14 @@ export async function createShop(values: CreateShopInput): Promise<Shop> {
 }
 
 // 404 nghĩa là user chưa có shop (chưa phải seller) — trả null để FE phân
-// biệt với lỗi thật khác, thay vì để ApiError văng lên tận UI.
-export async function getMyShop(): Promise<Shop | null> {
+// biệt với lỗi thật khác, thay vì để ApiError văng lên tận UI. Response kèm `supportEmail` (địa chỉ hỗ trợ từ ENV của BE, null
+// khi không đặt) cho banner trạng thái — chỉ route này trả field đó.
+export async function getMyShop(): Promise<MyShop | null> {
   try {
     const data = await apiFetch<{ shop: unknown }>('/shops/me', {
       method: 'GET',
     });
-    return shopSchema.parse(data.shop);
+    return myShopSchema.parse(data.shop);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       return null;

@@ -70,6 +70,43 @@ function setup(overrides: Partial<AdminRefundRequest> = {}, isDisabled = false) 
   return { ...utils, onApprove, onReject };
 }
 
+describe('AdminRefundRequestRow — title cho chữ bị cắt (Week11.md 4.5, dòng 7)', () => {
+  it('mô tả của người mua và lý do shop từ chối (kẹp 2 dòng) mang bản đầy đủ ở title — Admin quyết định cần đọc trọn', () => {
+    const long = 'Hàng bị móp méo khi nhận. '.repeat(20).trim();
+    const sellerLong = 'Shop từ chối vì khách đã dùng hàng. '.repeat(10).trim();
+    setup({
+      reasonNote: long,
+      history: [
+        {
+          toStatus: 'REJECTED_BY_SELLER',
+          actorType: 'SELLER',
+          note: sellerLong,
+          createdAt: '2026-10-02T03:00:00.000Z',
+        },
+      ],
+    });
+
+    const buyerNote = screen.getByText(`Mô tả của người mua: ${long}`);
+    expect(buyerNote).toHaveAttribute('title', `Mô tả của người mua: ${long}`);
+    expect(buyerNote).toHaveClass('line-clamp-2');
+    const sellerNote = screen.getByText(`Lý do shop từ chối: ${sellerLong}`);
+    expect(sellerNote).toHaveAttribute('title', `Lý do shop từ chối: ${sellerLong}`);
+    expect(sellerNote).toHaveClass('line-clamp-2');
+  });
+
+  it('tên shop, dòng đơn và dòng người mua (truncate) mang bản đầy đủ ở title', () => {
+    setup();
+
+    expect(screen.getByText('Shop Áo Xinh')).toHaveAttribute('title', 'Shop Áo Xinh');
+    const buyer = screen.getByText(/a@example.com/);
+    expect(buyer).toHaveAttribute('title', buyer.textContent ?? '');
+    const order = screen.getByText(/Trần Thị B/);
+    expect(order).toHaveAttribute('title', order.textContent ?? '');
+    const item = screen.getByText('Áo thun cổ tròn');
+    expect(item).toHaveAttribute('title', 'Áo thun cổ tròn');
+  });
+});
+
 describe('AdminRefundRequestRow — cột yêu cầu', () => {
   it('loại yêu cầu + lý do của người mua (nhãn dùng chung với phía người mua/shop)', () => {
     setup({ reasonCode: 'FOUND_CHEAPER' });
@@ -222,13 +259,16 @@ describe('AdminRefundRequestRow — thao tác chỉ theo cờ của BE', () => {
     ).toBeInTheDocument();
   });
 
-  it('"Chấp thuận" là nút chính (primary), "Từ chối" là outline — không nút nào đỏ hay cam', () => {
+  it('"Chấp thuận" là nút chính (primary), "Từ chối" là nút viền cảnh báo (viền + chữ destructive, không nền đỏ nhạt, không cam)', () => {
     setup();
 
-    expect(screen.getByRole('button', { name: /Chấp thuận yêu cầu/ })).toHaveClass('bg-primary');
+    const approve = screen.getByRole('button', { name: /Chấp thuận yêu cầu/ });
+    expect(approve).toHaveClass('bg-primary');
+    expect(approve.className).not.toContain('text-destructive');
     const reject = screen.getByRole('button', { name: /Từ chối yêu cầu/ });
-    expect(reject).toHaveClass('border-border');
-    expect(reject).not.toHaveClass('bg-destructive/10');
+    expect(reject).toHaveClass('border-destructive/30', 'text-destructive', 'hover:bg-background');
+    expect(reject.className).not.toMatch(/(^|\s)bg-destructive/);
+    expect(reject.className).not.toMatch(/orange|amber|accent/);
   });
 
   it('không cờ nào (đã xử lý, hoặc yêu cầu TRẢ HÀNG còn chờ shop mà Admin chưa ghi đè được) -> không nút nào', () => {
@@ -271,7 +311,7 @@ describe('AdminRefundRequestRow — bố cục (một markup duy nhất, dùng c
     expect(row).toHaveClass('grid-cols-1');
   });
 
-  it('mỗi trường có nhãn: hiện ở mobile, chỉ còn cho trình đọc màn hình ở desktop (md:sr-only)', () => {
+  it('mỗi trường có nhãn: hiện ở mobile, chỉ còn cho trình đọc màn hình ở desktop (lg:sr-only)', () => {
     setup();
 
     const row = screen.getByRole('listitem');

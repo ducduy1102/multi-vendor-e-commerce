@@ -243,6 +243,9 @@ const sellerDetailSelect = {
   carrier: true,
   trackingCode: true,
   statusHistory: historyArgs,
+  // Ghi chú NỘI BỘ của shop (Week11.md 4.4) — CHỈ ở chi tiết của Seller. Không vào `sellerListSelect`, `listSelect`, `detailSelect`
+  // (người mua) hay select nào của Admin: test tích hợp quét response của các route đó với chuỗi canary.
+  internalNote: true,
   // Ghi đè bản tóm tắt: chi tiết trả đủ lý do của người mua + dòng thời gian.
   refundRequests: {
     where: { status: { not: 'WITHDRAWN' } },
@@ -503,6 +506,7 @@ export class OrderQueryService {
       refundRequest: order.refundRequests[0]
         ? toSellerRefundRequest(order.refundRequests[0])
         : null,
+      internalNote: order.internalNote,
     };
   }
 

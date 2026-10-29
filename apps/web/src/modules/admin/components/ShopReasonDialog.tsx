@@ -19,6 +19,7 @@ import { Textarea } from '@/shared/components/ui/textarea';
 import { useValidationMessage } from '@/shared/hooks/useValidationMessage';
 
 import { shopReasonFormSchema, type ShopReasonFormInput } from '../schemas/admin.schema';
+import { ADMIN_DESTRUCTIVE_CONFIRM_BUTTON_CLASS } from './admin-caution-button.constants';
 
 export type ShopReasonDialogKind = 'reject' | 'suspend';
 
@@ -98,7 +99,12 @@ function ShopReasonForm({
 
       <AlertDialogFooter>
         <AlertDialogCancel disabled={isPending}>{t('dialogBack')}</AlertDialogCancel>
-        <Button type="submit" variant="destructive" disabled={isPending}>
+        <Button
+          type="submit"
+          variant="destructive"
+          className={ADMIN_DESTRUCTIVE_CONFIRM_BUTTON_CLASS}
+          disabled={isPending}
+        >
           {t(keys.confirm)}
         </Button>
       </AlertDialogFooter>

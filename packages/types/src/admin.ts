@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LIST_MAX_PAGE } from './pagination';
 import { shopSchema, shopStatusSchema } from './shop';
 
 // --- Duyệt / từ chối / khoá / mở khoá shop (Week8.md 1.8) --------------------------------------------
@@ -46,7 +47,7 @@ export type AdminUpdateShopStatusInput = z.infer<typeof adminUpdateShopStatusSch
 // number cho page/limit (rules/backend.md mục 2).
 export const adminShopListQuerySchema = z.object({
   status: shopStatusSchema.default('PENDING'),
-  page: z.coerce.number().int().positive().default(1),
+  page: z.coerce.number().int().positive().max(LIST_MAX_PAGE).default(1),
   limit: z.coerce.number().int().positive().max(50).default(20),
 });
 export type AdminShopListQuery = z.infer<typeof adminShopListQuerySchema>;

@@ -40,9 +40,9 @@ export function AdminRefundListSkeleton({ tab, count = 4 }: AdminRefundListSkele
               <Skeleton className={cn('h-5 w-24 rounded-4xl', SKELETON_CLASS)} />
               <Skeleton className={cn('h-3 w-36', SKELETON_CLASS)} />
             </div>
-            <div className="flex gap-2 md:flex-col">
-              <Skeleton className={cn('h-9 w-24 md:w-full', SKELETON_CLASS)} />
-              <Skeleton className={cn('h-9 w-20 md:w-full', SKELETON_CLASS)} />
+            <div className="flex gap-2 lg:flex-col">
+              <Skeleton className={cn('h-9 w-24 lg:w-full', SKELETON_CLASS)} />
+              <Skeleton className={cn('h-9 w-20 lg:w-full', SKELETON_CLASS)} />
             </div>
           </li>
         ))}

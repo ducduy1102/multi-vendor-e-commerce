@@ -46,6 +46,7 @@ function makeShop(status: string) {
     statusChangedAt: '2026-10-01T00:00:00.000Z',
     createdAt: '2026-10-01T00:00:00.000Z',
     updatedAt: '2026-10-01T00:00:00.000Z',
+    supportEmail: null as string | null,
   };
 }
 
@@ -79,4 +80,51 @@ describe('ShopDashboardContainer — link "Xem trang shop" (Week9.md 6.3)', () =
       expect(screen.getByRole('link', { name: 'Quản lý sản phẩm' })).toBeInTheDocument();
     },
   );
+});
+
+describe('ShopDashboardContainer — dòng liên hệ hỗ trợ ở banner (Week11.md 4.2)', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('shop bị khoá + BE trả supportEmail -> banner có link mailto tới đúng địa chỉ đó', () => {
+    mocks.shop.current = { ...makeShop('SUSPENDED'), supportEmail: 'support@example.com' };
+    render(withIntl(<ShopDashboardContainer />));
+
+    expect(screen.getByRole('link', { name: 'support@example.com' })).toHaveAttribute(
+      'href',
+      'mailto:support@example.com',
+    );
+  });
+
+  it('BE không đặt supportEmail (null) -> banner không có dòng liên hệ', () => {
+    mocks.shop.current = makeShop('SUSPENDED');
+    render(withIntl(<ShopDashboardContainer />));
+
+    expect(screen.queryByText(/Liên hệ hỗ trợ/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ShopDashboardContainer — slot kháng nghị do page ghép (Week11.md 4.6)', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('hiện slot NGAY SAU banner trạng thái và TRƯỚC form', () => {
+    mocks.shop.current = makeShop('SUSPENDED');
+    render(withIntl(<ShopDashboardContainer appealSlot={<div data-testid="appeal-slot" />} />));
+
+    const banner = document.querySelector('[data-slot="alert"]') as HTMLElement;
+    const slot = screen.getByTestId('appeal-slot');
+    const form = document.querySelector('form') as HTMLFormElement;
+    expect(banner.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('không truyền slot -> không vẽ gì thêm (trang chạy như cũ)', () => {
+    mocks.shop.current = makeShop('SUSPENDED');
+    render(withIntl(<ShopDashboardContainer />));
+
+    expect(screen.queryByTestId('appeal-slot')).not.toBeInTheDocument();
+  });
 });

@@ -99,6 +99,32 @@ export const SERVER_ERROR_CODES = [
   'CHAT_AWAITING_REPLY',
   'CHAT_CONVERSATION_LIMIT',
   'CHAT_NOT_PARTICIPANT',
+  // Quản lý người dùng của Admin (Week11.md Bước 3, D2). USER_NOT_FOUND (404): không có người dùng đó;
+  // USER_INVALID_TRANSITION (409): tài khoản không còn ở trạng thái cho phép chuyển (đã có Admin khác xử lý, hoặc cạnh
+  // không có trong ADMIN_ACCOUNT_STATUS_TRANSITIONS) — gộp "sai trạng thái lúc đọc" và "thua race" như
+  // SHOP_INVALID_TRANSITION; CANNOT_MODIFY_ADMIN / CANNOT_MODIFY_SELF (409): không khoá được tài khoản Admin khác hay
+  // chính mình; SHOP_OWNER_NOT_ACTIVE (409): không duyệt được shop khi chủ shop đang bị khoá hoặc cấm.
+  'USER_NOT_FOUND',
+  'USER_INVALID_TRANSITION',
+  'CANNOT_MODIFY_ADMIN',
+  'CANNOT_MODIFY_SELF',
+  'SHOP_OWNER_NOT_ACTIVE',
+  // Hủy hàng loạt đơn của shop (Week11.md 4.1): chỉ làm được khi shop ĐANG bị khoá (409) — shop đã được mở lại hoặc chưa từng
+  // bị khoá thì đơn của nó vẫn là việc bình thường của chủ shop, không được Admin hủy hàng loạt.
+  'SHOP_NOT_SUSPENDED',
+  // Ghi chú nội bộ của Admin (Week11.md 4.3): người dùng hoặc shop được gắn ghi chú không tồn tại (404). MỘT mã cho cả hai loại
+  // đối tượng và cho id sai dạng, như USER_NOT_FOUND.
+  'ADMIN_NOTE_TARGET_NOT_FOUND',
+  // Kháng nghị của shop (Week11.md 4.6). APPEAL_NOT_ALLOWED (409): shop không ở trạng thái được kháng nghị (không phải SUSPENDED, hoặc
+  // bị khoá theo cascade tài khoản). APPEAL_ALREADY_SENT (409): lần khoá này đã có kháng nghị (mỗi lần bị xử lý chỉ một lần).
+  // APPEAL_NOT_FOUND (404): Admin quyết định một kháng nghị không tồn tại / id sai dạng. APPEAL_ALREADY_DECIDED (409): kháng nghị
+  // đã có kết quả (người khác quyết trước). APPEAL_TARGET_CHANGED (409): lần khoá mà kháng nghị nhắm tới đã kết thúc (shop đã được
+  // mở khoá hoặc bị khoá lại một lần khác) nên không còn gì để chấp nhận.
+  'APPEAL_NOT_ALLOWED',
+  'APPEAL_ALREADY_SENT',
+  'APPEAL_NOT_FOUND',
+  'APPEAL_ALREADY_DECIDED',
+  'APPEAL_TARGET_CHANGED',
 ] as const;
 export type ServerErrorCode = (typeof SERVER_ERROR_CODES)[number];
 

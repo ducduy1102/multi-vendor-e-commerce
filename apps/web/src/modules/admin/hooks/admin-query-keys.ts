@@ -1,8 +1,11 @@
 import type {
+  AdminAppealListQuery,
   AdminRefundListQuery,
   AdminRefundRequestListQuery,
   AdminRefundablePaymentListQuery,
+  AdminNoteTargetType,
   AdminShopListQuery,
+  AdminUserListQuery,
 } from '../types';
 
 // Mọi query key của module admin khai ở ĐÂY (1 chỗ duy nhất, như order-query-keys) — hook đọc và hook
@@ -25,6 +28,47 @@ export function adminShopListsQueryKey() {
 
 export function adminShopListQueryKey(query: Partial<AdminShopListQuery>) {
   return [...adminShopListsQueryKey(), query] as const;
+}
+
+// --- Kháng nghị của shop (Week11.md 4.6) --------------------------------------------------------
+
+// Tiền tố của MỌI danh sách kháng nghị (mọi tab/trang) — dùng để invalidate: quyết định một kháng nghị làm dòng đó rời tab này
+// sang tab khác nên mọi tab đều cũ.
+export function adminAppealListsQueryKey() {
+  return ['admin', 'appeals', 'list'] as const;
+}
+
+export function adminAppealListQueryKey(query: Partial<AdminAppealListQuery>) {
+  return [...adminAppealListsQueryKey(), query] as const;
+}
+
+// --- Người dùng (Week11.md 3.5) -----------------------------------------------------------------
+
+// Tiền tố của MỌI danh sách người dùng (mọi tab/bộ lọc/trang) — dùng để invalidate: khoá/mở lại một tài khoản làm dòng đó
+// rời tab này sang tab khác nên mọi danh sách đều cũ.
+export function adminUserListsQueryKey() {
+  return ['admin', 'users', 'list'] as const;
+}
+
+export function adminUserListQueryKey(query: Partial<AdminUserListQuery>) {
+  return [...adminUserListsQueryKey(), query] as const;
+}
+
+// Chi tiết một người dùng (ngăn bên phải). Tiền tố riêng để làm mới MỌI chi tiết đang cache khi cần.
+export function adminUserDetailsQueryKey() {
+  return ['admin', 'users', 'detail'] as const;
+}
+
+export function adminUserDetailQueryKey(userId: string) {
+  return [...adminUserDetailsQueryKey(), userId] as const;
+}
+
+// --- Ghi chú nội bộ (Week11.md 4.3) --------------------------------------------------------------
+
+// Ghi chú của MỘT đối tượng (người dùng hoặc shop). Thêm ghi chú làm mới đúng khoá này; các trang đã tải thêm (`useInfiniteQuery`)
+// nằm chung một mục cache nên làm mới một lần là đủ.
+export function adminNotesQueryKey(targetType: AdminNoteTargetType, targetId: string) {
+  return ['admin', 'notes', targetType, targetId] as const;
 }
 
 // --- Hoàn tiền (Week9.md 3.1) --------------------------------------------------------------------

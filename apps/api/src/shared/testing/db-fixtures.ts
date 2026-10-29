@@ -4,7 +4,10 @@ import type {
   PrismaClient,
   UserLocale,
 } from '@prisma/client';
-import { deleteAdminAuditLogsForTests } from './admin-audit-cleanup';
+import {
+  deleteAdminAuditLogsForTests,
+  deleteAdminNotesForTests,
+} from './admin-audit-cleanup';
 
 // Dữ liệu dựng cho các integration test (`*.int-spec.ts`, chạy bằng `pnpm test:int`) trên DB dev
 // thật. Mọi bản ghi mang tiền tố `tag` riêng của từng file spec và được dọn theo tiền tố đó, để
@@ -279,6 +282,26 @@ export async function cleanupByTag(prisma: PrismaClient, tag: string) {
       { actorId: { in: userIds } },
       { targetId: { in: [...userIds, ...shops.map((s) => s.id)] } },
     ],
+  });
+  // Ghi chú nội bộ của Admin (Tuần 11) cũng không có khoá ngoại tới users/shops và cũng chỉ thêm ngay ở DB: dọn theo tác giả
+  // (authorId) hoặc theo đối tượng có tiền tố (targetId), qua cùng cơ chế cờ dọn dẹp.
+  await deleteAdminNotesForTests(prisma, {
+    OR: [
+      { authorId: { in: userIds } },
+      { targetId: { in: [...userIds, ...shops.map((s) => s.id)] } },
+    ],
+  });
+  // Kháng nghị (Tuần 11, 4.6) cũng không có khoá ngoại tới users/shops (đối tượng bị xử lý có thể mất đi mà lịch sử xử lý vẫn
+  // phải còn) nên xoá shop/người dùng không kéo theo dòng nào. Bảng này không chỉ thêm (có UPDATE khi quyết định) nên xoá
+  // thẳng được. Dọn theo người kháng nghị, người quyết định hoặc shop có tiền tố.
+  await prisma.appeal.deleteMany({
+    where: {
+      OR: [
+        { appellantId: { in: userIds } },
+        { decidedById: { in: userIds } },
+        { targetId: { in: shops.map((s) => s.id) } },
+      ],
+    },
   });
   // Thứ tự xoá theo chiều FK RESTRICT (Payment/Order/VoucherUsage → CheckoutGroup → User;
   // Order/OrderItem → Shop/ProductVariant): xoá "lá" trước "gốc". Cart/CartItem/Address cascade

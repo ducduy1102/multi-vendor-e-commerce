@@ -4,8 +4,10 @@ import { describe, expect, it } from 'vitest';
 import {
   ADMIN_SHOP_ACTION_TARGET,
   getAdminShopActions,
+  shouldStackShopActions,
   type AdminShopAction,
 } from './admin-shop-actions';
+import type { ShopStatus } from './types';
 
 describe('getAdminShopActions', () => {
   it.each<[string, AdminShopAction[]]>([
@@ -50,5 +52,27 @@ describe('getAdminShopActions', () => {
 
   it('không hành động nào đưa shop về PENDING (đích chỉ APPROVED/REJECTED/SUSPENDED)', () => {
     expect(Object.values(ADMIN_SHOP_ACTION_TARGET)).not.toContain('PENDING');
+  });
+});
+
+describe('shouldStackShopActions (Week11.md 4.5)', () => {
+  it.each([
+    [0, false],
+    [1, false],
+    [2, false],
+    [3, true],
+    [4, true],
+  ])('%i nút ⇒ xếp dọc: %s', (count, expected) => {
+    expect(shouldStackShopActions(count)).toBe(expected);
+  });
+
+  it('ngưỡng là 3: đúng số nút của tab Chờ duyệt / Đã khoá (có Ghi chú) và ít hơn ở Đã duyệt / Đã từ chối', () => {
+    const withNotes = (status: ShopStatus) => getAdminShopActions(status).length + 1;
+    const withCancelOrders = getAdminShopActions('SUSPENDED').length + 1 + 1;
+
+    expect(shouldStackShopActions(withNotes('PENDING'))).toBe(true);
+    expect(shouldStackShopActions(withCancelOrders)).toBe(true);
+    expect(shouldStackShopActions(withNotes('APPROVED'))).toBe(false);
+    expect(shouldStackShopActions(withNotes('REJECTED'))).toBe(false);
   });
 });

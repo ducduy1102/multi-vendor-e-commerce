@@ -6,8 +6,9 @@ import { useState } from 'react';
 import { Link, useRouter } from '@/i18n/navigation';
 import { FieldSeparator } from '@/shared/components/ui/field';
 import { ApiError } from '@/shared/lib/api-client';
-import { useApiErrorMessage } from '@/shared/hooks/useValidationMessage';
+import { useApiErrorMessage, type LooseTranslator } from '@/shared/hooks/useValidationMessage';
 
+import { getLoginErrorMessageKey } from '../login-error';
 import { login } from '../services/auth.service';
 import { useAuthStore } from '../store/auth.store';
 import type { LoginInput } from '../types';
@@ -31,6 +32,7 @@ interface LoginFormContainerProps {
 export function LoginFormContainer({ initialError, next }: LoginFormContainerProps) {
   const t = useTranslations('auth');
   const tApi = useApiErrorMessage();
+  const tGlobal = useTranslations() as unknown as LooseTranslator;
   const tCommon = useTranslations('common');
   const router = useRouter();
   const setUser = useAuthStore((state) => state.setUser);
@@ -52,7 +54,15 @@ export function LoginFormContainer({ initialError, next }: LoginFormContainerPro
       router.push(next ?? '/');
       router.refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? tApi(err.message) : t('loginGenericError'));
+      // Lỗi có MÃ nghiệp vụ (tài khoản bị khoá/cấm ⇒ ACCOUNT_NOT_ACTIVE) dịch theo mã; lỗi chỉ có message dịch như trước.
+      const codeKey = getLoginErrorMessageKey(err);
+      setError(
+        codeKey
+          ? tGlobal(codeKey)
+          : err instanceof ApiError
+            ? tApi(err.message)
+            : t('loginGenericError'),
+      );
     } finally {
       setIsSubmitting(false);
     }

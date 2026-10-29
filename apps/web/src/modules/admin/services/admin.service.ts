@@ -1,4 +1,8 @@
 import {
+  adminAppealListResponseSchema,
+  adminCancelShopOrdersResultSchema,
+  adminNoteCreatedResponseSchema,
+  adminNoteListResponseSchema,
   adminOverviewSchema,
   adminRefundListResponseSchema,
   adminRefundRequestListResponseSchema,
@@ -7,8 +11,20 @@ import {
   adminRefundablePaymentListResponseSchema,
   adminShopListResponseSchema,
   adminShopSchema,
+  adminUserDetailSchema,
+  adminUserListResponseSchema,
+  adminUserStatusChangeResponseSchema,
+  decideAppealResponseSchema,
+  type AdminAppeal,
+  type AdminAppealListQuery,
+  type AdminAppealListResponse,
+  type AdminCancelShopOrdersInput,
+  type AdminCancelShopOrdersResult,
   type AdminDecideRefundRequestInput,
   type AdminMarkRefundCompletedInput,
+  type AdminNote,
+  type AdminNoteListQuery,
+  type AdminNoteListResponse,
   type AdminOverview,
   type AdminRefund,
   type AdminRefundListQuery,
@@ -23,6 +39,14 @@ import {
   type AdminShopListQuery,
   type AdminShopListResponse,
   type AdminUpdateShopStatusInput,
+  type AdminUser,
+  type AdminUserDetail,
+  type AdminUserListQuery,
+  type AdminUserListResponse,
+  type CreateAdminNoteInput,
+  type DecideAppealInput,
+  type ReactivateUserInput,
+  type SuspendUserInput,
 } from '@ecommerce/types';
 
 import { apiFetch } from '@/shared/lib/api-client';
@@ -74,6 +98,129 @@ export async function updateShopStatus(
     body: JSON.stringify(input),
   });
   return adminShopSchema.parse(data.shop);
+}
+
+// Hủy hàng loạt đơn chưa giao của shop ĐANG bị khoá (Week11.md 4.1). Mỗi lần gọi xử lý tối đa một lô (BE giới hạn) — còn đơn thì
+// `remaining > 0` và gọi lại. Shop không ở SUSPENDED ⇒ 409 `SHOP_NOT_SUSPENDED`; shop không tồn tại ⇒ 404.
+export async function cancelShopOpenOrders(
+  shopId: string,
+  input: AdminCancelShopOrdersInput,
+): Promise<AdminCancelShopOrdersResult> {
+  const data = await apiFetch<unknown>(`/admin/shops/${shopId}/cancel-open-orders`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return adminCancelShopOrdersResultSchema.parse(data);
+}
+
+// --- Người dùng (Week11.md 3.2, 3.3) ---------------------------------------------------------------
+
+// Bộ lọc của danh sách người dùng. Khác toListQueryString (chỉ status/page/limit) ở chỗ có thêm vai và từ khoá; field nào
+// bỏ trống thì không gửi để BE tự áp default.
+function toUserListQueryString(params: Partial<AdminUserListQuery>): string {
+  const searchParams = new URLSearchParams();
+  if (params.status !== undefined) searchParams.set('status', params.status);
+  if (params.role !== undefined) searchParams.set('role', params.role);
+  if (params.q) searchParams.set('q', params.q);
+  if (params.page !== undefined) searchParams.set('page', String(params.page));
+  if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+  const query = searchParams.toString();
+  return query ? `?${query}` : '';
+}
+
+export async function listUsers(
+  params: Partial<AdminUserListQuery> = {},
+): Promise<AdminUserListResponse> {
+  const data = await apiFetch<unknown>(`/admin/users${toUserListQueryString(params)}`, {
+    method: 'GET',
+  });
+  return adminUserListResponseSchema.parse(data);
+}
+
+// Chi tiết một người dùng: BE trả thẳng đối tượng chi tiết (không bọc). Id không tồn tại hoặc sai dạng ⇒ 404 USER_NOT_FOUND.
+export async function getUser(userId: string): Promise<AdminUserDetail> {
+  const data = await apiFetch<unknown>(`/admin/users/${userId}`, { method: 'GET' });
+  return adminUserDetailSchema.parse(data);
+}
+
+// Tạm khoá hoặc cấm (`input.status` chọn mức), lý do bắt buộc. Tài khoản không còn ở trạng thái hợp lệ (có Admin khác vừa
+// xử lý) ⇒ 409 USER_INVALID_TRANSITION; Admin/chính mình ⇒ 409 CANNOT_MODIFY_ADMIN / CANNOT_MODIFY_SELF. BE bọc kết quả
+// trong { user } (người dùng SAU khi đổi).
+export async function suspendUser(userId: string, input: SuspendUserInput): Promise<AdminUser> {
+  const data = await apiFetch<unknown>(`/admin/users/${userId}/suspend`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return adminUserStatusChangeResponseSchema.parse(data).user;
+}
+
+// Mở lại (tạm khoá → hoạt động) hoặc gỡ cấm (cấm → hoạt động): cùng endpoint vì đích luôn là ACTIVE; lý do bắt buộc.
+export async function reactivateUser(
+  userId: string,
+  input: ReactivateUserInput,
+): Promise<AdminUser> {
+  const data = await apiFetch<unknown>(`/admin/users/${userId}/reactivate`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return adminUserStatusChangeResponseSchema.parse(data).user;
+}
+
+// --- Ghi chú nội bộ (Week11.md 4.3) ----------------------------------------------------------------
+
+// Ghi chú của MỘT người dùng hoặc shop, mới nhất trước. Đối tượng không tồn tại ⇒ 404 `ADMIN_NOTE_TARGET_NOT_FOUND`. Cả
+// `targetType` lẫn `targetId` đều bắt buộc (BE không có API đọc ghi chú toàn sàn).
+export async function listAdminNotes(
+  params: Pick<AdminNoteListQuery, 'targetType' | 'targetId'> & Partial<AdminNoteListQuery>,
+): Promise<AdminNoteListResponse> {
+  const searchParams = new URLSearchParams({
+    targetType: params.targetType,
+    targetId: params.targetId,
+  });
+  if (params.page !== undefined) searchParams.set('page', String(params.page));
+  if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+  const data = await apiFetch<unknown>(`/admin/notes?${searchParams.toString()}`, {
+    method: 'GET',
+  });
+  return adminNoteListResponseSchema.parse(data);
+}
+
+// Thêm một ghi chú (chỉ thêm, không sửa hay xoá được). Tác giả là Admin của phiên — không gửi trong body. BE bọc kết quả trong
+// `{ note }`.
+export async function createAdminNote(input: CreateAdminNoteInput): Promise<AdminNote> {
+  const data = await apiFetch<unknown>('/admin/notes', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return adminNoteCreatedResponseSchema.parse(data).note;
+}
+
+// --- Kháng nghị của shop (Week11.md 4.6) -----------------------------------------------------------
+
+// Hàng đợi kháng nghị theo bộ lọc (mặc định PENDING: còn chờ VÀ lần khoá còn diễn ra; CLOSED: còn chờ nhưng lần khoá đã kết thúc).
+// Mỗi dòng mang sẵn shop và chủ shop để quyết định mà không phải mở trang khác. Chỉ ADMIN gọi được.
+export async function listAppeals(
+  params: Partial<AdminAppealListQuery> = {},
+): Promise<AdminAppealListResponse> {
+  const data = await apiFetch<unknown>(`/admin/appeals${toListQueryString(params)}`, {
+    method: 'GET',
+  });
+  return adminAppealListResponseSchema.parse(data);
+}
+
+// Chấp nhận (mở khoá shop ngay, ghi chú tuỳ chọn) hoặc từ chối (ghi chú BẮT BUỘC — BE trả 400 theo field `note`). Mỗi kháng nghị
+// chỉ quyết định được MỘT lần: Admin khác đã quyết trước ⇒ 409 `APPEAL_ALREADY_DECIDED`; lần khoá đã kết thúc ⇒ 409
+// `APPEAL_TARGET_CHANGED`; chấp nhận khi chủ shop đang bị khoá tài khoản ⇒ 409 `SHOP_OWNER_NOT_ACTIVE`. BE bọc kết quả trong
+// `{ appeal }` (kháng nghị SAU khi quyết định).
+export async function decideAppeal(
+  appealId: string,
+  input: DecideAppealInput,
+): Promise<AdminAppeal> {
+  const data = await apiFetch<unknown>(`/admin/appeals/${encodeURIComponent(appealId)}/decide`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return decideAppealResponseSchema.parse(data).appeal;
 }
 
 // --- Hoàn tiền (Week9.md 2.9) ---------------------------------------------------------------------

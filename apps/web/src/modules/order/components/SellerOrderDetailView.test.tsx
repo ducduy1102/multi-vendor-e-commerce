@@ -46,6 +46,7 @@ function order(overrides: Partial<SellerOrderDetail> = {}): SellerOrderDetail {
     carrier: null,
     trackingCode: null,
     buyerNote: null,
+    internalNote: null,
     history: [
       {
         fromStatus: null,
@@ -301,5 +302,31 @@ describe('SellerOrderDetailView', () => {
     const footer = container.querySelector('section > div.empty\\:hidden');
     expect(footer).not.toBeNull();
     expect(footer).toBeEmptyDOMElement();
+  });
+});
+
+describe('SellerOrderDetailView — khối ghi chú nội bộ (Week11.md 4.4)', () => {
+  it('có internalNoteSection -> hiện trong trang (cột phụ, ngay sau lời nhắn của người mua)', () => {
+    render(
+      withIntl(
+        <SellerOrderDetailView
+          order={order({ buyerNote: 'Giao giờ hành chính' })}
+          internalNoteSection={<section aria-label="ghi chú shop">nội dung</section>}
+        />,
+      ),
+    );
+
+    const buyerNote = screen.getByRole('region', { name: 'Lời nhắn của người mua' });
+    const internal = screen.getByRole('region', { name: 'ghi chú shop' });
+    expect(internal).toHaveTextContent('nội dung');
+    expect(
+      buyerNote.compareDocumentPosition(internal) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('không truyền internalNoteSection -> không có khối nào (view không tự dựng ghi chú)', () => {
+    render(withIntl(<SellerOrderDetailView order={order()} />));
+
+    expect(screen.queryByRole('region', { name: /ghi chú/i })).not.toBeInTheDocument();
   });
 });

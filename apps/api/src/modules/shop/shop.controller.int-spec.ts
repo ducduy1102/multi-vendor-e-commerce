@@ -4,7 +4,7 @@ import { PrismaClient, type ShopStatus } from '@prisma/client';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { App } from 'supertest/types';
-import { shopSchema } from '@ecommerce/types';
+import { myShopSchema, shopSchema } from '@ecommerce/types';
 import { AppModule } from '../../app.module';
 import { AllExceptionsFilter } from '../../shared/filters/all-exceptions.filter';
 import { TransformResponseInterceptor } from '../../shared/interceptors/transform-response.interceptor';
@@ -437,6 +437,55 @@ describe('ShopController — nộp lại + khoá sửa (HTTP thật)', () => {
         // Nếu PATCH ghi được SAU lần chuyển (kẽ hở đọc-rồi-ghi) thì tên cuối sẽ là 'Tên từ PATCH'.
         expect(shop.name).toBe('Tên từ nộp lại');
       }
+    });
+  });
+
+  describe('GET /shops/me kèm địa chỉ hỗ trợ cho banner (Week11.md 4.2)', () => {
+    const savedSupport = process.env.SUPPORT_EMAIL;
+    afterEach(() => {
+      if (savedSupport === undefined) delete process.env.SUPPORT_EMAIL;
+      else process.env.SUPPORT_EMAIL = savedSupport;
+    });
+
+    it('supportEmail lấy từ ENV của BE mỗi lần gọi: không đặt / sai định dạng ⇒ null, đặt ⇒ giá trị; parse được bằng myShopSchema', async () => {
+      const supportOwner = await registerAndLogin('support');
+      const { agent } = await createShop('REJECTED', null, supportOwner);
+      const fetchMine = async () =>
+        myShopSchema.parse(
+          (
+            body(await agent.get('/api/v1/shops/me').expect(200)) as {
+              shop: unknown;
+            }
+          ).shop,
+        );
+
+      delete process.env.SUPPORT_EMAIL;
+      expect((await fetchMine()).supportEmail).toBeNull();
+
+      process.env.SUPPORT_EMAIL = 'không phải email';
+      expect((await fetchMine()).supportEmail).toBeNull();
+
+      process.env.SUPPORT_EMAIL = 'support@example.com';
+      expect(await fetchMine()).toMatchObject({
+        status: 'REJECTED',
+        supportEmail: 'support@example.com',
+      });
+    });
+
+    it('chỉ GET /shops/me trả supportEmail: shop công khai không có (không lộ cấu hình cho người lạ)', async () => {
+      process.env.SUPPORT_EMAIL = 'support@example.com';
+      const publicOwner = await registerAndLogin('support-public');
+      const { shopId } = await createShop('APPROVED', null, publicOwner);
+      const { slug } = await prisma.shop.findUniqueOrThrow({
+        where: { id: shopId },
+        select: { slug: true },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/shops/${slug}`)
+        .expect(200);
+
+      expect(JSON.stringify(body(res))).not.toContain('support@example.com');
     });
   });
 

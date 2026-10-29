@@ -11,6 +11,19 @@ function renderTabs(activeStatus: ShopStatus) {
   return within(screen.getByRole('navigation', { name: 'Lọc shop theo trạng thái' }));
 }
 
+describe('AdminShopTabs — hàng cuộn ngang có lớp mờ ở mép phải (Week11.md 4.5, dòng 5)', () => {
+  it('dưới sm: mờ 32px ở mép phải và chừa 32px sau tab cuối (kéo hết cỡ thì tab cuối không bị mờ); từ sm không mờ', () => {
+    renderTabs('PENDING');
+
+    const nav = screen.getByRole('navigation');
+    expect(nav).toHaveClass('overflow-x-auto', 'pr-8', 'pl-4', 'sm:px-0');
+    expect(nav.className).toContain(
+      'max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%_-_2rem),transparent)]',
+    );
+    expect(nav.className).not.toMatch(/(^|\s)\[mask-image/);
+  });
+});
+
 describe('AdminShopTabs', () => {
   it('đủ 4 tab theo đúng thứ tự, mỗi tab trỏ đúng ?status= (hàng chờ duyệt là mặc định nên không cần param, luôn về trang 1)', () => {
     const nav = renderTabs('PENDING');

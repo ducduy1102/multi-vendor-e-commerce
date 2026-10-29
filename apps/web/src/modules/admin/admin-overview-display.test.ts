@@ -118,11 +118,13 @@ describe('ADMIN_NAV_ITEMS', () => {
     }
   });
 
-  it('thứ tự: Tổng quan, Shop, Hoàn tiền', () => {
+  it('thứ tự: Tổng quan, Shop, Người dùng (ngay sau Shop), Hoàn tiền, Kháng nghị (cuối)', () => {
     expect(ADMIN_NAV_ITEMS.map((item) => item.href)).toEqual([
       '/admin',
       '/admin/shops',
+      '/admin/users',
       '/admin/refunds',
+      '/admin/appeals',
     ]);
   });
 
@@ -133,11 +135,15 @@ describe('ADMIN_NAV_ITEMS', () => {
       refundsNeedingAction: 3,
       refundablePayments: 4,
     };
-    const [home, shops, refunds] = ADMIN_NAV_ITEMS;
+    const [home, shops, users, refunds, appeals] = ADMIN_NAV_ITEMS;
 
     expect(home.count(overview)).toBeNull();
     expect(shops.count(overview)).toBe(5);
+    // Người dùng không có hàng chờ nên không có số trên nav.
+    expect(users.count(overview)).toBeNull();
     expect(refunds.count(overview)).toBe(9);
+    // Kháng nghị chưa có số trong /admin/overview nên không có số trên nav.
+    expect(appeals.count(overview)).toBeNull();
   });
 });
 

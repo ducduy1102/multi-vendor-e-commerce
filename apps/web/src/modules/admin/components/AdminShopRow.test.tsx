@@ -1,3 +1,4 @@
+import { SHOP_CASCADE_SUSPEND_REASON } from '@ecommerce/types';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -49,12 +50,12 @@ describe('AdminShopRow', () => {
     expect(time).toHaveAttribute('datetime', '2026-10-01T12:00:00.000Z');
   });
 
-  it('mỗi trường có nhãn (hiện ở mobile, `md:sr-only` ở desktop để vẫn có trong cây trợ năng)', () => {
+  it('mỗi trường có nhãn (hiện ở mobile, `lg:sr-only` ở desktop để vẫn có trong cây trợ năng)', () => {
     renderRow();
 
     for (const label of ['Chủ shop', 'Chờ từ', 'Trạng thái']) {
       const element = screen.getByText(label);
-      expect(element).toHaveClass('md:sr-only');
+      expect(element).toHaveClass('lg:sr-only');
       expect(element).not.toHaveClass('hidden');
     }
   });
@@ -98,6 +99,16 @@ describe('AdminShopRow', () => {
     const cells = container.querySelectorAll('li > div');
     expect(cells[cells.length - 1]).toHaveClass('empty:hidden');
     expect(cells[cells.length - 1]).toBeEmptyDOMElement();
+  });
+
+  it('ô thao tác là cột flex để cụm nút giãn đủ bề rộng cột, không căn phải/giữa theo nội dung', () => {
+    const { container } = renderRow({}, <div data-testid="actions" />);
+
+    const cells = container.querySelectorAll('li > div');
+    const last = cells[cells.length - 1];
+    expect(last).toHaveClass('flex', 'flex-col');
+    expect(last).not.toHaveClass('lg:justify-end');
+    expect(last).not.toHaveClass('items-center');
   });
 
   it('logo: có URL -> thẻ img; không có -> không có img (biểu tượng thay thế)', () => {
@@ -211,5 +222,87 @@ describe('AdminShopRow', () => {
         expect(screen.queryByText(/Đã gửi lại/)).not.toBeInTheDocument();
       },
     );
+  });
+
+  it('shop bị TỰ ĐỘNG tạm ngừng vì chủ tài khoản bị khoá/cấm: mã SHOP_CASCADE_SUSPEND_REASON được dịch, mã thô không bao giờ hiện', () => {
+    renderRow({ status: 'SUSPENDED', statusReason: SHOP_CASCADE_SUSPEND_REASON });
+
+    expect(screen.getByText('Lý do: tài khoản chủ shop bị khoá hoặc bị cấm')).toBeInTheDocument();
+    expect(screen.queryByText(/OWNER_ACCOUNT_SUSPENDED/)).not.toBeInTheDocument();
+  });
+
+  it('bản tiếng Anh của lý do tự động: không lộ tiếng Việt, không lộ mã thô', () => {
+    render(
+      withIntl(
+        <ul>
+          <AdminShopRow
+            shop={{ ...SHOP, status: 'SUSPENDED', statusReason: SHOP_CASCADE_SUSPEND_REASON }}
+          />
+        </ul>,
+        'en',
+      ),
+    );
+
+    expect(
+      screen.getByText('Reason: the owner’s account is suspended or banned'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/OWNER_ACCOUNT_SUSPENDED|tài khoản/)).not.toBeInTheDocument();
+  });
+
+  it('lý do Admin tự nhập vẫn hiện nguyên văn (không bị nhầm với mã tự động)', () => {
+    renderRow({ status: 'SUSPENDED', statusReason: 'Bán hàng cấm' });
+
+    expect(screen.getByText('Lý do: Bán hàng cấm')).toBeInTheDocument();
+  });
+});
+
+describe('AdminShopRow — sửa lỗi hiển thị (Week11.md 4.5)', () => {
+  const LONG_UNBROKEN = 'x'.repeat(500);
+
+  it('dòng 1: lý do (và lý do bị từ chối lần trước) dùng overflow-wrap:anywhere — break-words không thu nhỏ min-content nên chuỗi không dấu cách làm thẻ rộng ra', () => {
+    renderRow({ status: 'SUSPENDED', statusReason: LONG_UNBROKEN });
+    const reason = screen.getByText(`Lý do: ${LONG_UNBROKEN}`);
+    expect(reason).toHaveClass('[overflow-wrap:anywhere]', 'line-clamp-2');
+    expect(reason).not.toHaveClass('break-words');
+  });
+
+  it('dòng 1: cùng cách xử lý cho lý do từ chối lần trước của shop nộp lại', () => {
+    renderRow({ status: 'PENDING', lastRejectionReason: LONG_UNBROKEN });
+    const previous = screen.getByText(/Lý do từ chối lần trước/);
+    expect(previous).toHaveClass('[overflow-wrap:anywhere]');
+    expect(previous).not.toHaveClass('break-words');
+  });
+
+  it('dòng 7: chữ bị cắt (tên shop, slug, tên và email chủ shop) mang bản đầy đủ ở title', () => {
+    renderRow({ name: 'Shop Của Tài Khoản Bị Khoá Rất Dài' });
+
+    expect(
+      screen.getByRole('heading', { name: 'Shop Của Tài Khoản Bị Khoá Rất Dài' }),
+    ).toHaveAttribute('title', 'Shop Của Tài Khoản Bị Khoá Rất Dài');
+    expect(screen.getByText('/shop-thoi-trang-abc')).toHaveAttribute(
+      'title',
+      '/shop-thoi-trang-abc',
+    );
+    expect(screen.getByText('Nguyễn Văn A')).toHaveAttribute('title', 'Nguyễn Văn A');
+    expect(screen.getByText('nguyenvana@example.com')).toHaveAttribute(
+      'title',
+      'nguyenvana@example.com',
+    );
+  });
+
+  it('dòng 8: thẻ (dưới lg) có 2 cột — Chủ shop cạnh Ngày; shop, trạng thái và thao tác chiếm cả hàng; từ lg mỗi ô một cột của bảng', () => {
+    const { container } = renderRow({}, <button type="button">Duyệt</button>);
+
+    const row = container.querySelector('li');
+    expect(row).toHaveClass('grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]');
+    const cells = Array.from(row?.children ?? []);
+    expect(cells).toHaveLength(5);
+    const [shop, owner, date, status, actions] = cells;
+    for (const cell of [shop, status, actions]) {
+      expect(cell).toHaveClass('col-span-2', 'lg:col-span-1');
+    }
+    for (const cell of [owner, date]) {
+      expect(cell).not.toHaveClass('col-span-2');
+    }
   });
 });

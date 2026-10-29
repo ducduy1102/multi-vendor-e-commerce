@@ -1,5 +1,6 @@
 'use client';
 
+import { SHOP_CASCADE_SUSPEND_REASON } from '@ecommerce/types';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 
@@ -11,6 +12,7 @@ import { useFormatAdminDate } from '../hooks/useFormatAdminDate';
 import type { AdminShop } from '../types';
 import {
   ADMIN_SHOP_FIELD_LABEL_CLASS,
+  ADMIN_SHOP_FULL_ROW_CELL_CLASS,
   ADMIN_SHOP_GRID_CLASS,
   ADMIN_SHOP_ROW_CLASS,
 } from './admin-shop-row.constants';
@@ -40,18 +42,26 @@ export function AdminShopRow({ shop, actions }: AdminShopRowProps) {
 
   return (
     <li className={cn(ADMIN_SHOP_GRID_CLASS, ADMIN_SHOP_ROW_CLASS)}>
-      <div className="flex min-w-0 items-center gap-3">
+      <div className={cn('flex min-w-0 items-center gap-3', ADMIN_SHOP_FULL_ROW_CELL_CLASS)}>
         <ShopLogo src={shop.logoUrl} />
         <div className="flex min-w-0 flex-col">
-          <h2 className="truncate text-sm font-semibold text-foreground">{shop.name}</h2>
-          <p className="truncate text-xs text-muted-foreground">/{shop.slug}</p>
+          <h2 title={shop.name} className="truncate text-sm font-semibold text-foreground">
+            {shop.name}
+          </h2>
+          <p title={`/${shop.slug}`} className="truncate text-xs text-muted-foreground">
+            /{shop.slug}
+          </p>
         </div>
       </div>
 
       <div className="flex min-w-0 flex-col">
         <span className={ADMIN_SHOP_FIELD_LABEL_CLASS}>{t('columnOwner')}</span>
-        <span className="truncate text-sm text-foreground">{shop.owner.name}</span>
-        <span className="truncate text-xs text-muted-foreground">{shop.owner.email}</span>
+        <span title={shop.owner.name} className="truncate text-sm text-foreground">
+          {shop.owner.name}
+        </span>
+        <span title={shop.owner.email} className="truncate text-xs text-muted-foreground">
+          {shop.owner.email}
+        </span>
       </div>
 
       <div className="flex flex-col">
@@ -68,22 +78,28 @@ export function AdminShopRow({ shop, actions }: AdminShopRowProps) {
         </time>
       </div>
 
-      <div className="flex min-w-0 flex-col items-start gap-1">
+      <div
+        className={cn('flex min-w-0 flex-col items-start gap-1', ADMIN_SHOP_FULL_ROW_CELL_CLASS)}
+      >
         <span className={ADMIN_SHOP_FIELD_LABEL_CLASS}>{t('columnStatus')}</span>
         <AdminShopStatusBadge status={shop.status} />
         {shop.statusReason ? (
           // Lý do tối đa 500 ký tự — kẹp 2 dòng cho bảng gọn, đủ nội dung ở `title` khi rê chuột.
+          // Shop bị TỰ ĐỘNG tạm ngừng vì chủ tài khoản bị khoá/cấm: BE lưu MÃ (SHOP_CASCADE_SUSPEND_REASON), FE dịch ra câu
+          // theo ngôn ngữ — mã thô không bao giờ hiện cho người xem.
           <p
             title={shop.statusReason}
-            className="line-clamp-2 text-xs break-words text-muted-foreground"
+            className="line-clamp-2 text-xs [overflow-wrap:anywhere] text-muted-foreground"
           >
-            {t('rowReason', { reason: shop.statusReason })}
+            {shop.statusReason === SHOP_CASCADE_SUSPEND_REASON
+              ? t('rowReasonOwnerAccountSuspended')
+              : t('rowReason', { reason: shop.statusReason })}
           </p>
         ) : null}
         {showPreviousRejection ? (
           <p
             title={shop.lastRejectionReason ?? undefined}
-            className="line-clamp-2 text-xs break-words text-muted-foreground"
+            className="line-clamp-2 text-xs [overflow-wrap:anywhere] text-muted-foreground"
           >
             {t('rowPreviousRejection', { reason: shop.lastRejectionReason ?? '' })}
           </p>
@@ -95,8 +111,11 @@ export function AdminShopRow({ shop, actions }: AdminShopRowProps) {
         ) : null}
       </div>
 
-      {/* `empty:hidden`: shop không còn hành động nào (đã bị từ chối) thì ô trống không chiếm chỗ. */}
-      <div className="flex flex-wrap items-center gap-2 empty:hidden md:justify-end">{actions}</div>
+      {/* `empty:hidden`: shop không còn hành động nào (đã bị từ chối) thì ô trống không chiếm chỗ. Ô là cột flex để cụm nút bên
+          trong (AdminShopActions, ADMIN_SHOP_ACTIONS_*_CLASS) tự giãn đủ bề rộng cột để xếp dọc hoặc căn phải. */}
+      <div className={cn('flex min-w-0 flex-col empty:hidden', ADMIN_SHOP_FULL_ROW_CELL_CLASS)}>
+        {actions}
+      </div>
     </li>
   );
 }

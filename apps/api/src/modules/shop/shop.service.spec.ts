@@ -211,11 +211,35 @@ describe('ShopService', () => {
   });
 
   describe('getMyShop', () => {
-    it('trả về shop nếu user đã có', async () => {
+    const savedSupport = process.env.SUPPORT_EMAIL;
+    beforeEach(() => {
+      delete process.env.SUPPORT_EMAIL;
+    });
+    afterEach(() => {
+      if (savedSupport === undefined) delete process.env.SUPPORT_EMAIL;
+      else process.env.SUPPORT_EMAIL = savedSupport;
+    });
+
+    it('trả về shop nếu user đã có; không đặt SUPPORT_EMAIL ⇒ supportEmail null', async () => {
       prisma.shop.findFirst.mockResolvedValue({ id: 'shop-1' });
 
       await expect(service.getMyShop('user-1')).resolves.toEqual({
         id: 'shop-1',
+        supportEmail: null,
+      });
+    });
+
+    it('có SUPPORT_EMAIL ⇒ kèm supportEmail cho banner; ENV sai định dạng ⇒ null (không ném)', async () => {
+      prisma.shop.findFirst.mockResolvedValue({ id: 'shop-1' });
+
+      process.env.SUPPORT_EMAIL = 'support@example.com';
+      await expect(service.getMyShop('user-1')).resolves.toMatchObject({
+        supportEmail: 'support@example.com',
+      });
+
+      process.env.SUPPORT_EMAIL = 'không phải email';
+      await expect(service.getMyShop('user-1')).resolves.toMatchObject({
+        supportEmail: null,
       });
     });
 

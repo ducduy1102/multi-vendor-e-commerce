@@ -36,4 +36,5 @@ export type {
   SellerRefundRequestListResponse,
   SellerRefundRequestSummary,
   ShipOrderInput,
+  UpdateOrderInternalNoteInput,
 } from '@ecommerce/types';

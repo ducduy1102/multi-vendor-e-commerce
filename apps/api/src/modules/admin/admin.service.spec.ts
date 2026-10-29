@@ -56,6 +56,8 @@ describe('AdminService', () => {
     },
     shopStatusHistory: { create: jest.fn() },
     $transaction: jest.fn(),
+    // Đọc trạng thái tài khoản CHỦ SHOP khi duyệt / mở khoá (Week11.md 3.4), mặc định đang ACTIVE.
+    $queryRaw: jest.fn(),
   };
   const mailService = { sendShopStatusChanged: jest.fn() };
 
@@ -67,6 +69,7 @@ describe('AdminService', () => {
       (callback: (tx: unknown) => unknown) => callback(prisma),
     );
     prisma.shopStatusHistory.create.mockResolvedValue({});
+    prisma.$queryRaw.mockResolvedValue([{ account_status: 'ACTIVE' }]);
     mailService.sendShopStatusChanged.mockResolvedValue(undefined);
     notifications = createFakeNotificationService();
     const moduleRef = await Test.createTestingModule({
@@ -595,12 +598,128 @@ describe('AdminService', () => {
     });
   });
 
+  describe('tài khoản chủ shop không còn ACTIVE (Week11.md 3.4)', () => {
+    const OWNER_ID = 'owner-1';
+
+    function givenShopOfOwner(from: ShopStatus): void {
+      prisma.shop.findUnique.mockResolvedValue({
+        status: from,
+        ownerId: OWNER_ID,
+      });
+      prisma.shop.updateMany.mockResolvedValue({ count: 1 });
+      prisma.shop.findUniqueOrThrow.mockResolvedValue(shopRow({ id: SHOP_ID }));
+    }
+    const ownerIs = (status: string) =>
+      prisma.$queryRaw.mockResolvedValue([{ account_status: status }]);
+
+    const blocked: [ShopStatus, string][] = [
+      ['PENDING', 'SUSPENDED'],
+      ['PENDING', 'BANNED'],
+      ['PENDING', 'DEACTIVATED'],
+      ['SUSPENDED', 'SUSPENDED'],
+      ['SUSPENDED', 'BANNED'],
+    ];
+
+    it.each(blocked)(
+      'duyệt / mở khoá shop %s của chủ đang %s ⇒ 409 SHOP_OWNER_NOT_ACTIVE, không ghi, không email, không thông báo',
+      async (from, ownerStatus) => {
+        givenShopOfOwner(from);
+        ownerIs(ownerStatus);
+
+        await expect(
+          service.updateShopStatus(ADMIN_ID, SHOP_ID, { status: 'APPROVED' }),
+        ).rejects.toMatchObject({ status: 409, code: 'SHOP_OWNER_NOT_ACTIVE' });
+
+        expect(prisma.shop.updateMany).not.toHaveBeenCalled();
+        expect(prisma.shopStatusHistory.create).not.toHaveBeenCalled();
+        expect(mailService.sendShopStatusChanged).not.toHaveBeenCalled();
+        expect(notifications.notify).not.toHaveBeenCalled();
+      },
+    );
+
+    it('chủ shop không còn tồn tại (không có hàng) ⇒ cũng 409 SHOP_OWNER_NOT_ACTIVE', async () => {
+      givenShopOfOwner('PENDING');
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      await expect(
+        service.updateShopStatus(ADMIN_ID, SHOP_ID, { status: 'APPROVED' }),
+      ).rejects.toMatchObject({ code: 'SHOP_OWNER_NOT_ACTIVE' });
+    });
+
+    it.each<[ShopStatus, 'APPROVED']>([
+      ['PENDING', 'APPROVED'],
+      ['SUSPENDED', 'APPROVED'],
+    ])('chủ ACTIVE ⇒ %s → %s đi tiếp bình thường', async (from, status) => {
+      givenShopOfOwner(from);
+      ownerIs('ACTIVE');
+
+      await expect(
+        service.updateShopStatus(ADMIN_ID, SHOP_ID, { status }),
+      ).resolves.toBeDefined();
+      expect(prisma.shop.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('đọc chủ shop bằng FOR SHARE, theo ownerId CỦA SHOP (không tin client), trong CÙNG transaction', async () => {
+      givenShopOfOwner('PENDING');
+
+      await service.updateShopStatus(ADMIN_ID, SHOP_ID, { status: 'APPROVED' });
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+      const [query] = prisma.$queryRaw.mock.calls[0] as [Prisma.Sql];
+      expect(query.text).toMatch(/FROM users WHERE id = \$1 FOR SHARE/);
+      expect(query.values).toEqual([OWNER_ID]);
+      // Cùng transaction: việc đọc diễn ra TRƯỚC khi ghi trạng thái shop.
+      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.shop.updateMany.mock.invocationCallOrder[0],
+      );
+    });
+
+    it.each<[ShopStatus, 'REJECTED' | 'SUSPENDED']>([
+      ['PENDING', 'REJECTED'],
+      ['APPROVED', 'SUSPENDED'],
+    ])(
+      '%s → %s KHÔNG bị chặn khi chủ bị khoá và không đọc tài khoản chủ',
+      async (from, status) => {
+        givenShopOfOwner(from);
+        ownerIs('BANNED');
+
+        await expect(
+          service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+            status,
+            reason: 'Lý do',
+          }),
+        ).resolves.toBeDefined();
+        expect(prisma.$queryRaw).not.toHaveBeenCalled();
+      },
+    );
+
+    it('cạnh sai (APPROVED → APPROVED) với chủ bị khoá ⇒ vẫn là SHOP_INVALID_TRANSITION, không bị che bởi lỗi chủ shop', async () => {
+      givenShopOfOwner('APPROVED');
+      ownerIs('BANNED');
+
+      await expect(
+        service.updateShopStatus(ADMIN_ID, SHOP_ID, { status: 'APPROVED' }),
+      ).rejects.toMatchObject({ code: 'SHOP_INVALID_TRANSITION' });
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+  });
+
   describe('email trạng thái shop', () => {
     const OWNER = {
       name: 'Chủ Shop',
       email: 'owner@example.com',
       locale: 'vi' as 'vi' | 'en',
     };
+
+    // `supportEmail` đọc từ ENV mỗi lần gửi — ép không đặt để kết quả không phụ thuộc máy chạy test.
+    const savedSupport = process.env.SUPPORT_EMAIL;
+    beforeEach(() => {
+      delete process.env.SUPPORT_EMAIL;
+    });
+    afterEach(() => {
+      if (savedSupport === undefined) delete process.env.SUPPORT_EMAIL;
+      else process.env.SUPPORT_EMAIL = savedSupport;
+    });
 
     // findUnique được gọi 2 lần: trong transaction (đọc trạng thái hiện tại, select { status }) và sau đó
     // (đọc người nhận mail). Phân biệt theo `select` thay vì thứ tự gọi.
@@ -652,10 +771,40 @@ describe('AdminService', () => {
               kind === 'APPROVED' || kind === 'REINSTATED'
                 ? 'http://localhost:3000/seller/products'
                 : 'http://localhost:3000/seller/shop',
+            supportEmail: null,
           },
         );
       },
     );
+
+    it('có SUPPORT_EMAIL ⇒ truyền vào email; ENV sai định dạng hay chỉ có khoảng trắng ⇒ coi như không có, vẫn gửi', async () => {
+      process.env.SUPPORT_EMAIL = '  support@example.com  ';
+      givenShop('APPROVED');
+      await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+        status: 'SUSPENDED',
+        reason: 'Vi phạm',
+      });
+      expect(mailService.sendShopStatusChanged).toHaveBeenLastCalledWith(
+        'owner@example.com',
+        expect.objectContaining({
+          kind: 'SUSPENDED',
+          supportEmail: 'support@example.com',
+        }),
+      );
+
+      for (const invalid of ['không phải email', '   ']) {
+        process.env.SUPPORT_EMAIL = invalid;
+        givenShop('APPROVED');
+        await service.updateShopStatus(ADMIN_ID, SHOP_ID, {
+          status: 'SUSPENDED',
+          reason: 'Vi phạm',
+        });
+        expect(mailService.sendShopStatusChanged).toHaveBeenLastCalledWith(
+          'owner@example.com',
+          expect.objectContaining({ supportEmail: null }),
+        );
+      }
+    });
 
     it('theo ngôn ngữ của CHỦ SHOP: en ⇒ locale en và link có /en', async () => {
       givenShop('PENDING', { ...OWNER, locale: 'en' });

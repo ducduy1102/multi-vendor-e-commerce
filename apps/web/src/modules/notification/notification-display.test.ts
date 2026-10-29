@@ -217,6 +217,30 @@ const CASES: Case[] = [
     href: '/admin/shops',
   },
   {
+    name: 'ADMIN_APPEAL_PENDING',
+    notification: {
+      ...BASE,
+      type: 'ADMIN_APPEAL_PENDING',
+      data: { appealId: ORDER, shopId: SHOP, shopName: 'Shop Bị Khóa' },
+    },
+    icon: 'shop',
+    titleKey: 'titleAdminAppealPending',
+    bodyKey: 'bodyAdminAppealPending',
+    href: '/admin/appeals',
+  },
+  ...(['ACCEPTED', 'REJECTED'] as const).map((decision): Case => ({
+    name: `APPEAL_DECIDED ${decision}`,
+    notification: {
+      ...BASE,
+      type: 'APPEAL_DECIDED',
+      data: { appealId: ORDER, shopId: SHOP, decision },
+    },
+    icon: 'shop',
+    titleKey: decision === 'ACCEPTED' ? 'titleAppealAccepted' : 'titleAppealRejected',
+    bodyKey: decision === 'ACCEPTED' ? 'bodyAppealAccepted' : 'bodyAppealRejected',
+    href: '/seller/shop',
+  })),
+  {
     name: 'UNKNOWN',
     notification: { ...BASE, type: 'UNKNOWN', data: {} },
     icon: 'info',
@@ -333,7 +357,7 @@ describe.each(['vi', 'en'] as const)('chữ hiển thị (%s)', (locale) => {
       // Dữ liệu mẫu có tên shop/lý do tiếng Việt: thay bằng ASCII để chỉ còn mẫu dịch.
       const n = JSON.parse(
         JSON.stringify(c.notification).replace(
-          /Shop Áo|Áo thun|Hết hàng|Đổi ý|Không đủ điều kiện|Thiếu giấy phép|Shop Mới/g,
+          /Shop Áo|Áo thun|Hết hàng|Đổi ý|Không đủ điều kiện|Thiếu giấy phép|Shop Mới|Shop Bị Khóa/g,
           'x',
         ),
       ) as Notification;
@@ -410,6 +434,29 @@ describe('nội dung theo ngữ cảnh', () => {
     expect(render(describeNotification(find('SHOP_STATUS_CHANGED REJECTED')), 'vi').body).toContain(
       'Lý do: Thiếu giấy phép',
     );
+  });
+
+  it('kháng nghị: kết quả chấp nhận ≠ từ chối, và nội dung không chứa ghi chú của Admin', () => {
+    const accepted = render(describeNotification(find('APPEAL_DECIDED ACCEPTED')), 'vi');
+    const rejected = render(describeNotification(find('APPEAL_DECIDED REJECTED')), 'vi');
+
+    expect(accepted.title).toBe('Kháng nghị được chấp nhận');
+    expect(rejected.title).toBe('Kháng nghị bị từ chối');
+    expect(accepted.body).not.toBe(rejected.body);
+    expect(render(describeNotification(find('APPEAL_DECIDED ACCEPTED')), 'en').title).toBe(
+      'Appeal accepted',
+    );
+    expect(render(describeNotification(find('APPEAL_DECIDED REJECTED')), 'en').title).toBe(
+      'Appeal rejected',
+    );
+  });
+
+  it('kháng nghị mới (Admin): nêu tên shop và dẫn tới hàng đợi kháng nghị', () => {
+    const display = describeNotification(find('ADMIN_APPEAL_PENDING'));
+
+    expect(display.href).toBe('/admin/appeals');
+    expect(render(display, 'vi').body).toContain('Shop Bị Khóa');
+    expect(render(display, 'en').body).toContain('Shop Bị Khóa');
   });
 
   it('phía nhận khác nhau ⇒ chữ khác nhau (hủy đơn: người mua vs chủ shop; khiếu nại: Admin vs chủ shop)', () => {

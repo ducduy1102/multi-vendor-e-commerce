@@ -1,11 +1,13 @@
 import { frontendUrl } from '../frontend-url';
 import type { MailLocale } from '../mail-locale';
 import type {
+  AccountStatusEmailData,
   PasswordChangedEmailData,
   PasswordResetEmailData,
   ShopStatusEmailData,
   ShopStatusEmailKind,
 } from './account-email.types';
+import { accountStatusTemplate } from './account-status.template';
 import type {
   OrderCancelledEmailData,
   OrderCompletedEmailData,
@@ -117,7 +119,7 @@ const BUILDERS: Array<
         trackingCode: 'T123',
       } satisfies OrderShippedEmailData),
   ],
-  ...(['SELLER', 'BUYER', 'SYSTEM'] as const).map(
+  ...(['SELLER', 'BUYER', 'SYSTEM', 'ADMIN'] as const).map(
     (cancelledBy) =>
       [
         `order-cancelled (${cancelledBy})`,
@@ -211,6 +213,47 @@ const BUILDERS: Array<
         forgotPasswordUrl: frontendUrl('/forgot-password', locale),
       } satisfies PasswordChangedEmailData),
   ],
+  ...(['SUSPENDED', 'BANNED', 'REACTIVATED'] as const).map(
+    (kind) =>
+      [
+        `account-status (${kind})`,
+        (locale: MailLocale) =>
+          accountStatusTemplate({
+            locale,
+            name: 'John',
+            kind,
+            reason: 'Policy violation',
+            supportEmail: null,
+            loginUrl: frontendUrl('/login', locale),
+            shopNotice: null,
+          } satisfies AccountStatusEmailData),
+      ] as [string, (locale: MailLocale) => { subject: string; html: string }],
+  ),
+  // Cùng ba loại email nhưng kèm câu nói thêm về SHOP của người nhận (Week11.md 3.4): khoá ⇒ shop tạm ngừng, mở lại ⇒ shop
+  // được mở lại, mở lại từ bị cấm ⇒ shop vẫn bị khoá.
+  ...(
+    [
+      ['SUSPENDED', 'SUSPENDED'],
+      ['BANNED', 'SUSPENDED'],
+      ['REACTIVATED', 'REOPENED'],
+      ['REACTIVATED', 'STILL_SUSPENDED'],
+    ] as const
+  ).map(
+    ([kind, shopNotice]) =>
+      [
+        `account-status (${kind}, shop ${shopNotice})`,
+        (locale: MailLocale) =>
+          accountStatusTemplate({
+            locale,
+            name: 'John',
+            kind,
+            reason: 'Policy violation',
+            supportEmail: null,
+            loginUrl: frontendUrl('/login', locale),
+            shopNotice,
+          } satisfies AccountStatusEmailData),
+      ] as [string, (locale: MailLocale) => { subject: string; html: string }],
+  ),
   ...(['APPROVED', 'REJECTED', 'SUSPENDED', 'REINSTATED'] as const).map(
     (kind) =>
       [
@@ -226,6 +269,8 @@ const BUILDERS: Array<
                 ? 'Missing documents'
                 : null,
             shopUrl: frontendUrl('/seller/shop', locale),
+            // Có địa chỉ hỗ trợ để các kiểm tra chung bên dưới chạy cả trên nhánh có dòng liên hệ.
+            supportEmail: 'support@example.com',
           } satisfies ShopStatusEmailData),
       ] as [string, (locale: MailLocale) => { subject: string; html: string }],
   ),
@@ -304,15 +349,44 @@ describe('mọi template × mọi ngôn ngữ', () => {
     },
   );
 
+  // Không nhánh nào được để lọt chỗ giữ chỗ chưa thay (`{name}`) hay giá trị rỗng bị in ra chữ (`undefined`, `null`, `NaN`,
+  // `[object Object]`) — lỗi này chỉ lộ ra ở nhánh ít chạy (vd người hủy là Admin, có/không có dòng hỗ trợ).
+  it.each(BUILDERS)(
+    '%s: không còn {placeholder} hay giá trị rỗng bị in ra chữ ở cả vi và en',
+    (_name, build) => {
+      for (const locale of LOCALES) {
+        const { subject, html } = build(locale);
+        for (const text of [subject, html]) {
+          expect(text).not.toMatch(/\{[A-Za-z_]\w*\}/);
+          expect(text).not.toMatch(/\bundefined\b|\bnull\b|\bNaN\b|\[object /);
+        }
+      }
+    },
+  );
+
+  // Email khoá / cấm tài khoản CỐ Ý không có nút hay link (người nhận không đăng nhập được, Week11.md 3.3). Khai tường minh
+  // thay vì nới điều kiện "có ít nhất một link" cho mọi template: template khác mất nút sẽ vẫn làm test đỏ.
+  const LINKLESS = new Set([
+    'account-status (SUSPENDED)',
+    'account-status (BANNED)',
+    'account-status (SUSPENDED, shop SUSPENDED)',
+    'account-status (BANNED, shop SUSPENDED)',
+  ]);
+
   it.each(BUILDERS)(
     '%s: link trong email có đúng prefix ngôn ngữ (vi: không /en, en: /en)',
-    (_name, build) => {
+    (name, build) => {
       const hrefs = (html: string) =>
         [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
 
       const viLinks = hrefs(build('vi').html);
       const enLinks = hrefs(build('en').html);
 
+      if (LINKLESS.has(name)) {
+        expect(viLinks).toEqual([]);
+        expect(enLinks).toEqual([]);
+        return;
+      }
       expect(viLinks.length).toBeGreaterThan(0);
       expect(enLinks.length).toBeGreaterThan(0);
       for (const link of viLinks) expect(link).not.toContain('/en/');
@@ -420,6 +494,7 @@ describe('chống chèn HTML ở mọi ngôn ngữ', () => {
         kind: 'REJECTED',
         reason: HOSTILE,
         shopUrl: frontendUrl('/seller/shop', locale),
+        supportEmail: null,
       });
       expectEscaped(html);
       // Ba chỗ chèn (tên chủ, tên shop, lý do) ⇒ ba lần xuất hiện đã escape.
@@ -521,6 +596,7 @@ describe('shop-status', () => {
     locale: MailLocale,
     kind: ShopStatusEmailKind,
     reason: string | null,
+    supportEmail: string | null = null,
   ): ShopStatusEmailData => ({
     locale,
     ownerName: 'John',
@@ -528,6 +604,7 @@ describe('shop-status', () => {
     kind,
     reason,
     shopUrl: frontendUrl('/seller/shop', locale),
+    supportEmail,
   });
 
   it.each([
@@ -568,6 +645,55 @@ describe('shop-status', () => {
     expect(
       shopStatusTemplate(base('en', 'REINSTATED', null)).html,
     ).not.toContain('Reason');
+  });
+
+  describe('dòng liên hệ hỗ trợ (Week11.md 4.2)', () => {
+    const SUPPORT = 'support@example.com';
+
+    it.each(['REJECTED', 'SUSPENDED'] as const)(
+      '%s có địa chỉ hỗ trợ: vi hiện "Liên hệ hỗ trợ", en hiện "Contact support", đúng địa chỉ',
+      (kind) => {
+        const vi = shopStatusTemplate(base('vi', kind, 'Lý do', SUPPORT)).html;
+        const en = shopStatusTemplate(base('en', kind, 'Reason', SUPPORT)).html;
+
+        expect(vi).toContain(`Liên hệ hỗ trợ:</strong> ${SUPPORT}`);
+        expect(en).toContain(`Contact support:</strong> ${SUPPORT}`);
+      },
+    );
+
+    it.each(['REJECTED', 'SUSPENDED'] as const)(
+      '%s không đặt địa chỉ hỗ trợ (null) ⇒ không có dòng liên hệ nào',
+      (kind) => {
+        for (const locale of ['vi', 'en'] as const) {
+          const { html } = shopStatusTemplate(base(locale, kind, 'x', null));
+          expect(html).not.toContain('Liên hệ hỗ trợ');
+          expect(html).not.toContain('Contact support');
+        }
+      },
+    );
+
+    it.each(['APPROVED', 'REINSTATED'] as const)(
+      '%s là tin vui: dù có địa chỉ hỗ trợ cũng không hiện dòng liên hệ',
+      (kind) => {
+        for (const locale of ['vi', 'en'] as const) {
+          const { html } = shopStatusTemplate(
+            base(locale, kind, null, SUPPORT),
+          );
+          expect(html).not.toContain(SUPPORT);
+          expect(html).not.toContain('Liên hệ hỗ trợ');
+          expect(html).not.toContain('Contact support');
+        }
+      },
+    );
+
+    it('địa chỉ hỗ trợ bị escape như mọi chuỗi chèn vào email', () => {
+      const { html } = shopStatusTemplate(
+        base('vi', 'SUSPENDED', 'x', '<script>alert(1)</script>'),
+      );
+
+      expect(html).not.toContain('<script>');
+      expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    });
   });
 
   it('vi: có link tới trang quản lý shop không prefix; en: có /en', () => {

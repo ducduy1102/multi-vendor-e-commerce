@@ -12,6 +12,7 @@ export { useUpdateShop } from './hooks/useUpdateShop';
 export * as shopService from './services/shop.service';
 export type {
   CreateShopInput,
+  MyShop,
   PublicShop,
   ResubmitShopInput,
   UpdateShopInput,

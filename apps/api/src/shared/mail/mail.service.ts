@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { MAIL_PROVIDER, type MailProvider } from './mail-provider.interface';
 import type { MailLocale } from './mail-locale';
 import type {
+  AccountStatusEmailData,
   PasswordChangedEmailData,
   PasswordResetEmailData,
   ShopStatusEmailData,
@@ -15,6 +16,7 @@ import type {
   OrderShippedEmailData,
   RefundRequestRejectedEmailData,
 } from './templates/order-email.types';
+import { accountStatusTemplate } from './templates/account-status.template';
 import { orderCancelledTemplate } from './templates/order-cancelled.template';
 import { orderCompletedTemplate } from './templates/order-completed.template';
 import { orderConfirmedTemplate } from './templates/order-confirmed.template';
@@ -75,6 +77,14 @@ export class MailService {
     data: PasswordChangedEmailData,
   ): Promise<void> {
     await this.deliver(to, passwordChangedTemplate(data));
+  }
+
+  // Trạng thái tài khoản do Admin đổi (Week11.md 3.3). Người gọi chịu trách nhiệm bắt lỗi.
+  async sendAccountStatusChanged(
+    to: string,
+    data: AccountStatusEmailData,
+  ): Promise<void> {
+    await this.deliver(to, accountStatusTemplate(data));
   }
 
   // Trạng thái shop (Week9.md 1.13).

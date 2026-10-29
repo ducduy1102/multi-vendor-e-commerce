@@ -12,6 +12,7 @@ import {
   buildAdminRefundsHref,
   type AdminRefundTab,
 } from '../admin-refunds-href';
+import { ADMIN_TAB_SCROLL_CLASS } from './admin-tab-fade.constants';
 
 interface AdminRefundTabsProps {
   activeTab: AdminRefundTab;
@@ -25,7 +26,7 @@ export function AdminRefundTabs({ activeTab }: AdminRefundTabsProps) {
   const tDynamic = t as unknown as LooseTranslator;
 
   return (
-    <nav aria-label={t('refundsTabsLabel')} className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+    <nav aria-label={t('refundsTabsLabel')} className={ADMIN_TAB_SCROLL_CLASS}>
       <ul className="flex min-w-max gap-1 border-b border-border">
         {ADMIN_REFUND_TABS.map((tab) => (
           <li key={tab}>

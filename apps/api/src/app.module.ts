@@ -16,6 +16,7 @@ import { CheckoutModule } from './modules/checkout/checkout.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ReviewModule } from './modules/review/review.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { AppealModule } from './modules/appeal/appeal.module';
 import { NotificationInboxModule } from './modules/notification/notification-inbox.module';
 import { RealtimeModule } from './shared/realtime/realtime.module';
 import { RejectFormBodyGuard } from './shared/guards/reject-form-body.guard';
@@ -37,6 +38,7 @@ import { RejectFormBodyGuard } from './shared/guards/reject-form-body.guard';
     AdminModule,
     ReviewModule,
     ChatModule,
+    AppealModule,
     NotificationInboxModule,
     RealtimeModule,
   ],

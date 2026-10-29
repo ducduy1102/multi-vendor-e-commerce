@@ -1,10 +1,12 @@
 import {
   HandCoins,
   LayoutDashboard,
+  MessageSquareWarning,
   ReceiptText,
   Scale,
   Store,
   Undo2,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -86,8 +88,8 @@ export interface AdminNavItem {
   count: (overview: AdminOverview) => number | null;
 }
 
-// Chỉ liệt kê trang ĐÃ CÓ (không link tới trang chưa tồn tại). Người dùng, Báo cáo, Kháng nghị... thêm vào đây khi
-// trang tương ứng có.
+// Chỉ liệt kê trang ĐÃ CÓ (không link tới trang chưa tồn tại). Báo cáo... thêm vào đây khi trang tương ứng có. "Kháng nghị" (4.6) đứng
+// CUỐI để không đụng thứ tự đã chốt ở 3.5 ("Người dùng" ngay sau "Shop").
 export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   {
     href: '/admin',
@@ -104,6 +106,14 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
     count: (overview) => overview.pendingShops,
   },
   {
+    href: '/admin/users',
+    labelKey: 'navUsers',
+    icon: Users,
+    exact: false,
+    // Người dùng không có hàng chờ nên không có số trên nav (không hiện số tổng — đó không phải việc cần xử lý).
+    count: () => null,
+  },
+  {
     href: '/admin/refunds',
     labelKey: 'navRefunds',
     icon: HandCoins,
@@ -112,6 +122,15 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
       overview.escalatedRefundRequests +
       overview.refundsNeedingAction +
       overview.refundablePayments,
+  },
+  {
+    href: '/admin/appeals',
+    labelKey: 'navAppeals',
+    icon: MessageSquareWarning,
+    exact: false,
+    // Chưa có số kháng nghị chờ trong /admin/overview (BE không đếm) nên mục này không có số trên nav; Admin được báo bằng thông báo
+    // ADMIN_APPEAL_PENDING (chuông + toast).
+    count: () => null,
   },
 ];
 

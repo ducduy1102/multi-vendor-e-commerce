@@ -301,8 +301,22 @@ describe('AdminController (HTTP thật)', () => {
       ['limit > 50', 'limit=51'],
       ['page = 0', 'page=0'],
       ['page không phải số', 'page=abc'],
+      // `page=1e21` từng qua Zod (`.int()` coi 1e21 là số nguyên) rồi Prisma ném "Unable to fit value 2e+22 into a 64-bit
+      // signed integer for field `skip`" ⇒ 500 thay vì 400.
+      ['page vượt trần', 'page=10001'],
+      ['page = 1e21 (từng làm Prisma tràn số nguyên ⇒ 500)', 'page=1e21'],
     ])('query sai (%s) — 400', async (_, query) => {
       await admin.get(`/api/v1/admin/shops?${query}`).expect(400);
+    });
+
+    it('page đúng trần vẫn là 200 và trả danh sách rỗng', async () => {
+      const res = await admin
+        .get('/api/v1/admin/shops?page=10000&limit=50')
+        .expect(200);
+
+      expect((res.body as { data: { items: unknown[] } }).data.items).toEqual(
+        [],
+      );
     });
   });
 
@@ -770,6 +784,66 @@ describe('AdminController (HTTP thật)', () => {
         '&lt;a href=&quot;https://evil.example&quot;',
       );
       expect(mail.html).toContain('/seller/shop');
+    });
+
+    // Week11.md 4.2: dòng "Liên hệ hỗ trợ" chỉ có ở từ chối / khoá và chỉ khi đặt ENV SUPPORT_EMAIL.
+    describe('dòng liên hệ hỗ trợ (SUPPORT_EMAIL)', () => {
+      const savedSupport = process.env.SUPPORT_EMAIL;
+      afterEach(() => {
+        if (savedSupport === undefined) delete process.env.SUPPORT_EMAIL;
+        else process.env.SUPPORT_EMAIL = savedSupport;
+      });
+
+      it('đặt ENV: email từ chối và email khoá có dòng liên hệ; duyệt và mở khoá thì không', async () => {
+        process.env.SUPPORT_EMAIL = 'support@example.com';
+
+        const rejected = await createShop(sellerId, 'PENDING');
+        await patchStatus(rejected.shopId, {
+          status: 'REJECTED',
+          reason: 'Thiếu giấy phép',
+        }).expect(200);
+        const suspended = await createShop(sellerId, 'APPROVED');
+        await patchStatus(suspended.shopId, {
+          status: 'SUSPENDED',
+          reason: 'Vi phạm chính sách',
+        }).expect(200);
+        const approved = await createShop(sellerId, 'PENDING');
+        await patchStatus(approved.shopId, { status: 'APPROVED' }).expect(200);
+        const reinstated = await createShop(sellerId, 'SUSPENDED');
+        await patchStatus(reinstated.shopId, { status: 'APPROVED' }).expect(
+          200,
+        );
+
+        const mails = mailsToSeller();
+        expect(mails).toHaveLength(4);
+        const [rejectMail, suspendMail, approveMail, reinstateMail] = mails;
+        for (const mail of [rejectMail, suspendMail]) {
+          expect(mail.html).toContain(
+            'Liên hệ hỗ trợ:</strong> support@example.com',
+          );
+        }
+        for (const mail of [approveMail, reinstateMail]) {
+          expect(mail.html).not.toContain('support@example.com');
+        }
+      });
+
+      it('không đặt ENV hoặc đặt sai: email vẫn gửi bình thường, không có dòng liên hệ nào', async () => {
+        for (const value of [undefined, '', 'không phải email']) {
+          fakeMail.reset();
+          if (value === undefined) delete process.env.SUPPORT_EMAIL;
+          else process.env.SUPPORT_EMAIL = value;
+          const shop = await createShop(sellerId, 'APPROVED');
+
+          await patchStatus(shop.shopId, {
+            status: 'SUSPENDED',
+            reason: 'Vi phạm chính sách',
+          }).expect(200);
+
+          const [mail] = mailsToSeller();
+          expect(mail.subject).toContain('đã bị tạm khoá');
+          expect(mail.html).not.toContain('Liên hệ hỗ trợ');
+        }
+      });
     });
 
     it('khoá rồi mở khoá: 2 email khác loại, lý do chỉ có ở email khoá', async () => {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { optionalText } from './optional-text';
+import { LIST_MAX_PAGE } from './pagination';
 
 // Đánh giá sản phẩm (Week9.md 1.8). Rating nguyên 1-5, comment và lời trả lời của seller tối đa 1000 ký
 // tự — cùng giới hạn với CHECK ở DB (reviews_rating_check, reviews_comment_length_check) và cột
@@ -50,7 +51,7 @@ export type ReplyReviewInput = z.infer<typeof replyReviewSchema>;
 
 // Query param qua URL luôn là string — coerce number (rules/backend.md mục 2).
 const paginationShape = {
-  page: z.coerce.number().int().positive().default(1),
+  page: z.coerce.number().int().positive().max(LIST_MAX_PAGE).default(1),
   limit: z.coerce.number().int().positive().max(50).default(10),
 };
 

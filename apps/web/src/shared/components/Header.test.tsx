@@ -432,3 +432,30 @@ describe('Header — thông báo (Week10.md 8.4, D8)', () => {
     expect(badge).toHaveClass('static', 'ml-auto');
   });
 });
+
+describe('Header — ô tìm kiếm co lại được (Week11.md 4.5, dòng 4)', () => {
+  beforeEach(() => {
+    notificationUnread.data = 0;
+    auth.user = { name: 'Nguyễn Văn A' };
+    auth.isHydrating = false;
+    sellerLink.mockReturnValue(SHOP_LINK);
+    pathname.mockReturnValue('/');
+    Object.assign(chatBadges, { shopId: null, buyerUnread: 0, shopUnread: 0 });
+  });
+
+  it('form tìm kiếm có min-w-0 từ sm: không có nó, hàng icon + chip người dùng đẩy trang rộng hơn màn hình ở 640–820px', () => {
+    render(withIntl(<Header />));
+
+    const form = screen.getByRole('search');
+    expect(form).toHaveClass('sm:min-w-0', 'sm:flex-1');
+  });
+
+  it('chữ tên người dùng chỉ ẩn bằng mắt dưới lg (sr-only) — vẫn nằm trong cây trợ năng, tên của nút tài khoản không mất', () => {
+    render(withIntl(<Header />));
+
+    const name = screen.getByText('Nguyễn Văn A');
+    expect(name).toHaveClass('max-lg:sr-only', 'truncate', 'max-w-32');
+    expect(name.className).not.toMatch(/(^|s)hidden(s|$)/);
+    expect(screen.getByRole('button', { name: /Nguyễn Văn A/ })).toBeInTheDocument();
+  });
+});

@@ -1,7 +1,17 @@
-import { ADMIN_SHOP_REASON_MAX_LENGTH } from '@ecommerce/types';
+import {
+  ADMIN_NOTE_CONTENT_MAX_LENGTH,
+  ADMIN_SHOP_REASON_MAX_LENGTH,
+  ADMIN_USER_REASON_MAX_LENGTH,
+  adminNoteContentSchema,
+  adminUserReasonSchema,
+} from '@ecommerce/types';
 import { z } from 'zod';
 
-export { ADMIN_SHOP_REASON_MAX_LENGTH };
+export {
+  ADMIN_NOTE_CONTENT_MAX_LENGTH,
+  ADMIN_SHOP_REASON_MAX_LENGTH,
+  ADMIN_USER_REASON_MAX_LENGTH,
+};
 
 // Hoàn tiền: dùng thẳng schema BE (Week9.md 2.9) — quyết định yêu cầu (ghi chú bắt buộc khi từ chối, ràng buộc
 // bằng `superRefine` đặt SAU object nên input/output type vẫn là { decision, note? }), mã tham chiếu khi ghi
@@ -13,6 +23,12 @@ export {
   adminMarkRefundCompletedSchema,
   adminRefundPaymentSchema,
 } from '@ecommerce/types';
+
+// Kháng nghị của shop (Week11.md 4.6): form quyết định dùng THẲNG schema BE — ghi chú bắt buộc khi từ chối (superRefine đặt sau
+// object), tuỳ chọn khi chấp nhận, `""` / chỉ khoảng trắng từ ô nhập bỏ trống được coi là chưa nhập (transform ở cuối chuỗi nên
+// input và output cùng kiểu `string | undefined`, khớp generic `useForm<T>` của zodResolver). Message lỗi là key i18n
+// `admin.validationAppealNote*`.
+export { APPEAL_DECISION_NOTE_MAX_LENGTH, decideAppealSchema } from '@ecommerce/types';
 
 // Form hộp thoại từ chối/khoá chỉ có 1 field `reason` BẮT BUỘC. Không dùng thẳng
 // adminUpdateShopStatusSchema vì schema đó mang cả `status` (+ superRefine, không `.pick()` được) và
@@ -27,3 +43,34 @@ export const shopReasonFormSchema = z.object({
     .max(ADMIN_SHOP_REASON_MAX_LENGTH, 'admin.validationReasonTooLong'),
 });
 export type ShopReasonFormInput = z.infer<typeof shopReasonFormSchema>;
+
+// Form hộp thoại khoá / cấm / mở lại / gỡ cấm tài khoản: MỘT field `reason` BẮT BUỘC ở cả bốn hành động (lý do đi vào nhật ký
+// quản trị và email gửi cho chủ tài khoản). Dùng thẳng `adminUserReasonSchema` của BE (chuẩn hoá xuống dòng, cắt khoảng trắng
+// hai đầu, 1..500 ký tự, chặn ký tự điều khiển) nên đầu ra của form luôn được BE chấp nhận; message lỗi là key i18n
+// `admin.validation*`. Input và output cùng kiểu `string` nên khớp generic `useForm<T>` của zodResolver dù schema có transform.
+export const userReasonFormSchema = z.object({ reason: adminUserReasonSchema });
+export type UserReasonFormInput = z.infer<typeof userReasonFormSchema>;
+
+// Form thêm ghi chú nội bộ (Week11.md 4.3): MỘT field `content` bắt buộc, dùng thẳng `adminNoteContentSchema` của BE (chuẩn hoá xuống
+// dòng, cắt khoảng trắng hai đầu, 1..1000 ký tự, chặn ký tự điều khiển) nên đầu ra của form luôn được BE chấp nhận; message lỗi là
+// key i18n `admin.validationNote*`. Input và output cùng kiểu `string` nên khớp generic `useForm<T>` của zodResolver.
+export const adminNoteFormSchema = z.object({ content: adminNoteContentSchema });
+export type AdminNoteFormInput = z.infer<typeof adminNoteFormSchema>;
+
+// Form hộp thoại hủy hàng loạt đơn của shop (Week11.md 4.1): lý do bắt buộc (cùng luật lý do khoá tài khoản) và PHẢI gõ lại đúng
+// tên shop — thao tác không hoàn tác được và động tới nhiều người mua cùng lúc, nên một cú bấm nhầm không đủ. So sánh sau khi cắt
+// khoảng trắng hai đầu và chuẩn hoá Unicode NFC (cùng một tên tiếng Việt gõ bằng dấu rời hay dấu liền đều khớp), PHÂN BIỆT chữ
+// hoa/thường như mọi ô "gõ tên để xác nhận". Tên shop khác nhau theo từng shop nên là hàm tạo schema chứ không phải hằng.
+const normaliseName = (value: string) => value.trim().normalize('NFC');
+
+export function createCancelShopOrdersFormSchema(shopName: string) {
+  return z.object({
+    reason: adminUserReasonSchema,
+    confirmName: z.string().refine((value) => normaliseName(value) === normaliseName(shopName), {
+      message: 'admin.validationShopNameMismatch',
+    }),
+  });
+}
+export type CancelShopOrdersFormInput = z.infer<
+  ReturnType<typeof createCancelShopOrdersFormSchema>
+>;

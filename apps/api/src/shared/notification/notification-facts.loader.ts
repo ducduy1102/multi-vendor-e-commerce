@@ -87,7 +87,11 @@ export class NotificationFactsLoader {
         return this.shop(event.shopId, false);
 
       case 'SHOP_SUBMITTED':
+      case 'APPEAL_SUBMITTED':
         return this.shop(event.shopId, true);
+
+      case 'APPEAL_DECIDED':
+        return this.shop(event.shopId, false);
 
       default: {
         const unhandled: never = event;

@@ -7,6 +7,7 @@ import { VoucherModule } from '../voucher/voucher.module';
 import { BuyerOrderController } from './buyer-order.controller';
 import { BuyerRefundRequestController } from './buyer-refund-request.controller';
 import { OrderActionService } from './order-action.service';
+import { OrderInternalNoteService } from './order-internal-note.service';
 import { OrderAutoCompleteJob } from './order-auto-complete.job';
 import { OrderEmailService } from './order-email.service';
 import { OrderController } from './order.controller';
@@ -46,6 +47,7 @@ import { SellerRefundRequestController } from './seller-refund-request.controlle
   providers: [
     OrderService,
     OrderActionService,
+    OrderInternalNoteService,
     OrderEmailService,
     OrderQueryService,
     OrderStatusService,

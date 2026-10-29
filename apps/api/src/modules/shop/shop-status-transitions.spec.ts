@@ -35,15 +35,30 @@ describe('SHOP_STATUS_TRANSITIONS', () => {
       { from: 'REJECTED', to: 'PENDING', actor: 'OWNER' },
       { from: 'APPROVED', to: 'SUSPENDED', actor: 'ADMIN' },
       { from: 'SUSPENDED', to: 'APPROVED', actor: 'ADMIN' },
+      { from: 'APPROVED', to: 'SUSPENDED', actor: 'SYSTEM' },
+      { from: 'SUSPENDED', to: 'APPROVED', actor: 'SYSTEM' },
     ]);
   });
 
-  it('mỗi cặp (from, to) chỉ xuất hiện 1 lần — mỗi cạnh có đúng 1 actor', () => {
+  // Trước Week11.md 3.4 bất biến là "mỗi cặp (from, to) có đúng một actor". Hai cạnh SYSTEM (cascade theo tài khoản chủ shop)
+  // trùng cặp với hai cạnh ADMIN nên bất biến nay là "mỗi BỘ BA (from, to, actor) xuất hiện một lần".
+  it('mỗi bộ ba (from, to, actor) chỉ xuất hiện 1 lần', () => {
     const keys = SHOP_STATUS_TRANSITIONS.map(
-      (edge) => `${edge.from}>${edge.to}`,
+      (edge) => `${edge.from}>${edge.to}:${edge.actor}`,
     );
 
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('cạnh của ADMIN KHÔNG đổi (nút của Admin ở FE suy từ đây): đúng bốn cạnh như trước khi có cascade', () => {
+    expect(
+      SHOP_STATUS_TRANSITIONS.filter((edge) => edge.actor === 'ADMIN'),
+    ).toEqual([
+      { from: 'PENDING', to: 'APPROVED', actor: 'ADMIN' },
+      { from: 'PENDING', to: 'REJECTED', actor: 'ADMIN' },
+      { from: 'APPROVED', to: 'SUSPENDED', actor: 'ADMIN' },
+      { from: 'SUSPENDED', to: 'APPROVED', actor: 'ADMIN' },
+    ]);
   });
 
   it('không trạng thái nào tự trỏ vào chính nó', () => {
@@ -81,10 +96,28 @@ describe('SHOP_STATUS_TRANSITIONS', () => {
     ]);
   });
 
-  it('SYSTEM chưa có cạnh nào (chỉ dùng cho backfill/hệ thống sau này)', () => {
+  it('SYSTEM chỉ có đúng hai cạnh APPROVED ⇄ SUSPENDED (cascade theo tài khoản chủ shop, Week11.md 3.4)', () => {
     expect(
       SHOP_STATUS_TRANSITIONS.filter((edge) => edge.actor === 'SYSTEM'),
-    ).toHaveLength(0);
+    ).toEqual([
+      { from: 'APPROVED', to: 'SUSPENDED', actor: 'SYSTEM' },
+      { from: 'SUSPENDED', to: 'APPROVED', actor: 'SYSTEM' },
+    ]);
+  });
+
+  it('SYSTEM KHÔNG BAO GIỜ duyệt, từ chối hay đưa shop về PENDING: shop chờ duyệt chỉ do Admin quyết', () => {
+    const systemEdges = SHOP_STATUS_TRANSITIONS.filter(
+      (edge) => edge.actor === 'SYSTEM',
+    );
+
+    for (const edge of systemEdges) {
+      expect(edge.from).not.toBe('PENDING');
+      expect(edge.to).not.toBe('PENDING');
+      expect(edge.to).not.toBe('REJECTED');
+    }
+    expect(canActorTransitionShop('SYSTEM', 'PENDING', 'APPROVED')).toBe(false);
+    expect(canActorTransitionShop('SYSTEM', 'PENDING', 'REJECTED')).toBe(false);
+    expect(canActorTransitionShop('SYSTEM', 'REJECTED', 'PENDING')).toBe(false);
   });
 });
 
@@ -128,6 +161,9 @@ describe('shopTransitionTargets', () => {
     ['OWNER', 'APPROVED', []],
     ['OWNER', 'SUSPENDED', []],
     ['SYSTEM', 'PENDING', []],
+    ['SYSTEM', 'REJECTED', []],
+    ['SYSTEM', 'APPROVED', ['SUSPENDED']],
+    ['SYSTEM', 'SUSPENDED', ['APPROVED']],
   ])('%s từ %s đi tới %j', (actor, from, expected) => {
     expect(shopTransitionTargets(actor, from)).toEqual(expected);
   });

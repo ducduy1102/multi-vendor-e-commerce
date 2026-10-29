@@ -18,6 +18,7 @@ import {
   requestRefund,
   retryPayment,
   shipOrder,
+  updateOrderInternalNote,
   withdrawRefundRequest,
 } from './order.service';
 
@@ -118,6 +119,7 @@ const SELLER_DETAIL = {
   carrier: null,
   trackingCode: null,
   history: HISTORY,
+  internalNote: null,
 };
 
 function mockFetchOnce(body: unknown, status = 200) {
@@ -824,5 +826,55 @@ describe('order.service — yêu cầu hủy/trả hàng (seller)', () => {
       status: 400,
       message: 'note: order.validationReasonRequired',
     });
+  });
+});
+
+describe('order.service — ghi chú nội bộ của shop (Week11.md 4.4)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('updateOrderInternalNote -> PATCH /shops/:shopId/orders/:orderId/internal-note với { note }, kèm cookie, trả chi tiết đơn đã parse', async () => {
+    mockFetchOnce({ success: true, data: { ...SELLER_DETAIL, internalNote: 'Đã gọi khách' } });
+
+    const result = await updateOrderInternalNote('shop-1', 'order-1', { note: 'Đã gọi khách' });
+
+    const [url, init] = lastCall();
+    expect(url).toContain('/shops/shop-1/orders/order-1/internal-note');
+    expect(init).toMatchObject({ method: 'PATCH', credentials: 'include' });
+    expect(JSON.parse(init.body as string)).toEqual({ note: 'Đã gọi khách' });
+    expect(result.internalNote).toBe('Đã gọi khách');
+  });
+
+  it('xoá ghi chú: gửi note rỗng (không bỏ trường — BE từ chối thiếu note để khỏi xoá nhầm)', async () => {
+    mockFetchOnce({ success: true, data: SELLER_DETAIL });
+
+    const result = await updateOrderInternalNote('shop-1', 'order-1', { note: '' });
+
+    expect(JSON.parse(lastCall()[1].body as string)).toEqual({ note: '' });
+    expect(result.internalNote).toBeNull();
+  });
+
+  it('404 (đơn không còn trong tầm nhìn của shop) -> ApiError giữ status và mã ORDER_NOT_FOUND', async () => {
+    mockFetchOnce(
+      { success: false, data: null, message: 'Order not found', code: 'ORDER_NOT_FOUND' },
+      404,
+    );
+
+    await expect(updateOrderInternalNote('shop-1', 'order-1', { note: 'x' })).rejects.toMatchObject(
+      { status: 404, code: 'ORDER_NOT_FOUND' },
+    );
+  });
+
+  it('response thiếu internalNote -> Zod từ chối thay vì để UI đọc undefined', async () => {
+    mockFetchOnce({ success: true, data: { ...SELLER_DETAIL, internalNote: undefined } });
+
+    await expect(updateOrderInternalNote('shop-1', 'order-1', { note: 'x' })).rejects.toThrow();
+  });
+
+  it('getSellerOrder: chi tiết có internalNote (chuỗi hoặc null)', async () => {
+    mockFetchOnce({ success: true, data: { ...SELLER_DETAIL, internalNote: 'hàng dễ vỡ' } });
+
+    expect((await getSellerOrder('shop-1', 'order-1')).internalNote).toBe('hàng dễ vỡ');
   });
 });

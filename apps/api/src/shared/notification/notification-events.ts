@@ -64,7 +64,16 @@ export type NotificationEvent =
       reason?: string | null;
     }
   // Shop mới tạo / nộp lại, đang chờ Admin duyệt.
-  | { kind: 'SHOP_SUBMITTED'; shopId: string };
+  | { kind: 'SHOP_SUBMITTED'; shopId: string }
+  // Chủ shop vừa gửi kháng nghị lần khoá shop (Week11.md 4.6): báo mọi Admin ACTIVE. Chỉ id — không kèm lời kháng nghị.
+  | { kind: 'APPEAL_SUBMITTED'; appealId: string; shopId: string }
+  // Admin đã quyết định một kháng nghị: báo chủ shop (suy từ shop, không từ sự kiện). `decision` là kết quả đã ghi.
+  | {
+      kind: 'APPEAL_DECIDED';
+      appealId: string;
+      shopId: string;
+      decision: 'ACCEPTED' | 'REJECTED';
+    };
 
 export type NotificationEventKind = NotificationEvent['kind'];
 
@@ -337,6 +346,28 @@ function buildRaw(
           shopName: label(shop.shopName),
         }),
       );
+    }
+
+    case 'APPEAL_SUBMITTED': {
+      const { shop, adminIds } = expectFacts(event, facts, 'SHOP');
+      return adminIds.map((adminId) =>
+        draft(adminId, 'ADMIN_APPEAL_PENDING', {
+          appealId: event.appealId,
+          shopId: shop.shopId,
+          shopName: label(shop.shopName),
+        }),
+      );
+    }
+
+    case 'APPEAL_DECIDED': {
+      const { shop } = expectFacts(event, facts, 'SHOP');
+      return [
+        draft(shop.ownerId, 'APPEAL_DECIDED', {
+          appealId: event.appealId,
+          shopId: shop.shopId,
+          decision: event.decision,
+        }),
+      ];
     }
 
     default: {

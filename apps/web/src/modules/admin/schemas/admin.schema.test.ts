@@ -1,13 +1,23 @@
-import { adminUpdateShopStatusSchema } from '@ecommerce/types';
+import {
+  adminCancelShopOrdersSchema,
+  adminUpdateShopStatusSchema,
+  createAdminNoteSchema,
+  reactivateUserSchema,
+  suspendUserSchema,
+} from '@ecommerce/types';
 import { describe, expect, it } from 'vitest';
 
 import {
+  ADMIN_NOTE_CONTENT_MAX_LENGTH,
   ADMIN_REFUND_REFERENCE_MAX_LENGTH,
   ADMIN_SHOP_REASON_MAX_LENGTH,
   adminDecideRefundRequestSchema,
   adminMarkRefundCompletedSchema,
+  adminNoteFormSchema,
   adminRefundPaymentSchema,
+  createCancelShopOrdersFormSchema,
   shopReasonFormSchema,
+  userReasonFormSchema,
 } from './admin.schema';
 
 describe('shopReasonFormSchema', () => {
@@ -143,5 +153,150 @@ describe('adminRefundPaymentSchema', () => {
     if (!result.success) {
       expect(result.error.issues[0].message).toBe('admin.validationReasonTooLong');
     }
+  });
+});
+
+describe('userReasonFormSchema', () => {
+  it('lý do hợp lệ -> giữ nguyên (đã trim)', () => {
+    const result = userReasonFormSchema.safeParse({ reason: '  Vi phạm điều khoản  ' });
+
+    expect(result.success && result.data.reason).toBe('Vi phạm điều khoản');
+  });
+
+  it.each(['', '   ', '\n\t '])(
+    'lý do %j (trống/chỉ khoảng trắng) -> key i18n "bắt buộc"',
+    (reason) => {
+      const result = userReasonFormSchema.safeParse({ reason });
+
+      expect(result.success).toBe(false);
+      expect(!result.success && result.error.issues[0].message).toBe(
+        'admin.validationReasonRequired',
+      );
+    },
+  );
+
+  it('lý do dài đúng 500 ký tự hợp lệ, 501 thì báo "quá dài"', () => {
+    expect(userReasonFormSchema.safeParse({ reason: 'a'.repeat(500) }).success).toBe(true);
+
+    const result = userReasonFormSchema.safeParse({ reason: 'a'.repeat(501) });
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues[0].message).toBe('admin.validationReasonTooLong');
+  });
+
+  it('chặn ký tự điều khiển / bidi-override, cho phép xuống dòng', () => {
+    expect(userReasonFormSchema.safeParse({ reason: 'dòng 1\ndòng 2' }).success).toBe(true);
+    for (const reason of ['a\u0000b', 'a\u202Eb', 'a\tb']) {
+      const result = userReasonFormSchema.safeParse({ reason });
+      expect(result.success, JSON.stringify(reason)).toBe(false);
+      expect(!result.success && result.error.issues[0].message).toBe(
+        'admin.validationReasonUnsafe',
+      );
+    }
+  });
+
+  it('đầu ra của form luôn được schema BE chấp nhận (khoá/cấm và mở lại), không lệch luật', () => {
+    for (const reason of ['  Lý do  ', 'dòng 1\r\ndòng 2', 'a'.repeat(500)]) {
+      const form = userReasonFormSchema.parse({ reason });
+
+      expect(suspendUserSchema.safeParse({ status: 'SUSPENDED', ...form }).success).toBe(true);
+      expect(suspendUserSchema.safeParse({ status: 'BANNED', ...form }).success).toBe(true);
+      expect(reactivateUserSchema.safeParse(form).success).toBe(true);
+    }
+  });
+});
+
+describe('createCancelShopOrdersFormSchema', () => {
+  const schema = createCancelShopOrdersFormSchema('Thời Trang Thảo');
+  const valid = { reason: 'Shop vi phạm', confirmName: 'Thời Trang Thảo' };
+
+  it('lý do + tên shop gõ đúng -> hợp lệ, lý do được chuẩn hoá (trim)', () => {
+    const result = schema.safeParse({ ...valid, reason: '  Shop vi phạm  ' });
+
+    expect(result.success && result.data.reason).toBe('Shop vi phạm');
+  });
+
+  it.each([
+    ['để trống', ''],
+    ['sai một ký tự', 'Thời Trang Thao'],
+    ['sai chữ hoa/thường', 'thời trang thảo'],
+    ['chỉ một phần', 'Thời Trang'],
+    ['thừa chữ', 'Thời Trang Thảo 2'],
+  ])('tên shop %s -> key i18n "không khớp" ở field confirmName', (_name, confirmName) => {
+    const result = schema.safeParse({ ...valid, confirmName });
+
+    expect(result.success).toBe(false);
+    const issue = !result.success ? result.error.issues[0] : null;
+    expect(issue?.path).toEqual(['confirmName']);
+    expect(issue?.message).toBe('admin.validationShopNameMismatch');
+  });
+
+  it('khoảng trắng hai đầu và dạng Unicode (dấu rời / dấu liền) không làm lệch tên', () => {
+    expect(schema.safeParse({ ...valid, confirmName: '  Thời Trang Thảo  ' }).success).toBe(true);
+    expect(
+      schema.safeParse({ ...valid, confirmName: 'Thời Trang Thảo'.normalize('NFD') }).success,
+    ).toBe(true);
+  });
+
+  it('schema theo TỪNG shop: tên của shop khác không dùng được', () => {
+    const other = createCancelShopOrdersFormSchema('Shop Khác');
+
+    expect(other.safeParse(valid).success).toBe(false);
+    expect(other.safeParse({ ...valid, confirmName: 'Shop Khác' }).success).toBe(true);
+  });
+
+  it.each(['', '   ', 'a'.repeat(501), 'a\u0000b'])(
+    'lý do %j không hợp lệ -> báo ở field reason',
+    (reason) => {
+      const result = schema.safeParse({ ...valid, reason });
+
+      expect(result.success).toBe(false);
+      expect(!result.success && result.error.issues[0].path).toEqual(['reason']);
+    },
+  );
+
+  it('đầu ra của form luôn được schema BE chấp nhận (cùng luật lý do), không lệch', () => {
+    for (const reason of ['  Lý do  ', 'dòng 1\r\ndòng 2', 'a'.repeat(500)]) {
+      const form = schema.parse({ ...valid, reason });
+
+      expect(adminCancelShopOrdersSchema.safeParse({ reason: form.reason }).success).toBe(true);
+    }
+  });
+});
+
+describe('adminNoteFormSchema (Week11.md 4.3)', () => {
+  it('cắt khoảng trắng hai đầu và chuẩn hoá CRLF → LF', () => {
+    const parsed = adminNoteFormSchema.parse({ content: '  dòng 1\r\ndòng 2  ' });
+
+    expect(parsed.content).toBe('dòng 1\ndòng 2');
+  });
+
+  it.each([
+    ['rỗng', '', 'admin.validationNoteRequired'],
+    ['chỉ khoảng trắng', '  \n ', 'admin.validationNoteRequired'],
+    [
+      'quá 1000 ký tự',
+      'a'.repeat(ADMIN_NOTE_CONTENT_MAX_LENGTH + 1),
+      'admin.validationNoteTooLong',
+    ],
+    ['có ký tự NUL', `a${String.fromCharCode(0)}b`, 'admin.validationNoteUnsafe'],
+  ])('%s -> lỗi theo key i18n của field content', (_name, content, message) => {
+    const result = adminNoteFormSchema.safeParse({ content });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({ path: ['content'], message });
+  });
+
+  it('đúng cận 1000 ký tự thì qua; đầu ra của form luôn được schema BE chấp nhận', () => {
+    const parsed = adminNoteFormSchema.parse({
+      content: 'a'.repeat(ADMIN_NOTE_CONTENT_MAX_LENGTH),
+    });
+
+    expect(
+      createAdminNoteSchema.safeParse({
+        targetType: 'SHOP',
+        targetId: '11111111-1111-4111-8111-111111111111',
+        content: parsed.content,
+      }).success,
+    ).toBe(true);
   });
 });

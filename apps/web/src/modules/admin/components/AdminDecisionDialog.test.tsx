@@ -111,9 +111,13 @@ describe('AdminDecisionDialog — từ chối', () => {
     expect(screen.getByText('Từ chối yêu cầu này?')).toBeInTheDocument();
     expect(screen.getByText(/Đơn giữ nguyên/)).toBeInTheDocument();
     expect(screen.getByLabelText('Lý do từ chối')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Từ chối yêu cầu' })).toHaveClass(
-      'bg-destructive/10',
-    );
+    const confirm = screen.getByRole('button', { name: 'Từ chối yêu cầu' });
+    // Nền đỏ ĐẶC + chữ nền (4,77:1) — variant destructive mặc định (nền destructive/10) chỉ đạt 3,81:1.
+    expect(confirm).toHaveClass('bg-destructive', 'text-background');
+    expect(confirm).not.toHaveClass('bg-destructive/10', 'text-destructive');
+    // Chế độ tối: nền đặc, không còn nền `dark:bg-destructive/20` của variant.
+    expect(confirm).toHaveClass('dark:bg-destructive');
+    expect(confirm).not.toHaveClass('dark:bg-destructive/20');
   });
 
   it('lý do BẮT BUỘC: để trống -> lỗi theo field + aria-invalid, KHÔNG gọi onConfirm', async () => {

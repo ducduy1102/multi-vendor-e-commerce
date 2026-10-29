@@ -5,8 +5,8 @@ export const shopStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', 'SUSP
 export type ShopStatus = z.infer<typeof shopStatusSchema>;
 
 // Ai thực hiện 1 lần chuyển trạng thái shop (ShopStatusHistory.actorType) — khớp enum Prisma
-// ShopActorType (test parity ở BE). SYSTEM chưa có cạnh nào trong bảng bên dưới (dành cho backfill và
-// các chuyển trạng thái hệ thống sau này, vd khoá user ⇒ tự khoá shop).
+// ShopActorType (test parity ở BE). SYSTEM chỉ có đúng hai cạnh (APPROVED ⇄ SUSPENDED) cho việc Admin khoá / mở lại TÀI
+// KHOẢN chủ shop kéo theo shop của họ (Week11.md 3.4); SYSTEM không bao giờ duyệt hay từ chối shop.
 export const shopActorTypeSchema = z.enum(['OWNER', 'ADMIN', 'SYSTEM']);
 export type ShopActorType = z.infer<typeof shopActorTypeSchema>;
 
@@ -22,17 +22,27 @@ export interface ShopStatusTransition {
 //   REJECTED  → PENDING    OWNER   (chủ shop "gửi duyệt lại")
 //   APPROVED  → SUSPENDED  ADMIN   (bắt buộc lý do)
 //   SUSPENDED → APPROVED   ADMIN
-// Chủ shop không bao giờ tự APPROVED; Admin không thực hiện được cạnh của Owner (và ngược lại). Chỉ nói
-// cạnh nào hợp lệ + ai làm được; thực thi thật nằm ở ShopStatusService (UPDATE có điều kiện WHERE
-// status = <cũ>). Cố ý KHÔNG có hàm "cạnh này có tồn tại với bất kỳ ai không" — kiểm cạnh mà không
-// kèm actor là cách để AdminService vô tình cho phép cạnh của Owner.
+//   APPROVED  → SUSPENDED  SYSTEM  (Admin khoá / cấm tài khoản chủ shop ⇒ tự khoá shop của họ, Week11.md 3.4)
+//   SUSPENDED → APPROVED   SYSTEM  (Admin mở lại tài khoản bị TẠM KHOÁ ⇒ tự mở lại đúng shop do lần khoá đó khoá)
+// Chủ shop không bao giờ tự APPROVED; Admin không thực hiện được cạnh của Owner (và ngược lại). Hai cạnh SYSTEM trùng cặp
+// (from, to) với hai cạnh ADMIN nhưng KHÁC actor — bất biến là "mỗi bộ ba (from, to, actor) xuất hiện một lần", không phải
+// "mỗi cặp một actor". Chỉ nói cạnh nào hợp lệ + ai làm được; thực thi thật nằm ở ShopStatusService (UPDATE có điều kiện
+// WHERE status = <cũ>). Cố ý KHÔNG có hàm "cạnh này có tồn tại với bất kỳ ai không" — kiểm cạnh mà không kèm actor là cách
+// để AdminService vô tình cho phép cạnh của Owner.
 export const SHOP_STATUS_TRANSITIONS: readonly ShopStatusTransition[] = [
   { from: 'PENDING', to: 'APPROVED', actor: 'ADMIN' },
   { from: 'PENDING', to: 'REJECTED', actor: 'ADMIN' },
   { from: 'REJECTED', to: 'PENDING', actor: 'OWNER' },
   { from: 'APPROVED', to: 'SUSPENDED', actor: 'ADMIN' },
   { from: 'SUSPENDED', to: 'APPROVED', actor: 'ADMIN' },
+  { from: 'APPROVED', to: 'SUSPENDED', actor: 'SYSTEM' },
+  { from: 'SUSPENDED', to: 'APPROVED', actor: 'SYSTEM' },
 ];
+
+// Mã ghi vào `Shop.statusReason` và `ShopStatusHistory.note` khi một shop bị khoá VÌ tài khoản chủ shop bị Admin khoá / cấm
+// (Week11.md 3.4). Là MÃ chứ không phải câu chữ: BE dùng nó để nhận ra "dòng cascade" khi mở lại (chỉ mở lại shop mà dòng
+// lịch sử mới nhất là dòng này), FE dùng nó để hiện câu đã dịch thay vì in nguyên mã cho người dùng.
+export const SHOP_CASCADE_SUSPEND_REASON = 'OWNER_ACCOUNT_SUSPENDED';
 
 export function canActorTransitionShop(
   actor: ShopActorType,
@@ -166,6 +176,15 @@ export const shopSchema = z.object({
   updatedAt: z.string(),
 });
 export type Shop = z.infer<typeof shopSchema>;
+
+// Response `GET /shops/me` (chủ shop xem shop của mình): `shopSchema` kèm địa chỉ hỗ trợ từ ENV `SUPPORT_EMAIL` của BE
+// (Week11.md 4.2). Địa chỉ nằm ở BE chứ không phải biến `NEXT_PUBLIC_*` của FE để chỉ có MỘT nơi cấu hình, đúng cái email
+// khoá/từ chối cũng dùng; null ⇒ không đặt ENV ⇒ banner không có dòng liên hệ. Chỉ `GET /shops/me` trả field này — tạo / sửa /
+// nộp lại vẫn trả `shopSchema` (sau mỗi lần ghi FE làm mới truy vấn `GET /shops/me`, không dùng response ghi làm "shop của tôi").
+export const myShopSchema = shopSchema.extend({
+  supportEmail: z.string().nullable(),
+});
+export type MyShop = z.infer<typeof myShopSchema>;
 
 // Response `GET /shops/:slug` (công khai — Week9.md 1.10): chỉ shop APPROVED, KHÔNG có thông tin chủ shop
 // (ownerId, email), status hay statusReason. Khác `shopSchema` ở trên (chủ shop/Admin) — tách schema riêng

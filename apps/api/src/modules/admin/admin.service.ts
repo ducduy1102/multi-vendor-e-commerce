@@ -1,10 +1,14 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, type ShopStatus } from '@prisma/client';
+import { canActorTransitionShop } from '@ecommerce/types';
+import { AppException } from '../../shared/exceptions/app.exception';
 import { frontendUrl } from '../../shared/mail/frontend-url';
 import type { MailLocale } from '../../shared/mail/mail-locale';
 import { MailService } from '../../shared/mail/mail.service';
+import { getSupportEmail } from '../../shared/mail/support-email';
 import { NotificationService } from '../../shared/notification/notification.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import type { TxClient } from '../../shared/prisma/tx-client';
 import { ShopStatusService } from '../shop/shop-status.service';
 import type { ListShopsQueryDto } from './dto/list-shops-query.dto';
 import type { UpdateShopStatusDto } from './dto/update-shop-status.dto';
@@ -124,25 +128,57 @@ export class AdminService {
     shopId: string,
     dto: UpdateShopStatusDto,
   ): Promise<AdminShopSummary> {
-    const from = await this.prisma.$transaction(async (tx) => {
-      const current = await tx.shop.findUnique({
-        where: { id: shopId },
-        select: { status: true },
-      });
-      if (!current) {
-        throw new NotFoundException('Shop not found');
-      }
-      await this.shopStatusService.transition(
-        tx,
-        shopId,
-        current.status,
-        dto.status,
-        { type: 'ADMIN', id: adminId },
-        dto.reason,
-      );
-      return current.status;
-    });
+    const from = await this.prisma.$transaction((tx) =>
+      this.changeShopStatusInTx(tx, adminId, shopId, dto),
+    );
+    return this.announceShopStatusChange(adminId, shopId, from, dto);
+  }
 
+  // Phần TRONG transaction của việc Admin đổi trạng thái shop: đọc shop, kiểm chủ shop còn ACTIVE khi duyệt/mở khoá, rồi giao cho
+  // ShopStatusService. Trả trạng thái CŨ. PUBLIC để quyết định kháng nghị (AdminAppealsService, Week11.md 4.6) chấp nhận
+  // SUSPENDED → APPROVED trong CÙNG transaction với việc đóng kháng nghị mà không nhân đôi luật này.
+  async changeShopStatusInTx(
+    tx: TxClient,
+    adminId: string,
+    shopId: string,
+    dto: UpdateShopStatusDto,
+  ): Promise<ShopStatus> {
+    const current = await tx.shop.findUnique({
+      where: { id: shopId },
+      select: { status: true, ownerId: true },
+    });
+    if (!current) {
+      throw new NotFoundException('Shop not found');
+    }
+    // Duyệt (PENDING → APPROVED) và mở khoá (SUSPENDED → APPROVED) cho shop nhận đơn trở lại, nên chủ shop phải đang
+    // ACTIVE (Week11.md 3.4). Chỉ kiểm khi đây là một cạnh hợp lệ của Admin: cạnh sai vẫn ra SHOP_INVALID_TRANSITION chứ
+    // không bị che bởi lỗi chủ shop. Từ chối (REJECTED) và khoá (SUSPENDED) không bị chặn.
+    if (
+      dto.status === 'APPROVED' &&
+      canActorTransitionShop('ADMIN', current.status, 'APPROVED')
+    ) {
+      await this.assertOwnerActive(tx, current.ownerId);
+    }
+    await this.shopStatusService.transition(
+      tx,
+      shopId,
+      current.status,
+      dto.status,
+      { type: 'ADMIN', id: adminId },
+      dto.reason,
+    );
+    return current.status;
+  }
+
+  // Phần SAU commit: nhật ký, thông báo trong ứng dụng, email cho chủ shop và response của Admin. Không bao giờ chạy trong
+  // $transaction (gọi dịch vụ ngoài trong transaction giữ khoá lâu, mail lỗi sẽ rollback cả việc đổi trạng thái); không bao giờ ném
+  // vì thông báo/email.
+  async announceShopStatusChange(
+    adminId: string,
+    shopId: string,
+    from: ShopStatus,
+    dto: UpdateShopStatusDto,
+  ): Promise<AdminShopSummary> {
     // Lý do là văn bản Admin tự nhập — không đưa vào log, chỉ ai/shop nào/đổi từ đâu sang đâu.
     this.logger.log(
       `Admin ${adminId} changed shop ${shopId} status ${from} -> ${dto.status}`,
@@ -175,6 +211,27 @@ export class AdminService {
     return toAdminShop(shop);
   }
 
+  // `FOR SHARE` trên hàng user: giữ khoá chia sẻ đến khi transaction duyệt commit. Việc khoá tài khoản (AdminUserStatusService)
+  // UPDATE hàng user — cần khoá độc quyền — nên nó PHẢI chờ lần duyệt này xong, rồi mới quét "shop APPROVED của chủ" để khoá
+  // theo; thiếu khoá này, một lần duyệt chạy song song với một lần khoá tài khoản có thể để lại shop APPROVED của chủ đã bị
+  // khoá (lần quét của việc khoá không thấy shop còn PENDING chưa commit). Ngược lại nếu việc khoá commit trước, đọc ở đây
+  // thấy trạng thái mới và trả 409. Chủ shop không còn (đã xoá) cũng coi là không ACTIVE.
+  private async assertOwnerActive(
+    tx: TxClient,
+    ownerId: string,
+  ): Promise<void> {
+    const rows = await tx.$queryRaw<{ account_status: string }[]>(
+      Prisma.sql`SELECT account_status FROM users WHERE id = ${ownerId} FOR SHARE`,
+    );
+    if (rows[0]?.account_status !== 'ACTIVE') {
+      throw new AppException(
+        409,
+        'SHOP_OWNER_NOT_ACTIVE',
+        'The shop owner account is not active',
+      );
+    }
+  }
+
   // Báo chủ shop kết quả Admin vừa xử lý (Week9.md 1.13), theo `User.locale` của họ. Chỉ 4 cạnh của Admin
   // có mail (shopStatusEmailKind); `resubmit` của chủ shop đi qua ShopStatusService trực tiếp, không qua đây.
   // Cùng nguyên tắc rules/backend.md mục 4: DB đã xong việc của nó, mail lỗi chỉ được log (kèm shopId,
@@ -197,6 +254,7 @@ export class AdminService {
         kind,
         reason: shopStatusEmailReason(kind, dto.reason),
         shopUrl: frontendUrl(shopStatusEmailPath(kind), locale),
+        supportEmail: getSupportEmail(),
       });
     } catch (error) {
       this.logger.error(
