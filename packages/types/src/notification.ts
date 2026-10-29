@@ -50,6 +50,8 @@ export const NOTIFICATION_TYPES = [
   'REVIEW_REPLIED',
   'SHOP_STATUS_CHANGED',
   'ADMIN_SHOP_PENDING',
+  'ADMIN_APPEAL_PENDING',
+  'APPEAL_DECIDED',
 ] as const;
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
@@ -174,6 +176,14 @@ export const notificationContentSchema = z.discriminatedUnion('type', [
     reason: reasonSchema.optional(),
   }),
   content('ADMIN_SHOP_PENDING', { shopId: idSchema, shopName: labelSchema }),
+  // Tất cả Admin: chủ shop vừa gửi kháng nghị lần khoá shop (Week11.md 4.6). Chủ shop: Admin đã quyết định kháng nghị của mình
+  // (chấp nhận ⇒ shop được mở khoá, từ chối ⇒ giữ nguyên). Không kèm lời kháng nghị hay lý do — chỉ id, FE dẫn tới trang đọc.
+  content('ADMIN_APPEAL_PENDING', { appealId: idSchema, shopId: idSchema, shopName: labelSchema }),
+  content('APPEAL_DECIDED', {
+    appealId: idSchema,
+    shopId: idSchema,
+    decision: z.enum(['ACCEPTED', 'REJECTED']),
+  }),
 ]);
 export type NotificationContent = z.infer<typeof notificationContentSchema>;
 export type NotificationOfType<T extends NotificationType> = Extract<

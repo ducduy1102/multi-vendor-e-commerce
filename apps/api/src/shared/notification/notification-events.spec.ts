@@ -29,6 +29,7 @@ const ORDER_1 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1';
 const ORDER_2 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2';
 const PRODUCT = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const SHOP = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const APPEAL = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1';
 const REQUEST = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const REVIEW = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 
@@ -555,6 +556,54 @@ describe('sự kiện shop', () => {
       ),
     ).toEqual([]);
   });
+
+  // Kháng nghị (Week11.md 4.6): thông báo chỉ mang id (+ tên shop đã cắt gọn / kết quả), không bao giờ lời kháng nghị hay lý do.
+  it('APPEAL_SUBMITTED ⇒ mọi Admin nhận ADMIN_APPEAL_PENDING (chủ shop thì không), kèm id kháng nghị và tên shop', () => {
+    expect(
+      buildNotifications(
+        { kind: 'APPEAL_SUBMITTED', appealId: APPEAL, shopId: SHOP },
+        shop({}, [ADMIN_1, ADMIN_2]),
+      ),
+    ).toEqual([
+      {
+        userId: ADMIN_1,
+        type: 'ADMIN_APPEAL_PENDING',
+        data: { appealId: APPEAL, shopId: SHOP, shopName: 'Cửa hàng mới' },
+      },
+      {
+        userId: ADMIN_2,
+        type: 'ADMIN_APPEAL_PENDING',
+        data: { appealId: APPEAL, shopId: SHOP, shopName: 'Cửa hàng mới' },
+      },
+    ]);
+  });
+
+  it('APPEAL_SUBMITTED khi không có Admin nào ⇒ không có thông báo', () => {
+    expect(
+      buildNotifications(
+        { kind: 'APPEAL_SUBMITTED', appealId: APPEAL, shopId: SHOP },
+        shop({}, []),
+      ),
+    ).toEqual([]);
+  });
+
+  it.each(['ACCEPTED', 'REJECTED'] as const)(
+    'APPEAL_DECIDED (%s) ⇒ chỉ chủ shop nhận APPEAL_DECIDED, người nhận suy từ shop chứ không từ sự kiện, không có Admin nào',
+    (decision) => {
+      expect(
+        buildNotifications(
+          { kind: 'APPEAL_DECIDED', appealId: APPEAL, shopId: SHOP, decision },
+          shop({}, [ADMIN_1]),
+        ),
+      ).toEqual([
+        {
+          userId: OWNER,
+          type: 'APPEAL_DECIDED',
+          data: { appealId: APPEAL, shopId: SHOP, decision },
+        },
+      ]);
+    },
+  );
 });
 
 describe('tính đúng đắn chung', () => {
@@ -640,6 +689,19 @@ describe('tính đúng đắn chung', () => {
     SHOP_SUBMITTED: {
       event: { kind: 'SHOP_SUBMITTED', shopId: SHOP },
       facts: shop({}, [ADMIN_1]),
+    },
+    APPEAL_SUBMITTED: {
+      event: { kind: 'APPEAL_SUBMITTED', appealId: APPEAL, shopId: SHOP },
+      facts: shop({}, [ADMIN_1]),
+    },
+    APPEAL_DECIDED: {
+      event: {
+        kind: 'APPEAL_DECIDED',
+        appealId: APPEAL,
+        shopId: SHOP,
+        decision: 'ACCEPTED',
+      },
+      facts: shop(),
     },
   };
 

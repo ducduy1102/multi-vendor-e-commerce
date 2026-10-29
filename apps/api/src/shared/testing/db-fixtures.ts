@@ -291,6 +291,18 @@ export async function cleanupByTag(prisma: PrismaClient, tag: string) {
       { targetId: { in: [...userIds, ...shops.map((s) => s.id)] } },
     ],
   });
+  // Kháng nghị (Tuần 11, 4.6) cũng không có khoá ngoại tới users/shops (đối tượng bị xử lý có thể mất đi mà lịch sử xử lý vẫn
+  // phải còn) nên xoá shop/người dùng không kéo theo dòng nào. Bảng này không chỉ thêm (có UPDATE khi quyết định) nên xoá
+  // thẳng được. Dọn theo người kháng nghị, người quyết định hoặc shop có tiền tố.
+  await prisma.appeal.deleteMany({
+    where: {
+      OR: [
+        { appellantId: { in: userIds } },
+        { decidedById: { in: userIds } },
+        { targetId: { in: shops.map((s) => s.id) } },
+      ],
+    },
+  });
   // Thứ tự xoá theo chiều FK RESTRICT (Payment/Order/VoucherUsage → CheckoutGroup → User;
   // Order/OrderItem → Shop/ProductVariant): xoá "lá" trước "gốc". Cart/CartItem/Address cascade
   // tự động theo User (onDelete: Cascade) nên không cần dọn riêng.

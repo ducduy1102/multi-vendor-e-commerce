@@ -5,6 +5,8 @@ import { NotificationModule } from '../../shared/notification/notification.modul
 import { RealtimeModule } from '../../shared/realtime/realtime.module';
 import { OrderModule } from '../order/order.module';
 import { ShopModule } from '../shop/shop.module';
+import { AdminAppealsController } from './admin-appeals.controller';
+import { AdminAppealsService } from './admin-appeals.service';
 import { AdminNotesController } from './admin-notes.controller';
 import { AdminNotesService } from './admin-notes.service';
 import { AdminOverviewController } from './admin-overview.controller';
@@ -38,6 +40,7 @@ import { AdminService } from './admin.service';
     AdminOverviewController,
     AdminUserController,
     AdminNotesController,
+    AdminAppealsController,
   ],
   providers: [
     AdminService,
@@ -47,6 +50,7 @@ import { AdminService } from './admin.service';
     AdminUserShopCascadeService,
     AdminShopOrdersService,
     AdminNotesService,
+    AdminAppealsService,
   ],
 })
 export class AdminModule {}

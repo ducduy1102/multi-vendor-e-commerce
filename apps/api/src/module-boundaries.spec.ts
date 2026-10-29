@@ -42,6 +42,22 @@ export const FORBIDDEN_DEPENDENCIES: Record<string, string[]> = {
     'admin',
     'chat',
   ],
+  // `appeal` (Week11.md 4.6) là phía CHỦ SHOP của kháng nghị: module LÁ như chat/notification — shop và lịch sử trạng thái đọc bằng
+  // PrismaService, nên không phụ thuộc module nghiệp vụ nào. Phía Admin điều phối ở modules/admin và đọc bảng `appeals` trực tiếp,
+  // không import `appeal` (chiều ngược cũng cấm để đồ thị không có vòng).
+  appeal: [
+    'auth',
+    'shop',
+    'product',
+    'cart',
+    'checkout',
+    'voucher',
+    'order',
+    'review',
+    'admin',
+    'chat',
+  ],
+  admin: ['appeal'],
   voucher: ['cart', 'checkout', 'order'],
   product: ['cart', 'checkout', 'order', 'review'],
   order: ['checkout', 'cart', 'review'],

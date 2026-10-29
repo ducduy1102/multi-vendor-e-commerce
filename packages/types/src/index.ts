@@ -8,6 +8,7 @@ export * from './admin-audit';
 export * from './admin-user';
 export * from './admin-shop-orders';
 export * from './admin-note';
+export * from './appeal';
 export * from './product';
 export * from './category';
 export * from './wishlist';

@@ -128,34 +128,57 @@ export class AdminService {
     shopId: string,
     dto: UpdateShopStatusDto,
   ): Promise<AdminShopSummary> {
-    const from = await this.prisma.$transaction(async (tx) => {
-      const current = await tx.shop.findUnique({
-        where: { id: shopId },
-        select: { status: true, ownerId: true },
-      });
-      if (!current) {
-        throw new NotFoundException('Shop not found');
-      }
-      // Duyệt (PENDING → APPROVED) và mở khoá (SUSPENDED → APPROVED) cho shop nhận đơn trở lại, nên chủ shop phải đang
-      // ACTIVE (Week11.md 3.4). Chỉ kiểm khi đây là một cạnh hợp lệ của Admin: cạnh sai vẫn ra SHOP_INVALID_TRANSITION chứ
-      // không bị che bởi lỗi chủ shop. Từ chối (REJECTED) và khoá (SUSPENDED) không bị chặn.
-      if (
-        dto.status === 'APPROVED' &&
-        canActorTransitionShop('ADMIN', current.status, 'APPROVED')
-      ) {
-        await this.assertOwnerActive(tx, current.ownerId);
-      }
-      await this.shopStatusService.transition(
-        tx,
-        shopId,
-        current.status,
-        dto.status,
-        { type: 'ADMIN', id: adminId },
-        dto.reason,
-      );
-      return current.status;
-    });
+    const from = await this.prisma.$transaction((tx) =>
+      this.changeShopStatusInTx(tx, adminId, shopId, dto),
+    );
+    return this.announceShopStatusChange(adminId, shopId, from, dto);
+  }
 
+  // Phần TRONG transaction của việc Admin đổi trạng thái shop: đọc shop, kiểm chủ shop còn ACTIVE khi duyệt/mở khoá, rồi giao cho
+  // ShopStatusService. Trả trạng thái CŨ. PUBLIC để quyết định kháng nghị (AdminAppealsService, Week11.md 4.6) chấp nhận
+  // SUSPENDED → APPROVED trong CÙNG transaction với việc đóng kháng nghị mà không nhân đôi luật này.
+  async changeShopStatusInTx(
+    tx: TxClient,
+    adminId: string,
+    shopId: string,
+    dto: UpdateShopStatusDto,
+  ): Promise<ShopStatus> {
+    const current = await tx.shop.findUnique({
+      where: { id: shopId },
+      select: { status: true, ownerId: true },
+    });
+    if (!current) {
+      throw new NotFoundException('Shop not found');
+    }
+    // Duyệt (PENDING → APPROVED) và mở khoá (SUSPENDED → APPROVED) cho shop nhận đơn trở lại, nên chủ shop phải đang
+    // ACTIVE (Week11.md 3.4). Chỉ kiểm khi đây là một cạnh hợp lệ của Admin: cạnh sai vẫn ra SHOP_INVALID_TRANSITION chứ
+    // không bị che bởi lỗi chủ shop. Từ chối (REJECTED) và khoá (SUSPENDED) không bị chặn.
+    if (
+      dto.status === 'APPROVED' &&
+      canActorTransitionShop('ADMIN', current.status, 'APPROVED')
+    ) {
+      await this.assertOwnerActive(tx, current.ownerId);
+    }
+    await this.shopStatusService.transition(
+      tx,
+      shopId,
+      current.status,
+      dto.status,
+      { type: 'ADMIN', id: adminId },
+      dto.reason,
+    );
+    return current.status;
+  }
+
+  // Phần SAU commit: nhật ký, thông báo trong ứng dụng, email cho chủ shop và response của Admin. Không bao giờ chạy trong
+  // $transaction (gọi dịch vụ ngoài trong transaction giữ khoá lâu, mail lỗi sẽ rollback cả việc đổi trạng thái); không bao giờ ném
+  // vì thông báo/email.
+  async announceShopStatusChange(
+    adminId: string,
+    shopId: string,
+    from: ShopStatus,
+    dto: UpdateShopStatusDto,
+  ): Promise<AdminShopSummary> {
     // Lý do là văn bản Admin tự nhập — không đưa vào log, chỉ ai/shop nào/đổi từ đâu sang đâu.
     this.logger.log(
       `Admin ${adminId} changed shop ${shopId} status ${from} -> ${dto.status}`,

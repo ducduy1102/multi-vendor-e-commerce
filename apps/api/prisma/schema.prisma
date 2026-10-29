@@ -1083,3 +1083,52 @@ model AdminNote {
   @@index([targetType, targetId, createdAt(sort: Desc), id(sort: Desc)])
   @@map("admin_notes")
 }
+
+// Kháng nghị của chủ shop sau khi bị khoá (Week11.md 4.6, D15). Mỗi LẦN BỊ XỬ LÝ chỉ kháng nghị MỘT lần: `moderationEventAt` là mốc
+// `Shop.statusChangedAt` của lần khoá đó (server đọc từ shop, client không gửi) và `@@unique([targetType, targetId, moderationEventAt])`
+// là trọng tài cuối cho hai request đồng thời. Shop được mở rồi khoá lại có `statusChangedAt` khác nên có quyền kháng nghị mới.
+enum AppealTargetType {
+  SHOP
+  PRODUCT
+}
+
+enum AppealStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model Appeal {
+  id String @id @default(uuid())
+
+  // Đối tượng bị xử lý (đa hình theo targetType nên không có khoá ngoại; luôn là UUID, DB chỉ chặn độ dài). `PRODUCT` có sẵn cho bước
+  // kháng nghị sản phẩm bị gỡ (Week11.md 5.8) — đến lúc đó không cần migration thêm. KHÔNG khoá ngoại có chủ đích, như AdminNote: lời
+  // kháng nghị về một shop đã bị xoá vẫn là dấu vết của quyết định đã qua.
+  targetType AppealTargetType @map("target_type")
+  targetId   String           @map("target_id")
+
+  // Người gửi (lấy từ phiên, không bao giờ từ client). Không khoá ngoại và không có quan hệ ngược ở User: không có đường `include`
+  // nào vô tình đưa lời kháng nghị (nội dung riêng tư) vào response khác — đường đọc duy nhất là AppealService và AdminAppealService.
+  appellantId String @map("appellant_id")
+
+  // Văn bản thuần, 1..1000 ký tự (CHECK viết tay trong migration; Zod ép ở packages/types).
+  message String
+
+  status AppealStatus @default(PENDING)
+
+  // Mốc `Shop.statusChangedAt` của lần bị khoá mà kháng nghị nhắm tới. TIMESTAMP(3) như cột nguồn nên so bằng được.
+  moderationEventAt DateTime @map("moderation_event_at")
+
+  // Người quyết định (Admin) và ghi chú gửi lại chủ shop; null khi còn PENDING. Quan hệ giữa `status` và các cột này do CHECK ở DB giữ.
+  decidedById  String? @map("decided_by_id")
+  decisionNote String? @map("decision_note")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  decidedAt DateTime? @map("decided_at")
+
+  // Cũng là chỉ mục phục vụ lịch sử của một shop: WHERE target_type = ? AND target_id = ? ORDER BY moderation_event_at DESC.
+  @@unique([targetType, targetId, moderationEventAt])
+  // Hàng đợi của Admin: WHERE status = 'PENDING' ORDER BY created_at.
+  @@index([status, createdAt])
+  @@map("appeals")
+}
