@@ -32,10 +32,16 @@ import {
   type ReportResolutionAction,
   type ReportTargetType,
 } from '@ecommerce/types';
+import {
+  ReportStatus,
+  ReportTargetType as PrismaReportTargetType,
+} from '@prisma/client';
+import { readdirSync, readFileSync } from 'fs';
+import { join } from 'path';
 
-// Hợp đồng dùng chung của báo cáo vi phạm (packages/types/src/report.ts, Week11.md 5.1). packages/types không có test runner riêng —
-// test ở đây (cùng precedent appeal-schemas.spec.ts). Phần "khớp với DB" (enum Prisma, CHECK, chỉ mục) được thêm ở bước 5.2 khi migration
-// tồn tại. Ký tự đặc biệt dựng bằng String.fromCharCode để tệp nguồn không chứa ký tự điều khiển thật.
+// Hợp đồng dùng chung của báo cáo vi phạm (packages/types/src/report.ts, Week11.md 5.1) và phần "khớp với DB" (enum Prisma, CHECK,
+// chỉ mục của migration add_reports_table, 5.2). packages/types không có test runner riêng — test ở đây (cùng precedent
+// appeal-schemas.spec.ts). Ký tự đặc biệt dựng bằng String.fromCharCode để tệp nguồn không chứa ký tự điều khiển thật.
 const NUL = String.fromCharCode(0);
 const TAB = String.fromCharCode(9);
 const BIDI_OVERRIDE = String.fromCharCode(0x202e);
@@ -775,5 +781,109 @@ describe('mã lỗi', () => {
     'REPORT_ACTION_NOT_ALLOWED',
   ])('%s nằm trong danh sách mã lỗi BE trả', (errorCode) => {
     expect(SERVER_ERROR_CODES).toContain(errorCode);
+  });
+});
+
+describe('khớp với DB', () => {
+  const apiRoot = join(__dirname, '..', '..', '..');
+  const migrationSql = () => {
+    const migrationsDir = join(apiRoot, 'prisma', 'migrations');
+    const folder = readdirSync(migrationsDir).find((name) =>
+      name.endsWith('_add_reports_table'),
+    );
+    expect(folder).toBeDefined();
+    return readFileSync(
+      join(migrationsDir, folder as string, 'migration.sql'),
+      'utf8',
+    );
+  };
+  const enumValues = (sql: string, name: string) => {
+    const match = new RegExp(
+      `CREATE TYPE "${name}" AS ENUM \\(([^)]*)\\)`,
+    ).exec(sql);
+    return (match?.[1] ?? '')
+      .split(',')
+      .map((value) => value.trim().replace(/'/g, ''))
+      .sort();
+  };
+  const upperBound = (sql: string, column: string) => {
+    const match = new RegExp(
+      `char_length\\("${column}"\\)\\s+BETWEEN\\s+1\\s+AND\\s+(\\d+)`,
+    ).exec(sql);
+    return Number(match?.[1]);
+  };
+
+  it('enum Prisma khớp REPORT_TARGET_TYPES và REPORT_STATUSES', () => {
+    expect([...REPORT_TARGET_TYPES].sort()).toEqual(
+      Object.values(PrismaReportTargetType).sort(),
+    );
+    expect([...REPORT_STATUSES].sort()).toEqual(
+      Object.values(ReportStatus).sort(),
+    );
+  });
+
+  it('enum Postgres của migration có đúng các giá trị của hợp đồng', () => {
+    const sql = migrationSql();
+
+    expect(enumValues(sql, 'ReportTargetType')).toEqual(
+      [...REPORT_TARGET_TYPES].sort(),
+    );
+    expect(enumValues(sql, 'ReportStatus')).toEqual(
+      [...REPORT_STATUSES].sort(),
+    );
+  });
+
+  it('REPORT_NOTE_MAX_LENGTH bằng cận trên của CHECK note (đổi một nơi mà quên nơi kia là test đỏ)', () => {
+    expect(upperBound(migrationSql(), 'note')).toBe(REPORT_NOTE_MAX_LENGTH);
+  });
+
+  it('REPORT_RESOLUTION_NOTE_MAX_LENGTH bằng cận trên của CHECK resolution_note', () => {
+    expect(upperBound(migrationSql(), 'resolution_note')).toBe(
+      REPORT_RESOLUTION_NOTE_MAX_LENGTH,
+    );
+  });
+
+  it('cận byte của ảnh chụp ở DB là đúng gấp đôi cận của Zod (jsonb::text chèn thêm dấu cách nên dài hơn JSON gọn)', () => {
+    const match = /octet_length\("snapshot"::text\)\s*<=\s*(\d+)/.exec(
+      migrationSql(),
+    );
+
+    expect(match).not.toBeNull();
+    expect(Number(match?.[1])).toBe(REPORT_SNAPSHOT_MAX_BYTES * 2);
+  });
+
+  it('migration có các CHECK giữ bất biến trạng thái ↔ kết quả, hành động ↔ trạng thái, ghi chú bắt buộc và ảnh chụp', () => {
+    const sql = migrationSql();
+
+    for (const name of [
+      'reports_status_matches_resolution',
+      'reports_dismissed_iff_dismiss_action',
+      'reports_resolved_has_note',
+      'reports_other_reason_has_note',
+      'reports_snapshot_is_object',
+      'reports_snapshot_size_limit',
+      'reports_reason_code_format',
+      'reports_resolution_action_format',
+    ]) {
+      expect(sql).toContain(`"${name}"`);
+    }
+  });
+
+  it('migration có chỉ mục duy nhất TỪNG PHẦN (reporter_id, target_type, target_id) WHERE status = OPEN: trọng tài "mỗi người một báo cáo đang mở về một đối tượng"', () => {
+    expect(migrationSql()).toMatch(
+      /CREATE UNIQUE INDEX "reports_open_reporter_target_key" ON "reports"\("reporter_id", "target_type", "target_id"\) WHERE "status" = 'OPEN'/,
+    );
+  });
+
+  it('bảng không có khoá ngoại và schema.prisma không có quan hệ ngược: không đường `include` nào đưa danh tính người báo vào route phía người bị báo', () => {
+    expect(migrationSql()).not.toMatch(/FOREIGN KEY|REFERENCES/i);
+    const prisma = readFileSync(
+      join(apiRoot, 'prisma', 'schema.prisma'),
+      'utf8',
+    );
+    const model = /model Report \{[\s\S]*?\n\}/.exec(prisma)?.[0] ?? '';
+    expect(model).not.toBe('');
+    expect(model).not.toMatch(/@relation/);
+    expect(prisma).not.toMatch(/Report\[\]/);
   });
 });
