@@ -259,6 +259,18 @@ const CASES: Case[] = [
     bodyKey,
     href: '/admin/reports',
   })),
+  ...(['RESOLVED', 'DISMISSED'] as const).map((outcome): Case => ({
+    name: `REPORT_RESOLVED ${outcome}`,
+    notification: {
+      ...BASE,
+      type: 'REPORT_RESOLVED',
+      data: { reportId: ORDER, targetType: 'REVIEW', outcome },
+    },
+    icon: 'info',
+    titleKey: 'titleReportResolved',
+    bodyKey: outcome === 'RESOLVED' ? 'bodyReportResolved' : 'bodyReportDismissed',
+    href: null,
+  })),
   {
     name: 'UNKNOWN',
     notification: { ...BASE, type: 'UNKNOWN', data: {} },
@@ -497,6 +509,24 @@ describe('nội dung theo ngữ cảnh', () => {
     expect(bodies[1].vi).toContain('trò chuyện');
     expect(bodies[2].vi).toContain('shop');
     expect(bodies[3].vi).toContain('sản phẩm');
+  });
+
+  it('kết quả báo cáo (người báo): chữ chung chung, hai kết quả hai câu khác nhau, không nêu hành động cụ thể và không có đường dẫn', () => {
+    const [resolved, dismissed] = (['RESOLVED', 'DISMISSED'] as const).map((outcome) =>
+      describeNotification({
+        ...BASE,
+        type: 'REPORT_RESOLVED',
+        data: { reportId: ORDER, targetType: 'SHOP', outcome },
+      }),
+    );
+
+    expect(resolved.href).toBeNull();
+    expect(dismissed.href).toBeNull();
+    expect(render(resolved, 'vi').body).not.toBe(render(dismissed, 'vi').body);
+    expect(render(resolved, 'en').body).not.toBe(render(dismissed, 'en').body);
+    for (const locale of ['vi', 'en'] as const) {
+      expect(render(resolved, locale).body).not.toMatch(/ẩn|khoá|khóa|gỡ|hide|suspend|remove|ban/i);
+    }
   });
 
   it('phía nhận khác nhau ⇒ chữ khác nhau (hủy đơn: người mua vs chủ shop; khiếu nại: Admin vs chủ shop)', () => {

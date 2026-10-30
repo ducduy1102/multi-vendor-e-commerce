@@ -69,6 +69,9 @@ export const NOTIFICATION_MESSAGE_KEYS = [
   'bodyReportNewConversation',
   'bodyReportNewShop',
   'bodyReportNewProduct',
+  'titleReportResolved',
+  'bodyReportResolved',
+  'bodyReportDismissed',
   'titleUnknown',
   'bodyUnknown',
 ] as const;
@@ -341,6 +344,18 @@ export function describeNotification(notification: Notification): NotificationDi
         params: {},
         // Hàng đợi báo cáo của sàn, tab mặc định là "Chờ xử lý".
         href: '/admin/reports',
+      };
+
+    case 'REPORT_RESOLVED':
+      return {
+        icon: 'info',
+        titleKey: 'titleReportResolved',
+        // Kết quả CHUNG CHUNG (D5): đã xử lý hoặc chưa thấy vi phạm — thông báo không nêu hành động cụ thể, đối tượng hay ghi chú.
+        bodyKey:
+          notification.data.outcome === 'RESOLVED' ? 'bodyReportResolved' : 'bodyReportDismissed',
+        params: {},
+        // Người báo không có trang nào để xem lại báo cáo của mình.
+        href: null,
       };
 
     case 'UNKNOWN':

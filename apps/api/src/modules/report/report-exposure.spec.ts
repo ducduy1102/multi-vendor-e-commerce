@@ -9,7 +9,14 @@ import { join, relative, sep } from 'path';
 const SRC_ROOT = join(__dirname, '..', '..');
 
 // Thư mục được phép đụng bảng `reports` trong mã SẢN XUẤT. Mã test (`*.spec.ts`, `*.int-spec.ts`) dựng dữ liệu nên không bị xét.
-const ALLOWED_DIRS = ['modules/report/', 'modules/admin/', 'shared/testing/'];
+// `shared/notification/` đọc bảng CHỈ để tìm NGƯỜI NHẬN thông báo "báo cáo của bạn đã được xem xét" (người nhận luôn suy ra từ DB, không từ
+// nơi gọi) — thông báo đi tới chính người báo, không bao giờ tới người bị báo; cột nó được select bị khoá bởi test bên dưới.
+const ALLOWED_DIRS = [
+  'modules/report/',
+  'modules/admin/',
+  'shared/notification/',
+  'shared/testing/',
+];
 
 const DELEGATE_ACCESS = /\b(?:prisma|tx|client|db)\.report\b/;
 const RAW_SQL_ACCESS = /\b(?:FROM|JOIN|INTO|UPDATE)\s+"?reports"?\b/i;
@@ -58,6 +65,21 @@ describe('bảng reports chỉ được đọc ở module report và khu Admin',
     );
 
     expect(files.some((f) => DELEGATE_ACCESS.test(f.content))).toBe(true);
+  });
+
+  it('bộ tải thông báo chỉ select đúng bốn cột của báo cáo (id, người báo, loại đối tượng, trạng thái) — không ghi chú, ảnh chụp hay kết quả xử lý', () => {
+    const loader = collect(SRC_ROOT).find(
+      (f) => f.path === 'shared/notification/notification-facts.loader.ts',
+    );
+    const block = /this\.prisma\.report\.findMany\(\{[\s\S]*?\n {4}\}\)/.exec(
+      loader?.content ?? '',
+    )?.[0];
+
+    expect(block).toBeDefined();
+    expect(block).toMatch(
+      /select:\s*\{\s*id:\s*true,\s*reporterId:\s*true,\s*targetType:\s*true,\s*status:\s*true\s*\}/,
+    );
+    expect(block).not.toMatch(/note|snapshot|resolution|resolvedBy/i);
   });
 
   it('bộ kiểm quét này thật sự bắt được chỗ đọc nguy hiểm (kiểm chứng chính nó)', () => {

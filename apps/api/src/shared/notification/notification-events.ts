@@ -81,7 +81,10 @@ export type NotificationEvent =
       kind: 'REPORT_SUBMITTED';
       reportId: string;
       targetType: ReportTargetType;
-    };
+    }
+  // Admin đã đóng một hoặc nhiều báo cáo (Week11.md 5.4): báo MỖI người báo một lần. Sự kiện chỉ mang id báo cáo — người nhận (người báo),
+  // loại đối tượng và kết quả (RESOLVED/DISMISSED) đều đọc lại từ DB, không bao giờ từ nơi gọi; báo cáo còn OPEN bị bỏ qua.
+  | { kind: 'REPORTS_RESOLVED'; reportIds: string[] };
 
 export type NotificationEventKind = NotificationEvent['kind'];
 
@@ -113,6 +116,13 @@ export interface ReviewFacts {
   shopName: string;
 }
 
+export interface ReportFacts {
+  reportId: string;
+  reporterId: string;
+  targetType: ReportTargetType;
+  outcome: 'RESOLVED' | 'DISMISSED';
+}
+
 export interface ShopFacts {
   shopId: string;
   shopName: string;
@@ -125,7 +135,8 @@ export type NotificationFacts =
   | { kind: 'REVIEW'; review: ReviewFacts }
   | { kind: 'SHOP'; shop: ShopFacts; adminIds: string[] }
   // Sự kiện chỉ cần biết Admin nào đang hoạt động (không gắn với bản ghi nào để tải).
-  | { kind: 'ADMINS'; adminIds: string[] };
+  | { kind: 'ADMINS'; adminIds: string[] }
+  | { kind: 'REPORTS'; reports: ReportFacts[] };
 
 // Một thông báo sắp ghi: người nhận + nội dung `{ type, data }` đúng hình dạng đã chốt ở packages/types.
 export type NotificationDraft = { userId: string } & NotificationContent;
@@ -389,6 +400,15 @@ function buildRaw(
         }),
       );
     }
+
+    case 'REPORTS_RESOLVED':
+      return expectFacts(event, facts, 'REPORTS').reports.map((report) =>
+        draft(report.reporterId, 'REPORT_RESOLVED', {
+          reportId: report.reportId,
+          targetType: report.targetType,
+          outcome: report.outcome,
+        }),
+      );
 
     default: {
       // Thêm một loại sự kiện mà quên xử lý ở đây là LỖI BIÊN DỊCH (never).

@@ -665,6 +665,89 @@ describe('báo cáo vi phạm (Week11.md 5.3)', () => {
   });
 });
 
+describe('đóng báo cáo (Week11.md 5.4)', () => {
+  const REPORT_2 = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd2';
+  const reports = (
+    ...items: Array<{
+      id: string;
+      reporterId: string;
+      targetType?: 'REVIEW' | 'CONVERSATION' | 'SHOP' | 'PRODUCT';
+      outcome?: 'RESOLVED' | 'DISMISSED';
+    }>
+  ): NotificationFacts => ({
+    kind: 'REPORTS',
+    reports: items.map((item) => ({
+      reportId: item.id,
+      reporterId: item.reporterId,
+      targetType: item.targetType ?? 'SHOP',
+      outcome: item.outcome ?? 'RESOLVED',
+    })),
+  });
+
+  it('REPORTS_RESOLVED ⇒ MỖI người báo nhận đúng một REPORT_RESOLVED, kèm kết quả chung chung; chủ shop/Admin không nhận', () => {
+    expect(
+      buildNotifications(
+        { kind: 'REPORTS_RESOLVED', reportIds: [REPORT, REPORT_2] },
+        reports(
+          { id: REPORT, reporterId: BUYER, targetType: 'REVIEW' },
+          {
+            id: REPORT_2,
+            reporterId: OTHER_OWNER,
+            targetType: 'REVIEW',
+            outcome: 'DISMISSED',
+          },
+        ),
+      ),
+    ).toEqual([
+      {
+        userId: BUYER,
+        type: 'REPORT_RESOLVED',
+        data: { reportId: REPORT, targetType: 'REVIEW', outcome: 'RESOLVED' },
+      },
+      {
+        userId: OTHER_OWNER,
+        type: 'REPORT_RESOLVED',
+        data: {
+          reportId: REPORT_2,
+          targetType: 'REVIEW',
+          outcome: 'DISMISSED',
+        },
+      },
+    ]);
+  });
+
+  it('thông báo không mang hành động cụ thể, ghi chú hay tên đối tượng — chỉ id, loại đối tượng và RESOLVED/DISMISSED', () => {
+    const [draft] = buildNotifications(
+      { kind: 'REPORTS_RESOLVED', reportIds: [REPORT] },
+      reports({ id: REPORT, reporterId: BUYER }),
+    );
+
+    expect(Object.keys(draft.data).sort()).toEqual([
+      'outcome',
+      'reportId',
+      'targetType',
+    ]);
+  });
+
+  it('không có báo cáo nào đã đóng (rỗng) ⇒ không có thông báo', () => {
+    expect(
+      buildNotifications(
+        { kind: 'REPORTS_RESOLVED', reportIds: [REPORT] },
+        reports(),
+      ),
+    ).toEqual([]);
+  });
+
+  it('dữ kiện sai loại bị từ chối thay vì gửi nhầm', () => {
+    expect(() =>
+      buildNotifications(
+        { kind: 'REPORTS_RESOLVED', reportIds: [REPORT] },
+        { kind: 'ADMINS', adminIds: [ADMIN_1] },
+      ),
+    ).toThrow(/needs REPORTS facts/);
+  });
+});
+
 describe('tính đúng đắn chung', () => {
   // Một ví dụ cho MỖI loại sự kiện: kiểu Record<NotificationEventKind, ...> khiến thêm loại mà quên ví dụ là lỗi biên dịch.
   const SAMPLES: Record<
@@ -766,6 +849,20 @@ describe('tính đúng đắn chung', () => {
       event: { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType: 'SHOP' },
       facts: { kind: 'ADMINS', adminIds: [ADMIN_1] },
     },
+    REPORTS_RESOLVED: {
+      event: { kind: 'REPORTS_RESOLVED', reportIds: [REPORT] },
+      facts: {
+        kind: 'REPORTS',
+        reports: [
+          {
+            reportId: REPORT,
+            reporterId: BUYER,
+            targetType: 'SHOP',
+            outcome: 'RESOLVED',
+          },
+        ],
+      },
+    },
   };
 
   const KINDS = Object.keys(SAMPLES) as NotificationEventKind[];
@@ -814,6 +911,9 @@ describe('tính đúng đắn chung', () => {
       }
       if (facts.kind === 'ADMINS') {
         facts.adminIds.forEach((id) => known.add(id));
+      }
+      if (facts.kind === 'REPORTS') {
+        facts.reports.forEach((r) => known.add(r.reporterId));
       }
 
       for (const draft of buildNotifications(event, facts)) {

@@ -54,6 +54,7 @@ export const NOTIFICATION_TYPES = [
   'ADMIN_APPEAL_PENDING',
   'APPEAL_DECIDED',
   'REPORT_NEW',
+  'REPORT_RESOLVED',
 ] as const;
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
@@ -189,6 +190,13 @@ export const notificationContentSchema = z.discriminatedUnion('type', [
   // Tất cả Admin: có báo cáo vi phạm mới (Week11.md 5.3). CHỈ id báo cáo và LOẠI đối tượng — không người báo, không lý do, không ghi
   // chú, không tên đối tượng: nội dung báo cáo là dữ liệu riêng tư, Admin đọc ở hàng đợi (FE dẫn tới `/admin/reports`).
   content('REPORT_NEW', { reportId: idSchema, targetType: reportTargetTypeSchema }),
+  // Người báo: Admin đã xử lý báo cáo của mình (Week11.md 5.4). Kết quả CHUNG CHUNG: `RESOLVED` = đã xử lý, `DISMISSED` = chưa thấy vi
+  // phạm — không lộ hành động cụ thể (ẩn/khoá/gỡ...), ghi chú của Admin hay đối tượng đã chịu hình thức nào (D5).
+  content('REPORT_RESOLVED', {
+    reportId: idSchema,
+    targetType: reportTargetTypeSchema,
+    outcome: z.enum(['RESOLVED', 'DISMISSED']),
+  }),
 ]);
 export type NotificationContent = z.infer<typeof notificationContentSchema>;
 export type NotificationOfType<T extends NotificationType> = Extract<

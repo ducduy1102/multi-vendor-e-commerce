@@ -191,6 +191,15 @@ const CASES: { name: string; notification: Notification; toast: boolean }[] = [
     },
     toast: true,
   },
+  {
+    name: 'REPORT_RESOLVED',
+    notification: {
+      ...BASE,
+      type: 'REPORT_RESOLVED',
+      data: { reportId: SHOP_ID, targetType: 'SHOP', outcome: 'RESOLVED' },
+    },
+    toast: true,
+  },
   { name: 'UNKNOWN', notification: makeUnknownNotification(), toast: false },
 ];
 
