@@ -502,7 +502,7 @@ describe('ảnh chụp (snapshot)', () => {
   const snapshots = {
     REVIEW: {
       productName: 'Áo thun cotton',
-      productSlug: 'ao-thun-cotton',
+      productId: '0b7d9a52-3c1e-4f4d-8f27-6a1d5e9c2b10',
       rating: 1,
       comment: 'Hàng giả, shop lừa đảo',
       authorName: 'Nguyễn Văn A',
@@ -513,7 +513,7 @@ describe('ảnh chụp (snapshot)', () => {
       reporterRole: 'SHOP',
     },
     SHOP: { name: 'Shop A', slug: 'shop-a' },
-    PRODUCT: { name: 'Áo thun', slug: 'ao-thun', shopName: 'Shop A' },
+    PRODUCT: { name: 'Áo thun', shopName: 'Shop A' },
   } as const;
 
   it.each(REPORT_TARGET_TYPES)(
@@ -603,10 +603,10 @@ describe('ảnh chụp (snapshot)', () => {
     expect(text).not.toContain(canary);
   });
 
-  it('ca xấu nhất theo giới hạn thật vẫn VỪA 4 KB: đánh giá 1.000 ký tự 3 byte + tên tác giả 100 + tên sản phẩm cắt ở 150 + slug 150', () => {
+  it('ca xấu nhất theo giới hạn thật vẫn VỪA 4 KB: đánh giá 1.000 ký tự 3 byte + tên tác giả 100 + tên sản phẩm cắt ở 150', () => {
     const worst = {
       productName: 'ệ'.repeat(150),
-      productSlug: 'a'.repeat(150),
+      productId: '0b7d9a52-3c1e-4f4d-8f27-6a1d5e9c2b10',
       rating: 5,
       comment: 'ệ'.repeat(REVIEW_COMMENT_MAX_LENGTH),
       authorName: 'ệ'.repeat(USER_NAME_MAX_LENGTH),
@@ -635,7 +635,7 @@ describe('response (allowlist)', () => {
     targetType: 'REVIEW',
     snapshot: {
       productName: 'Áo thun',
-      productSlug: 'ao-thun',
+      productId: '0b7d9a52-3c1e-4f4d-8f27-6a1d5e9c2b10',
       rating: 1,
       comment: 'Tệ',
       authorName: 'Tác giả',

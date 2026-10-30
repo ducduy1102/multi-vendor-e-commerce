@@ -264,11 +264,14 @@ export type AdminReportListQuery = z.infer<typeof adminReportListQuerySchema>;
 // Mỗi hình dạng là object THƯỜNG (response bỏ field lạ như mọi schema khác); phía GHI dùng `parseReportSnapshot` bên dưới, bản này ép
 // `.strict()` + trần byte để một lỗi của nơi dựng ảnh chụp không bao giờ ghi thêm trường vào DB.
 const snapshotName = z.string().min(1).max(REPORT_SNAPSHOT_NAME_MAX_LENGTH);
+// Slug của SHOP (tối đa SHOP_SLUG_MAX_LENGTH = 150 ký tự). Sản phẩm thì KHÔNG lưu slug: tên sản phẩm không có giới hạn độ dài nên slug sinh
+// ra từ nó cũng vậy, mà cắt slug thì link hỏng — Admin mở sản phẩm bằng id (`GET /products/:idOrSlug` nhận cả hai).
 const snapshotSlug = z.string().min(1).max(REPORT_SNAPSHOT_NAME_MAX_LENGTH);
 
 export const reviewReportSnapshotSchema = z.object({
+  // Id sản phẩm được đánh giá — Admin mở trang sản phẩm bằng id (xem chú thích `snapshotSlug`).
+  productId: z.string().uuid(),
   productName: snapshotName,
-  productSlug: snapshotSlug,
   rating: z.number().int().min(1).max(5),
   // Nguyên văn đánh giá lúc bị báo (≤ REVIEW_COMMENT_MAX_LENGTH ký tự); null khi đánh giá chỉ có sao.
   comment: z.string().nullable(),
@@ -285,7 +288,6 @@ export type ShopReportSnapshot = z.infer<typeof shopReportSnapshotSchema>;
 
 export const productReportSnapshotSchema = z.object({
   name: snapshotName,
-  slug: snapshotSlug,
   shopName: snapshotName,
 });
 export type ProductReportSnapshot = z.infer<typeof productReportSnapshotSchema>;

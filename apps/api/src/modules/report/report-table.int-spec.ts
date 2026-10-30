@@ -106,7 +106,7 @@ describe('bảng reports (DB thật)', () => {
       const snapshots = {
         REVIEW: {
           productName: 'Áo thun cotton',
-          productSlug: 'ao-thun-cotton',
+          productId: '0b7d9a52-3c1e-4f4d-8f27-6a1d5e9c2b10',
           rating: 1,
           comment: 'Hàng giả.\nShop lừa đảo.',
           authorName: 'Nguyễn Văn A',
@@ -117,7 +117,7 @@ describe('bảng reports (DB thật)', () => {
           reporterRole: 'SHOP',
         },
         SHOP: SHOP_SNAPSHOT,
-        PRODUCT: { name: 'Áo', slug: 'ao', shopName: 'Shop A' },
+        PRODUCT: { name: 'Áo', shopName: 'Shop A' },
       } as const;
 
       for (const targetType of Object.keys(snapshots) as Array<
@@ -181,7 +181,7 @@ describe('bảng reports (DB thật)', () => {
         create({
           targetId,
           targetType: 'PRODUCT',
-          snapshot: { name: 'Áo', slug: 'ao', shopName: 'Shop A' },
+          snapshot: { name: 'Áo', shopName: 'Shop A' },
           reasonCode: 'COUNTERFEIT',
         }),
       ).resolves.toBeDefined();
