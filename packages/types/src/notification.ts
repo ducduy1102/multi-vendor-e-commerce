@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { orderActorTypeSchema } from './order-status';
 import { refundRequestKindSchema } from './refund';
+import { reportTargetTypeSchema } from './report';
 import { shopStatusSchema } from './shop';
 import { isSafeMessageText, utf8ByteLength } from './text-safety';
 
@@ -52,6 +53,7 @@ export const NOTIFICATION_TYPES = [
   'ADMIN_SHOP_PENDING',
   'ADMIN_APPEAL_PENDING',
   'APPEAL_DECIDED',
+  'REPORT_NEW',
 ] as const;
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
@@ -184,6 +186,9 @@ export const notificationContentSchema = z.discriminatedUnion('type', [
     shopId: idSchema,
     decision: z.enum(['ACCEPTED', 'REJECTED']),
   }),
+  // Tất cả Admin: có báo cáo vi phạm mới (Week11.md 5.3). CHỈ id báo cáo và LOẠI đối tượng — không người báo, không lý do, không ghi
+  // chú, không tên đối tượng: nội dung báo cáo là dữ liệu riêng tư, Admin đọc ở hàng đợi (FE dẫn tới `/admin/reports`).
+  content('REPORT_NEW', { reportId: idSchema, targetType: reportTargetTypeSchema }),
 ]);
 export type NotificationContent = z.infer<typeof notificationContentSchema>;
 export type NotificationOfType<T extends NotificationType> = Extract<

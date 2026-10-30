@@ -8,6 +8,7 @@ import {
   type NotificationType,
   type OrderActorType,
   type RefundRequestKind,
+  type ReportTargetType,
   type ShopStatus,
 } from '@ecommerce/types';
 
@@ -73,6 +74,13 @@ export type NotificationEvent =
       appealId: string;
       shopId: string;
       decision: 'ACCEPTED' | 'REJECTED';
+    }
+  // Có báo cáo vi phạm mới (Week11.md 5.3): báo mọi Admin ACTIVE. Chỉ id báo cáo và loại đối tượng — không người báo, lý do hay ghi
+  // chú (nơi gọi cũng không có cách nào đưa chúng vào).
+  | {
+      kind: 'REPORT_SUBMITTED';
+      reportId: string;
+      targetType: ReportTargetType;
     };
 
 export type NotificationEventKind = NotificationEvent['kind'];
@@ -115,7 +123,9 @@ export type NotificationFacts =
   | { kind: 'ORDERS'; orders: OrderFacts[] }
   | { kind: 'REFUND_REQUEST'; request: RefundRequestFacts; adminIds: string[] }
   | { kind: 'REVIEW'; review: ReviewFacts }
-  | { kind: 'SHOP'; shop: ShopFacts; adminIds: string[] };
+  | { kind: 'SHOP'; shop: ShopFacts; adminIds: string[] }
+  // Sự kiện chỉ cần biết Admin nào đang hoạt động (không gắn với bản ghi nào để tải).
+  | { kind: 'ADMINS'; adminIds: string[] };
 
 // Một thông báo sắp ghi: người nhận + nội dung `{ type, data }` đúng hình dạng đã chốt ở packages/types.
 export type NotificationDraft = { userId: string } & NotificationContent;
@@ -368,6 +378,16 @@ function buildRaw(
           decision: event.decision,
         }),
       ];
+    }
+
+    case 'REPORT_SUBMITTED': {
+      const { adminIds } = expectFacts(event, facts, 'ADMINS');
+      return adminIds.map((adminId) =>
+        draft(adminId, 'REPORT_NEW', {
+          reportId: event.reportId,
+          targetType: event.targetType,
+        }),
+      );
     }
 
     default: {

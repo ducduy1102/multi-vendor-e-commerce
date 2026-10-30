@@ -98,6 +98,10 @@ const VALID: Record<NotificationType, Record<string, unknown>> = {
     shopId: SHOP_ID,
     decision: 'ACCEPTED',
   },
+  REPORT_NEW: {
+    reportId: '9b2c4d6e-1234-4abc-8def-0123456789ac',
+    targetType: 'REVIEW',
+  },
 };
 
 const write = (type: unknown, data: unknown) =>
@@ -127,8 +131,8 @@ function worstCaseData(type: NotificationType): Record<string, unknown> {
 }
 
 describe('danh sách loại thông báo', () => {
-  it('có đủ 17 loại, không trùng, đúng dạng IN_HOA_GẠCH_DƯỚI và vừa cột type', () => {
-    expect(NOTIFICATION_TYPES).toHaveLength(17);
+  it('có đủ 18 loại, không trùng, đúng dạng IN_HOA_GẠCH_DƯỚI và vừa cột type', () => {
+    expect(NOTIFICATION_TYPES).toHaveLength(18);
     expect(new Set(NOTIFICATION_TYPES).size).toBe(NOTIFICATION_TYPES.length);
     for (const type of NOTIFICATION_TYPES) {
       expect(type).toMatch(/^[A-Z][A-Z_]*$/);

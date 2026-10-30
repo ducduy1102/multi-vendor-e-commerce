@@ -93,6 +93,10 @@ export class NotificationFactsLoader {
       case 'APPEAL_DECIDED':
         return this.shop(event.shopId, false);
 
+      case 'REPORT_SUBMITTED':
+        // Người nhận là mọi Admin ACTIVE; báo cáo vừa được tạo nên không cần tải lại hàng nào (và không đọc nội dung báo cáo).
+        return { kind: 'ADMINS', adminIds: await this.activeAdminIds() };
+
       default: {
         const unhandled: never = event;
         throw new Error(

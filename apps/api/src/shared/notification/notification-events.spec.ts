@@ -1,5 +1,6 @@
 import {
   NOTIFICATION_LABEL_MAX_LENGTH,
+  REPORT_TARGET_TYPES,
   NOTIFICATION_REASON_MAX_LENGTH,
   notificationWriteSchema,
   type NotificationType,
@@ -30,6 +31,7 @@ const ORDER_2 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2';
 const PRODUCT = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const SHOP = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const APPEAL = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1';
+const REPORT = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1';
 const REQUEST = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const REVIEW = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 
@@ -606,6 +608,63 @@ describe('sự kiện shop', () => {
   );
 });
 
+describe('báo cáo vi phạm (Week11.md 5.3)', () => {
+  const admins = (...adminIds: string[]): NotificationFacts => ({
+    kind: 'ADMINS',
+    adminIds,
+  });
+
+  it.each(REPORT_TARGET_TYPES)(
+    'REPORT_SUBMITTED (%s) ⇒ mọi Admin nhận REPORT_NEW, chỉ mang id báo cáo và loại đối tượng',
+    (targetType) => {
+      expect(
+        buildNotifications(
+          { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType },
+          admins(ADMIN_1, ADMIN_2),
+        ),
+      ).toEqual([
+        {
+          userId: ADMIN_1,
+          type: 'REPORT_NEW',
+          data: { reportId: REPORT, targetType },
+        },
+        {
+          userId: ADMIN_2,
+          type: 'REPORT_NEW',
+          data: { reportId: REPORT, targetType },
+        },
+      ]);
+    },
+  );
+
+  it('REPORT_SUBMITTED khi không có Admin nào ⇒ không có thông báo', () => {
+    expect(
+      buildNotifications(
+        { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType: 'SHOP' },
+        admins(),
+      ),
+    ).toEqual([]);
+  });
+
+  it('một Admin xuất hiện hai lần trong danh sách vẫn chỉ nhận một thông báo', () => {
+    expect(
+      buildNotifications(
+        { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType: 'REVIEW' },
+        admins(ADMIN_1, ADMIN_1),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('dữ kiện sai loại (dữ kiện shop thay vì danh sách Admin) bị từ chối thay vì gửi nhầm', () => {
+    expect(() =>
+      buildNotifications(
+        { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType: 'SHOP' },
+        shop({}, [ADMIN_1]),
+      ),
+    ).toThrow(/needs ADMINS facts/);
+  });
+});
+
 describe('tính đúng đắn chung', () => {
   // Một ví dụ cho MỖI loại sự kiện: kiểu Record<NotificationEventKind, ...> khiến thêm loại mà quên ví dụ là lỗi biên dịch.
   const SAMPLES: Record<
@@ -703,6 +762,10 @@ describe('tính đúng đắn chung', () => {
       },
       facts: shop(),
     },
+    REPORT_SUBMITTED: {
+      event: { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType: 'SHOP' },
+      facts: { kind: 'ADMINS', adminIds: [ADMIN_1] },
+    },
   };
 
   const KINDS = Object.keys(SAMPLES) as NotificationEventKind[];
@@ -747,6 +810,9 @@ describe('tính đúng đắn chung', () => {
       }
       if (facts.kind === 'SHOP') {
         known.add(facts.shop.ownerId);
+        facts.adminIds.forEach((id) => known.add(id));
+      }
+      if (facts.kind === 'ADMINS') {
         facts.adminIds.forEach((id) => known.add(id));
       }
 

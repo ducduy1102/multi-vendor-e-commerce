@@ -64,6 +64,11 @@ export const NOTIFICATION_MESSAGE_KEYS = [
   'bodyAppealAccepted',
   'titleAppealRejected',
   'bodyAppealRejected',
+  'titleReportNew',
+  'bodyReportNewReview',
+  'bodyReportNewConversation',
+  'bodyReportNewShop',
+  'bodyReportNewProduct',
   'titleUnknown',
   'bodyUnknown',
 ] as const;
@@ -99,6 +104,14 @@ function pathWithId(prefix: string, id: string): string | null {
 function reasonParams(reason: string | undefined): NotificationParams {
   return reason ? { hasReason: 'yes', reason } : { hasReason: 'no', reason: '' };
 }
+
+// Câu của thông báo báo cáo mới theo loại đối tượng.
+const REPORT_NEW_BODY_KEYS = {
+  REVIEW: 'bodyReportNewReview',
+  CONVERSATION: 'bodyReportNewConversation',
+  SHOP: 'bodyReportNewShop',
+  PRODUCT: 'bodyReportNewProduct',
+} as const satisfies Record<'REVIEW' | 'CONVERSATION' | 'SHOP' | 'PRODUCT', NotificationMessageKey>;
 
 type Known = KnownNotification;
 type Of<T extends Known['type']> = Extract<Known, { type: T }>;
@@ -316,6 +329,18 @@ export function describeNotification(notification: Notification): NotificationDi
           notification.data.decision === 'ACCEPTED' ? 'bodyAppealAccepted' : 'bodyAppealRejected',
         params: {},
         href: '/seller/shop',
+      };
+
+    case 'REPORT_NEW':
+      return {
+        icon: 'info',
+        titleKey: 'titleReportNew',
+        // Mỗi loại đối tượng một câu trọn vẹn (không `select`): Admin thấy ngay báo cáo nói về cái gì. Thông báo không mang lý do,
+        // ghi chú hay tên đối tượng — chúng nằm ở hàng đợi.
+        bodyKey: REPORT_NEW_BODY_KEYS[notification.data.targetType],
+        params: {},
+        // Hàng đợi báo cáo của sàn, tab mặc định là "Chờ xử lý".
+        href: '/admin/reports',
       };
 
     case 'UNKNOWN':

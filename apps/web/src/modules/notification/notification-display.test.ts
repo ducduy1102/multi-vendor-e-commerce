@@ -240,6 +240,25 @@ const CASES: Case[] = [
     bodyKey: decision === 'ACCEPTED' ? 'bodyAppealAccepted' : 'bodyAppealRejected',
     href: '/seller/shop',
   })),
+  ...(
+    [
+      ['REVIEW', 'bodyReportNewReview'],
+      ['CONVERSATION', 'bodyReportNewConversation'],
+      ['SHOP', 'bodyReportNewShop'],
+      ['PRODUCT', 'bodyReportNewProduct'],
+    ] as const
+  ).map(([targetType, bodyKey]): Case => ({
+    name: `REPORT_NEW ${targetType}`,
+    notification: {
+      ...BASE,
+      type: 'REPORT_NEW',
+      data: { reportId: ORDER, targetType },
+    },
+    icon: 'info',
+    titleKey: 'titleReportNew',
+    bodyKey,
+    href: '/admin/reports',
+  })),
   {
     name: 'UNKNOWN',
     notification: { ...BASE, type: 'UNKNOWN', data: {} },
@@ -457,6 +476,27 @@ describe('nội dung theo ngữ cảnh', () => {
     expect(display.href).toBe('/admin/appeals');
     expect(render(display, 'vi').body).toContain('Shop Bị Khóa');
     expect(render(display, 'en').body).toContain('Shop Bị Khóa');
+  });
+
+  it('báo cáo mới (Admin): mỗi loại đối tượng một câu riêng, chỉ nói loại gì bị báo — không có tên, lý do hay người báo', () => {
+    const bodies = (['REVIEW', 'CONVERSATION', 'SHOP', 'PRODUCT'] as const).map((targetType) => {
+      const display = describeNotification({
+        ...BASE,
+        type: 'REPORT_NEW',
+        data: { reportId: ORDER, targetType },
+      });
+      return {
+        vi: render(display, 'vi').body,
+        en: render(display, 'en').body,
+      };
+    });
+
+    expect(new Set(bodies.map((b) => b.vi)).size).toBe(4);
+    expect(new Set(bodies.map((b) => b.en)).size).toBe(4);
+    expect(bodies[0].vi).toContain('đánh giá');
+    expect(bodies[1].vi).toContain('trò chuyện');
+    expect(bodies[2].vi).toContain('shop');
+    expect(bodies[3].vi).toContain('sản phẩm');
   });
 
   it('phía nhận khác nhau ⇒ chữ khác nhau (hủy đơn: người mua vs chủ shop; khiếu nại: Admin vs chủ shop)', () => {
