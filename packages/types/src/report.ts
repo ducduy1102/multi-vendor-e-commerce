@@ -374,6 +374,10 @@ const adminReportBaseShape = {
   reporter: reportReporterSchema,
   createdAt: z.string(),
   resolution: reportResolutionSchema.nullable(),
+  // Số báo cáo ĐANG MỞ khác về CÙNG đối tượng (không tính chính nó). Nhiều người có thể báo một đối tượng; Admin xử lý MỘT báo cáo thì
+  // mọi báo cáo mở còn lại của đối tượng đó đóng luôn cùng kết quả (Week11.md 5.4) — nên số này cũng là "bao nhiêu báo cáo nữa sẽ
+  // đóng cùng", và là tín hiệu mức độ nghiêm trọng (nhiều người cùng báo).
+  sameTargetOpenCount: z.number().int().nonnegative(),
 };
 
 // Một báo cáo như ADMIN thấy, phân biệt theo `targetType` để `snapshot` có đúng kiểu của loại đó.

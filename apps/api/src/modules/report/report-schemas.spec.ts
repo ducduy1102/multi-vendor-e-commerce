@@ -629,6 +629,7 @@ describe('response (allowlist)', () => {
     reporter: { name: 'Người báo', email: 'reporter@example.com' },
     createdAt: '2026-10-30T08:00:00.000Z',
     resolution: null,
+    sameTargetOpenCount: 2,
   };
   const review = {
     ...base,
