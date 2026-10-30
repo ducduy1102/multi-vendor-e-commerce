@@ -1165,7 +1165,13 @@
     "errorAppealTargetChanged": "Lần khoá shop mà kháng nghị nhắm tới đã kết thúc, không còn gì để xử lý. Danh sách đã được làm mới.",
     "validationAppealNoteRequired": "Vui lòng nhập lý do từ chối.",
     "validationAppealNoteTooLong": "Ghi chú tối đa 500 ký tự.",
-    "validationAppealNoteUnsafe": "Ghi chú có ký tự không hợp lệ."
+    "validationAppealNoteUnsafe": "Ghi chú có ký tự không hợp lệ.",
+    "errorReportNotFound": "Không tìm thấy báo cáo này.",
+    "errorReportAlreadyClosed": "Báo cáo này đã được Admin khác xử lý. Danh sách đã được làm mới.",
+    "errorReportActionNotAllowed": "Hành động này không áp dụng được cho loại báo cáo này.",
+    "validationReportNoteRequired": "Vui lòng nhập lý do xử lý.",
+    "validationReportNoteTooLong": "Ghi chú tối đa 500 ký tự.",
+    "validationReportNoteUnsafe": "Ghi chú có ký tự không hợp lệ."
   },
   "chat": {
     "validationMessageRequired": "Vui lòng nhập nội dung tin nhắn",
@@ -1458,5 +1464,16 @@
     "validationMessageUnsafe": "Nội dung có ký tự không hợp lệ.",
     "errorNotAllowed": "Shop của bạn hiện không thể gửi kháng nghị. Dữ liệu đã được làm mới.",
     "errorAlreadySent": "Bạn đã gửi kháng nghị cho lần khoá này rồi. Dữ liệu đã được làm mới."
+  },
+  "report": {
+    "errorAlreadyOpen": "Bạn đã có một báo cáo đang chờ xử lý về nội dung này.",
+    "errorLimitReached": "Bạn đã gửi quá nhiều báo cáo trong 24 giờ qua. Vui lòng thử lại sau.",
+    "errorTargetNotFound": "Không tìm thấy nội dung cần báo cáo.",
+    "errorOwnContent": "Bạn không thể báo cáo nội dung của chính mình.",
+    "validationReasonRequired": "Vui lòng chọn lý do báo cáo.",
+    "validationReasonInvalid": "Lý do báo cáo không hợp lệ.",
+    "validationNoteRequired": "Vui lòng mô tả chi tiết khi chọn lý do “Khác”.",
+    "validationNoteTooLong": "Mô tả tối đa 500 ký tự.",
+    "validationNoteUnsafe": "Mô tả có ký tự không hợp lệ."
   }
 }

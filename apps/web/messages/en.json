@@ -1165,7 +1165,13 @@
     "errorAppealTargetChanged": "The suspension this appeal refers to has ended; there is nothing left to decide. The list has been refreshed.",
     "validationAppealNoteRequired": "Please enter a reason for rejecting.",
     "validationAppealNoteTooLong": "The note can be at most 500 characters.",
-    "validationAppealNoteUnsafe": "The note contains invalid characters."
+    "validationAppealNoteUnsafe": "The note contains invalid characters.",
+    "errorReportNotFound": "This report could not be found.",
+    "errorReportAlreadyClosed": "Another admin has already handled this report. The list has been refreshed.",
+    "errorReportActionNotAllowed": "This action does not apply to this type of report.",
+    "validationReportNoteRequired": "Please enter a reason for this action.",
+    "validationReportNoteTooLong": "The note can be at most 500 characters.",
+    "validationReportNoteUnsafe": "The note contains invalid characters."
   },
   "chat": {
     "validationMessageRequired": "Please enter a message",
@@ -1458,5 +1464,16 @@
     "validationMessageUnsafe": "The appeal contains invalid characters.",
     "errorNotAllowed": "Your shop cannot send an appeal right now. The data has been refreshed.",
     "errorAlreadySent": "You have already sent an appeal for this suspension. The data has been refreshed."
+  },
+  "report": {
+    "errorAlreadyOpen": "You already have a pending report about this content.",
+    "errorLimitReached": "You have sent too many reports in the last 24 hours. Please try again later.",
+    "errorTargetNotFound": "The content you are trying to report could not be found.",
+    "errorOwnContent": "You cannot report your own content.",
+    "validationReasonRequired": "Please choose a reason for the report.",
+    "validationReasonInvalid": "This report reason is not valid.",
+    "validationNoteRequired": "Please describe the problem when you choose “Other”.",
+    "validationNoteTooLong": "The description can be at most 500 characters.",
+    "validationNoteUnsafe": "The description contains invalid characters."
   }
 }

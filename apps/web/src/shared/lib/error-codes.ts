@@ -97,6 +97,14 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   APPEAL_NOT_FOUND: 'admin.errorAppealNotFound',
   APPEAL_ALREADY_DECIDED: 'admin.errorAppealAlreadyDecided',
   APPEAL_TARGET_CHANGED: 'admin.errorAppealTargetChanged',
+  // Báo cáo vi phạm (Week11.md 5.1) — phía người báo ở namespace `report`, phía Admin ở `admin`
+  REPORT_ALREADY_OPEN: 'report.errorAlreadyOpen',
+  REPORT_LIMIT_REACHED: 'report.errorLimitReached',
+  REPORT_TARGET_NOT_FOUND: 'report.errorTargetNotFound',
+  REPORT_OWN_CONTENT: 'report.errorOwnContent',
+  REPORT_NOT_FOUND: 'admin.errorReportNotFound',
+  REPORT_ALREADY_CLOSED: 'admin.errorReportAlreadyClosed',
+  REPORT_ACTION_NOT_ALLOWED: 'admin.errorReportActionNotAllowed',
   // Lỗi CLIENT tự sinh (mất mạng / phản hồi hỏng) — Week7.md 1.11/1.16: nghĩa là
   // "chưa rõ kết quả", khác các mã nghiệp vụ ở trên (luôn là kết quả chắc chắn).
   NETWORK_ERROR: 'common.errorNetwork',
