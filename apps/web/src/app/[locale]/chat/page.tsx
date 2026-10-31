@@ -3,6 +3,8 @@ import { getTranslations } from 'next-intl/server';
 import { ChatInboxContainer, parseChatPageQuery } from '@/modules/chat';
 import { Container } from '@/shared/components/Container';
 
+import { ReportEntry } from '../_components/ReportEntry';
+
 interface ChatPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
@@ -28,6 +30,11 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
             scope={{ role: 'BUYER' }}
             selectedId={conversationId}
             basePath="/chat"
+            reportSlot={
+              conversationId ? (
+                <ReportEntry targetType="CONVERSATION" targetId={conversationId} />
+              ) : null
+            }
           />
         </Container>
       </main>
