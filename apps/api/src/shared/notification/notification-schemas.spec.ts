@@ -113,6 +113,17 @@ const VALID: Record<NotificationType, Record<string, unknown>> = {
     productName: 'Dao bấm tự động',
     reason: 'Hàng cấm theo quy định của sàn.',
   },
+  ADMIN_PRODUCT_APPEAL_PENDING: {
+    appealId: '9b2c4d6e-1234-4abc-8def-0123456789ab',
+    productId: ORDER_ID,
+    productName: 'Dao bấm tự động',
+  },
+  PRODUCT_APPEAL_DECIDED: {
+    appealId: '9b2c4d6e-1234-4abc-8def-0123456789ab',
+    productId: ORDER_ID,
+    productName: 'Dao bấm tự động',
+    decision: 'REJECTED',
+  },
 };
 
 const write = (type: unknown, data: unknown) =>
@@ -142,8 +153,8 @@ function worstCaseData(type: NotificationType): Record<string, unknown> {
 }
 
 describe('danh sách loại thông báo', () => {
-  it('có đủ 21 loại, không trùng, đúng dạng IN_HOA_GẠCH_DƯỚI và vừa cột type', () => {
-    expect(NOTIFICATION_TYPES).toHaveLength(21);
+  it('có đủ 23 loại, không trùng, đúng dạng IN_HOA_GẠCH_DƯỚI và vừa cột type', () => {
+    expect(NOTIFICATION_TYPES).toHaveLength(23);
     expect(new Set(NOTIFICATION_TYPES).size).toBe(NOTIFICATION_TYPES.length);
     for (const type of NOTIFICATION_TYPES) {
       expect(type).toMatch(/^[A-Z][A-Z_]*$/);

@@ -85,7 +85,11 @@ export class NotificationFactsLoader {
         return this.review(event.reviewId);
 
       case 'PRODUCT_TAKEN_DOWN':
-        return this.product(event.productId);
+      case 'PRODUCT_APPEAL_DECIDED':
+        return this.product(event.productId, false);
+
+      case 'PRODUCT_APPEAL_SUBMITTED':
+        return this.product(event.productId, true);
 
       case 'SHOP_STATUS_CHANGED':
         return this.shop(event.shopId, false);
@@ -189,8 +193,12 @@ export class NotificationFactsLoader {
     };
   }
 
-  // Chủ shop của sản phẩm (người nhận) + tên sản phẩm. Chỉ hai cột; không đọc lý do hay mô tả.
-  private async product(productId: string): Promise<NotificationFacts | null> {
+  // Chủ shop của sản phẩm (người nhận) + tên sản phẩm. Chỉ hai cột; không đọc lý do hay mô tả. `withAdmins`: sự kiện báo cho mọi Admin
+  // (kháng nghị mới) cần danh sách Admin đang hoạt động; các sự kiện báo chủ shop thì không tải.
+  private async product(
+    productId: string,
+    withAdmins: boolean,
+  ): Promise<NotificationFacts | null> {
     const row = await this.prisma.product.findUnique({
       where: { id: productId },
       select: { id: true, name: true, shop: { select: { ownerId: true } } },
@@ -203,6 +211,7 @@ export class NotificationFactsLoader {
         productName: row.name,
         shopOwnerId: row.shop.ownerId,
       },
+      adminIds: withAdmins ? await this.activeAdminIds() : [],
     };
   }
 

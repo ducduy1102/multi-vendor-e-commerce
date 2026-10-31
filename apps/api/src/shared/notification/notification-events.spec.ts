@@ -78,7 +78,10 @@ const review = (overrides: Partial<ReviewFacts> = {}): NotificationFacts => ({
     ...overrides,
   },
 });
-const product = (overrides: Partial<ProductFacts> = {}): NotificationFacts => ({
+const product = (
+  overrides: Partial<ProductFacts> = {},
+  adminIds: string[] = [],
+): NotificationFacts => ({
   kind: 'PRODUCT',
   product: {
     productId: PRODUCT,
@@ -86,6 +89,7 @@ const product = (overrides: Partial<ProductFacts> = {}): NotificationFacts => ({
     shopOwnerId: OWNER,
     ...overrides,
   },
+  adminIds,
 });
 const shop = (
   overrides: Partial<ShopFacts> = {},
@@ -730,6 +734,132 @@ describe('gỡ sản phẩm vi phạm (Week11.md 5.7)', () => {
   });
 });
 
+// Kháng nghị sản phẩm bị gỡ (Week11.md 5.8): cùng nguyên tắc với kháng nghị shop — chỉ id + tên sản phẩm đã cắt gọn / kết quả, không bao giờ
+// lời kháng nghị hay ghi chú của Admin; người nhận luôn suy từ dữ kiện đã tải.
+describe('kháng nghị sản phẩm bị gỡ (Week11.md 5.8)', () => {
+  const submitted = {
+    kind: 'PRODUCT_APPEAL_SUBMITTED',
+    appealId: APPEAL,
+    productId: PRODUCT,
+  } as const;
+
+  it('PRODUCT_APPEAL_SUBMITTED ⇒ mọi Admin nhận ADMIN_PRODUCT_APPEAL_PENDING (chủ shop thì không), kèm id kháng nghị, id và tên sản phẩm', () => {
+    expect(
+      buildNotifications(submitted, product({}, [ADMIN_1, ADMIN_2])),
+    ).toEqual([
+      {
+        userId: ADMIN_1,
+        type: 'ADMIN_PRODUCT_APPEAL_PENDING',
+        data: {
+          appealId: APPEAL,
+          productId: PRODUCT,
+          productName: 'Dao bấm tự động',
+        },
+      },
+      {
+        userId: ADMIN_2,
+        type: 'ADMIN_PRODUCT_APPEAL_PENDING',
+        data: {
+          appealId: APPEAL,
+          productId: PRODUCT,
+          productName: 'Dao bấm tự động',
+        },
+      },
+    ]);
+  });
+
+  it('PRODUCT_APPEAL_SUBMITTED khi không có Admin nào ⇒ không có thông báo', () => {
+    expect(buildNotifications(submitted, product({}, []))).toEqual([]);
+  });
+
+  it.each(['ACCEPTED', 'REJECTED'] as const)(
+    'PRODUCT_APPEAL_DECIDED (%s) ⇒ chỉ chủ shop nhận PRODUCT_APPEAL_DECIDED, người nhận suy từ sản phẩm chứ không từ sự kiện, Admin không nhận',
+    (decision) => {
+      expect(
+        buildNotifications(
+          {
+            kind: 'PRODUCT_APPEAL_DECIDED',
+            appealId: APPEAL,
+            productId: PRODUCT,
+            decision,
+          },
+          product({}, [ADMIN_1]),
+        ),
+      ).toEqual([
+        {
+          userId: OWNER,
+          type: 'PRODUCT_APPEAL_DECIDED',
+          data: {
+            appealId: APPEAL,
+            productId: PRODUCT,
+            productName: 'Dao bấm tự động',
+            decision,
+          },
+        },
+      ]);
+    },
+  );
+
+  it('đổi chủ shop của sản phẩm thì người nhận kết quả đổi theo', () => {
+    const [draft] = buildNotifications(
+      {
+        kind: 'PRODUCT_APPEAL_DECIDED',
+        appealId: APPEAL,
+        productId: PRODUCT,
+        decision: 'ACCEPTED',
+      },
+      product({ shopOwnerId: OTHER_OWNER }),
+    );
+
+    expect(draft.userId).toBe(OTHER_OWNER);
+  });
+
+  it('thông báo không mang lời kháng nghị, ghi chú hay tên Admin — chỉ id, tên sản phẩm và kết quả', () => {
+    const [pending] = buildNotifications(submitted, product({}, [ADMIN_1]));
+    const [decided] = buildNotifications(
+      {
+        kind: 'PRODUCT_APPEAL_DECIDED',
+        appealId: APPEAL,
+        productId: PRODUCT,
+        decision: 'REJECTED',
+      },
+      product(),
+    );
+
+    expect(Object.keys(pending.data).sort()).toEqual([
+      'appealId',
+      'productId',
+      'productName',
+    ]);
+    expect(Object.keys(decided.data).sort()).toEqual([
+      'appealId',
+      'decision',
+      'productId',
+      'productName',
+    ]);
+  });
+
+  it('tên sản phẩm quá dài được cắt gọn để thông báo vẫn qua schema ghi', () => {
+    const [draft] = buildNotifications(
+      submitted,
+      product({ productName: 'x'.repeat(500) }, [ADMIN_1]),
+    );
+
+    expect(
+      notificationWriteSchema.safeParse({
+        type: draft.type,
+        data: draft.data,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('dữ kiện sai loại (SHOP thay vì PRODUCT) ⇒ ném lỗi rõ ràng, không đoán người nhận', () => {
+    expect(() => buildNotifications(submitted, shop({}, [ADMIN_1]))).toThrow(
+      /needs PRODUCT facts/,
+    );
+  });
+});
+
 describe('báo cáo vi phạm (Week11.md 5.3)', () => {
   const admins = (...adminIds: string[]): NotificationFacts => ({
     kind: 'ADMINS',
@@ -983,6 +1113,23 @@ describe('tính đúng đắn chung', () => {
       },
       facts: product(),
     },
+    PRODUCT_APPEAL_SUBMITTED: {
+      event: {
+        kind: 'PRODUCT_APPEAL_SUBMITTED',
+        appealId: APPEAL,
+        productId: PRODUCT,
+      },
+      facts: product({}, [ADMIN_1]),
+    },
+    PRODUCT_APPEAL_DECIDED: {
+      event: {
+        kind: 'PRODUCT_APPEAL_DECIDED',
+        appealId: APPEAL,
+        productId: PRODUCT,
+        decision: 'ACCEPTED',
+      },
+      facts: product(),
+    },
     REPORTS_RESOLVED: {
       event: { kind: 'REPORTS_RESOLVED', reportIds: [REPORT] },
       facts: {
@@ -1039,7 +1186,10 @@ describe('tính đúng đắn chung', () => {
         known.add(facts.review.reviewerId);
         known.add(facts.review.shopOwnerId);
       }
-      if (facts.kind === 'PRODUCT') known.add(facts.product.shopOwnerId);
+      if (facts.kind === 'PRODUCT') {
+        known.add(facts.product.shopOwnerId);
+        facts.adminIds.forEach((id) => known.add(id));
+      }
       if (facts.kind === 'SHOP') {
         known.add(facts.shop.ownerId);
         facts.adminIds.forEach((id) => known.add(id));
@@ -1077,7 +1227,9 @@ describe('tính đúng đắn chung', () => {
             ? review({ productName: nasty, shopName: nasty })
             : facts.kind === 'SHOP'
               ? shop({ shopName: nasty }, facts.adminIds)
-              : facts;
+              : facts.kind === 'PRODUCT'
+                ? product({ productName: nasty }, facts.adminIds)
+                : facts;
 
       for (const draft of buildNotifications(nastyEvent, nastyFacts)) {
         expect(
