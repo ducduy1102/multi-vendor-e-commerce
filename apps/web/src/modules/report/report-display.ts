@@ -1,23 +1,8 @@
-import type { ReportReasonCode, ReportTargetType } from '@ecommerce/types';
+import type { ReportTargetType } from '@ecommerce/types';
 
-// Khoá dịch (namespace `report`) của từng mã lý do và từng loại đối tượng. `satisfies Record<...>` làm việc thêm một mã vào
-// `REPORT_REASON_CODES` / `REPORT_TARGET_TYPES` mà quên nhãn trở thành LỖI BIÊN DỊCH; `report-display.test.ts` kiểm thêm rằng mọi
-// khoá có thật trong vi.json và en.json.
-export const REPORT_REASON_MESSAGE_KEYS = {
-  SPAM: 'reasonSpam',
-  OFFENSIVE_LANGUAGE: 'reasonOffensiveLanguage',
-  FAKE_REVIEW: 'reasonFakeReview',
-  PERSONAL_INFO: 'reasonPersonalInfo',
-  IRRELEVANT: 'reasonIrrelevant',
-  HARASSMENT: 'reasonHarassment',
-  SCAM: 'reasonScam',
-  COUNTERFEIT: 'reasonCounterfeit',
-  PROHIBITED_ITEM: 'reasonProhibitedItem',
-  MISLEADING_INFO: 'reasonMisleadingInfo',
-  OFFENSIVE_CONTENT: 'reasonOffensiveContent',
-  OTHER: 'reasonOther',
-} as const satisfies Record<ReportReasonCode, string>;
-
+// Khoá dịch (namespace `report`) của tiêu đề hộp thoại theo loại đối tượng. `satisfies Record<...>` làm việc thêm một loại vào
+// `REPORT_TARGET_TYPES` mà quên tiêu đề trở thành LỖI BIÊN DỊCH; `report-display.test.ts` kiểm thêm rằng mọi khoá có thật trong vi.json
+// và en.json. Bảng nhãn LÝ DO nằm ở `shared/lib/report-reason-labels.ts` (dùng chung với `modules/admin`).
 export const REPORT_TARGET_TITLE_KEYS = {
   REVIEW: 'titleReview',
   CONVERSATION: 'titleConversation',

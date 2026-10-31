@@ -21,7 +21,8 @@ import { Textarea } from '@/shared/components/ui/textarea';
 import { useValidationMessage, type LooseTranslator } from '@/shared/hooks/useValidationMessage';
 import { cn } from '@/shared/lib/utils';
 
-import { REPORT_REASON_MESSAGE_KEYS, REPORT_TARGET_TITLE_KEYS } from '../report-display';
+import { REPORT_REASON_MESSAGE_KEYS } from '@/shared/lib/report-reason-labels';
+import { REPORT_TARGET_TITLE_KEYS } from '../report-display';
 import {
   createReportSchema,
   REPORT_NOTE_MAX_LENGTH,
