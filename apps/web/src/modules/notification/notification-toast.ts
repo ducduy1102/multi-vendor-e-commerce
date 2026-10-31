@@ -24,6 +24,7 @@ const TOAST_TYPES: ReadonlySet<NotificationType> = new Set<NotificationType>([
   'APPEAL_DECIDED',
   'REPORT_NEW',
   'REPORT_RESOLVED',
+  'REVIEW_HIDDEN',
 ]);
 
 // HÀM THUẦN: một thông báo có đáng hiện toast không. Loại lạ (UNKNOWN) không bao giờ — không biết nó nói gì. Đơn bị hủy

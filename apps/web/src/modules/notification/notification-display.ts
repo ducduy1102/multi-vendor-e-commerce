@@ -72,6 +72,8 @@ export const NOTIFICATION_MESSAGE_KEYS = [
   'titleReportResolved',
   'bodyReportResolved',
   'bodyReportDismissed',
+  'titleReviewHidden',
+  'bodyReviewHidden',
   'titleUnknown',
   'bodyUnknown',
 ] as const;
@@ -356,6 +358,16 @@ export function describeNotification(notification: Notification): NotificationDi
         params: {},
         // Người báo không có trang nào để xem lại báo cáo của mình.
         href: null,
+      };
+
+    case 'REVIEW_HIDDEN':
+      return {
+        icon: 'review',
+        titleKey: 'titleReviewHidden',
+        bodyKey: 'bodyReviewHidden',
+        params: { productName: notification.data.productName },
+        // Chi tiết đơn: nơi bản đánh giá của chính mình vẫn hiện, kèm nhãn "đã bị ẩn".
+        href: pathWithId('/orders', notification.data.orderId),
       };
 
     case 'UNKNOWN':

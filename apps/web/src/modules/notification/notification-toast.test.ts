@@ -200,6 +200,15 @@ const CASES: { name: string; notification: Notification; toast: boolean }[] = [
     },
     toast: true,
   },
+  {
+    name: 'REVIEW_HIDDEN',
+    notification: {
+      ...BASE,
+      type: 'REVIEW_HIDDEN',
+      data: { orderId: SHOP_ID, productName: 'Áo thun' },
+    },
+    toast: true,
+  },
   { name: 'UNKNOWN', notification: makeUnknownNotification(), toast: false },
 ];
 

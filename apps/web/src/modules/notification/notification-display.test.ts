@@ -272,6 +272,18 @@ const CASES: Case[] = [
     href: null,
   })),
   {
+    name: 'REVIEW_HIDDEN',
+    notification: {
+      ...BASE,
+      type: 'REVIEW_HIDDEN',
+      data: { orderId: ORDER, productName: 'Áo thun cotton' },
+    },
+    icon: 'review',
+    titleKey: 'titleReviewHidden',
+    bodyKey: 'bodyReviewHidden',
+    href: `/orders/${ORDER}`,
+  },
+  {
     name: 'UNKNOWN',
     notification: { ...BASE, type: 'UNKNOWN', data: {} },
     icon: 'info',
@@ -527,6 +539,22 @@ describe('nội dung theo ngữ cảnh', () => {
     for (const locale of ['vi', 'en'] as const) {
       expect(render(resolved, locale).body).not.toMatch(/ẩn|khoá|khóa|gỡ|hide|suspend|remove|ban/i);
     }
+  });
+
+  it('đánh giá bị ẩn (tác giả): nêu tên sản phẩm, dẫn tới chi tiết đơn, không nêu lý do hay người báo; id đơn sai dạng ⇒ không dẫn đi đâu', () => {
+    const display = describeNotification(find('REVIEW_HIDDEN'));
+
+    expect(display.href).toBe(`/orders/${ORDER}`);
+    for (const locale of ['vi', 'en'] as const) {
+      expect(render(display, locale).body).toContain('Áo thun cotton');
+    }
+    expect(
+      describeNotification({
+        ...BASE,
+        type: 'REVIEW_HIDDEN',
+        data: { orderId: '../../etc/passwd', productName: 'x' },
+      }).href,
+    ).toBeNull();
   });
 
   it('phía nhận khác nhau ⇒ chữ khác nhau (hủy đơn: người mua vs chủ shop; khiếu nại: Admin vs chủ shop)', () => {
