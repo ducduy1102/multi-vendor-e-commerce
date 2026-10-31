@@ -2,6 +2,7 @@ import {
   adminAppealListResponseSchema,
   adminReportDetailResponseSchema,
   adminReportListResponseSchema,
+  productModerationResponseSchema,
   reviewModerationResponseSchema,
   adminCancelShopOrdersResultSchema,
   adminNoteCreatedResponseSchema,
@@ -51,8 +52,10 @@ import {
   type AdminUserListResponse,
   type CreateAdminNoteInput,
   type DecideAppealInput,
+  type ProductModerationResponse,
   type ReactivateUserInput,
   type ResolveReportInput,
+  type RestoreProductInput,
   type ReviewModerationResponse,
   type SuspendUserInput,
   type UnhideReviewInput,
@@ -283,6 +286,19 @@ export async function unhideReview(
     body: JSON.stringify(input),
   });
   return reviewModerationResponseSchema.parse(data);
+}
+
+// Khôi phục một sản phẩm đã bị sàn gỡ (sửa nhầm, Week11.md 5.7): về NHÁP để chủ shop tự sửa và xuất bản lại. Lý do bắt buộc, chỉ ghi vào
+// nhật ký quản trị. Sản phẩm không ở trạng thái bị gỡ ⇒ 409 `PRODUCT_NOT_TAKEN_DOWN`.
+export async function restoreProduct(
+  productId: string,
+  input: RestoreProductInput,
+): Promise<ProductModerationResponse> {
+  const data = await apiFetch<unknown>(`/admin/products/${encodeURIComponent(productId)}/restore`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return productModerationResponseSchema.parse(data);
 }
 
 // --- Hoàn tiền (Week9.md 2.9) ---------------------------------------------------------------------

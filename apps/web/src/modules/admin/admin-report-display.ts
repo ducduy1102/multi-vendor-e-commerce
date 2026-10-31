@@ -56,12 +56,13 @@ export function isAdminReportSlow(
 
 // --- Hành động xử lý -------------------------------------------------------------------------------
 
-// Hành động mà BE ĐÃ CẮM bộ xử lý (AdminReportsService.handlers). `TAKE_DOWN_PRODUCT` (bước 5.7) và `BLOCK_BUYER` (bước 6.2) chưa có bộ
-// xử lý nên BE trả 409 `REPORT_ACTION_NOT_ALLOWED`: ẩn khỏi danh sách thay vì hiện nút xám. Cắm thêm bộ xử lý ở BE thì thêm hành động vào
-// ĐÚNG HAI nơi: mảng này và `ADMIN_REPORT_ACTION_COPY` (kiểu `Record` theo mảng này — quên nhãn là lỗi biên dịch).
+// Hành động mà BE ĐÃ CẮM bộ xử lý (AdminReportsService.handlers). `BLOCK_BUYER` (bước 6.2) chưa có bộ xử lý nên BE trả 409
+// `REPORT_ACTION_NOT_ALLOWED`: ẩn khỏi danh sách thay vì hiện nút xám. Cắm thêm bộ xử lý ở BE thì thêm hành động vào ĐÚNG HAI nơi: mảng
+// này và `ADMIN_REPORT_ACTION_COPY` (kiểu `Record` theo mảng này — quên nhãn là lỗi biên dịch).
 export const ADMIN_PLUGGED_REPORT_ACTIONS = [
   'HIDE_REVIEW',
   'SUSPEND_SHOP',
+  'TAKE_DOWN_PRODUCT',
   'SUSPEND_REPORTED_USER',
   'DISMISS',
 ] as const satisfies readonly ReportResolutionAction[];
@@ -102,6 +103,17 @@ export const ADMIN_REPORT_ACTION_COPY: Record<AdminPluggedReportAction, AdminRep
     confirmTitleKey: 'reportConfirmSuspendShopTitle',
     confirmDescriptionKey: 'reportConfirmSuspendShopDescription',
     confirmKey: 'reportConfirmSuspendShop',
+    noteVisibilityKey: 'reportNoteVisibleToShop',
+    isCautionary: true,
+  },
+  TAKE_DOWN_PRODUCT: {
+    labelKey: 'reportActionTakeDownProduct',
+    descriptionKey: 'reportActionTakeDownProductDescription',
+    submitKey: 'reportSubmitTakeDownProduct',
+    confirmTitleKey: 'reportConfirmTakeDownProductTitle',
+    confirmDescriptionKey: 'reportConfirmTakeDownProductDescription',
+    confirmKey: 'reportConfirmTakeDownProduct',
+    // Ghi chú xử lý làm LÝ DO gỡ và hiện cho chủ shop (trang sửa, danh sách sản phẩm, thông báo) — cùng câu với khoá shop.
     noteVisibilityKey: 'reportNoteVisibleToShop',
     isCautionary: true,
   },
@@ -169,6 +181,69 @@ export function canReopenReportedReview(report: AdminReport): boolean {
     report.resolution?.action === 'HIDE_REVIEW'
   );
 }
+
+// Chỉ báo cáo SẢN PHẨM đã xử lý bằng "Gỡ sản phẩm" mới khôi phục được (POST /admin/products/:id/restore).
+export function canRestoreReportedProduct(report: AdminReport): boolean {
+  return (
+    report.targetType === 'PRODUCT' &&
+    report.status === 'RESOLVED' &&
+    report.resolution?.action === 'TAKE_DOWN_PRODUCT'
+  );
+}
+
+// Đối tượng bị báo ĐÃ mất trang công khai vì chính kết quả xử lý của báo cáo này: sản phẩm bị gỡ (trang sản phẩm trả 404) hoặc shop bị khoá (trang
+// shop chỉ có với shop APPROVED nên cũng 404). Thẻ "Nội dung bị báo" dùng kết quả này để thay link trần dẫn Admin tới trang 404 bằng nhãn nói rõ lý do.
+// Chỉ suy được từ KẾT QUẢ của báo cáo: báo cáo không mang trạng thái HIỆN TẠI của đối tượng (mở khoá / khôi phục ở nơi khác thì nhãn có thể cũ).
+export type AdminReportGoneTarget = 'PRODUCT_TAKEN_DOWN' | 'SHOP_SUSPENDED';
+
+export function reportedTargetGone(report: AdminReport): AdminReportGoneTarget | null {
+  const action = report.resolution?.action;
+  if (report.targetType === 'PRODUCT' && action === 'TAKE_DOWN_PRODUCT')
+    return 'PRODUCT_TAKEN_DOWN';
+  if (report.targetType === 'SHOP' && action === 'SUSPEND_SHOP') return 'SHOP_SUSPENDED';
+  return null;
+}
+
+// Hai việc "hoàn tác" của Admin trên một báo cáo ĐÃ xử lý, mỗi loại đối tượng một việc: mở lại đánh giá đã ẩn, khôi phục sản phẩm đã gỡ.
+export type AdminReportRevertKind = 'REVIEW' | 'PRODUCT';
+
+export function revertKindOf(report: AdminReport): AdminReportRevertKind | null {
+  if (canReopenReportedReview(report)) return 'REVIEW';
+  if (canRestoreReportedProduct(report)) return 'PRODUCT';
+  return null;
+}
+
+// Chữ của từng việc hoàn tác (khoá thuộc namespace `admin`): nút ở thẻ kết quả + câu giải thích, hộp thoại nhập lý do, và câu báo xong.
+export interface AdminReportRevertCopy {
+  buttonKey: string;
+  hintKey: string;
+  titleKey: string;
+  descriptionKey: string;
+  reasonLabelKey: string;
+  confirmKey: string;
+  doneKey: string;
+}
+
+export const ADMIN_REPORT_REVERT_COPY: Record<AdminReportRevertKind, AdminReportRevertCopy> = {
+  REVIEW: {
+    buttonKey: 'reportReopenButton',
+    hintKey: 'reportReopenHint',
+    titleKey: 'reportReopenTitle',
+    descriptionKey: 'reportReopenDescription',
+    reasonLabelKey: 'reportReopenReasonLabel',
+    confirmKey: 'reportReopenConfirm',
+    doneKey: 'reportReopenDone',
+  },
+  PRODUCT: {
+    buttonKey: 'reportRestoreProductButton',
+    hintKey: 'reportRestoreProductHint',
+    titleKey: 'reportRestoreProductTitle',
+    descriptionKey: 'reportRestoreProductDescription',
+    reasonLabelKey: 'reportRestoreProductReasonLabel',
+    confirmKey: 'reportRestoreProductConfirm',
+    doneKey: 'reportRestoreProductDone',
+  },
+};
 
 // --- Tên đối tượng bị báo --------------------------------------------------------------------------
 

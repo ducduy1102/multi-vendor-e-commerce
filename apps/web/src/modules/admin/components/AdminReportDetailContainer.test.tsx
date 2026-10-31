@@ -9,7 +9,9 @@ import { withIntl } from '@/shared/lib/test-i18n';
 import {
   makeConversationReport,
   makeProductReport,
+  makeResolvedProductReport,
   makeResolvedReport,
+  makeResolvedShopReport,
   makeReviewReport,
   makeShopReport,
   REPORT_ID,
@@ -29,6 +31,7 @@ vi.mock('../services/admin.service', () => ({
   getReport: vi.fn(),
   resolveReport: vi.fn(),
   unhideReview: vi.fn(),
+  restoreProduct: vi.fn(),
 }));
 const { toastSuccess } = vi.hoisted(() => ({ toastSuccess: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn() } }));
@@ -55,6 +58,7 @@ describe('AdminReportDetailContainer (trang chi tiết — phương án A)', () 
     vi.mocked(adminService.getReport).mockReset();
     vi.mocked(adminService.resolveReport).mockReset();
     vi.mocked(adminService.unhideReview).mockReset();
+    vi.mocked(adminService.restoreProduct).mockReset();
     toastSuccess.mockReset();
   });
   afterEach(() => cleanup());
@@ -439,6 +443,204 @@ describe('AdminReportDetailContainer (trang chi tiết — phương án A)', () 
       expect(screen.getByRole('alertdialog')).toBeInTheDocument();
       await act(async () => finish({ review: { id: REVIEW_ID, isHidden: false, hiddenAt: null } }));
       await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    });
+  });
+
+  describe('báo cáo sản phẩm đã gỡ — khôi phục và link trang công khai (Week11.md 5.7)', () => {
+    const PRODUCT_LINK = /Xem trang sản phẩm/;
+    const TAKEN_DOWN_NOTE = 'Sản phẩm đã bị gỡ — không còn trang công khai';
+
+    it('đã gỡ: thay link "Xem trang sản phẩm" (sẽ là trang 404) bằng nhãn vô hiệu nói rõ lý do', async () => {
+      renderDetail(makeResolvedProductReport());
+
+      expect(await screen.findByText(TAKEN_DOWN_NOTE)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: PRODUCT_LINK })).not.toBeInTheDocument();
+    });
+
+    it('sản phẩm mà kết quả xử lý ghi là KHOÁ SHOP (dữ liệu lệch) ⇒ giữ link tới trang sản phẩm, không có nhãn "đã bị gỡ"', async () => {
+      renderDetail(makeResolvedProductReport({}, { action: 'SUSPEND_SHOP' }));
+
+      expect(await screen.findByRole('link', { name: PRODUCT_LINK })).toBeInTheDocument();
+      expect(screen.queryByText(TAKEN_DOWN_NOTE)).not.toBeInTheDocument();
+    });
+
+    it('báo cáo của loại KHÁC mà kết quả ghi là gỡ sản phẩm (dữ liệu lệch) ⇒ vẫn giữ link tới trang shop, không có nhãn "đã bị gỡ"', async () => {
+      renderDetail({
+        ...makeShopReport(),
+        status: 'RESOLVED',
+        resolution: makeResolvedProductReport().resolution,
+      } as AdminReport);
+
+      expect(await screen.findByRole('link', { name: /Xem trang shop/ })).toBeInTheDocument();
+      expect(screen.queryByText(TAKEN_DOWN_NOTE)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Khôi phục sản phẩm/ })).not.toBeInTheDocument();
+    });
+
+    it('báo cáo còn mở: giữ link tới trang sản phẩm (sản phẩm vẫn đang bán), không có nhãn "đã bị gỡ"', async () => {
+      renderDetail(makeProductReport());
+
+      const link = await screen.findByRole('link', { name: PRODUCT_LINK });
+      expect(link).toHaveAttribute('href', expect.stringContaining('/products/'));
+      expect(screen.queryByText(TAKEN_DOWN_NOTE)).not.toBeInTheDocument();
+    });
+
+    it('đã BỎ QUA (sản phẩm không bị gỡ): giữ link tới trang sản phẩm và không có nút khôi phục', async () => {
+      renderDetail(makeResolvedProductReport({}, { action: 'DISMISS', note: null }));
+
+      expect(await screen.findByRole('link', { name: PRODUCT_LINK })).toBeInTheDocument();
+      expect(screen.queryByText(TAKEN_DOWN_NOTE)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Khôi phục sản phẩm/ })).not.toBeInTheDocument();
+    });
+
+    it('đã gỡ: có nút "Khôi phục sản phẩm…" kèm câu giải thích; KHÔNG có nút "Mở lại đánh giá"', async () => {
+      renderDetail(makeResolvedProductReport());
+
+      expect(
+        await screen.findByRole('button', { name: 'Khôi phục sản phẩm…' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Sản phẩm về trạng thái nháp để chủ shop sửa/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Mở lại đánh giá/ })).not.toBeInTheDocument();
+    });
+
+    it('khôi phục: gọi API bằng ID SẢN PHẨM (không phải id báo cáo) kèm lý do, rồi báo xong, đổi nhãn và bỏ nút', async () => {
+      const user = userEvent.setup();
+      const report = makeResolvedProductReport();
+      vi.mocked(adminService.restoreProduct).mockResolvedValue({
+        product: { id: report.targetId, status: 'DRAFT', takenDownAt: null },
+      });
+      renderDetail(report);
+      await user.click(await screen.findByRole('button', { name: 'Khôi phục sản phẩm…' }));
+      const dialog = await screen.findByRole('alertdialog', { name: 'Khôi phục sản phẩm này?' });
+      await user.type(
+        within(dialog).getByLabelText('Lý do khôi phục'),
+        'Đã xét lại, không vi phạm',
+      );
+
+      await user.click(within(dialog).getByRole('button', { name: 'Khôi phục sản phẩm' }));
+
+      await waitFor(() =>
+        expect(adminService.restoreProduct).toHaveBeenCalledWith(report.targetId, {
+          reason: 'Đã xét lại, không vi phạm',
+        }),
+      );
+      expect(adminService.restoreProduct).not.toHaveBeenCalledWith(report.id, expect.anything());
+      expect(await screen.findByRole('status')).toHaveTextContent('Đã khôi phục sản phẩm về nháp.');
+      expect(screen.queryByRole('button', { name: 'Khôi phục sản phẩm…' })).not.toBeInTheDocument();
+      expect(
+        screen.getByText('Đã khôi phục về nháp — chưa hiển thị công khai'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(TAKEN_DOWN_NOTE)).not.toBeInTheDocument();
+      expect(toastSuccess).toHaveBeenCalledWith('Đã khôi phục sản phẩm về nháp.');
+    });
+
+    it('đang khôi phục: ô nhập và nút xác nhận bị khoá (báo bận), Esc không đóng được hộp thoại', async () => {
+      const user = userEvent.setup();
+      vi.mocked(adminService.restoreProduct).mockReturnValue(new Promise(() => undefined));
+      renderDetail(makeResolvedProductReport());
+      await user.click(await screen.findByRole('button', { name: 'Khôi phục sản phẩm…' }));
+      const dialog = await screen.findByRole('alertdialog');
+      await user.type(within(dialog).getByLabelText('Lý do khôi phục'), 'Lý do');
+
+      await user.click(within(dialog).getByRole('button', { name: 'Khôi phục sản phẩm' }));
+
+      await waitFor(() => expect(adminService.restoreProduct).toHaveBeenCalledTimes(1));
+      expect(within(dialog).getByLabelText('Lý do khôi phục')).toBeDisabled();
+      expect(within(dialog).getByRole('button', { name: 'Khôi phục sản phẩm' })).toBeDisabled();
+      expect(within(dialog).getByRole('button', { name: 'Quay lại' })).toBeDisabled();
+      await user.keyboard('{Escape}');
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+
+    it('bỏ trống lý do ⇒ báo lỗi ngay trong hộp thoại, KHÔNG gọi API', async () => {
+      const user = userEvent.setup();
+      renderDetail(makeResolvedProductReport());
+      await user.click(await screen.findByRole('button', { name: 'Khôi phục sản phẩm…' }));
+      const dialog = await screen.findByRole('alertdialog');
+
+      await user.click(within(dialog).getByRole('button', { name: 'Khôi phục sản phẩm' }));
+
+      expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
+      expect(adminService.restoreProduct).not.toHaveBeenCalled();
+    });
+
+    it('sản phẩm không còn ở trạng thái bị gỡ (409 PRODUCT_NOT_TAKEN_DOWN): câu lỗi trong hộp thoại, hộp thoại GIỮ MỞ, nút vẫn còn', async () => {
+      const user = userEvent.setup();
+      vi.mocked(adminService.restoreProduct).mockRejectedValue(
+        new ApiError('This product is not taken down', 409, 'PRODUCT_NOT_TAKEN_DOWN'),
+      );
+      renderDetail(makeResolvedProductReport());
+      await user.click(await screen.findByRole('button', { name: 'Khôi phục sản phẩm…' }));
+      const dialog = await screen.findByRole('alertdialog');
+      await user.type(within(dialog).getByLabelText('Lý do khôi phục'), 'Lý do');
+
+      await user.click(within(dialog).getByRole('button', { name: 'Khôi phục sản phẩm' }));
+
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+        'Sản phẩm này không ở trạng thái bị gỡ, không có gì để khôi phục.',
+      );
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      expect(toastSuccess).not.toHaveBeenCalled();
+      expect(screen.getByText(TAKEN_DOWN_NOTE)).toBeInTheDocument();
+    });
+
+    it('tiếng Anh: nút, hộp thoại và nhãn đều có bản dịch, không lẫn tiếng Việt', async () => {
+      const user = userEvent.setup();
+      renderDetail(makeResolvedProductReport(), 'en');
+
+      expect(
+        await screen.findByText('Product taken down — it has no public page'),
+      ).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Restore product…' }));
+      const dialog = await screen.findByRole('alertdialog', { name: 'Restore this product?' });
+
+      expect(within(dialog).getByLabelText('Reason for restoring')).toBeInTheDocument();
+      expect(within(dialog).getByRole('button', { name: 'Restore product' })).toBeInTheDocument();
+    });
+  });
+
+  describe('báo cáo shop đã khoá — link trang shop (Week11.md 5.7, đồng bộ với sản phẩm bị gỡ)', () => {
+    const SHOP_NOTE = 'Shop đã bị khoá — không còn trang công khai';
+
+    it('đã khoá: thay link "Xem trang shop" (sẽ là trang 404) bằng nhãn vô hiệu + đường tới tab "Bị khoá" của quản lý shop', async () => {
+      renderDetail(makeResolvedShopReport());
+
+      expect(await screen.findByText(SHOP_NOTE)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /Xem trang shop/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Mở trong quản lý shop' })).toHaveAttribute(
+        'href',
+        '/admin/shops?status=SUSPENDED',
+      );
+    });
+
+    it('báo cáo còn mở hoặc đã BỎ QUA: giữ link tới trang shop công khai, không có nhãn và không có đường quản lý', async () => {
+      const { unmount } = renderDetail(makeShopReport());
+      expect(await screen.findByRole('link', { name: /Xem trang shop/ })).toHaveAttribute(
+        'href',
+        expect.stringContaining('/shops/'),
+      );
+      expect(screen.queryByText(SHOP_NOTE)).not.toBeInTheDocument();
+      unmount();
+
+      renderDetail(makeResolvedShopReport({}, { action: 'DISMISS', note: null }));
+      expect(await screen.findByRole('link', { name: /Xem trang shop/ })).toBeInTheDocument();
+      expect(screen.queryByText(SHOP_NOTE)).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Mở trong quản lý shop' })).not.toBeInTheDocument();
+    });
+
+    it('khoá shop KHÔNG có nút hoàn tác trong trang báo cáo (mở khoá làm ở quản lý shop)', async () => {
+      renderDetail(makeResolvedShopReport());
+
+      await screen.findByText(SHOP_NOTE);
+      expect(
+        screen.queryByRole('button', { name: /Khôi phục|Mở lại|Mở khoá/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('tiếng Anh: nhãn và đường dẫn đều có bản dịch', async () => {
+      renderDetail(makeResolvedShopReport(), 'en');
+
+      expect(await screen.findByText('Shop suspended — it has no public page')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Open in shop management' })).toBeInTheDocument();
     });
   });
 

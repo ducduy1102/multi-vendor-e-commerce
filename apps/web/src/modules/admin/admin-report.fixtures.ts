@@ -93,6 +93,45 @@ export function makeResolvedReport(
   } as AdminReport;
 }
 
+// Báo cáo SẢN PHẨM ĐÃ xử lý (mặc định: gỡ sản phẩm). `resolution` dựng tường minh ở đây vì `makeResolvedReport({ ...makeProductReport() })` sẽ
+// ghi đè nó bằng `resolution: null` của báo cáo gốc.
+export function makeResolvedProductReport(
+  overrides: Partial<AdminReport> = {},
+  resolution: Partial<NonNullable<AdminReport['resolution']>> = {},
+): AdminReport {
+  return {
+    ...makeProductReport(),
+    status: 'RESOLVED',
+    resolution: {
+      action: 'TAKE_DOWN_PRODUCT',
+      note: 'Hàng cấm: dao bấm tự động.',
+      resolvedByName: 'Quản trị Lan',
+      resolvedAt: '2026-10-29T10:00:00.000Z',
+      ...resolution,
+    },
+    ...overrides,
+  } as AdminReport;
+}
+
+// Báo cáo SHOP ĐÃ xử lý (mặc định: khoá shop). `resolution` dựng tường minh vì spread của builder khác sẽ ghi đè nó bằng null.
+export function makeResolvedShopReport(
+  overrides: Partial<AdminReport> = {},
+  resolution: Partial<NonNullable<AdminReport['resolution']>> = {},
+): AdminReport {
+  return {
+    ...makeShopReport(),
+    status: 'RESOLVED',
+    resolution: {
+      action: 'SUSPEND_SHOP',
+      note: 'Bán hàng giả, vi phạm nhiều lần.',
+      resolvedByName: 'Quản trị Lan',
+      resolvedAt: '2026-10-29T10:00:00.000Z',
+      ...resolution,
+    },
+    ...overrides,
+  } as AdminReport;
+}
+
 export function makeReportPage(
   items: AdminReport[],
   overrides: Partial<Omit<AdminReportListResponse, 'items'>> = {},

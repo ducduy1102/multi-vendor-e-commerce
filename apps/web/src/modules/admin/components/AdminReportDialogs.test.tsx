@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { withIntl } from '@/shared/lib/test-i18n';
 
 import { AdminReportConfirmDialog } from './AdminReportConfirmDialog';
+import { ADMIN_REPORT_REVERT_COPY } from '../admin-report-display';
 import { AdminReportReopenDialog } from './AdminReportReopenDialog';
 
 afterEach(() => cleanup());
@@ -45,6 +46,7 @@ describe('AdminReportConfirmDialog', () => {
 
   it.each([
     ['SHOP', 'Khoá shop này?', 'Khoá shop'],
+    ['TAKE_DOWN_PRODUCT', 'Gỡ sản phẩm này?', 'Gỡ sản phẩm'],
     ['SUSPEND_REPORTED_USER', 'Khoá tài khoản bên bị báo?', 'Khoá tài khoản'],
     ['DISMISS', 'Bỏ qua báo cáo này?', 'Bỏ qua báo cáo'],
   ])('hành động %s: tiêu đề và nút xác nhận riêng', (action, title, confirm) => {
@@ -83,6 +85,18 @@ describe('AdminReportConfirmDialog', () => {
     expect(screen.getByRole('button', { name: 'Bỏ qua báo cáo' }).className).not.toContain(
       'bg-destructive',
     );
+  });
+
+  it.each([
+    ['SUSPEND_SHOP', 'Khoá shop'],
+    ['TAKE_DOWN_PRODUCT', 'Gỡ sản phẩm'],
+    ['SUSPEND_REPORTED_USER', 'Khoá tài khoản'],
+  ])('hành động %s: nút xác nhận cũng là nút ĐỎ ĐẶC', (action, confirm) => {
+    confirmSetup({ input: { action: action as never, note: 'Lý do' } });
+
+    const button = screen.getByRole('button', { name: confirm });
+    expect(button.className).toContain('bg-destructive');
+    expect(button.className).toContain('text-background');
   });
 
   it('bấm xác nhận gọi onConfirm; "Quay lại" gọi đóng và KHÔNG xác nhận', async () => {
@@ -145,6 +159,45 @@ function reopenSetup(props: Partial<React.ComponentProps<typeof AdminReportReope
 }
 
 describe('AdminReportReopenDialog', () => {
+  it('hộp thoại hoàn tác nhận bộ chữ riêng: khôi phục sản phẩm khác mở lại đánh giá', () => {
+    render(
+      withIntl(
+        <AdminReportReopenDialog
+          open
+          onOpenChange={vi.fn()}
+          isPending={false}
+          error={null}
+          onConfirm={vi.fn()}
+          copy={ADMIN_REPORT_REVERT_COPY.PRODUCT}
+        />,
+      ),
+    );
+
+    expect(
+      screen.getByRole('alertdialog', { name: 'Khôi phục sản phẩm này?' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Lý do khôi phục')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Khôi phục sản phẩm' })).toBeInTheDocument();
+    expect(screen.queryByText(/đánh giá/i)).not.toBeInTheDocument();
+  });
+
+  it('không truyền bộ chữ ⇒ giữ nguyên chữ "Mở lại đánh giá" (hành vi của 5.6)', () => {
+    render(
+      withIntl(
+        <AdminReportReopenDialog
+          open
+          onOpenChange={vi.fn()}
+          isPending={false}
+          error={null}
+          onConfirm={vi.fn()}
+        />,
+      ),
+    );
+
+    expect(screen.getByRole('alertdialog', { name: 'Mở lại đánh giá này?' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Lý do mở lại')).toBeInTheDocument();
+  });
+
   it('nói rõ lý do chỉ ghi vào nhật ký, không gửi cho ai', () => {
     reopenSetup();
 

@@ -38,8 +38,7 @@ describe('AdminReportActionPanel — các hành động theo loại', () => {
   it.each([
     ['đánh giá', makeReviewReport(), ['Ẩn đánh giá', 'Bỏ qua']],
     ['shop', makeShopReport(), ['Khoá shop', 'Bỏ qua']],
-    // TAKE_DOWN_PRODUCT chưa có bộ xử lý ở BE ⇒ báo cáo sản phẩm chỉ còn "Bỏ qua".
-    ['sản phẩm', makeProductReport(), ['Bỏ qua']],
+    ['sản phẩm', makeProductReport(), ['Gỡ sản phẩm', 'Bỏ qua']],
     ['hội thoại', makeConversationReport(), ['Khoá tài khoản bị báo', 'Bỏ qua']],
   ])(
     '%s: đúng các lựa chọn dùng được, KHÔNG có hành động của loại khác',
@@ -90,6 +89,16 @@ describe('AdminReportActionPanel — các hành động theo loại', () => {
       'text-destructive',
     );
   });
+
+  it.each([
+    ['shop', makeShopReport(), 'Khoá shop…'],
+    ['sản phẩm', makeProductReport(), 'Gỡ sản phẩm…'],
+    ['hội thoại', makeConversationReport(), 'Khoá tài khoản…'],
+  ])('báo cáo %s: nút hành động chính cũng là nút viền cảnh báo', (_name, report, label) => {
+    setup(report);
+
+    expect(screen.getByRole('button', { name: label }).className).toContain('text-destructive');
+  });
 });
 
 describe('AdminReportActionPanel — ghi chú: ai đọc, bắt buộc hay không', () => {
@@ -100,6 +109,12 @@ describe('AdminReportActionPanel — ghi chú: ai đọc, bắt buộc hay khôn
       'Ghi chú hiển thị cho tác giả và chủ shop. Đừng nêu thông tin người báo cáo.',
     ],
     ['shop', makeShopReport(), 'Ghi chú hiển thị cho chủ shop. Đừng nêu thông tin người báo cáo.'],
+    // Ghi chú gỡ sản phẩm là LÝ DO chủ shop đọc ở trang sửa, danh sách sản phẩm và thông báo (Week11.md 5.7).
+    [
+      'sản phẩm',
+      makeProductReport(),
+      'Ghi chú hiển thị cho chủ shop. Đừng nêu thông tin người báo cáo.',
+    ],
     [
       'hội thoại',
       makeConversationReport(),

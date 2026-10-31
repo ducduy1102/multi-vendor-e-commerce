@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink, Layers } from 'lucide-react';
+import { ArrowRight, ExternalLink, Layers, PackageX, Store } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 
@@ -8,6 +8,8 @@ import { Link } from '@/i18n/navigation';
 import { Badge } from '@/shared/components/ui/badge';
 import { buttonVariants } from '@/shared/components/ui/button';
 
+import { reportedTargetGone, type AdminReportGoneTarget } from '../admin-report-display';
+import { buildAdminShopsHref } from '../admin-shops-href';
 import { useFormatAdminRelativeTime } from '../hooks/useFormatAdminRelativeTime';
 import { useReportReasonLabel } from '../hooks/useReportReasonLabel';
 import type { AdminReport } from '../types';
@@ -39,10 +41,56 @@ function reportedTargetHref(report: AdminReport): { href: string; labelKey: stri
   }
 }
 
-// Thẻ "Nội dung bị báo": ảnh chụp lúc báo (đọc ĐỦ, không rút gọn) + link sang trang công khai.
-export function AdminReportTargetCard({ report }: { report: AdminReport }) {
+// Đối tượng đã mất trang công khai (sản phẩm bị gỡ, shop bị khoá — xem `reportedTargetGone`): thay vì link trần dẫn Admin tới trang 404, hiện nhãn
+// vô hiệu nói rõ lý do, giữ cùng một cách trình bày cho cả hai loại. Shop có thêm một đường tới nơi Admin xử lý được (tab "Bị khoá" của quản lý
+// shop — "view tóm tắt trạng thái" thay cho trang công khai); sản phẩm chưa có trang quản trị riêng nên chỉ có nhãn.
+function GoneTargetNote({
+  gone,
+  isRestored,
+}: {
+  gone: AdminReportGoneTarget;
+  isRestored: boolean;
+}) {
+  const t = useTranslations('admin');
+
+  if (gone === 'SHOP_SUSPENDED') {
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <p className="flex items-start gap-2 py-1 text-sm text-pretty text-muted-foreground">
+          <Store aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          <span>{t('reportShopSuspendedNote')}</span>
+        </p>
+        <Link
+          href={buildAdminShopsHref({ status: 'SUSPENDED' })}
+          className={buttonVariants({ variant: 'ghost', size: 'lg', className: '-ml-2.5' })}
+        >
+          {t('reportOpenShopAdmin')}
+          <ArrowRight aria-hidden="true" data-icon="inline-end" />
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <p className="flex items-start gap-2 py-1 text-sm text-pretty text-muted-foreground">
+      <PackageX aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      <span>{t(isRestored ? 'reportProductRestoredNote' : 'reportProductTakenDownNote')}</span>
+    </p>
+  );
+}
+
+// Thẻ "Nội dung bị báo": ảnh chụp lúc báo (đọc ĐỦ, không rút gọn) + link sang trang công khai (hoặc nhãn vô hiệu khi trang đó không còn).
+// `isRestored`: Admin vừa khôi phục sản phẩm ngay trong lần hiển thị này — sản phẩm về NHÁP nên vẫn chưa công khai, chỉ đổi câu nhãn.
+export function AdminReportTargetCard({
+  report,
+  isRestored = false,
+}: {
+  report: AdminReport;
+  isRestored?: boolean;
+}) {
   const t = useTranslations('admin');
   const link = reportedTargetHref(report);
+  const gone = reportedTargetGone(report);
 
   return (
     <section aria-labelledby={`report-target-${report.id}`} className={CARD_CLASS}>
@@ -53,7 +101,9 @@ export function AdminReportTargetCard({ report }: { report: AdminReport }) {
         <span className="text-xs text-pretty text-muted-foreground">{t('reportSnapshotNote')}</span>
       </div>
       <AdminReportSnapshot report={report} />
-      {link ? (
+      {gone ? (
+        <GoneTargetNote gone={gone} isRestored={isRestored} />
+      ) : link ? (
         <div>
           <Link
             href={link.href}

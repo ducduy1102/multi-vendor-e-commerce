@@ -2,8 +2,6 @@
 
 import { ChevronRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
-import { toast } from 'sonner';
 
 import { Link } from '@/i18n/navigation';
 import { Alert } from '@/shared/components/ui/alert';
@@ -14,16 +12,15 @@ import { useNow } from '@/shared/hooks/useNow';
 import { ApiError } from '@/shared/lib/api-client';
 
 import {
+  ADMIN_REPORT_REVERT_COPY,
   ADMIN_REPORT_TYPE_DISPLAY,
   adminReportTargetTitle,
-  canReopenReportedReview,
   isAdminReportSlow,
 } from '../admin-report-display';
 import { ADMIN_REPORTS_PATH } from '../admin-reports-href';
 import { useAdminReport } from '../hooks/useAdminReport';
 import { useAdminReportResolveFlow } from '../hooks/useAdminReportResolveFlow';
-import { useDescribeAdminError } from '../hooks/useDescribeAdminError';
-import { useUnhideReview } from '../hooks/useUnhideReview';
+import { useAdminReportRevertFlow } from '../hooks/useAdminReportRevertFlow';
 import { ADMIN_REPORT_DETAIL_LAYOUT_CLASS } from './admin-report-layout.constants';
 import { AdminReportActionPanel } from './AdminReportActionPanel';
 import { AdminReportConfirmDialog } from './AdminReportConfirmDialog';
@@ -40,23 +37,19 @@ interface AdminReportDetailContainerProps {
 
 // Trang chi tiết một báo cáo (Week11.md 5.6, phương án A: hai cột, panel Xử lý dính khi cuộn). Container nối UI thuần với hook:
 //  - chờ xử lý: nội dung bị báo + lý do ở bên trái, panel Xử lý (hành động + ghi chú) bên phải, xác nhận trong hộp thoại;
-//  - đã xử lý: thay panel bằng "Kết quả xử lý"; báo cáo ĐÁNH GIÁ đã ẩn có thêm nút "Mở lại đánh giá" (sửa nhầm, lý do bắt buộc);
+//  - đã xử lý: thay panel bằng "Kết quả xử lý"; báo cáo ĐÁNH GIÁ đã ẩn có thêm nút "Mở lại đánh giá" và báo cáo SẢN PHẨM đã gỡ có thêm nút
+//    "Khôi phục sản phẩm" (sửa nhầm, lý do bắt buộc — cùng một luồng, xem useAdminReportRevertFlow);
 //  - 404: câu giải thích + link về hàng đợi; lỗi khác: câu chung + nút thử lại.
 export function AdminReportDetailContainer({ reportId }: AdminReportDetailContainerProps) {
   const t = useTranslations('admin');
   const tDynamic = t as unknown as LooseTranslator;
   const tCommon = useTranslations('common');
   const now = useNow();
-  const describeError = useDescribeAdminError();
   const reportQuery = useAdminReport(reportId);
   const flow = useAdminReportResolveFlow(reportId);
-  const unhideReview = useUnhideReview();
-
-  const [isReopenOpen, setIsReopenOpen] = useState(false);
-  const [isReopened, setIsReopened] = useState(false);
-  const [reopenError, setReopenError] = useState<string | null>(null);
 
   const report = reportQuery.data;
+  const revert = useAdminReportRevertFlow(report);
 
   if (!report) {
     if (reportQuery.isPending) {
@@ -90,21 +83,8 @@ export function AdminReportDetailContainer({ reportId }: AdminReportDetailContai
   }
 
   const isOpen = report.status === 'OPEN';
-  const canReopen = canReopenReportedReview(report);
+  const revertCopy = revert.kind ? ADMIN_REPORT_REVERT_COPY[revert.kind] : null;
   const typeLabel = tDynamic(ADMIN_REPORT_TYPE_DISPLAY[report.targetType].labelKey);
-
-  // Mở lại đánh giá bằng ID ĐÁNH GIÁ (`report.targetId`), không phải ID báo cáo.
-  async function handleReopen(reviewId: string, reason: string) {
-    setReopenError(null);
-    try {
-      await unhideReview.mutateAsync({ reviewId, reason });
-      setIsReopened(true);
-      setIsReopenOpen(false);
-      toast.success(t('reportReopenDone'));
-    } catch (error) {
-      setReopenError(describeError(error));
-    }
-  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -141,7 +121,10 @@ export function AdminReportDetailContainer({ reportId }: AdminReportDetailContai
 
       <div className={ADMIN_REPORT_DETAIL_LAYOUT_CLASS}>
         <div className="flex min-w-0 flex-col gap-4">
-          <AdminReportTargetCard report={report} />
+          <AdminReportTargetCard
+            report={report}
+            isRestored={revert.kind === 'PRODUCT' && revert.isDone}
+          />
           <AdminReportReasonCard report={report} now={now} />
         </div>
 
@@ -157,26 +140,18 @@ export function AdminReportDetailContainer({ reportId }: AdminReportDetailContai
             report={report}
             now={now}
             footer={
-              canReopen ? (
-                isReopened ? (
+              revertCopy ? (
+                revert.isDone ? (
                   <p role="status" className="text-sm text-muted-foreground">
-                    {t('reportReopenDone')}
+                    {tDynamic(revertCopy.doneKey)}
                   </p>
                 ) : (
                   <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="lg"
-                      onClick={() => {
-                        setReopenError(null);
-                        setIsReopenOpen(true);
-                      }}
-                    >
-                      {t('reportReopenButton')}
+                    <Button type="button" variant="outline" size="lg" onClick={revert.open}>
+                      {tDynamic(revertCopy.buttonKey)}
                     </Button>
                     <p className="text-xs text-pretty text-muted-foreground">
-                      {t('reportReopenHint')}
+                      {tDynamic(revertCopy.hintKey)}
                     </p>
                   </>
                 )
@@ -197,16 +172,14 @@ export function AdminReportDetailContainer({ reportId }: AdminReportDetailContai
         />
       ) : null}
 
-      {canReopen ? (
+      {revertCopy ? (
         <AdminReportReopenDialog
-          open={isReopenOpen}
-          onOpenChange={(open) => {
-            if (!open && unhideReview.isPending) return;
-            setIsReopenOpen(open);
-          }}
-          isPending={unhideReview.isPending}
-          error={reopenError}
-          onConfirm={(reason) => void handleReopen(report.targetId, reason)}
+          open={revert.isOpen}
+          onOpenChange={revert.onOpenChange}
+          isPending={revert.isPending}
+          error={revert.error}
+          onConfirm={revert.confirm}
+          copy={revertCopy}
         />
       ) : null}
     </div>

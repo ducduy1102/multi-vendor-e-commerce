@@ -18,9 +18,10 @@ import { Alert } from '@/shared/components/ui/alert';
 import { Button } from '@/shared/components/ui/button';
 import { Label } from '@/shared/components/ui/label';
 import { Textarea } from '@/shared/components/ui/textarea';
-import { useValidationMessage } from '@/shared/hooks/useValidationMessage';
+import { useValidationMessage, type LooseTranslator } from '@/shared/hooks/useValidationMessage';
 import { cn } from '@/shared/lib/utils';
 
+import { ADMIN_REPORT_REVERT_COPY, type AdminReportRevertCopy } from '../admin-report-display';
 import { ADMIN_USER_REASON_MAX_LENGTH, unhideReviewSchema } from '../schemas/admin.schema';
 import type { UnhideReviewInput } from '../types';
 
@@ -31,6 +32,9 @@ interface AdminReportReopenDialogProps {
   // Lỗi (đã dịch) của lần mở lại gần nhất — vd 409 REVIEW_NOT_HIDDEN khi đánh giá đã hiển thị rồi.
   error: string | null;
   onConfirm: (reason: string) => void;
+  // Chữ của hộp thoại: mặc định là "Mở lại đánh giá" (5.6); "Khôi phục sản phẩm" (5.7) truyền bộ chữ riêng. Form và schema (lý do bắt buộc,
+  // 1..500 ký tự — hai route ẩn/hiện đánh giá và gỡ/khôi phục sản phẩm dùng cùng một dạng lý do) giống hệt nhau nên dùng chung một hộp thoại.
+  copy?: AdminReportRevertCopy;
 }
 
 // Form chỉ mount khi hộp thoại mở (mỗi lần mở là một form trống). Dùng THẲNG `unhideReviewSchema` của BE: lý do bắt buộc, 1..500 ký tự,
@@ -39,8 +43,12 @@ function ReopenForm({
   isPending,
   error,
   onConfirm,
-}: Pick<AdminReportReopenDialogProps, 'isPending' | 'error' | 'onConfirm'>) {
+  copy,
+}: Pick<AdminReportReopenDialogProps, 'isPending' | 'error' | 'onConfirm'> & {
+  copy: AdminReportRevertCopy;
+}) {
   const t = useTranslations('admin');
+  const tDynamic = t as unknown as LooseTranslator;
   const translateValidation = useValidationMessage();
   const fieldId = useId();
   const {
@@ -63,14 +71,14 @@ function ReopenForm({
       className="flex flex-col gap-4"
     >
       <AlertDialogHeader>
-        <AlertDialogTitle>{t('reportReopenTitle')}</AlertDialogTitle>
-        <AlertDialogDescription>{t('reportReopenDescription')}</AlertDialogDescription>
+        <AlertDialogTitle>{tDynamic(copy.titleKey)}</AlertDialogTitle>
+        <AlertDialogDescription>{tDynamic(copy.descriptionKey)}</AlertDialogDescription>
       </AlertDialogHeader>
 
       {error ? <Alert variant="destructive">{error}</Alert> : null}
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={fieldId}>{t('reportReopenReasonLabel')}</Label>
+        <Label htmlFor={fieldId}>{tDynamic(copy.reasonLabelKey)}</Label>
         <Textarea
           id={fieldId}
           rows={3}
@@ -101,7 +109,7 @@ function ReopenForm({
       <AlertDialogFooter>
         <AlertDialogCancel disabled={isPending}>{t('dialogBack')}</AlertDialogCancel>
         <Button type="submit" disabled={isPending} aria-busy={isPending || undefined}>
-          {t('reportReopenConfirm')}
+          {tDynamic(copy.confirmKey)}
         </Button>
       </AlertDialogFooter>
     </form>
@@ -114,11 +122,12 @@ export function AdminReportReopenDialog({
   isPending,
   error,
   onConfirm,
+  copy = ADMIN_REPORT_REVERT_COPY.REVIEW,
 }: AdminReportReopenDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto data-[size=default]:sm:max-w-md">
-        <ReopenForm isPending={isPending} error={error} onConfirm={onConfirm} />
+        <ReopenForm isPending={isPending} error={error} onConfirm={onConfirm} copy={copy} />
       </AlertDialogContent>
     </AlertDialog>
   );

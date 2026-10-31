@@ -11,14 +11,20 @@ import {
   ADMIN_REPORT_TYPE_DISPLAY,
   adminReportTargetTitle,
   availableAdminReportActions,
+  ADMIN_REPORT_REVERT_COPY,
   canReopenReportedReview,
+  canRestoreReportedProduct,
   describeAdminReportResult,
   isAdminReportSlow,
+  reportedTargetGone,
+  revertKindOf,
 } from './admin-report-display';
 import {
   makeConversationReport,
   makeProductReport,
+  makeResolvedProductReport,
   makeResolvedReport,
+  makeResolvedShopReport,
   makeReviewReport,
   makeShopReport,
 } from './admin-report.fixtures';
@@ -65,9 +71,8 @@ describe('availableAdminReportActions — hành động chọn được cho từ
   it.each([
     ['đánh giá', makeReviewReport(), ['HIDE_REVIEW', 'DISMISS']],
     ['shop', makeShopReport(), ['SUSPEND_SHOP', 'DISMISS']],
-    // TAKE_DOWN_PRODUCT (5.7) chưa có bộ xử lý ở BE ⇒ chưa hiện.
-    ['sản phẩm', makeProductReport(), ['DISMISS']],
-    // BLOCK_BUYER (6.2) cũng chưa có bộ xử lý ⇒ chủ shop báo hội thoại chỉ còn khoá tài khoản + bỏ qua.
+    ['sản phẩm', makeProductReport(), ['TAKE_DOWN_PRODUCT', 'DISMISS']],
+    // BLOCK_BUYER (6.2) chưa có bộ xử lý ⇒ chủ shop báo hội thoại chỉ còn khoá tài khoản + bỏ qua.
     [
       'hội thoại (chủ shop báo)',
       makeConversationReport({
@@ -207,6 +212,94 @@ describe('canReopenReportedReview', () => {
     ],
   ])('%s ⇒ không', (_name, report) => {
     expect(canReopenReportedReview(report)).toBe(false);
+  });
+});
+
+describe('canRestoreReportedProduct (Week11.md 5.7)', () => {
+  it('chỉ báo cáo SẢN PHẨM đã xử lý bằng TAKE_DOWN_PRODUCT mới khôi phục được', () => {
+    expect(canRestoreReportedProduct(makeResolvedProductReport())).toBe(true);
+  });
+
+  // Mỗi ca khác bản "khôi phục được" ở ĐÚNG MỘT điều kiện (dữ liệu lệch BE không tạo ra) để bỏ một điều kiện bất kỳ là test đỏ.
+  it.each([
+    ['còn đang mở', makeProductReport()],
+    [
+      'đã bỏ qua (hành động DISMISS)',
+      makeResolvedProductReport({}, { action: 'DISMISS', note: null }),
+    ],
+    ['trạng thái OPEN dù có kết quả xử lý', makeResolvedProductReport({ status: 'OPEN' })],
+    [
+      'trạng thái DISMISSED dù hành động ghi là gỡ',
+      makeResolvedProductReport({ status: 'DISMISSED' }),
+    ],
+    [
+      'báo cáo shop mà hành động ghi là gỡ sản phẩm',
+      {
+        ...makeShopReport(),
+        status: 'RESOLVED',
+        resolution: makeResolvedProductReport().resolution,
+      } as never,
+    ],
+    ['báo cáo đánh giá đã ẩn', makeResolvedReport()],
+  ])('%s ⇒ không', (_name, report) => {
+    expect(canRestoreReportedProduct(report)).toBe(false);
+  });
+});
+
+describe('reportedTargetGone — đối tượng đã mất trang công khai vì kết quả xử lý (Week11.md 5.7)', () => {
+  it('sản phẩm đã gỡ ⇒ PRODUCT_TAKEN_DOWN; shop đã khoá ⇒ SHOP_SUSPENDED', () => {
+    expect(reportedTargetGone(makeResolvedProductReport())).toBe('PRODUCT_TAKEN_DOWN');
+    expect(reportedTargetGone(makeResolvedShopReport())).toBe('SHOP_SUSPENDED');
+  });
+
+  // Mỗi ca khác ca đúng ở ĐÚNG MỘT điều kiện (cặp loại đối tượng ↔ hành động, hoặc kết quả xử lý) để bỏ một điều kiện bất kỳ là test đỏ.
+  it.each([
+    ['sản phẩm còn mở', makeProductReport()],
+    ['shop còn mở', makeShopReport()],
+    ['sản phẩm đã bỏ qua', makeResolvedProductReport({}, { action: 'DISMISS', note: null })],
+    ['shop đã bỏ qua', makeResolvedShopReport({}, { action: 'DISMISS', note: null })],
+    [
+      'sản phẩm mà kết quả ghi là khoá shop (dữ liệu lệch)',
+      makeResolvedProductReport({}, { action: 'SUSPEND_SHOP' }),
+    ],
+    [
+      'shop mà kết quả ghi là gỡ sản phẩm (dữ liệu lệch)',
+      makeResolvedShopReport({}, { action: 'TAKE_DOWN_PRODUCT' }),
+    ],
+    ['đánh giá đã ẩn (trang sản phẩm vẫn công khai)', makeResolvedReport()],
+    ['hội thoại (không có trang công khai nào để mất)', makeConversationReport()],
+  ])('%s ⇒ null (giữ link thường)', (_name, report) => {
+    expect(reportedTargetGone(report)).toBeNull();
+  });
+});
+
+describe('revertKindOf — việc hoàn tác của từng loại báo cáo', () => {
+  it('đánh giá đã ẩn ⇒ REVIEW; sản phẩm đã gỡ ⇒ PRODUCT; còn lại ⇒ null', () => {
+    expect(revertKindOf(makeResolvedReport())).toBe('REVIEW');
+    expect(revertKindOf(makeResolvedProductReport())).toBe('PRODUCT');
+    expect(revertKindOf(makeReviewReport())).toBeNull();
+    expect(revertKindOf(makeProductReport())).toBeNull();
+    expect(revertKindOf(makeResolvedReport({}, { action: 'DISMISS', note: null }))).toBeNull();
+    expect(
+      revertKindOf(makeResolvedProductReport({}, { action: 'DISMISS', note: null })),
+    ).toBeNull();
+  });
+
+  it.each(['REVIEW', 'PRODUCT'] as const)(
+    '%s: mọi khoá chữ có thật ở cả vi và en (không lộ khoá thô)',
+    (kind) => {
+      for (const key of Object.values(ADMIN_REPORT_REVERT_COPY[kind])) {
+        expect(MESSAGES.vi[key], `vi.${key}`).toEqual(expect.any(String));
+        expect(MESSAGES.en[key], `en.${key}`).toEqual(expect.any(String));
+      }
+    },
+  );
+
+  it('hai việc hoàn tác dùng bộ khoá chữ KHÁC nhau (không dùng nhầm câu của đánh giá cho sản phẩm)', () => {
+    const review = Object.values(ADMIN_REPORT_REVERT_COPY.REVIEW);
+    const product = Object.values(ADMIN_REPORT_REVERT_COPY.PRODUCT);
+
+    expect(product.filter((key) => review.includes(key))).toEqual([]);
   });
 });
 

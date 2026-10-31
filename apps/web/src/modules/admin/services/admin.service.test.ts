@@ -24,6 +24,7 @@ import {
   resolveReport,
   retryRefund,
   suspendUser,
+  restoreProduct,
   unhideReview,
   updateShopStatus,
 } from './admin.service';
@@ -1132,6 +1133,34 @@ describe('admin.service — báo cáo vi phạm', () => {
     expect(url).toMatch(/\/admin\/reviews\/rv-1\/unhide$/);
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({ reason: 'Đã xét lại, không vi phạm' });
+  });
+
+  it('restoreProduct: POST /admin/products/:id/restore với body { reason }, trả { product } về NHÁP', async () => {
+    mockFetchOnce({
+      success: true,
+      data: { product: { id: 'p-1', status: 'DRAFT', takenDownAt: null } },
+    });
+
+    const result = await restoreProduct('p-1', { reason: 'Đã xét lại, không vi phạm' });
+
+    expect(result.product).toEqual({ id: 'p-1', status: 'DRAFT', takenDownAt: null });
+    const [url, init] = lastCall();
+    expect(url).toMatch(/\/admin\/products\/p-1\/restore$/);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ reason: 'Đã xét lại, không vi phạm' });
+  });
+
+  it('restoreProduct: id đi vào đường dẫn được mã hoá; lỗi 409 giữ nguyên mã để hook dịch', async () => {
+    mockFetchOnce(
+      { success: false, message: 'This product is not taken down', code: 'PRODUCT_NOT_TAKEN_DOWN' },
+      409,
+    );
+
+    await expect(restoreProduct('a/b?c', { reason: 'x' })).rejects.toMatchObject({
+      status: 409,
+      code: 'PRODUCT_NOT_TAKEN_DOWN',
+    });
+    expect(lastCall()[0]).toMatch(/\/admin\/products\/a%2Fb%3Fc\/restore$/);
   });
 
   it('lỗi nghiệp vụ giữ nguyên mã để hook dịch (409 REPORT_ALREADY_CLOSED)', async () => {
