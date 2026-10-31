@@ -40,7 +40,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
   };
 }
 
-function setup(product: Product) {
+function setup(product: Product, appealSlot?: React.ReactNode) {
   vi.mocked(productService.getProduct).mockResolvedValue(product);
   vi.mocked(productService.getCategories).mockResolvedValue([
     { id: 'cat-1', name: 'Gia dụng', slug: 'gia-dung', parentId: null },
@@ -49,7 +49,7 @@ function setup(product: Product) {
   render(
     withIntl(
       <QueryClientProvider client={queryClient}>
-        <EditProductFormContainer productId={product.id} />
+        <EditProductFormContainer productId={product.id} appealSlot={appealSlot} />
       </QueryClientProvider>,
     ),
   );
@@ -78,4 +78,38 @@ describe('EditProductFormContainer — cổng theo trạng thái', () => {
       expect(screen.queryByText('Sản phẩm này đã bị sàn gỡ')).not.toBeInTheDocument();
     },
   );
+});
+
+// Khe cắm kháng nghị (Week11.md 5.8): chỉ hiện trong nhánh "sản phẩm bị gỡ"; modules/product không import modules/appeal.
+describe('EditProductFormContainer — khe cắm kháng nghị', () => {
+  const slot = <div data-testid="appeal-slot">mục kháng nghị</div>;
+
+  it('sản phẩm bị gỡ ⇒ hiện mục kháng nghị dưới thông báo, trước đường về danh sách', async () => {
+    setup(makeProduct({ status: 'TAKEN_DOWN', takenDownReason: 'Bán hàng cấm.' }), slot);
+
+    const alert = await screen.findByRole('alert');
+    const appeal = screen.getByTestId('appeal-slot');
+    const back = screen.getByRole('link', { name: 'Về danh sách sản phẩm' });
+
+    expect(alert.compareDocumentPosition(appeal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(appeal.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each(['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const)(
+    'sản phẩm %s ⇒ KHÔNG hiện mục kháng nghị (chỉ sản phẩm đang bị gỡ mới có gì để kháng nghị)',
+    async (status) => {
+      setup(makeProduct({ status }), slot);
+
+      await screen.findByLabelText('Tên sản phẩm');
+
+      expect(screen.queryByTestId('appeal-slot')).not.toBeInTheDocument();
+    },
+  );
+
+  it('không truyền khe cắm ⇒ thông báo bị gỡ như cũ', async () => {
+    setup(makeProduct({ status: 'TAKEN_DOWN', takenDownReason: 'Bán hàng cấm.' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sản phẩm này đã bị sàn gỡ');
+    expect(screen.queryByTestId('appeal-slot')).not.toBeInTheDocument();
+  });
 });

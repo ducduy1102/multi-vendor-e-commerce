@@ -1,4 +1,5 @@
 import { useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/components/ui/alert';
@@ -8,13 +9,20 @@ interface ProductTakenDownNoticeProps {
   productName: string;
   // Lý do Admin đã nhập khi gỡ (luôn có khi sản phẩm ở TAKEN_DOWN — CHECK ở DB).
   reason: string | null;
+  // Mục kháng nghị (Week11.md 5.8) do page.tsx ghép vào: modules/product không được import modules/appeal (rules/general.md mục 1). Slot là
+  // ReactNode tĩnh (không phải hàm render) vì nó đi qua ranh giới Server → Client Component.
+  appealSlot?: ReactNode;
 }
 
 // Thay cho form sửa khi sàn đã gỡ sản phẩm vi phạm (Week11.md 5.7): chủ shop không sửa, xuất bản hay lưu trữ được (BE trả 409
 // PRODUCT_TAKEN_DOWN cho mọi thao tác), nên KHÔNG dựng form — không có nút nào để bấm rồi mới bị từ chối. Chỉ hiện điều chủ shop cần: tên
 // sản phẩm, lý do từ sàn và đường về danh sách. Lý do là văn bản người khác nhập: giữ xuống dòng, bẻ chuỗi dài không dấu cách
 // (`[overflow-wrap:anywhere]` — `break-words` không thu nhỏ min-content, rules/frontend.md mục 5).
-export function ProductTakenDownNotice({ productName, reason }: ProductTakenDownNoticeProps) {
+export function ProductTakenDownNotice({
+  productName,
+  reason,
+  appealSlot,
+}: ProductTakenDownNoticeProps) {
   const t = useTranslations('product');
 
   return (
@@ -34,6 +42,8 @@ export function ProductTakenDownNotice({ productName, reason }: ProductTakenDown
           <span className="text-foreground">{t('takenDownBody')}</span>
         </AlertDescription>
       </Alert>
+      {/* Cha dùng `items-start` nên con co theo nội dung; bọc `w-full` để khung kháng nghị rộng bằng khung cảnh báo phía trên. */}
+      {appealSlot ? <div className="w-full">{appealSlot}</div> : null}
       <Link href="/seller/products" className={buttonVariants({ variant: 'outline', size: 'lg' })}>
         {t('takenDownBack')}
       </Link>

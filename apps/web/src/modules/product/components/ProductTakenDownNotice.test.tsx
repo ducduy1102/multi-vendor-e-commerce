@@ -10,9 +10,17 @@ afterEach(() => cleanup());
 function setup(
   reason: string | null = 'Bán hàng cấm: dao bấm tự động.',
   locale: 'vi' | 'en' = 'vi',
+  appealSlot?: React.ReactNode,
 ) {
   render(
-    withIntl(<ProductTakenDownNotice productName="Dao bấm tự động" reason={reason} />, locale),
+    withIntl(
+      <ProductTakenDownNotice
+        productName="Dao bấm tự động"
+        reason={reason}
+        appealSlot={appealSlot}
+      />,
+      locale,
+    ),
   );
 }
 
@@ -72,5 +80,31 @@ describe('ProductTakenDownNotice (Week11.md 5.7)', () => {
     );
     expect(screen.getByText('Reason from the marketplace: Prohibited item.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to my products' })).toBeInTheDocument();
+  });
+});
+
+describe('ProductTakenDownNotice — khe cắm kháng nghị (Week11.md 5.8)', () => {
+  it('hiện nội dung khe cắm giữa thông báo và đường về danh sách', () => {
+    setup('Lý do.', 'vi', <section data-testid="appeal-slot">kháng nghị</section>);
+
+    const alert = screen.getByRole('alert');
+    const slot = screen.getByTestId('appeal-slot');
+    const back = screen.getByRole('link', { name: 'Về danh sách sản phẩm' });
+
+    expect(alert.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('khe cắm được bọc `w-full`: cha là `items-start` nên không bọc thì khung kháng nghị hẹp hơn khung cảnh báo', () => {
+    setup('Lý do.', 'vi', <section data-testid="appeal-slot">kháng nghị</section>);
+
+    expect(screen.getByTestId('appeal-slot').parentElement).toHaveClass('w-full');
+  });
+
+  it('không có khe cắm ⇒ chỉ thông báo và đường về danh sách như trước', () => {
+    setup();
+
+    expect(screen.queryByTestId('appeal-slot')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Về danh sách sản phẩm' })).toBeInTheDocument();
   });
 });

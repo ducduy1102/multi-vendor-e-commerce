@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { Alert } from '@/shared/components/ui/alert';
@@ -28,6 +28,9 @@ import { SellerProductsListSkeleton } from './SellerProductsListSkeleton';
 
 interface SellerProductsContainerProps {
   shopId: string;
+  // Điều khiển kháng nghị của sản phẩm BỊ GỠ, đặt cạnh nhãn "Bị gỡ" (Week11.md 5.8). Do page.tsx truyền vào vì modules/product không được
+  // import modules/appeal (rules/general.md mục 1): chỉ gọi cho sản phẩm TAKEN_DOWN; không truyền thì không có nút.
+  renderProductAppeal?: (product: { id: string; name: string }) => ReactNode;
 }
 
 const STATUS_LABEL_KEY = {
@@ -82,7 +85,10 @@ const STATUS_BADGE_SIZE_CLASS = 'h-7 rounded-[min(var(--radius-md),12px)] px-2.5
 // không tự gọi useMyShop() ở đây: modules/product không được cross-import
 // modules/shop (rules/general.md mục 1), "biết shop của mình" là việc của
 // page.tsx (composition root), không phải của module product.
-export function SellerProductsContainer({ shopId }: SellerProductsContainerProps) {
+export function SellerProductsContainer({
+  shopId,
+  renderProductAppeal,
+}: SellerProductsContainerProps) {
   const t = useTranslations('product');
   const tApi = useApiErrorMessage();
   const tShop = useTranslations('shop');
@@ -208,7 +214,10 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                 : `${formatPrice(product.minPrice)} - ${formatPrice(product.maxPrice)}`;
 
             return (
-              <li key={product.id} className="flex items-center justify-between gap-4 px-4 py-3">
+              <li
+                key={product.id}
+                className="flex items-center justify-between gap-4 px-4 py-3 max-sm:flex-wrap max-sm:gap-y-2"
+              >
                 <div className="flex min-w-0 flex-col gap-1">
                   <span
                     className="truncate text-sm font-medium text-foreground"
@@ -227,13 +236,16 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                   ) : null}
                 </div>
 
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex items-center gap-3 sm:shrink-0 max-sm:max-w-full max-sm:flex-wrap">
                   <Badge
                     variant={STATUS_BADGE_VARIANT[product.status]}
                     className={cn(STATUS_BADGE_SIZE_CLASS, STATUS_BADGE_CLASS[product.status])}
                   >
                     {t(STATUS_LABEL_KEY[product.status])}
                   </Badge>
+                  {product.status === 'TAKEN_DOWN' && renderProductAppeal
+                    ? renderProductAppeal({ id: product.id, name: product.name })
+                    : null}
                   <Button
                     variant="outline"
                     size="sm"

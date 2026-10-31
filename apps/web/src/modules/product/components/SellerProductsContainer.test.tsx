@@ -35,13 +35,17 @@ function item(overrides: Partial<ProductListItem>): ProductListItem {
   };
 }
 
-function setup(products: ProductListItem[], locale: 'vi' | 'en' = 'vi') {
+function setup(
+  products: ProductListItem[],
+  locale: 'vi' | 'en' = 'vi',
+  renderProductAppeal?: React.ComponentProps<typeof SellerProductsContainer>['renderProductAppeal'],
+) {
   vi.mocked(productService.getMyProducts).mockResolvedValue(products);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     withIntl(
       <QueryClientProvider client={queryClient}>
-        <SellerProductsContainer shopId={SHOP} />
+        <SellerProductsContainer shopId={SHOP} renderProductAppeal={renderProductAppeal} />
       </QueryClientProvider>,
       locale,
     ),
@@ -154,5 +158,90 @@ describe('SellerProductsContainer — sản phẩm bị sàn gỡ', () => {
       within(row).getByText('Reason from the marketplace: Prohibited item.'),
     ).toBeInTheDocument();
     expect(anchorOf(row, 'See reason')).toHaveAttribute('href');
+  });
+});
+
+// Khe cắm kháng nghị (Week11.md 5.8): modules/product không import modules/appeal nên điều khiển kháng nghị do page.tsx truyền vào dạng hàm
+// render, và CHỈ được gọi cho sản phẩm bị gỡ.
+describe('SellerProductsContainer — khe cắm kháng nghị cho sản phẩm bị gỡ', () => {
+  const renderAppeal = (product: { id: string; name: string }) => (
+    <span data-testid="appeal-control">{`kháng nghị:${product.id}:${product.name}`}</span>
+  );
+
+  it('sản phẩm bị gỡ ⇒ hiện điều khiển kháng nghị của CHÍNH sản phẩm đó, ngay sau nhãn "Bị gỡ"', async () => {
+    setup(
+      [item({ id: 'p-down', name: 'Dao bấm', status: 'TAKEN_DOWN', takenDownReason: 'x' })],
+      'vi',
+      renderAppeal,
+    );
+
+    const row = await rowOf('Dao bấm');
+    const control = within(row).getByTestId('appeal-control');
+
+    expect(control).toHaveTextContent('kháng nghị:p-down:Dao bấm');
+    const badge = within(row).getByText('Bị gỡ');
+    expect(badge.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Điều khiển nằm cùng cụm với nhãn (cạnh nhãn), không tách ra ngoài dòng.
+    expect(control.parentElement).toBe(badge.parentElement);
+  });
+
+  it.each(['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const)(
+    'sản phẩm %s (không bị gỡ) ⇒ KHÔNG gọi hàm render và không có điều khiển kháng nghị',
+    async (status) => {
+      const spy = vi.fn(renderAppeal);
+      setup([item({ name: 'Áo thun', status })], 'vi', spy);
+
+      const row = await rowOf('Áo thun');
+
+      expect(within(row).queryByTestId('appeal-control')).not.toBeInTheDocument();
+      expect(spy).not.toHaveBeenCalled();
+    },
+  );
+
+  it('chỉ dòng bị gỡ có điều khiển trong danh sách hỗn hợp, mỗi dòng nhận đúng sản phẩm của mình', async () => {
+    setup(
+      [
+        item({ id: 'p-1', name: 'Áo thun', status: 'PUBLISHED' }),
+        item({ id: 'p-2', name: 'Dao bấm', status: 'TAKEN_DOWN', takenDownReason: 'x' }),
+        item({ id: 'p-3', name: 'Nón', status: 'TAKEN_DOWN', takenDownReason: 'y' }),
+      ],
+      'vi',
+      renderAppeal,
+    );
+
+    await rowOf('Áo thun');
+
+    const controls = screen.getAllByTestId('appeal-control').map((el) => el.textContent);
+    expect(controls).toEqual(['kháng nghị:p-2:Dao bấm', 'kháng nghị:p-3:Nón']);
+  });
+
+  // jsdom không có bố cục nên chỉ khoá cặp lớp; việc đo thật ở 390px làm bằng Playwright (Week11.md 5.8: nút "Kháng nghị" thêm vào cụm nút làm dòng
+  // có tên sản phẩm dài tràn ngang 28px nếu cụm không được phép xuống dòng).
+  it('dưới `sm` dòng và cụm nút được phép xuống dòng (không tràn ngang ở 390px); từ `sm` giữ nguyên một hàng', async () => {
+    setup(
+      [item({ id: 'p-down', name: 'Dao bấm', status: 'TAKEN_DOWN', takenDownReason: 'x' })],
+      'vi',
+      renderAppeal,
+    );
+
+    const row = await rowOf('Dao bấm');
+    const cluster = within(row).getByTestId('appeal-control').parentElement as HTMLElement;
+
+    expect(row).toHaveClass('max-sm:flex-wrap');
+    expect(cluster).toHaveClass('max-sm:flex-wrap');
+    // Cụm nút chỉ KHÔNG co từ `sm` trở lên; dưới `sm` phải co về bề rộng dòng thì `flex-wrap` mới có tác dụng.
+    expect(cluster).toHaveClass('sm:shrink-0', 'max-sm:max-w-full');
+    expect(cluster.className.split(/\s+/)).not.toContain('shrink-0');
+    // Không có `flex-wrap` trần: desktop không được đổi (cụm nút luôn nằm bên phải, không rơi xuống dòng dưới).
+    expect(row.className.split(/\s+/)).not.toContain('flex-wrap');
+    expect(cluster.className.split(/\s+/)).not.toContain('flex-wrap');
+  });
+
+  it('không truyền hàm render (như trước đây) ⇒ dòng bị gỡ vẫn chỉ có một đường "Xem lý do"', async () => {
+    setup([item({ id: 'p-down', name: 'Dao bấm', status: 'TAKEN_DOWN', takenDownReason: 'x' })]);
+
+    const row = await rowOf('Dao bấm');
+
+    expect(row.querySelectorAll('a, button')).toHaveLength(1);
   });
 });
