@@ -25,6 +25,7 @@ import { AdminUserStatusService } from './admin-user-status.service';
 import { AdminService } from './admin.service';
 import type { ListAdminReportsQueryDto } from './dto/list-admin-reports-query.dto';
 import type { ResolveReportDto } from './dto/resolve-report.dto';
+import { ReviewService } from '../review/review.service';
 
 // Cột của báo cáo mà ADMIN được đọc. Thêm cột vào đây là thêm vào bề mặt lộ dữ liệu: phải kèm trường ở `adminReportSchema`
 // (packages/types) VÀ ở `toAdminReport` (response dựng bằng object literal tường minh, không spread dữ liệu thô).
@@ -173,6 +174,7 @@ export class AdminReportsService {
   private readonly handlers: Partial<
     Record<ReportResolutionAction, ReportActionHandler>
   > = {
+    HIDE_REVIEW: (context) => this.hideReview(context),
     SUSPEND_SHOP: (context) => this.suspendShop(context),
     SUSPEND_REPORTED_USER: (context) => this.suspendReportedUser(context),
   };
@@ -181,6 +183,7 @@ export class AdminReportsService {
     private readonly prisma: PrismaService,
     private readonly adminService: AdminService,
     private readonly userStatusService: AdminUserStatusService,
+    private readonly reviewService: ReviewService,
     private readonly auditService: AdminAuditService,
     private readonly notificationService: NotificationService,
   ) {}
@@ -352,6 +355,31 @@ export class AdminReportsService {
     });
 
     return { closedIds, afterCommit: outcome.afterCommit };
+  }
+
+  // Ẩn đánh giá bị báo qua đúng luật ẩn của ReviewService (khoá product → ẩn → tính lại điểm → nhật ký HIDE_REVIEW, cùng transaction với
+  // việc đóng báo cáo); tác giả được báo SAU commit. Đã ẩn từ trước ⇒ không ẩn lại, báo cáo vẫn đóng là đã xử lý.
+  private async hideReview(
+    context: ReportActionContext,
+  ): Promise<ReportActionOutcome> {
+    const { tx, adminId, auditContext, note, targetId } = context;
+    const review = await tx.review.findUnique({
+      where: { id: targetId },
+      select: { hiddenAt: true },
+    });
+    if (!review) throw targetGone();
+    if (review.hiddenAt) return { alreadyApplied: true };
+
+    await this.reviewService.hideInTx(tx, {
+      adminId,
+      reviewId: targetId,
+      reason: note,
+      context: auditContext,
+    });
+    return {
+      alreadyApplied: false,
+      afterCommit: () => this.reviewService.announceHidden(targetId),
+    };
   }
 
   // Khoá shop bị báo qua đúng luật của Admin (ShopStatusService: UPDATE ... WHERE status = <cũ>, ghi lịch sử, lý do hiện cho chủ shop).

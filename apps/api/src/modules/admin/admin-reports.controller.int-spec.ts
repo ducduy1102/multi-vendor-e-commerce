@@ -552,6 +552,148 @@ describe('Hàng đợi và xử lý báo cáo của Admin (HTTP thật)', () => 
       }
     });
 
+    // Đánh giá dựng thẳng ở DB kèm tính lại điểm (chỉ dùng cho dữ liệu dựng sẵn; luồng ẩn thật chạy qua API).
+    async function seedReview(store: Store, rating: number) {
+      const author = await newAccount();
+      const { orderId } = await createOrderWithItem(prisma, {
+        userId: author.userId,
+        shopId: store.shopId,
+        variantId: store.variantId,
+      });
+      const created = await prisma.review.create({
+        data: {
+          userId: author.userId,
+          productId: store.productId,
+          orderId,
+          rating,
+          comment: 'Nội dung đánh giá',
+        },
+        select: { id: true },
+      });
+      await prisma.$executeRaw`
+        UPDATE products p SET
+          avg_rating = COALESCE((SELECT ROUND(AVG(rating)::numeric, 2)::float8 FROM reviews WHERE product_id = p.id AND hidden_at IS NULL), 0),
+          review_count = (SELECT COUNT(*)::int FROM reviews WHERE product_id = p.id AND hidden_at IS NULL)
+        WHERE p.id = ${store.productId}`;
+      return { author, orderId, reviewId: created.id };
+    }
+    const ratingOf = (productId: string) =>
+      prisma.product.findUniqueOrThrow({
+        where: { id: productId },
+        select: { avgRating: true, reviewCount: true },
+      });
+
+    it('HIDE_REVIEW: ẩn đánh giá bị báo, tính lại điểm, đóng hết báo cáo trùng, báo tác giả và mỗi người báo, hai dòng nhật ký (Week11.md 5.5)', async () => {
+      const store = await newStore();
+      await seedReview(store, 5);
+      const bad = await seedReview(store, 1);
+      const a = await newAccount();
+      const b = await newAccount();
+      const idA = await report(
+        a,
+        'REVIEW',
+        bad.reviewId,
+        'OFFENSIVE_LANGUAGE',
+        'Xúc phạm',
+      );
+      const idB = await report(b, 'REVIEW', bad.reviewId, 'SPAM');
+      expect(await ratingOf(store.productId)).toEqual({
+        avgRating: 3,
+        reviewCount: 2,
+      });
+
+      const res = await resolve(admin, idA, {
+        action: 'HIDE_REVIEW',
+        note: NOTE,
+      });
+
+      expect(res.status).toBe(200);
+      const hidden = await prisma.review.findUniqueOrThrow({
+        where: { id: bad.reviewId },
+      });
+      expect(hidden).toMatchObject({ hiddenById: adminId, hiddenReason: NOTE });
+      expect(hidden.hiddenAt).toBeInstanceOf(Date);
+      expect(await ratingOf(store.productId)).toEqual({
+        avgRating: 5,
+        reviewCount: 1,
+      });
+      for (const id of [idA, idB]) {
+        expect(await reportRow(id)).toMatchObject({
+          status: 'RESOLVED',
+          resolutionAction: 'HIDE_REVIEW',
+        });
+      }
+      // Tác giả đúng MỘT thông báo (không lý do), mỗi người báo đúng một thông báo chung chung.
+      const authorNotes = await notificationsOf(
+        bad.author.userId,
+        'REVIEW_HIDDEN',
+      );
+      expect(authorNotes).toHaveLength(1);
+      expect(authorNotes[0].data).toMatchObject({ orderId: bad.orderId });
+      expect(JSON.stringify(authorNotes[0].data)).not.toContain('nhái');
+      for (const who of [a, b]) {
+        expect(
+          await notificationsOf(who.userId, 'REPORT_RESOLVED'),
+        ).toHaveLength(1);
+      }
+      // Hai dòng nhật ký: ẩn đánh giá + xử lý báo cáo.
+      expect(await auditRows('HIDE_REVIEW', bad.reviewId)).toHaveLength(1);
+      expect(await auditRows('RESOLVE_REPORT', idA)).toHaveLength(1);
+    });
+
+    it('HIDE_REVIEW khi đánh giá đã bị ẩn từ trước: không ẩn lại, tác giả không bị báo lần nữa, báo cáo vẫn đóng, nhật ký ghi alreadyApplied', async () => {
+      const store = await newStore();
+      const bad = await seedReview(store, 1);
+      const reporter = await newAccount();
+      const id = await report(reporter, 'REVIEW', bad.reviewId, 'SPAM');
+      const first = await admin2
+        .post(`/api/v1/admin/reviews/${bad.reviewId}/hide`)
+        .send({ reason: 'Ẩn từ trước' });
+      expect(first.status).toBe(200);
+      const before = await notificationsOf(bad.author.userId, 'REVIEW_HIDDEN');
+
+      const res = await resolve(admin, id, {
+        action: 'HIDE_REVIEW',
+        note: NOTE,
+      });
+
+      expect(res.status).toBe(200);
+      expect((await reportRow(id)).status).toBe('RESOLVED');
+      expect(await auditRows('HIDE_REVIEW', bad.reviewId)).toHaveLength(1);
+      expect(
+        await notificationsOf(bad.author.userId, 'REVIEW_HIDDEN'),
+      ).toHaveLength(before.length);
+      const [row] = await auditRows('RESOLVE_REPORT', id);
+      expect(row.meta).toMatchObject({ alreadyApplied: true });
+    });
+
+    it('HIDE_REVIEW: lỗi nhật ký ⇒ ROLLBACK cả việc ẩn lẫn đóng báo cáo (đánh giá vẫn hiển thị, điểm không đổi)', async () => {
+      const store = await newStore();
+      await seedReview(store, 5);
+      const bad = await seedReview(store, 1);
+      const reporter = await newAccount();
+      const id = await report(reporter, 'REVIEW', bad.reviewId, 'SPAM');
+      jest
+        .spyOn(app.get(AdminAuditService), 'record')
+        .mockRejectedValueOnce(new Error('audit down'));
+
+      const res = await resolve(admin, id, {
+        action: 'HIDE_REVIEW',
+        note: NOTE,
+      });
+
+      expect(res.status).toBe(500);
+      expect((await reportRow(id)).status).toBe('OPEN');
+      expect(
+        (await prisma.review.findUniqueOrThrow({ where: { id: bad.reviewId } }))
+          .hiddenAt,
+      ).toBeNull();
+      expect(await ratingOf(store.productId)).toEqual({
+        avgRating: 3,
+        reviewCount: 2,
+      });
+    });
+
     it('SUSPEND_SHOP: khoá shop với lý do là ghi chú, đóng hết báo cáo trùng, MỘT dòng nhật ký, chủ shop nhận thông báo/email như luồng khoá thường', async () => {
       const store = await newStore();
       const a = await newAccount();
