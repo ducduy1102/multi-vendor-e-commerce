@@ -76,6 +76,12 @@ export const NOTIFICATION_MESSAGE_KEYS = [
   'bodyReviewHidden',
   'titleProductTakenDown',
   'bodyProductTakenDown',
+  'titleAdminProductAppealPending',
+  'bodyAdminProductAppealPending',
+  'titleProductAppealAccepted',
+  'bodyProductAppealAccepted',
+  'titleProductAppealRejected',
+  'bodyProductAppealRejected',
   'titleUnknown',
   'bodyUnknown',
 ] as const;
@@ -380,6 +386,30 @@ export function describeNotification(notification: Notification): NotificationDi
         bodyKey: 'bodyProductTakenDown',
         params: { productName: notification.data.productName, reason: notification.data.reason },
         // Trang sửa của chính sản phẩm: nơi chủ shop thấy nhãn "Bị gỡ" kèm lý do (id sai dạng ⇒ không dẫn đi đâu).
+        href: productPath ? `${productPath}/edit` : null,
+      };
+    }
+
+    case 'ADMIN_PRODUCT_APPEAL_PENDING':
+      return {
+        icon: 'shop',
+        titleKey: 'titleAdminProductAppealPending',
+        bodyKey: 'bodyAdminProductAppealPending',
+        params: { productName: notification.data.productName },
+        // Cùng hàng đợi với kháng nghị shop (hàng đợi hiển thị cả hai loại), tab mặc định là "Chờ xử lý".
+        href: '/admin/appeals',
+      };
+
+    case 'PRODUCT_APPEAL_DECIDED': {
+      const productPath = pathWithId('/seller/products', notification.data.productId);
+      const accepted = notification.data.decision === 'ACCEPTED';
+      return {
+        icon: 'shop',
+        // Mỗi kết quả một cặp tiêu đề/nội dung trọn vẹn (không `select`); ghi chú của Admin nằm ở trang sản phẩm chứ không trong thông báo.
+        titleKey: accepted ? 'titleProductAppealAccepted' : 'titleProductAppealRejected',
+        bodyKey: accepted ? 'bodyProductAppealAccepted' : 'bodyProductAppealRejected',
+        params: { productName: notification.data.productName },
+        // Trang sửa của chính sản phẩm: được chấp nhận ⇒ sản phẩm đã về nháp (sửa và xuất bản lại được); bị từ chối ⇒ thấy lý do gỡ và phản hồi.
         href: productPath ? `${productPath}/edit` : null,
       };
     }

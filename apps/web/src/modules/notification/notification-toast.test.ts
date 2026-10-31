@@ -218,6 +218,24 @@ const CASES: { name: string; notification: Notification; toast: boolean }[] = [
     },
     toast: true,
   },
+  {
+    name: 'ADMIN_PRODUCT_APPEAL_PENDING',
+    notification: {
+      ...BASE,
+      type: 'ADMIN_PRODUCT_APPEAL_PENDING',
+      data: { appealId: SHOP_ID, productId: SHOP_ID, productName: 'Dao bấm' },
+    },
+    toast: true,
+  },
+  {
+    name: 'PRODUCT_APPEAL_DECIDED',
+    notification: {
+      ...BASE,
+      type: 'PRODUCT_APPEAL_DECIDED',
+      data: { appealId: SHOP_ID, productId: SHOP_ID, productName: 'Dao bấm', decision: 'REJECTED' },
+    },
+    toast: true,
+  },
   { name: 'UNKNOWN', notification: makeUnknownNotification(), toast: false },
 ];
 

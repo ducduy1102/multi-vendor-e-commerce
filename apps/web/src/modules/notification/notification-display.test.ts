@@ -300,6 +300,31 @@ const CASES: Case[] = [
     href: `/seller/products/${ORDER}/edit`,
   },
   {
+    name: 'ADMIN_PRODUCT_APPEAL_PENDING',
+    notification: {
+      ...BASE,
+      type: 'ADMIN_PRODUCT_APPEAL_PENDING',
+      data: { appealId: SHOP, productId: ORDER, productName: 'Dao bấm tự động' },
+    },
+    icon: 'shop',
+    titleKey: 'titleAdminProductAppealPending',
+    bodyKey: 'bodyAdminProductAppealPending',
+    // Cùng hàng đợi với kháng nghị shop.
+    href: '/admin/appeals',
+  },
+  ...(['ACCEPTED', 'REJECTED'] as const).map((decision): Case => ({
+    name: `PRODUCT_APPEAL_DECIDED ${decision}`,
+    notification: {
+      ...BASE,
+      type: 'PRODUCT_APPEAL_DECIDED',
+      data: { appealId: SHOP, productId: ORDER, productName: 'Dao bấm tự động', decision },
+    },
+    icon: 'shop',
+    titleKey: decision === 'ACCEPTED' ? 'titleProductAppealAccepted' : 'titleProductAppealRejected',
+    bodyKey: decision === 'ACCEPTED' ? 'bodyProductAppealAccepted' : 'bodyProductAppealRejected',
+    href: `/seller/products/${ORDER}/edit`,
+  })),
+  {
     name: 'UNKNOWN',
     notification: { ...BASE, type: 'UNKNOWN', data: {} },
     icon: 'info',
@@ -516,6 +541,43 @@ describe('nội dung theo ngữ cảnh', () => {
     expect(display.href).toBe('/admin/appeals');
     expect(render(display, 'vi').body).toContain('Shop Bị Khóa');
     expect(render(display, 'en').body).toContain('Shop Bị Khóa');
+  });
+
+  it('kháng nghị sản phẩm (chủ shop): kết quả chấp nhận ≠ từ chối, nêu tên sản phẩm bằng cả hai ngôn ngữ, dẫn tới trang sửa; id sai dạng ⇒ không dẫn đi đâu', () => {
+    const accepted = describeNotification(find('PRODUCT_APPEAL_DECIDED ACCEPTED'));
+    const rejected = describeNotification(find('PRODUCT_APPEAL_DECIDED REJECTED'));
+
+    expect(accepted.href).toBe(`/seller/products/${ORDER}/edit`);
+    expect(render(accepted, 'vi').title).toBe('Kháng nghị được chấp nhận');
+    expect(render(rejected, 'vi').title).toBe('Kháng nghị bị từ chối');
+    expect(render(accepted, 'vi').body).not.toBe(render(rejected, 'vi').body);
+    expect(render(accepted, 'en').title).toBe('Appeal accepted');
+    expect(render(rejected, 'en').title).toBe('Appeal rejected');
+    for (const locale of ['vi', 'en'] as const) {
+      expect(render(accepted, locale).body).toContain('Dao bấm tự động');
+      expect(render(rejected, locale).body).toContain('Dao bấm tự động');
+    }
+    expect(
+      describeNotification({
+        ...BASE,
+        type: 'PRODUCT_APPEAL_DECIDED',
+        data: {
+          appealId: SHOP,
+          productId: '../../etc/passwd',
+          productName: 'x',
+          decision: 'ACCEPTED',
+        },
+      }).href,
+    ).toBeNull();
+  });
+
+  it('kháng nghị sản phẩm mới (Admin): nêu tên sản phẩm và dẫn tới hàng đợi kháng nghị', () => {
+    const display = describeNotification(find('ADMIN_PRODUCT_APPEAL_PENDING'));
+
+    expect(display.href).toBe('/admin/appeals');
+    for (const locale of ['vi', 'en'] as const) {
+      expect(render(display, locale).body).toContain('Dao bấm tự động');
+    }
   });
 
   it('báo cáo mới (Admin): mỗi loại đối tượng một câu riêng, chỉ nói loại gì bị báo — không có tên, lý do hay người báo', () => {
