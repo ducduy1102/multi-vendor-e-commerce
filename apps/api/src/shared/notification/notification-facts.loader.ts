@@ -84,6 +84,9 @@ export class NotificationFactsLoader {
       case 'REVIEW_HIDDEN':
         return this.review(event.reviewId);
 
+      case 'PRODUCT_TAKEN_DOWN':
+        return this.product(event.productId);
+
       case 'SHOP_STATUS_CHANGED':
         return this.shop(event.shopId, false);
 
@@ -182,6 +185,23 @@ export class NotificationFactsLoader {
         reviewerId: row.userId,
         shopOwnerId: row.product.shop.ownerId,
         shopName: row.product.shop.name,
+      },
+    };
+  }
+
+  // Chủ shop của sản phẩm (người nhận) + tên sản phẩm. Chỉ hai cột; không đọc lý do hay mô tả.
+  private async product(productId: string): Promise<NotificationFacts | null> {
+    const row = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, name: true, shop: { select: { ownerId: true } } },
+    });
+    if (!row) return null;
+    return {
+      kind: 'PRODUCT',
+      product: {
+        productId: row.id,
+        productName: row.name,
+        shopOwnerId: row.shop.ownerId,
       },
     };
   }

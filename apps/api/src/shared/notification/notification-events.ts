@@ -61,6 +61,9 @@ export type NotificationEvent =
   // Admin đã ẩn đánh giá (Week11.md 5.5, D6): báo TÁC GIẢ. Chỉ id đánh giá — người nhận, id đơn và tên sản phẩm đọc lại từ DB; lý do của
   // Admin và người báo không có đường nào vào thông báo.
   | { kind: 'REVIEW_HIDDEN'; reviewId: string }
+  // Admin đã gỡ một sản phẩm vi phạm (Week11.md 5.7, D5): báo CHỦ SHOP (suy từ sản phẩm, không từ sự kiện). `reason` là lý do Admin đã
+  // nhập khi gỡ (chủ shop được biết để sửa; được cắt gọn); người báo cáo và tên Admin không có đường nào vào thông báo.
+  | { kind: 'PRODUCT_TAKEN_DOWN'; productId: string; reason: string }
   | {
       kind: 'SHOP_STATUS_CHANGED';
       shopId: string;
@@ -121,6 +124,12 @@ export interface ReviewFacts {
   shopName: string;
 }
 
+export interface ProductFacts {
+  productId: string;
+  productName: string;
+  shopOwnerId: string;
+}
+
 export interface ReportFacts {
   reportId: string;
   reporterId: string;
@@ -138,6 +147,7 @@ export type NotificationFacts =
   | { kind: 'ORDERS'; orders: OrderFacts[] }
   | { kind: 'REFUND_REQUEST'; request: RefundRequestFacts; adminIds: string[] }
   | { kind: 'REVIEW'; review: ReviewFacts }
+  | { kind: 'PRODUCT'; product: ProductFacts }
   | { kind: 'SHOP'; shop: ShopFacts; adminIds: string[] }
   // Sự kiện chỉ cần biết Admin nào đang hoạt động (không gắn với bản ghi nào để tải).
   | { kind: 'ADMINS'; adminIds: string[] }
@@ -358,6 +368,20 @@ function buildRaw(
         draft(review.reviewerId, 'REVIEW_HIDDEN', {
           orderId: review.orderId,
           productName: label(review.productName),
+        }),
+      ];
+    }
+
+    case 'PRODUCT_TAKEN_DOWN': {
+      const { product } = expectFacts(event, facts, 'PRODUCT');
+      const reason = reasonOf(event.reason);
+      // Gỡ luôn có lý do (CHECK ở DB); lý do rỗng sau khi cắt gọn không xảy ra qua đường hợp lệ nên bỏ qua thay vì ghi hàng sai hợp đồng.
+      if (!reason) return [];
+      return [
+        draft(product.shopOwnerId, 'PRODUCT_TAKEN_DOWN', {
+          productId: product.productId,
+          productName: label(product.productName),
+          reason,
         }),
       ];
     }

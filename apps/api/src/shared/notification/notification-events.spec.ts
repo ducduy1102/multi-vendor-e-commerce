@@ -13,6 +13,7 @@ import {
   type NotificationEventKind,
   type NotificationFacts,
   type OrderFacts,
+  type ProductFacts,
   type RefundRequestFacts,
   type ReviewFacts,
   type ShopFacts,
@@ -74,6 +75,15 @@ const review = (overrides: Partial<ReviewFacts> = {}): NotificationFacts => ({
     reviewerId: BUYER,
     shopOwnerId: OWNER,
     shopName: 'Cửa hàng Ánh Dương',
+    ...overrides,
+  },
+});
+const product = (overrides: Partial<ProductFacts> = {}): NotificationFacts => ({
+  kind: 'PRODUCT',
+  product: {
+    productId: PRODUCT,
+    productName: 'Dao bấm tự động',
+    shopOwnerId: OWNER,
     ...overrides,
   },
 });
@@ -649,6 +659,77 @@ describe('ẩn đánh giá (Week11.md 5.5)', () => {
   });
 });
 
+describe('gỡ sản phẩm vi phạm (Week11.md 5.7)', () => {
+  const takenDown = (reason = 'Hàng cấm theo quy định của sàn.') =>
+    ({ kind: 'PRODUCT_TAKEN_DOWN', productId: PRODUCT, reason }) as const;
+
+  it('PRODUCT_TAKEN_DOWN ⇒ chỉ CHỦ SHOP của sản phẩm nhận, kèm id sản phẩm, tên và lý do', () => {
+    expect(buildNotifications(takenDown(), product())).toEqual([
+      {
+        userId: OWNER,
+        type: 'PRODUCT_TAKEN_DOWN',
+        data: {
+          productId: PRODUCT,
+          productName: 'Dao bấm tự động',
+          reason: 'Hàng cấm theo quy định của sàn.',
+        },
+      },
+    ]);
+  });
+
+  it('người nhận lấy từ DỮ KIỆN của sản phẩm, không từ sự kiện: đổi chủ shop thì người nhận đổi theo', () => {
+    const [draft] = buildNotifications(
+      takenDown(),
+      product({ shopOwnerId: OTHER_OWNER }),
+    );
+
+    expect(draft.userId).toBe(OTHER_OWNER);
+  });
+
+  it('thông báo chỉ mang id sản phẩm, tên và lý do — không người báo cáo, không tên Admin', () => {
+    const [draft] = buildNotifications(takenDown(), product());
+
+    expect(Object.keys(draft.data).sort()).toEqual([
+      'productId',
+      'productName',
+      'reason',
+    ]);
+  });
+
+  it('tên và lý do quá dài được cắt gọn để thông báo vẫn qua schema ghi', () => {
+    const [draft] = buildNotifications(
+      takenDown('lý do dài '.repeat(100)),
+      product({ productName: 'x'.repeat(500) }),
+    );
+
+    expect(
+      notificationWriteSchema.safeParse({
+        type: draft.type,
+        data: draft.data,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('lý do nhiều dòng được gộp thành một dòng (nhãn hợp lệ)', () => {
+    const [draft] = buildNotifications(
+      takenDown('Dòng một\n\nDòng hai'),
+      product(),
+    );
+
+    expect(draft.data).toMatchObject({ reason: 'Dòng một Dòng hai' });
+  });
+
+  it('lý do chỉ gồm khoảng trắng sau khi cắt gọn ⇒ không tạo thông báo sai hợp đồng', () => {
+    expect(buildNotifications(takenDown('   '), product())).toEqual([]);
+  });
+
+  it('dữ kiện sai loại (SHOP thay vì PRODUCT) ⇒ ném lỗi rõ ràng, không đoán người nhận', () => {
+    expect(() => buildNotifications(takenDown(), shop())).toThrow(
+      /needs PRODUCT facts/,
+    );
+  });
+});
+
 describe('báo cáo vi phạm (Week11.md 5.3)', () => {
   const admins = (...adminIds: string[]): NotificationFacts => ({
     kind: 'ADMINS',
@@ -894,6 +975,14 @@ describe('tính đúng đắn chung', () => {
       event: { kind: 'REVIEW_HIDDEN', reviewId: REVIEW },
       facts: review(),
     },
+    PRODUCT_TAKEN_DOWN: {
+      event: {
+        kind: 'PRODUCT_TAKEN_DOWN',
+        productId: PRODUCT,
+        reason: 'Hàng cấm theo quy định của sàn.',
+      },
+      facts: product(),
+    },
     REPORTS_RESOLVED: {
       event: { kind: 'REPORTS_RESOLVED', reportIds: [REPORT] },
       facts: {
@@ -950,6 +1039,7 @@ describe('tính đúng đắn chung', () => {
         known.add(facts.review.reviewerId);
         known.add(facts.review.shopOwnerId);
       }
+      if (facts.kind === 'PRODUCT') known.add(facts.product.shopOwnerId);
       if (facts.kind === 'SHOP') {
         known.add(facts.shop.ownerId);
         facts.adminIds.forEach((id) => known.add(id));
