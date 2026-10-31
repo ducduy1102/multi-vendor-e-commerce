@@ -14,7 +14,7 @@ export function AdminAppealListHeader() {
 
   return (
     <div aria-hidden="true" className={cn(ADMIN_APPEAL_GRID_CLASS, ADMIN_APPEAL_HEADER_CLASS)}>
-      <span>{t('columnShop')}</span>
+      <span>{t('appealsColumnTarget')}</span>
       <span>{t('appealsColumnMessage')}</span>
       <span>{t('appealsColumnSentAt')}</span>
       <span>{t('columnStatus')}</span>

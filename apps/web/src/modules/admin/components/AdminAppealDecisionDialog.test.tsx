@@ -13,9 +13,19 @@ afterEach(() => {
 
 const APPEAL: AdminAppealActionTarget = {
   id: 'appeal-1',
-  shopName: 'Shop ABC',
-  suspensionReason: 'Bán hàng giả',
+  targetType: 'SHOP',
+  targetName: 'Shop ABC',
+  moderationReason: 'Bán hàng giả',
   message: 'Shop đã gỡ các sản phẩm bị báo cáo.',
+};
+
+// Kháng nghị của SẢN PHẨM bị gỡ (Week11.md 5.8): cùng hộp thoại, lời văn khác.
+const PRODUCT_APPEAL: AdminAppealActionTarget = {
+  id: 'appeal-2',
+  targetType: 'PRODUCT',
+  targetName: 'Dao bấm tự động',
+  moderationReason: 'Hàng cấm theo quy định của sàn.',
+  message: 'Sản phẩm đã bổ sung giấy tờ nguồn gốc.',
 };
 
 function setup(
@@ -61,13 +71,13 @@ describe('AdminAppealDecisionDialog — nội dung để quyết định', () =>
 
     const text = screen.getByRole('region', { name: 'Lời kháng nghị' }).textContent ?? '';
     const messageAt = text.indexOf(APPEAL.message);
-    const reasonAt = text.indexOf(APPEAL.suspensionReason ?? '');
+    const reasonAt = text.indexOf(APPEAL.moderationReason ?? '');
     expect(messageAt).toBeGreaterThanOrEqual(0);
     expect(reasonAt).toBeGreaterThan(messageAt);
   });
 
   it('không vẽ mục lý do khoá khi shop không có lý do (null)', () => {
-    setup('accept', { appeal: { ...APPEAL, suspensionReason: null } });
+    setup('accept', { appeal: { ...APPEAL, moderationReason: null } });
 
     expect(screen.queryByText('Lý do khoá shop')).not.toBeInTheDocument();
   });
@@ -217,6 +227,72 @@ describe('AdminAppealDecisionDialog — ghi chú và trạng thái', () => {
   });
 });
 
+describe('AdminAppealDecisionDialog — kháng nghị sản phẩm bị gỡ', () => {
+  it('chấp nhận: nói rõ sản phẩm được KHÔI PHỤC VỀ NHÁP (chưa công khai), không nói "mở khoá shop"', () => {
+    setup('accept', { appeal: PRODUCT_APPEAL });
+
+    expect(screen.getByRole('heading', { name: 'Chấp nhận kháng nghị' })).toBeInTheDocument();
+    expect(screen.getByText(/“Dao bấm tự động” sẽ được khôi phục về bản nháp/)).toBeInTheDocument();
+    expect(screen.queryByText(/mở khoá ngay/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Chấp nhận và khôi phục' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Chấp nhận và mở khoá' })).not.toBeInTheDocument();
+  });
+
+  it('từ chối: nói rõ sản phẩm VẪN bị gỡ và không kháng nghị lại được lần gỡ này', () => {
+    setup('reject', { appeal: PRODUCT_APPEAL });
+
+    expect(
+      screen.getByText(/“Dao bấm tự động” vẫn bị gỡ và không thể kháng nghị lại lần gỡ này/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/vẫn bị khoá/)).not.toBeInTheDocument();
+  });
+
+  it('hiện ĐỦ lời kháng nghị và lý do GỠ sản phẩm (nhãn "Lý do gỡ sản phẩm", không phải "Lý do khoá shop")', () => {
+    setup('accept', { appeal: PRODUCT_APPEAL });
+
+    const region = screen.getByRole('region', { name: 'Lời kháng nghị' });
+    expect(region).toHaveTextContent('Sản phẩm đã bổ sung giấy tờ nguồn gốc.');
+    expect(region).toHaveTextContent('Lý do gỡ sản phẩm');
+    expect(region).toHaveTextContent('Hàng cấm theo quy định của sàn.');
+    expect(region).not.toHaveTextContent('Lý do khoá shop');
+  });
+
+  it('chấp nhận bỏ trống ghi chú vẫn xác nhận được; từ chối vẫn BẮT BUỘC có lý do', async () => {
+    const user = userEvent.setup();
+    const accept = setup('accept', { appeal: PRODUCT_APPEAL });
+    await user.click(screen.getByRole('button', { name: 'Chấp nhận và khôi phục' }));
+    await waitFor(() => expect(accept.onConfirm).toHaveBeenCalledWith(undefined));
+    cleanup();
+
+    const reject = setup('reject', { appeal: PRODUCT_APPEAL });
+    await user.click(screen.getByRole('button', { name: 'Từ chối kháng nghị' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Vui lòng nhập lý do từ chối.');
+    expect(reject.onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('tiếng Anh: không lẫn chuỗi tiếng Việt do mẫu dịch', () => {
+    setup(
+      'accept',
+      {
+        appeal: {
+          ...PRODUCT_APPEAL,
+          message: 'We added proof of origin.',
+          moderationReason: 'Prohibited goods.',
+        },
+      },
+      'en',
+    );
+
+    expect(screen.getByText(/“Dao bấm tự động” will be restored to a draft/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept and restore' })).toBeInTheDocument();
+    expect(screen.getByRole('region')).toHaveTextContent('Take-down reason');
+    // Tên sản phẩm là chữ người dùng nhập (giữ nguyên); phần còn lại không được lẫn tiếng Việt.
+    const vietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
+    const text = (document.body.textContent ?? '').replace('Dao bấm tự động', '');
+    expect(text).not.toMatch(vietnamese);
+  });
+});
+
 describe('AdminAppealDecisionDialog — tiếng Anh', () => {
   it('không lẫn chuỗi tiếng Việt do mẫu dịch (chỉ chữ người dùng nhập được giữ nguyên)', async () => {
     const user = userEvent.setup();
@@ -226,7 +302,7 @@ describe('AdminAppealDecisionDialog — tiếng Anh', () => {
         appeal: {
           ...APPEAL,
           message: 'We removed the items.',
-          suspensionReason: 'Counterfeit goods',
+          moderationReason: 'Counterfeit goods',
         },
       },
       'en',

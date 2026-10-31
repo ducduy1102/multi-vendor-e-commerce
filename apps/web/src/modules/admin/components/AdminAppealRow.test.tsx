@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { withIntl } from '@/shared/lib/test-i18n';
 
-import { makeAppeal } from '../admin-appeal.fixtures';
+import { makeAppeal, makeProductAppeal } from '../admin-appeal.fixtures';
 import type { AdminAppeal } from '../types';
 import { AdminAppealRow } from './AdminAppealRow';
 
@@ -187,6 +187,143 @@ describe('AdminAppealRow — tiếng Anh', () => {
     expect(screen.getByText('Rejected')).toBeInTheDocument();
     expect(screen.getByText('Suspension reason: Counterfeit goods')).toBeInTheDocument();
     expect(screen.getByText('Note: Documents are invalid.')).toBeInTheDocument();
+    const vietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
+    expect(document.body.textContent ?? '').not.toMatch(vietnamese);
+  });
+});
+
+// Kháng nghị của SẢN PHẨM bị gỡ (Week11.md 5.8): chung bảng với kháng nghị shop.
+describe('AdminAppealRow — kháng nghị sản phẩm bị gỡ', () => {
+  function renderProductRow(
+    overrides: Partial<AdminAppeal> = {},
+    actions?: React.ReactNode,
+    locale: 'vi' | 'en' = 'vi',
+  ) {
+    return render(
+      withIntl(
+        <ul>
+          <AdminAppealRow appeal={makeProductAppeal(overrides)} actions={actions} />
+        </ul>,
+        locale,
+      ),
+    );
+  }
+
+  it('đối tượng là SẢN PHẨM: nhãn loại "Sản phẩm", tên sản phẩm là tiêu đề, kèm tên shop và email chủ shop', () => {
+    renderProductRow();
+
+    expect(screen.getByRole('heading', { name: 'Dao bấm tự động' })).toBeInTheDocument();
+    expect(screen.getByText('Sản phẩm')).toBeInTheDocument();
+    expect(screen.getByText('Của shop Shop Thời Trang ABC')).toBeInTheDocument();
+    expect(screen.getByText('nguyenvana@example.com')).toBeInTheDocument();
+    // Tên chủ shop không còn là dòng riêng (dòng đó dành cho tên shop), email vẫn để Admin liên hệ.
+    expect(screen.queryByText('Nguyễn Văn A')).not.toBeInTheDocument();
+  });
+
+  it('nhãn loại đứng RIÊNG một dòng phía trên tên (cạnh tên thì ở cột hẹp tên sản phẩm chỉ còn vài ký tự): tên có cả bề rộng cột để cắt bằng truncate', () => {
+    renderProductRow();
+
+    const badge = screen.getByText('Sản phẩm', { exact: true });
+    const heading = screen.getByRole('heading', { name: 'Dao bấm tự động' });
+    expect(badge.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Cùng cột dọc với tiêu đề, nhưng KHÔNG chung hàng ngang với nó.
+    expect(badge.parentElement).toBe(heading.parentElement);
+    expect(badge).toHaveClass('self-start');
+    expect(heading.parentElement).toHaveClass('flex-col');
+    expect(heading).toHaveClass('truncate');
+  });
+
+  it('kháng nghị shop vẫn là dạng cũ: nhãn "Shop", tên shop là tiêu đề, tên chủ shop là dòng riêng', () => {
+    renderRow();
+
+    expect(screen.getByText('Shop', { selector: 'span' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Shop Thời Trang ABC' })).toBeInTheDocument();
+    expect(screen.getByText('Nguyễn Văn A')).toBeInTheDocument();
+    expect(screen.queryByText(/^Của shop/)).not.toBeInTheDocument();
+  });
+
+  it('lý do hiện ra là lý do GỠ SẢN PHẨM, kể cả khi shop đang có lý do khoá khác', () => {
+    renderProductRow({
+      shop: { ...makeProductAppeal().shop, status: 'SUSPENDED', statusReason: 'Bán hàng giả' },
+    });
+
+    expect(screen.getByText('Lý do gỡ: Hàng cấm theo quy định của sàn.')).toBeInTheDocument();
+    expect(screen.queryByText(/Lý do khoá/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bán hàng giả/)).not.toBeInTheDocument();
+  });
+
+  it('lý do gỡ dài bị kẹp 2 dòng nhưng mang bản đầy đủ ở title; chuỗi không dấu cách được bẻ', () => {
+    const long = 'x'.repeat(400);
+    renderProductRow({
+      product: { ...makeProductAppeal().product!, takenDownReason: long },
+    });
+
+    const line = screen.getByText(`Lý do gỡ: ${long}`);
+    expect(line).toHaveClass('line-clamp-2', '[overflow-wrap:anywhere]');
+    expect(line).toHaveAttribute('title', long);
+  });
+
+  it('sản phẩm đã khôi phục (không còn lý do gỡ) ⇒ không in dòng lý do rỗng', () => {
+    renderProductRow({
+      state: 'ACCEPTED',
+      product: { ...makeProductAppeal().product!, takenDownReason: null },
+    });
+
+    expect(screen.queryByText(/Lý do gỡ/)).not.toBeInTheDocument();
+    expect(screen.getByText('Đã chấp nhận')).toBeInTheDocument();
+  });
+
+  it('đã đóng: câu giải thích nói về LẦN GỠ (không phải lần khoá)', () => {
+    renderProductRow({ state: 'CLOSED' });
+
+    expect(screen.getByText('Lần gỡ này đã kết thúc, không còn gì để xử lý.')).toBeInTheDocument();
+    expect(screen.queryByText(/Lần khoá/)).not.toBeInTheDocument();
+  });
+
+  it('chữ do người dùng nhập (tên sản phẩm, lời kháng nghị) là text, tên dài được cắt và mang title đầy đủ', () => {
+    const hostile = `<img src=x onerror=alert(1)>${'a'.repeat(300)}`;
+    renderProductRow({
+      message: hostile,
+      product: { ...makeProductAppeal().product!, name: hostile },
+    });
+
+    expect(document.querySelector('img')).toBeNull();
+    const heading = screen.getByRole('heading', { name: hostile });
+    expect(heading).toHaveClass('truncate');
+    expect(heading).toHaveAttribute('title', hostile);
+  });
+
+  it('thiếu khối product (dữ liệu lệch) ⇒ rơi về dạng shop thay vì ném lỗi', () => {
+    renderProductRow({ product: null });
+
+    expect(screen.getByRole('heading', { name: 'Shop Thời Trang ABC' })).toBeInTheDocument();
+  });
+
+  it('có nút hành động thì hiện trong cột thao tác', () => {
+    renderProductRow({}, <button type="button">Chấp nhận</button>);
+
+    expect(screen.getByRole('button', { name: 'Chấp nhận' })).toBeInTheDocument();
+  });
+
+  it('tiếng Anh: không lẫn chuỗi tiếng Việt do mẫu dịch (chỉ chữ người dùng nhập được giữ nguyên)', () => {
+    renderProductRow(
+      {
+        message: 'We added proof of origin.',
+        shop: { ...makeProductAppeal().shop, name: 'Shop ABC' },
+        product: {
+          ...makeProductAppeal().product!,
+          name: 'Switchblade',
+          takenDownReason: 'Prohibited goods.',
+        },
+        owner: { name: 'Owner A', email: 'owner@example.com' },
+      },
+      undefined,
+      'en',
+    );
+
+    expect(screen.getByText('Product')).toBeInTheDocument();
+    expect(screen.getByText('From shop Shop ABC')).toBeInTheDocument();
+    expect(screen.getByText('Take-down reason: Prohibited goods.')).toBeInTheDocument();
     const vietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
     expect(document.body.textContent ?? '').not.toMatch(vietnamese);
   });

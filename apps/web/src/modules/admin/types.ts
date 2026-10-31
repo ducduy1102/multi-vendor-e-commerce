@@ -54,6 +54,7 @@ export type {
   AdminUserShop,
   AdminUserSuspendTarget,
   AppealState,
+  AppealTargetType,
   PaymentRefundStatus,
   CreateAdminNoteInput,
   DecideAppealInput,

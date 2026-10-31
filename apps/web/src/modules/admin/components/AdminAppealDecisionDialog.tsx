@@ -20,6 +20,8 @@ import { Textarea } from '@/shared/components/ui/textarea';
 import { useValidationMessage } from '@/shared/hooks/useValidationMessage';
 import { cn } from '@/shared/lib/utils';
 
+import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
+
 import type { AdminAppealActionTarget } from '../hooks/useAdminAppealActionFlow';
 import { APPEAL_DECISION_NOTE_MAX_LENGTH, decideAppealSchema } from '../schemas/admin.schema';
 import type { DecideAppealInput } from '../types';
@@ -27,20 +29,39 @@ import { ADMIN_DESTRUCTIVE_CONFIRM_BUTTON_CLASS } from './admin-caution-button.c
 
 export type AdminAppealDecisionVariant = 'accept' | 'reject';
 
-// Chữ của từng biến thể. Chấp nhận nói rõ hệ quả (shop mở khoá ngay, chủ shop nhận email + thông báo); từ chối nói rõ hệ quả ngược
-// lại (shop vẫn bị khoá, không kháng nghị lại được lần khoá này, chủ shop đọc được lý do).
+// Chữ của từng biến thể × loại đối tượng. Chấp nhận nói rõ hệ quả (shop mở khoá ngay, chủ shop nhận email + thông báo; sản phẩm về bản
+// nháp, chủ shop nhận thông báo); từ chối nói rõ hệ quả ngược lại (vẫn bị khoá/gỡ, không kháng nghị lại được lần xử lý này, chủ shop đọc
+// được lý do). Tiêu đề và nhãn ô ghi chú dùng chung cho cả hai loại.
 const COPY = {
-  accept: {
-    title: 'appealsAcceptTitle',
-    description: 'appealsAcceptDescription',
-    label: 'appealsAcceptNoteLabel',
-    confirm: 'appealsAcceptConfirm',
+  SHOP: {
+    accept: {
+      title: 'appealsAcceptTitle',
+      description: 'appealsAcceptDescription',
+      label: 'appealsAcceptNoteLabel',
+      confirm: 'appealsAcceptConfirm',
+    },
+    reject: {
+      title: 'appealsRejectTitle',
+      description: 'appealsRejectDescription',
+      label: 'appealsRejectNoteLabel',
+      confirm: 'appealsRejectConfirm',
+    },
+    reasonLabel: 'appealsDialogSuspensionLabel',
   },
-  reject: {
-    title: 'appealsRejectTitle',
-    description: 'appealsRejectDescription',
-    label: 'appealsRejectNoteLabel',
-    confirm: 'appealsRejectConfirm',
+  PRODUCT: {
+    accept: {
+      title: 'appealsAcceptTitle',
+      description: 'appealsAcceptProductDescription',
+      label: 'appealsAcceptNoteLabel',
+      confirm: 'appealsAcceptProductConfirm',
+    },
+    reject: {
+      title: 'appealsRejectTitle',
+      description: 'appealsRejectProductDescription',
+      label: 'appealsRejectNoteLabel',
+      confirm: 'appealsRejectConfirm',
+    },
+    reasonLabel: 'appealsDialogRemovalLabel',
   },
 } as const;
 
@@ -65,9 +86,11 @@ function AdminAppealDecisionForm({
   onConfirm,
 }: Pick<AdminAppealDecisionDialogProps, 'variant' | 'appeal' | 'isPending' | 'onConfirm'>) {
   const t = useTranslations('admin');
+  const tCopy = t as unknown as LooseTranslator;
   const translateValidation = useValidationMessage();
   const fieldId = useId();
-  const copy = COPY[variant];
+  const targetCopy = COPY[appeal.targetType];
+  const copy = targetCopy[variant];
   const {
     register,
     handleSubmit,
@@ -88,9 +111,9 @@ function AdminAppealDecisionForm({
       className="flex flex-col gap-4"
     >
       <AlertDialogHeader>
-        <AlertDialogTitle>{t(copy.title)}</AlertDialogTitle>
+        <AlertDialogTitle>{tCopy(copy.title)}</AlertDialogTitle>
         <AlertDialogDescription>
-          {t(copy.description, { name: appeal.shopName })}
+          {tCopy(copy.description, { name: appeal.targetName })}
         </AlertDialogDescription>
       </AlertDialogHeader>
 
@@ -111,20 +134,20 @@ function AdminAppealDecisionForm({
             {appeal.message}
           </p>
         </div>
-        {appeal.suspensionReason ? (
+        {appeal.moderationReason ? (
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="text-xs font-medium text-muted-foreground">
-              {t('appealsDialogSuspensionLabel')}
+              {tCopy(targetCopy.reasonLabel)}
             </span>
             <p className="whitespace-pre-line text-foreground [overflow-wrap:anywhere]">
-              {appeal.suspensionReason}
+              {appeal.moderationReason}
             </p>
           </div>
         ) : null}
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={fieldId}>{t(copy.label)}</Label>
+        <Label htmlFor={fieldId}>{tCopy(copy.label)}</Label>
         <Textarea
           id={fieldId}
           rows={3}
@@ -160,7 +183,7 @@ function AdminAppealDecisionForm({
           className={variant === 'reject' ? ADMIN_DESTRUCTIVE_CONFIRM_BUTTON_CLASS : undefined}
           disabled={isPending}
         >
-          {t(copy.confirm)}
+          {tCopy(copy.confirm)}
         </Button>
       </AlertDialogFooter>
     </form>

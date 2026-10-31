@@ -16,7 +16,7 @@ function setup(props: Partial<React.ComponentProps<typeof AdminAppealActions>> =
   render(
     withIntl(
       <AdminAppealActions
-        shopName="Shop A"
+        targetName="Shop A"
         isDisabled={false}
         onAccept={onAccept}
         onReject={onReject}
@@ -33,6 +33,13 @@ describe('AdminAppealActions', () => {
 
     expect(screen.getByRole('button', { name: 'Chấp nhận: Shop A' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Từ chối: Shop A' })).toBeInTheDocument();
+  });
+
+  it('kháng nghị sản phẩm: tên truy cập kèm tên SẢN PHẨM (đối tượng), không phải tên shop', () => {
+    setup({ targetName: 'Dao bấm tự động' });
+
+    expect(screen.getByRole('button', { name: 'Chấp nhận: Dao bấm tự động' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Từ chối: Dao bấm tự động' })).toBeInTheDocument();
   });
 
   it('"Chấp nhận" đứng trên "Từ chối" (nút chính trước)', () => {

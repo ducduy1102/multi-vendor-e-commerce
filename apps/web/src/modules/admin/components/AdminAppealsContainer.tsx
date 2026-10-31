@@ -100,7 +100,7 @@ export function AdminAppealsContainer({ status, page }: AdminAppealsContainerPro
                 actions={
                   appeal.state === 'PENDING' ? (
                     <AdminAppealActions
-                      shopName={appeal.shop.name}
+                      targetName={toAdminAppealActionTarget(appeal).targetName}
                       isDisabled={flow.isActionPending}
                       onAccept={() => flow.openAcceptDialog(toAdminAppealActionTarget(appeal))}
                       onReject={() => flow.openRejectDialog(toAdminAppealActionTarget(appeal))}
