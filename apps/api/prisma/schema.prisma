@@ -878,8 +878,9 @@ model Review {
   // Ẩn MỀM bởi Admin (Week11.md 5.5, D6): đánh giá ẩn biến khỏi danh sách công khai, trang seller và khỏi avgRating/reviewCount của
   // sản phẩm (ProductRatingService lọc `hidden_at IS NULL`); tác giả vẫn thấy bản của mình kèm nhãn "đã bị ẩn" và không sửa được; câu
   // trả lời của shop ẩn theo. Mở lại = đặt cả ba cột về NULL (lịch sử ẩn/hiện nằm ở nhật ký quản trị). `hiddenById` KHÔNG khoá ngoại
-  // (cùng nhật ký quản trị: dấu vết sống lâu hơn tài khoản). Lý do là văn bản của Admin, KHÔNG ra khỏi khu Admin. Quan hệ giữa ba cột do
-  // CHECK `reviews_hidden_columns_consistent` giữ (cả ba cùng NULL hoặc cùng có giá trị, lý do 1..500 ký tự).
+  // (cùng nhật ký quản trị: dấu vết sống lâu hơn tài khoản). Lý do là văn bản của Admin và HIỆN cho tác giả (chi tiết đơn) lẫn chủ shop
+  // (danh sách đánh giá của shop) — minh bạch với người bị ảnh hưởng — nên không nêu người báo cáo; không bao giờ ra trang công khai. Quan
+  // hệ giữa ba cột do CHECK `reviews_hidden_columns_consistent` giữ (cả ba cùng NULL hoặc cùng có giá trị, lý do 1..500 ký tự).
   hiddenAt     DateTime? @map("hidden_at")
   hiddenById   String?   @map("hidden_by_id")
   hiddenReason String?   @map("hidden_reason")

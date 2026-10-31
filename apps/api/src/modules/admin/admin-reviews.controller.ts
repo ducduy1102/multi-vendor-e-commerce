@@ -81,8 +81,9 @@ export class AdminReviewsController {
     description:
       'Ẩn MỀM (mở lại được): đánh giá biến khỏi trang sản phẩm và danh sách của seller, và khỏi điểm trung bình / số đánh giá của sản ' +
       'phẩm (tính lại trong cùng giao dịch); câu trả lời của shop ẩn theo. Tác giả nhận thông báo (không nêu lý do), vẫn xem được bản ' +
-      'của mình kèm nhãn "đã bị ẩn" và không sửa được. `reason` bắt buộc (1–500 ký tự), chỉ nằm ở nhật ký quản trị HIDE_REVIEW và cột ' +
-      'lý do — không hiện cho tác giả hay chủ shop.',
+      'của mình kèm nhãn "đã bị ẩn" và không sửa được. `reason` bắt buộc (1–500 ký tự), lưu ở nhật ký quản trị HIDE_REVIEW và cột lý ' +
+      'do — và HIỆN cho tác giả (chi tiết đơn) lẫn chủ shop (danh sách đánh giá của shop), nên viết như lời giải thích cho họ, không nêu ' +
+      'người báo cáo. Không bao giờ ra trang công khai.',
   })
   @ApiParam(REVIEW_ID_PARAM)
   @ApiBody(REASON_BODY)
