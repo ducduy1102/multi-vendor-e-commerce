@@ -7,7 +7,7 @@ import type { Notification, NotificationType } from './types';
 //  - Có (cần hành động): đơn mới (chủ shop), yêu cầu hủy/trả hàng mới và khiếu nại (chủ shop, Admin), shop chờ duyệt, kháng
 //    nghị mới và báo cáo vi phạm mới (Admin).
 //  - Có (kết quả đang chờ): yêu cầu được duyệt/từ chối, Admin quyết định, đã hoàn tiền, trạng thái shop, đơn bị hủy, kết quả
-//    kháng nghị.
+//    kháng nghị, đánh giá bị ẩn, sản phẩm bị gỡ (chủ shop cần biết ngay để xem lý do).
 //  - Không: đơn được xác nhận/giao/hoàn tất (tiến độ thường lệ), đánh giá mới/được trả lời.
 const TOAST_TYPES: ReadonlySet<NotificationType> = new Set<NotificationType>([
   'ORDER_NEW',
@@ -25,6 +25,7 @@ const TOAST_TYPES: ReadonlySet<NotificationType> = new Set<NotificationType>([
   'REPORT_NEW',
   'REPORT_RESOLVED',
   'REVIEW_HIDDEN',
+  'PRODUCT_TAKEN_DOWN',
 ]);
 
 // HÀM THUẦN: một thông báo có đáng hiện toast không. Loại lạ (UNKNOWN) không bao giờ — không biết nó nói gì. Đơn bị hủy

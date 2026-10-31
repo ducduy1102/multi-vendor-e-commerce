@@ -74,6 +74,8 @@ export const NOTIFICATION_MESSAGE_KEYS = [
   'bodyReportDismissed',
   'titleReviewHidden',
   'bodyReviewHidden',
+  'titleProductTakenDown',
+  'bodyProductTakenDown',
   'titleUnknown',
   'bodyUnknown',
 ] as const;
@@ -369,6 +371,18 @@ export function describeNotification(notification: Notification): NotificationDi
         // Chi tiết đơn: nơi bản đánh giá của chính mình vẫn hiện, kèm nhãn "đã bị ẩn".
         href: pathWithId('/orders', notification.data.orderId),
       };
+
+    case 'PRODUCT_TAKEN_DOWN': {
+      const productPath = pathWithId('/seller/products', notification.data.productId);
+      return {
+        icon: 'shop',
+        titleKey: 'titleProductTakenDown',
+        bodyKey: 'bodyProductTakenDown',
+        params: { productName: notification.data.productName, reason: notification.data.reason },
+        // Trang sửa của chính sản phẩm: nơi chủ shop thấy nhãn "Bị gỡ" kèm lý do (id sai dạng ⇒ không dẫn đi đâu).
+        href: productPath ? `${productPath}/edit` : null,
+      };
+    }
 
     case 'UNKNOWN':
       return UNKNOWN_DISPLAY;

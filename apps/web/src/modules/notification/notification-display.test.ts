@@ -284,6 +284,22 @@ const CASES: Case[] = [
     href: `/orders/${ORDER}`,
   },
   {
+    name: 'PRODUCT_TAKEN_DOWN',
+    notification: {
+      ...BASE,
+      type: 'PRODUCT_TAKEN_DOWN',
+      data: {
+        productId: ORDER,
+        productName: 'Dao bấm tự động',
+        reason: 'Hàng cấm theo quy định của sàn.',
+      },
+    },
+    icon: 'shop',
+    titleKey: 'titleProductTakenDown',
+    bodyKey: 'bodyProductTakenDown',
+    href: `/seller/products/${ORDER}/edit`,
+  },
+  {
     name: 'UNKNOWN',
     notification: { ...BASE, type: 'UNKNOWN', data: {} },
     icon: 'info',
@@ -400,7 +416,7 @@ describe.each(['vi', 'en'] as const)('chữ hiển thị (%s)', (locale) => {
       // Dữ liệu mẫu có tên shop/lý do tiếng Việt: thay bằng ASCII để chỉ còn mẫu dịch.
       const n = JSON.parse(
         JSON.stringify(c.notification).replace(
-          /Shop Áo|Áo thun|Hết hàng|Đổi ý|Không đủ điều kiện|Thiếu giấy phép|Shop Mới|Shop Bị Khóa/g,
+          /Shop Áo|Áo thun|Hết hàng|Đổi ý|Không đủ điều kiện|Thiếu giấy phép|Shop Mới|Shop Bị Khóa|Dao bấm tự động|Hàng cấm theo quy định của sàn\./g,
           'x',
         ),
       ) as Notification;
@@ -555,6 +571,40 @@ describe('nội dung theo ngữ cảnh', () => {
         data: { orderId: '../../etc/passwd', productName: 'x' },
       }).href,
     ).toBeNull();
+  });
+
+  it('sản phẩm bị gỡ (chủ shop): nêu tên sản phẩm và LÝ DO bằng cả hai ngôn ngữ, dẫn tới trang sửa; id sai dạng ⇒ không dẫn đi đâu', () => {
+    const display = describeNotification(find('PRODUCT_TAKEN_DOWN'));
+
+    expect(display.href).toBe(`/seller/products/${ORDER}/edit`);
+    for (const locale of ['vi', 'en'] as const) {
+      const { body } = render(display, locale);
+      expect(body).toContain('Dao bấm tự động');
+      expect(body).toContain('Hàng cấm theo quy định của sàn.');
+    }
+    expect(
+      describeNotification({
+        ...BASE,
+        type: 'PRODUCT_TAKEN_DOWN',
+        data: { productId: '../../etc/passwd', productName: 'x', reason: 'y' },
+      }).href,
+    ).toBeNull();
+  });
+
+  it('lý do của sản phẩm bị gỡ là văn bản người khác nhập: cú pháp ICU / thẻ HTML được in nguyên văn, không bị diễn giải', () => {
+    const display = describeNotification({
+      ...BASE,
+      type: 'PRODUCT_TAKEN_DOWN',
+      data: {
+        productId: ORDER,
+        productName: 'x',
+        reason: '{count, plural, other {#}} <img src=x onerror=alert(1)>',
+      },
+    });
+
+    expect(render(display, 'vi').body).toContain(
+      '{count, plural, other {#}} <img src=x onerror=alert(1)>',
+    );
   });
 
   it('phía nhận khác nhau ⇒ chữ khác nhau (hủy đơn: người mua vs chủ shop; khiếu nại: Admin vs chủ shop)', () => {

@@ -209,6 +209,15 @@ const CASES: { name: string; notification: Notification; toast: boolean }[] = [
     },
     toast: true,
   },
+  {
+    name: 'PRODUCT_TAKEN_DOWN',
+    notification: {
+      ...BASE,
+      type: 'PRODUCT_TAKEN_DOWN',
+      data: { productId: SHOP_ID, productName: 'Dao bấm', reason: 'Hàng cấm' },
+    },
+    toast: true,
+  },
   { name: 'UNKNOWN', notification: makeUnknownNotification(), toast: false },
 ];
 
