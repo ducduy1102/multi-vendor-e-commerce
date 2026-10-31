@@ -71,6 +71,9 @@ enum ProductStatus {
   DRAFT
   PUBLISHED
   ARCHIVED
+  // Sàn gỡ vì vi phạm (Week11.md 5.7, D5): chỉ Admin đặt và gỡ được; chủ shop không đổi trạng thái hay sửa nội dung. Ba cột `taken_down_*`
+  // có giá trị khi và chỉ khi trạng thái này.
+  TAKEN_DOWN
 }
 
 enum OrderStatus {
@@ -343,6 +346,15 @@ model Product {
   reviewCount Int           @default(0) @map("review_count")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  // Gỡ sản phẩm vi phạm (Week11.md 5.7, D5): ba cột cùng có giá trị khi và chỉ khi `status = TAKEN_DOWN` (CHECK
+  // `products_takedown_columns_consistent` ở DB giữ quan hệ này; lý do 1..500 ký tự). Lý do là văn bản của Admin và HIỆN cho chủ shop
+  // (trang sửa, danh sách sản phẩm của shop) — như lý do khoá shop; không bao giờ ra trang công khai (sản phẩm bị gỡ trả 404 cho người
+  // ngoài). Khôi phục đặt cả ba về NULL (lịch sử gỡ/khôi phục nằm ở nhật ký quản trị). `takenDownById` KHÔNG khoá ngoại (cùng nhật ký
+  // quản trị: dấu vết sống lâu hơn tài khoản). `takenDownAt` là mốc "lần vi phạm" mà kháng nghị sản phẩm dùng (Week11.md 5.8).
+  takenDownAt     DateTime? @map("taken_down_at")
+  takenDownById   String?   @map("taken_down_by_id")
+  takenDownReason String?   @map("taken_down_reason")
 
   // Week5.md Bước 1.6/2.4b — search full-text. Prisma không có type gốc cho
   // `tsvector`, khai qua `Unsupported` (field này bị loại khỏi Prisma Client
