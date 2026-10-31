@@ -93,6 +93,13 @@ export const SERVER_ERROR_CODES = [
   // Sản phẩm: một biến thể có nhiều ảnh hơn PRODUCT_VARIANT_MAX_IMAGES (Week10.md 2.4). Giao diện đã chặn từ
   // trước nên chỉ gặp khi gọi API thẳng; biến thể cũ ĐÃ vượt trần mà không thêm ảnh thì không bị lỗi này.
   'PRODUCT_IMAGES_LIMIT_EXCEEDED',
+  // Gỡ / khôi phục sản phẩm vi phạm (Week11.md 5.7, D5). PRODUCT_TAKEN_DOWN (409): chủ shop đổi trạng thái hoặc sửa một sản phẩm đang bị sàn
+  // gỡ — đường duy nhất để mở lại là Admin. PRODUCT_ALREADY_TAKEN_DOWN (409) / PRODUCT_NOT_TAKEN_DOWN (409): Admin gỡ sản phẩm đã gỡ /
+  // khôi phục sản phẩm chưa bị gỡ (gộp "sai trạng thái lúc đọc" và "thua race"). PRODUCT_NOT_FOUND (404): id không tồn tại hoặc sai dạng.
+  'PRODUCT_TAKEN_DOWN',
+  'PRODUCT_ALREADY_TAKEN_DOWN',
+  'PRODUCT_NOT_TAKEN_DOWN',
+  'PRODUCT_NOT_FOUND',
   // Chat người mua ↔ shop (Week10.md 4.2). OWN_SHOP: chủ shop không nhắn tin cho shop của chính mình (409);
   // SHOP_UNAVAILABLE: shop không còn APPROVED nên hội thoại chỉ đọc, không gửi thêm được (409); RATE_LIMITED:
   // gửi quá nhanh trong cửa sổ ngắn (429); AWAITING_REPLY: đã gửi quá nhiều tin liên tiếp khi shop chưa trả lời

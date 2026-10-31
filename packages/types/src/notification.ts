@@ -56,6 +56,7 @@ export const NOTIFICATION_TYPES = [
   'REPORT_NEW',
   'REPORT_RESOLVED',
   'REVIEW_HIDDEN',
+  'PRODUCT_TAKEN_DOWN',
 ] as const;
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
@@ -201,6 +202,13 @@ export const notificationContentSchema = z.discriminatedUnion('type', [
   // Tác giả đánh giá: Admin đã ẩn đánh giá của mình (Week11.md 5.5, D6). Chỉ id đơn (để dẫn tới chi tiết đơn, nơi bản của mình vẫn hiện kèm
   // nhãn "đã bị ẩn") và tên sản phẩm đã cắt gọn — KHÔNG lý do của Admin, KHÔNG người báo, KHÔNG nội dung đánh giá.
   content('REVIEW_HIDDEN', { orderId: idSchema, productName: labelSchema }),
+  // Chủ shop: Admin đã gỡ một sản phẩm vi phạm (Week11.md 5.7, D5). Có lý do (cắt gọn) như thông báo khoá shop: người bán cần biết sửa gì;
+  // chỉ id sản phẩm (để dẫn tới trang sửa) và tên đã cắt gọn — KHÔNG người báo cáo, KHÔNG tên Admin.
+  content('PRODUCT_TAKEN_DOWN', {
+    productId: idSchema,
+    productName: labelSchema,
+    reason: reasonSchema,
+  }),
 ]);
 export type NotificationContent = z.infer<typeof notificationContentSchema>;
 export type NotificationOfType<T extends NotificationType> = Extract<
