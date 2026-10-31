@@ -79,6 +79,11 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   SHOP_EDIT_NOT_ALLOWED: 'shop.errorEditNotAllowed',
   // Sản phẩm: biến thể có nhiều ảnh hơn trần (Week10.md 2.4) — giao diện đã chặn nên chỉ gặp khi gọi API thẳng.
   PRODUCT_IMAGES_LIMIT_EXCEEDED: 'product.errorImagesLimitExceeded',
+  // Gỡ / khôi phục sản phẩm vi phạm (Week11.md 5.7)
+  PRODUCT_TAKEN_DOWN: 'product.errorTakenDown',
+  PRODUCT_ALREADY_TAKEN_DOWN: 'admin.errorProductAlreadyTakenDown',
+  PRODUCT_NOT_TAKEN_DOWN: 'admin.errorProductNotTakenDown',
+  PRODUCT_NOT_FOUND: 'admin.errorProductNotFound',
   // Chat người mua ↔ shop (Week10.md 4.2)
   CHAT_OWN_SHOP: 'chat.errorOwnShop',
   CHAT_SHOP_UNAVAILABLE: 'chat.errorShopUnavailable',
