@@ -1288,6 +1288,7 @@ describe('AdminRefundController (HTTP thật)', () => {
       ),
       refundsNeedingAction: await tabTotal('/api/v1/admin/refunds'),
       refundablePayments: await tabTotal('/api/v1/admin/refundable-payments'),
+      openReports: await tabTotal('/api/v1/admin/reports?status=OPEN'),
     });
 
     async function seedShop(status: ShopStatus) {
@@ -1380,6 +1381,7 @@ describe('AdminRefundController (HTTP thật)', () => {
       const parsed = adminOverviewSchema.strict().parse(data(res));
       expect(Object.keys(parsed).sort()).toEqual([
         'escalatedRefundRequests',
+        'openReports',
         'pendingShops',
         'refundablePayments',
         'refundsNeedingAction',

@@ -17,10 +17,12 @@ export class AdminOverviewService {
   ) {}
 
   async getOverview(): Promise<AdminOverview> {
-    const [pendingShops, refundWork] = await Promise.all([
+    const [pendingShops, openReports, refundWork] = await Promise.all([
       this.prisma.shop.count({ where: { status: 'PENDING' } }),
+      // Cùng điều kiện với tab "Chờ xử lý" của GET /admin/reports (status = OPEN).
+      this.prisma.report.count({ where: { status: 'OPEN' } }),
       this.refundQueryService.countOpenWork(),
     ]);
-    return { pendingShops, ...refundWork };
+    return { pendingShops, openReports, ...refundWork };
   }
 }

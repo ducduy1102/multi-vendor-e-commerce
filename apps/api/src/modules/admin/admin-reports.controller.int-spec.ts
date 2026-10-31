@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import {
+  adminOverviewSchema,
   adminReportDetailResponseSchema,
   adminReportListResponseSchema,
   createReportResponseSchema,
@@ -465,6 +466,46 @@ describe('Hàng đợi và xử lý báo cáo của Admin (HTTP thật)', () => 
       expect(item.targetType).toBe('CONVERSATION');
       expect(JSON.stringify(item)).not.toContain('CANARY-NOI-DUNG');
       expect(JSON.stringify(detail.body)).not.toContain('CANARY-NOI-DUNG');
+    });
+  });
+
+  describe('số báo cáo mở ở GET /admin/overview (Week11.md 5.6)', () => {
+    const openReports = async () =>
+      adminOverviewSchema.parse(
+        dataOf(await admin.get('/api/v1/admin/overview').expect(200)),
+      ).openReports;
+    const openTabTotal = async () =>
+      (dataOf(await list(admin, '?status=OPEN&limit=1')) as { total: number })
+        .total;
+
+    it('luôn BẰNG total của tab "Chờ xử lý"; tăng theo từng báo cáo mới và giảm theo số báo cáo bị ĐÓNG khi xử lý một báo cáo (đóng cả báo cáo trùng đối tượng)', async () => {
+      const store = await newStore();
+      const first = await newAccount();
+      const second = await newAccount();
+      const before = await openReports();
+      expect(before).toBe(await openTabTotal());
+
+      const id = await report(first, 'SHOP', store.shopId, 'SCAM');
+      await report(second, 'SHOP', store.shopId, 'COUNTERFEIT');
+      expect(await openReports()).toBe(before + 2);
+      expect(await openReports()).toBe(await openTabTotal());
+
+      const res = await resolve(admin, id, { action: 'DISMISS' });
+
+      expect(res.status).toBe(200);
+      // Một hành động đóng CẢ hai báo cáo cùng đối tượng.
+      expect(await openReports()).toBe(before);
+      expect(await openReports()).toBe(await openTabTotal());
+    });
+
+    it('báo cáo đã xử lý không bao giờ được tính vào số việc chờ', async () => {
+      const store = await newStore();
+      const reporter = await newAccount();
+      const before = await openReports();
+      const id = await report(reporter, 'SHOP', store.shopId, 'SCAM');
+      await resolve(admin, id, { action: 'DISMISS' });
+
+      expect(await openReports()).toBe(before);
     });
   });
 
