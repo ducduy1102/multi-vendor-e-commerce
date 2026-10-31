@@ -56,6 +56,7 @@ const PRODUCT_EXAMPLE = {
   slug: 'ao-thun-nam',
   description: null,
   status: 'DRAFT',
+  takenDownReason: null,
   minPrice: '150000',
   maxPrice: '150000',
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -276,6 +277,16 @@ export class ProductController {
   })
   @ApiResponse({ status: 403, description: 'Không phải chủ shop' })
   @ApiResponse({ status: 404, description: 'Product không tồn tại' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'PRODUCT_TAKEN_DOWN: sản phẩm đang bị sàn gỡ vì vi phạm — chủ shop không đổi trạng thái và không sửa nội dung được (lý do ở `takenDownReason` của sản phẩm); chỉ Admin khôi phục được. Cũng không đặt được status=TAKEN_DOWN qua đây (400).',
+    schema: {
+      example: errorExample('This product was taken down by the platform', {
+        code: 'PRODUCT_TAKEN_DOWN',
+      }),
+    },
+  })
   async update(
     @ShopOwnerContext() { shopId }: { shopId: string },
     @Param('id') id: string,
@@ -302,6 +313,16 @@ export class ProductController {
   })
   @ApiResponse({ status: 403, description: 'Không phải chủ shop' })
   @ApiResponse({ status: 404, description: 'Product không tồn tại' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'PRODUCT_TAKEN_DOWN: sản phẩm đang bị sàn gỡ vì vi phạm nên chủ shop không lưu trữ được; chỉ Admin khôi phục được.',
+    schema: {
+      example: errorExample('This product was taken down by the platform', {
+        code: 'PRODUCT_TAKEN_DOWN',
+      }),
+    },
+  })
   async archive(@Param('id') id: string) {
     const product = await this.productService.archiveProduct(id);
     return { product };

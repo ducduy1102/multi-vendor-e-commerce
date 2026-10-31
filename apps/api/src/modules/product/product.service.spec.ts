@@ -53,6 +53,7 @@ describe('ProductService', () => {
       count: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
       findUniqueOrThrow: jest.Mock;
     };
     category: { findMany: jest.Mock };
@@ -96,6 +97,7 @@ describe('ProductService', () => {
           Promise.resolve({ id: 'product-1', ...data }),
         ),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUniqueOrThrow: jest.fn(),
       },
       category: {
@@ -510,17 +512,41 @@ describe('ProductService', () => {
         status: 'PUBLISHED',
       });
 
-      expect(prisma.product.update).toHaveBeenCalledWith({
-        where: { id: 'product-1' },
+      expect(prisma.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'product-1', status: { not: 'TAKEN_DOWN' } },
         data: {
           name: 'Tên mới',
           categoryId: undefined,
           description: undefined,
           status: 'PUBLISHED',
+          updatedAt: expect.any(Date) as Date,
         },
       });
       expect(prisma.productAttribute.findFirst).not.toHaveBeenCalled();
       expect(prisma.productVariant.findMany).not.toHaveBeenCalled();
+    });
+
+    // Week11.md 5.7: sản phẩm đang bị sàn gỡ ⇒ chủ shop không đổi trạng thái và không sửa nội dung. Chặn ở UPDATE đầu tiên của giao
+    // dịch, nên không phần nào của lần sửa (thuộc tính, biến thể, ảnh) được ghi và không có gì để dọn trên Cloudinary.
+    it('sản phẩm đang bị sàn gỡ ⇒ 409 PRODUCT_TAKEN_DOWN, không ghi gì và không dọn ảnh', async () => {
+      prisma.product.updateMany.mockResolvedValue({ count: 0 });
+
+      await expectAppException(
+        service.updateProduct('shop-1', 'product-1', {
+          name: 'Tên mới',
+          status: 'PUBLISHED',
+          attributes: [],
+          variants: [
+            { sku: 'A', price: 1, stock: 1, images: [], attributeValues: [] },
+          ],
+        } as never),
+        { status: 409, code: 'PRODUCT_TAKEN_DOWN' },
+      );
+
+      expect(prisma.productVariant.findMany).not.toHaveBeenCalled();
+      expect(prisma.productVariant.update).not.toHaveBeenCalled();
+      expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(imageCleanup.deleteUnreferenced).not.toHaveBeenCalled();
     });
 
     // Reconcile attribute/value theo `id` (không còn theo name/value text) —
@@ -1340,11 +1366,22 @@ describe('ProductService', () => {
 
       const result = await service.archiveProduct('product-1');
 
-      expect(prisma.product.update).toHaveBeenCalledWith({
-        where: { id: 'product-1' },
+      expect(prisma.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'product-1', status: { not: 'TAKEN_DOWN' } },
         data: { status: 'ARCHIVED' },
       });
       expect(result.status).toBe('ARCHIVED');
+    });
+
+    // Week11.md 5.7: sản phẩm đang bị sàn gỡ thì chủ shop không lưu trữ được — UPDATE có điều kiện không khớp hàng nào.
+    it('sản phẩm đang bị sàn gỡ ⇒ 409 PRODUCT_TAKEN_DOWN, không đọc lại sản phẩm', async () => {
+      prisma.product.updateMany.mockResolvedValue({ count: 0 });
+
+      await expectAppException(service.archiveProduct('product-1'), {
+        status: 409,
+        code: 'PRODUCT_TAKEN_DOWN',
+      });
+      expect(prisma.product.findUniqueOrThrow).not.toHaveBeenCalled();
     });
   });
 
@@ -1368,6 +1405,7 @@ describe('ProductService', () => {
           name: true,
           slug: true,
           status: true,
+          takenDownReason: true,
           minPrice: true,
           maxPrice: true,
           createdAt: true,
