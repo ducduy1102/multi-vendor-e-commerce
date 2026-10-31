@@ -36,6 +36,53 @@ function setup(
 const textbox = () => screen.getByLabelText('Nội dung kháng nghị') as HTMLTextAreaElement;
 const submitButton = () => screen.getByRole('button', { name: 'Gửi kháng nghị' });
 
+describe('AppealDialog — kháng nghị sản phẩm bị gỡ (kind="product")', () => {
+  it('đổi lời văn sang sản phẩm: tiêu đề, mô tả, gợi ý nhập (luồng và các nút không đổi)', () => {
+    setup({ kind: 'product' });
+
+    expect(
+      screen.getByRole('heading', { name: 'Kháng nghị việc gỡ sản phẩm' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Giải thích vì sao sản phẩm nên được khôi phục/)).toBeInTheDocument();
+    expect(textbox().placeholder).toMatch(/Sản phẩm đã được bổ sung giấy tờ nguồn gốc/);
+    expect(submitButton()).toBeInTheDocument();
+    expect(screen.queryByText(/mở khoá/)).not.toBeInTheDocument();
+  });
+
+  it('mặc định (không truyền kind) vẫn là lời văn của shop', () => {
+    setup();
+
+    expect(screen.getByRole('heading', { name: 'Gửi kháng nghị' })).toBeInTheDocument();
+    expect(screen.getByText(/Giải thích vì sao shop nên được mở khoá/)).toBeInTheDocument();
+  });
+
+  it('vẫn dùng đúng luật nhập của kháng nghị: gửi lời đã làm sạch; bỏ trống thì báo lỗi và KHÔNG gửi', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = setup({ kind: 'product' });
+
+    await user.click(submitButton());
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Vui lòng nhập nội dung kháng nghị.',
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    await user.type(textbox(), '  Đã bổ sung giấy tờ  ');
+    await user.click(submitButton());
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('Đã bổ sung giấy tờ'));
+  });
+
+  it('tiếng Anh: lời văn của sản phẩm, không lẫn chuỗi tiếng Việt', () => {
+    setup({ kind: 'product' }, 'en');
+
+    expect(
+      screen.getByRole('heading', { name: 'Appeal the product take-down' }),
+    ).toBeInTheDocument();
+    const vietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
+    expect(document.body.textContent ?? '').not.toMatch(vietnamese);
+  });
+});
+
 describe('AppealDialog — nhập và gửi', () => {
   it('gửi lời kháng nghị đã làm sạch (cắt khoảng trắng hai đầu)', async () => {
     const user = userEvent.setup();

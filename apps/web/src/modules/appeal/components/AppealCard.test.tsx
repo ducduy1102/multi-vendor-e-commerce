@@ -10,16 +10,41 @@ afterEach(() => {
   cleanup();
 });
 
-function renderCard(appeal = makeOwnerAppeal(), locale: 'vi' | 'en' = 'vi') {
+function renderCard(
+  appeal = makeOwnerAppeal(),
+  locale: 'vi' | 'en' = 'vi',
+  kind?: 'shop' | 'product',
+) {
   return render(
     withIntl(
       <ul>
-        <AppealCard appeal={appeal} />
+        <AppealCard appeal={appeal} kind={kind} />
       </ul>,
       locale,
     ),
   );
 }
+
+describe('AppealCard — câu "đã kết thúc" theo loại đối tượng', () => {
+  it('kháng nghị shop (mặc định): "Lần khoá này đã kết thúc."', () => {
+    renderCard(makeOwnerAppeal({ state: 'CLOSED' }));
+
+    expect(screen.getByText('Lần khoá này đã kết thúc.')).toBeInTheDocument();
+  });
+
+  it('kháng nghị sản phẩm: "Lần gỡ này đã kết thúc." (không nhắc khoá)', () => {
+    renderCard(makeOwnerAppeal({ state: 'CLOSED' }), 'vi', 'product');
+
+    expect(screen.getByText('Lần gỡ này đã kết thúc.')).toBeInTheDocument();
+    expect(screen.queryByText(/khoá/)).not.toBeInTheDocument();
+  });
+
+  it('kháng nghị sản phẩm còn chờ / đã có kết quả: không có câu "đã kết thúc"', () => {
+    renderCard(makeOwnerAppeal(), 'vi', 'product');
+
+    expect(screen.queryByText(/đã kết thúc/)).not.toBeInTheDocument();
+  });
+});
 
 describe('AppealCard', () => {
   it('đang chờ: huy hiệu "Đang chờ Admin xem xét", lời đã gửi, giờ gửi — chưa có phản hồi', () => {

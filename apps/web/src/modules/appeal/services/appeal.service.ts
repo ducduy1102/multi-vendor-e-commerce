@@ -1,8 +1,10 @@
 import {
   ownerAppealSchema,
+  productAppealsResponseSchema,
   shopAppealsResponseSchema,
   type CreateAppealInput,
   type OwnerAppeal,
+  type ProductAppealsResponse,
   type ShopAppealsResponse,
 } from '@ecommerce/types';
 
@@ -28,5 +30,33 @@ export async function createShopAppeal(
     method: 'POST',
     body: JSON.stringify(input),
   });
+  return ownerAppealSchema.parse(data);
+}
+
+// Lịch sử kháng nghị của MỘT sản phẩm (mới nhất trước) kèm `canAppeal` do SERVER tính (Week11.md 5.8) — FE không tự suy luật "được kháng
+// nghị khi nào". Chỉ chủ shop gọi được; sản phẩm không tồn tại / không thuộc shop này ra cùng một 404.
+export async function getProductAppeals(
+  shopId: string,
+  productId: string,
+): Promise<ProductAppealsResponse> {
+  const data = await apiFetch<unknown>(
+    `/shops/${encodeURIComponent(shopId)}/products/${encodeURIComponent(productId)}/appeals`,
+    { method: 'GET' },
+  );
+  return productAppealsResponseSchema.parse(data);
+}
+
+// Gửi kháng nghị cho lần gỡ hiện tại của sản phẩm. Người gửi lấy từ phiên và mốc bị gỡ do server đọc — body chỉ có `message`. Lỗi như
+// `createShopAppeal`: 409 `APPEAL_NOT_ALLOWED` (sản phẩm không còn bị gỡ) hoặc `APPEAL_ALREADY_SENT` (lần gỡ này đã có kháng nghị),
+// 403 `EMAIL_NOT_VERIFIED` khi chưa xác thực email.
+export async function createProductAppeal(
+  shopId: string,
+  productId: string,
+  input: CreateAppealInput,
+): Promise<OwnerAppeal> {
+  const data = await apiFetch<unknown>(
+    `/shops/${encodeURIComponent(shopId)}/products/${encodeURIComponent(productId)}/appeals`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
   return ownerAppealSchema.parse(data);
 }
