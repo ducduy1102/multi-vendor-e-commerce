@@ -55,6 +55,7 @@ export const NOTIFICATION_TYPES = [
   'APPEAL_DECIDED',
   'REPORT_NEW',
   'REPORT_RESOLVED',
+  'REVIEW_HIDDEN',
 ] as const;
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
@@ -197,6 +198,9 @@ export const notificationContentSchema = z.discriminatedUnion('type', [
     targetType: reportTargetTypeSchema,
     outcome: z.enum(['RESOLVED', 'DISMISSED']),
   }),
+  // Tác giả đánh giá: Admin đã ẩn đánh giá của mình (Week11.md 5.5, D6). Chỉ id đơn (để dẫn tới chi tiết đơn, nơi bản của mình vẫn hiện kèm
+  // nhãn "đã bị ẩn") và tên sản phẩm đã cắt gọn — KHÔNG lý do của Admin, KHÔNG người báo, KHÔNG nội dung đánh giá.
+  content('REVIEW_HIDDEN', { orderId: idSchema, productName: labelSchema }),
 ]);
 export type NotificationContent = z.infer<typeof notificationContentSchema>;
 export type NotificationOfType<T extends NotificationType> = Extract<

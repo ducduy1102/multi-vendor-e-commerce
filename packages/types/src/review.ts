@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { adminUserReasonSchema } from './admin-user';
 import { optionalText } from './optional-text';
 import { LIST_MAX_PAGE } from './pagination';
 
@@ -110,15 +111,48 @@ export type ProductReviewsResponse = z.infer<typeof productReviewsResponseSchema
 
 // --- Phía người mua: đánh giá của chính mình trên dòng hàng của đơn (GET /orders/:id) -----------------
 // Đủ để FE dựng nút "Đã đánh giá ★n · Sửa" và điền sẵn form sửa (dữ liệu tới bất đồng bộ nên cần `comment`
-// ngay trong chi tiết đơn, không gọi thêm route nào). `canEdit` do BE tính (sửa được đúng một lần).
+// ngay trong chi tiết đơn, không gọi thêm route nào). `canEdit` do BE tính (sửa được đúng một lần, và KHÔNG sửa được khi đã bị ẩn).
+// `isHidden` (Week11.md 5.5): Admin đã ẩn đánh giá này — tác giả vẫn thấy bản của mình kèm nhãn "đã bị ẩn" (người khác thì không thấy
+// đánh giá nữa). `hiddenReason` là lý do Admin đã nhập khi ẩn — tác giả được biết (minh bạch, giảm khiếu nại gửi lên hỗ trợ); null khi
+// đánh giá đang hiển thị.
 export const orderItemReviewSchema = z.object({
   id: z.string(),
   rating: z.number().int(),
   comment: z.string().nullable(),
   editedAt: z.string().nullable(),
   canEdit: z.boolean(),
+  isHidden: z.boolean(),
+  hiddenReason: z.string().nullable(),
 });
 export type OrderItemReview = z.infer<typeof orderItemReviewSchema>;
+
+// --- Phía Admin: ẩn / hiện đánh giá (Week11.md 5.5, D6) ------------------------------------------------
+
+// Lý do tối đa (ký tự UTF-16). PHẢI khớp CHECK `reviews_hidden_columns_consistent` ở DB (migration `add_review_hidden_columns`):
+// `review-schemas.spec.ts` đọc file migration và so cận trên.
+export const REVIEW_HIDDEN_REASON_MAX_LENGTH = 500;
+
+// Lý do ẩn / hiện đánh giá do Admin nhập: văn bản thuần nhiều dòng, BẮT BUỘC, cùng luật chuẩn hoá và ký tự với lý do khoá tài khoản
+// (cùng cận 500 và cùng key i18n `admin.validationReason*`), nên dùng lại thay vì thêm bản sao thứ năm của cùng một đoạn schema.
+export const reviewModerationReasonSchema = adminUserReasonSchema;
+
+// POST /admin/reviews/:id/hide và /unhide. Người thực hiện lấy từ phiên, đánh giá từ đường dẫn: body chỉ có lý do. Ẩn là ẩn MỀM (cột
+// `hidden_at`), mở lại được; lý do đi vào nhật ký quản trị và cột `hidden_reason` — và HIỆN cho tác giả (chi tiết đơn) lẫn chủ shop
+// (danh sách đánh giá của shop), nên phải viết như lời giải thích cho họ, không nêu người báo cáo. Lý do của lần MỞ LẠI chỉ ở nhật ký.
+export const hideReviewSchema = z.object({ reason: reviewModerationReasonSchema });
+export type HideReviewInput = z.infer<typeof hideReviewSchema>;
+export const unhideReviewSchema = hideReviewSchema;
+export type UnhideReviewInput = HideReviewInput;
+
+// Kết quả ẩn / hiện: đủ để màn quản trị cập nhật tại chỗ. Cố ý KHÔNG có nội dung đánh giá, tên tác giả hay lý do.
+export const reviewModerationResponseSchema = z.object({
+  review: z.object({
+    id: z.string(),
+    isHidden: z.boolean(),
+    hiddenAt: z.string().nullable(),
+  }),
+});
+export type ReviewModerationResponse = z.infer<typeof reviewModerationResponseSchema>;
 
 // --- Phía seller: GET /shops/:shopId/reviews, PUT /shops/:shopId/reviews/:id/reply ----------------------
 
@@ -133,8 +167,12 @@ export const sellerReviewListQuerySchema = z.object({
 });
 export type SellerReviewListQuery = z.infer<typeof sellerReviewListQuerySchema>;
 
-// Đánh giá kèm sản phẩm được đánh giá; tên người mua vẫn bị che (seller không cần biết danh tính).
+// Đánh giá kèm sản phẩm được đánh giá; tên người mua vẫn bị che (seller không cần biết danh tính). Đánh giá bị Admin ẩn vẫn nằm trong
+// danh sách của shop như MỘT DÒNG TRẠNG THÁI (Week11.md 5.5): `isHidden` + `hiddenReason` (lý do Admin nhập, shop được biết), còn
+// `comment` luôn là null — nội dung không còn hiển thị nên API không trả lại; shop không trả lời được dòng này (409 REVIEW_HIDDEN).
 export const sellerReviewSchema = reviewSchema.extend({
+  isHidden: z.boolean(),
+  hiddenReason: z.string().nullable(),
   product: z.object({
     id: z.string(),
     name: z.string(),

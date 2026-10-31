@@ -77,6 +77,11 @@ export const SERVER_ERROR_CODES = [
   'REVIEW_NOT_ALLOWED',
   'REVIEW_NOT_FOUND',
   'REVIEW_EDIT_NOT_ALLOWED',
+  // Ẩn / hiện đánh giá (Week11.md 5.5). REVIEW_HIDDEN (409): tác giả sửa đánh giá đã bị Admin ẩn. REVIEW_ALREADY_HIDDEN (409) /
+  // REVIEW_NOT_HIDDEN (409): Admin ẩn đánh giá đã ẩn / mở lại đánh giá chưa bị ẩn (gộp "sai trạng thái lúc đọc" và "thua race").
+  'REVIEW_HIDDEN',
+  'REVIEW_ALREADY_HIDDEN',
+  'REVIEW_NOT_HIDDEN',
   // Chuyển trạng thái shop (Admin duyệt/từ chối/khoá/mở khoá, chủ shop gửi duyệt lại): shop không còn ở
   // trạng thái cho phép chuyển (đã có người khác xử lý, hoặc cạnh/actor không có trong
   // SHOP_STATUS_TRANSITIONS) — gộp "sai trạng thái lúc đọc" và "thua race" làm 1 vì với người dùng cả hai
