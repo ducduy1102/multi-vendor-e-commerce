@@ -70,6 +70,10 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   REVIEW_NOT_ALLOWED: 'review.errorNotAllowed',
   REVIEW_NOT_FOUND: 'review.errorNotFound',
   REVIEW_EDIT_NOT_ALLOWED: 'review.errorEditNotAllowed',
+  // Ẩn / hiện đánh giá (Week11.md 5.5)
+  REVIEW_HIDDEN: 'review.errorHidden',
+  REVIEW_ALREADY_HIDDEN: 'admin.errorReviewAlreadyHidden',
+  REVIEW_NOT_HIDDEN: 'admin.errorReviewNotHidden',
   // Shop: chuyển trạng thái (Admin duyệt/từ chối/khoá, chủ shop gửi duyệt lại) và sửa thông tin
   SHOP_INVALID_TRANSITION: 'shop.errorInvalidTransition',
   SHOP_EDIT_NOT_ALLOWED: 'shop.errorEditNotAllowed',
