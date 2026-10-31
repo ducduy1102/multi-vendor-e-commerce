@@ -1,9 +1,14 @@
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 
 import { Link } from '@/i18n/navigation';
-import { ProductReviewList, ReviewListSkeleton, type ReviewPageQuery } from '@/modules/review';
+import {
+  ProductReviewList,
+  ReviewListSkeleton,
+  type Review,
+  type ReviewPageQuery,
+} from '@/modules/review';
 import { WishlistButton } from '@/modules/wishlist';
 import { ApiError } from '@/shared/lib/api-client';
 import * as productService from '../services/product.service';
@@ -17,6 +22,8 @@ interface ProductDetailContainerProps {
   slug: string;
   // Bộ lọc sao + trang của khối đánh giá, đã parse từ searchParams ở page.tsx (composition root).
   reviewQuery: ReviewPageQuery;
+  // Nút hành động dưới từng đánh giá ("Báo cáo", Week11.md 5.6) do page.tsx ghép — product không import `modules/report`.
+  renderReviewAction?: (review: Review) => ReactNode;
 }
 
 // Server Component async (Suspense-wrapped ở page.tsx) — SSR fetch qua slug,
@@ -31,7 +38,11 @@ interface ProductDetailContainerProps {
 // modules/wishlist qua barrel — component tự chứa (tự gọi API/quản lý state
 // riêng), đúng ngoại lệ cross-import UI tái dùng được ở rules/frontend.md
 // mục 1 (giống ResendVerificationButton/useAuthStore dùng lại ở modules/shop).
-export async function ProductDetailContainer({ slug, reviewQuery }: ProductDetailContainerProps) {
+export async function ProductDetailContainer({
+  slug,
+  reviewQuery,
+  renderReviewAction,
+}: ProductDetailContainerProps) {
   let product;
   try {
     product = await productService.getProductBySlug(slug);
@@ -106,7 +117,11 @@ export async function ProductDetailContainer({ slug, reviewQuery }: ProductDetai
         key={`${reviewQuery.rating ?? 'all'}-${reviewQuery.page}`}
         fallback={<ReviewListSkeleton />}
       >
-        <ProductReviewList productSlug={slug} query={reviewQuery} />
+        <ProductReviewList
+          productSlug={slug}
+          query={reviewQuery}
+          renderReviewAction={renderReviewAction}
+        />
       </Suspense>
     </>
   );
