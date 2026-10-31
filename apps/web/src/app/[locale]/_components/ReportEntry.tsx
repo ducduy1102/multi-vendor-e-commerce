@@ -10,6 +10,7 @@ import { useAuthStore } from '@/modules/auth';
 import { ChunkFailureBoundary } from '@/shared/components/ChunkFailureBoundary';
 import { buttonVariants } from '@/shared/components/ui/button';
 import { Skeleton } from '@/shared/components/ui/skeleton';
+import { cn } from '@/shared/lib/utils';
 
 // `ReportButton` nạp ĐỘNG: khách vãng lai không bao giờ báo cáo được (BE đòi đăng nhập), nên mã hộp thoại / form / hook báo cáo không
 // được nằm trong chunk của các trang công khai (trang sản phẩm, trang shop) mà họ vào. Chunk chỉ được yêu cầu khi `user !== null`;
@@ -50,7 +51,7 @@ export function ReportEntry({
     return (
       <Link
         href={{ pathname: '/login', query: { next: pathname } }}
-        className={buttonVariants({ variant, size: 'sm', className })}
+        className={buttonVariants({ variant, size: 'sm', className: cn('min-h-9', className) })}
       >
         <Flag aria-hidden="true" data-icon="inline-start" />
         {t('buttonLabel')}

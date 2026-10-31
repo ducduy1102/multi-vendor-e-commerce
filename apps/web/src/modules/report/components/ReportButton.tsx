@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '@/shared/components/ui/button';
+import { cn } from '@/shared/lib/utils';
 
 import { useCreateReport } from '../hooks/useCreateReport';
 import { useDescribeReportError } from '../hooks/useDescribeReportError';
@@ -72,7 +73,8 @@ export function ReportButton({
         type="button"
         variant={variant}
         size={size}
-        className={className}
+        // Cao tối thiểu 36px (`min-h-9`) cho vùng bấm đủ lớn trên mobile — nút `sm` mặc định chỉ cao 28px.
+        className={cn('min-h-9', className)}
         onClick={() => {
           setError(null);
           setIsOpen(true);
