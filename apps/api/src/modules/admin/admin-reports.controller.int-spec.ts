@@ -735,6 +735,161 @@ describe('Hàng đợi và xử lý báo cáo của Admin (HTTP thật)', () => 
       });
     });
 
+    it('TAKE_DOWN_PRODUCT: gỡ sản phẩm bị báo với lý do là ghi chú, đóng hết báo cáo trùng, báo chủ shop (kèm lý do) và mỗi người báo, hai dòng nhật ký (Week11.md 5.7)', async () => {
+      const store = await newStore();
+      const a = await newAccount();
+      const b = await newAccount();
+      const idA = await report(
+        a,
+        'PRODUCT',
+        store.productId,
+        'PROHIBITED_ITEM',
+        'Dao bấm',
+      );
+      const idB = await report(b, 'PRODUCT', store.productId, 'COUNTERFEIT');
+
+      const res = await resolve(admin, idA, {
+        action: 'TAKE_DOWN_PRODUCT',
+        note: NOTE,
+      });
+
+      expect(res.status).toBe(200);
+      expect(
+        await prisma.product.findUniqueOrThrow({
+          where: { id: store.productId },
+        }),
+      ).toMatchObject({
+        status: 'TAKEN_DOWN',
+        takenDownById: adminId,
+        takenDownReason: NOTE,
+      });
+      for (const id of [idA, idB]) {
+        expect(await reportRow(id)).toMatchObject({
+          status: 'RESOLVED',
+          resolutionAction: 'TAKE_DOWN_PRODUCT',
+          resolutionNote: NOTE,
+        });
+      }
+      // Chủ shop đúng MỘT thông báo (kèm lý do); mỗi người báo đúng một thông báo chung chung.
+      const ownerNotes = await notificationsOf(
+        store.owner.userId,
+        'PRODUCT_TAKEN_DOWN',
+      );
+      expect(ownerNotes).toHaveLength(1);
+      expect(ownerNotes[0].data).toMatchObject({
+        productId: store.productId,
+        reason: NOTE,
+      });
+      for (const who of [a, b]) {
+        expect(
+          await notificationsOf(who.userId, 'REPORT_RESOLVED'),
+        ).toHaveLength(1);
+        // Người báo KHÔNG nhận thông báo "sản phẩm bị gỡ" — đó là việc của chủ shop.
+        expect(
+          await notificationsOf(who.userId, 'PRODUCT_TAKEN_DOWN'),
+        ).toHaveLength(0);
+      }
+      // Hai dòng nhật ký: gỡ sản phẩm + xử lý báo cáo.
+      expect(
+        await auditRows('TAKE_DOWN_PRODUCT', store.productId),
+      ).toHaveLength(1);
+      expect(await auditRows('RESOLVE_REPORT', idA)).toHaveLength(1);
+    });
+
+    it('TAKE_DOWN_PRODUCT khi sản phẩm đã bị gỡ từ trước: không gỡ lại, chủ shop không bị báo lần nữa, báo cáo vẫn đóng, nhật ký ghi alreadyApplied', async () => {
+      const store = await newStore();
+      const reporter = await newAccount();
+      const id = await report(
+        reporter,
+        'PRODUCT',
+        store.productId,
+        'MISLEADING_INFO',
+      );
+      const first = await admin2
+        .post(`/api/v1/admin/products/${store.productId}/take-down`)
+        .send({ reason: 'Gỡ từ trước' });
+      expect(first.status).toBe(200);
+
+      const res = await resolve(admin, id, {
+        action: 'TAKE_DOWN_PRODUCT',
+        note: NOTE,
+      });
+
+      expect(res.status).toBe(200);
+      expect((await reportRow(id)).status).toBe('RESOLVED');
+      expect(
+        await auditRows('TAKE_DOWN_PRODUCT', store.productId),
+      ).toHaveLength(1);
+      expect(
+        await notificationsOf(store.owner.userId, 'PRODUCT_TAKEN_DOWN'),
+      ).toHaveLength(1);
+      // Lý do trên sản phẩm vẫn là của lần gỡ ĐẦU TIÊN, không bị ghi đè bởi ghi chú xử lý báo cáo.
+      expect(
+        (
+          await prisma.product.findUniqueOrThrow({
+            where: { id: store.productId },
+          })
+        ).takenDownReason,
+      ).toBe('Gỡ từ trước');
+      const [row] = await auditRows('RESOLVE_REPORT', id);
+      expect(row.meta).toMatchObject({ alreadyApplied: true });
+    });
+
+    it('TAKE_DOWN_PRODUCT: lỗi nhật ký ⇒ ROLLBACK cả việc gỡ lẫn đóng báo cáo (sản phẩm vẫn đang bán, không báo chủ shop)', async () => {
+      const store = await newStore();
+      const reporter = await newAccount();
+      const id = await report(
+        reporter,
+        'PRODUCT',
+        store.productId,
+        'MISLEADING_INFO',
+      );
+      jest
+        .spyOn(app.get(AdminAuditService), 'record')
+        .mockRejectedValueOnce(new Error('audit down'));
+
+      const res = await resolve(admin, id, {
+        action: 'TAKE_DOWN_PRODUCT',
+        note: NOTE,
+      });
+
+      expect(res.status).toBe(500);
+      expect((await reportRow(id)).status).toBe('OPEN');
+      expect(
+        await prisma.product.findUniqueOrThrow({
+          where: { id: store.productId },
+        }),
+      ).toMatchObject({ status: 'PUBLISHED', takenDownReason: null });
+      expect(
+        await notificationsOf(store.owner.userId, 'PRODUCT_TAKEN_DOWN'),
+      ).toHaveLength(0);
+    });
+
+    it('DISMISS báo cáo sản phẩm: sản phẩm vẫn đang bán, chủ shop không nhận gì', async () => {
+      const store = await newStore();
+      const reporter = await newAccount();
+      const id = await report(
+        reporter,
+        'PRODUCT',
+        store.productId,
+        'MISLEADING_INFO',
+      );
+
+      const res = await resolve(admin, id, { action: 'DISMISS' });
+
+      expect(res.status).toBe(200);
+      expect(
+        (
+          await prisma.product.findUniqueOrThrow({
+            where: { id: store.productId },
+          })
+        ).status,
+      ).toBe('PUBLISHED');
+      expect(
+        await notificationsOf(store.owner.userId, 'PRODUCT_TAKEN_DOWN'),
+      ).toHaveLength(0);
+    });
+
     it('SUSPEND_SHOP: khoá shop với lý do là ghi chú, đóng hết báo cáo trùng, MỘT dòng nhật ký, chủ shop nhận thông báo/email như luồng khoá thường', async () => {
       const store = await newStore();
       const a = await newAccount();
@@ -963,7 +1118,7 @@ describe('Hàng đợi và xử lý báo cáo của Admin (HTTP thật)', () => 
       ).toBe('APPROVED');
     });
 
-    it('BLOCK_BUYER khi bên bị báo là chủ shop (người mua báo) ⇒ 409; hành động chưa có bộ xử lý (HIDE_REVIEW, TAKE_DOWN_PRODUCT) ⇒ 409 và không đóng gì', async () => {
+    it('BLOCK_BUYER khi bên bị báo là chủ shop (người mua báo) ⇒ 409; hành động chưa có bộ xử lý ⇒ 409 và không đóng gì', async () => {
       const store = await newStore();
       const buyer = await newAccount();
       const conversationId = await newConversation(store, buyer);
@@ -973,19 +1128,9 @@ describe('Hàng đợi và xử lý báo cáo của Admin (HTTP thật)', () => 
         conversationId,
         'SCAM',
       );
-      const idProduct = await report(
-        buyer,
-        'PRODUCT',
-        store.productId,
-        'COUNTERFEIT',
-      );
 
       const block = await resolve(admin, idConversation, {
         action: 'BLOCK_BUYER',
-        note: NOTE,
-      });
-      const takeDown = await resolve(admin, idProduct, {
-        action: 'TAKE_DOWN_PRODUCT',
         note: NOTE,
       });
 
@@ -993,13 +1138,45 @@ describe('Hàng đợi và xử lý báo cáo của Admin (HTTP thật)', () => 
         409,
         'REPORT_ACTION_NOT_ALLOWED',
       ]);
-      expect([takeDown.status, code(takeDown)]).toEqual([
+      expect((await reportRow(idConversation)).status).toBe('OPEN');
+      expect(await auditRows('RESOLVE_REPORT', idConversation)).toHaveLength(0);
+    });
+
+    it('hành động của loại khác trên báo cáo SẢN PHẨM (HIDE_REVIEW, SUSPEND_SHOP) ⇒ 409 và sản phẩm không bị gỡ', async () => {
+      const store = await newStore();
+      const reporter = await newAccount();
+      const id = await report(
+        reporter,
+        'PRODUCT',
+        store.productId,
+        'MISLEADING_INFO',
+      );
+
+      const hide = await resolve(admin, id, {
+        action: 'HIDE_REVIEW',
+        note: NOTE,
+      });
+      const suspend = await resolve(admin, id, {
+        action: 'SUSPEND_SHOP',
+        note: NOTE,
+      });
+
+      expect([hide.status, code(hide)]).toEqual([
         409,
         'REPORT_ACTION_NOT_ALLOWED',
       ]);
-      expect((await reportRow(idConversation)).status).toBe('OPEN');
-      expect((await reportRow(idProduct)).status).toBe('OPEN');
-      expect(await auditRows('RESOLVE_REPORT', idProduct)).toHaveLength(0);
+      expect([suspend.status, code(suspend)]).toEqual([
+        409,
+        'REPORT_ACTION_NOT_ALLOWED',
+      ]);
+      expect((await reportRow(id)).status).toBe('OPEN');
+      expect(
+        (
+          await prisma.product.findUniqueOrThrow({
+            where: { id: store.productId },
+          })
+        ).status,
+      ).toBe('PUBLISHED');
     });
 
     it.each([

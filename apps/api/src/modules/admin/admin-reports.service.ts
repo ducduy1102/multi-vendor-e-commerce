@@ -25,6 +25,7 @@ import { AdminUserStatusService } from './admin-user-status.service';
 import { AdminService } from './admin.service';
 import type { ListAdminReportsQueryDto } from './dto/list-admin-reports-query.dto';
 import type { ResolveReportDto } from './dto/resolve-report.dto';
+import { ProductModerationService } from '../product/product-moderation.service';
 import { ReviewService } from '../review/review.service';
 
 // Cột của báo cáo mà ADMIN được đọc. Thêm cột vào đây là thêm vào bề mặt lộ dữ liệu: phải kèm trường ở `adminReportSchema`
@@ -176,6 +177,7 @@ export class AdminReportsService {
   > = {
     HIDE_REVIEW: (context) => this.hideReview(context),
     SUSPEND_SHOP: (context) => this.suspendShop(context),
+    TAKE_DOWN_PRODUCT: (context) => this.takeDownProduct(context),
     SUSPEND_REPORTED_USER: (context) => this.suspendReportedUser(context),
   };
 
@@ -184,6 +186,7 @@ export class AdminReportsService {
     private readonly adminService: AdminService,
     private readonly userStatusService: AdminUserStatusService,
     private readonly reviewService: ReviewService,
+    private readonly productModeration: ProductModerationService,
     private readonly auditService: AdminAuditService,
     private readonly notificationService: NotificationService,
   ) {}
@@ -379,6 +382,33 @@ export class AdminReportsService {
     return {
       alreadyApplied: false,
       afterCommit: () => this.reviewService.announceHidden(targetId),
+    };
+  }
+
+  // Gỡ sản phẩm bị báo qua đúng luật gỡ của ProductModerationService (UPDATE có điều kiện → ba cột gỡ → nhật ký TAKE_DOWN_PRODUCT, cùng
+  // transaction với việc đóng báo cáo); chủ shop được báo SAU commit, kèm ghi chú xử lý làm lý do (HIỆN cho họ). Đã bị gỡ từ trước ⇒ không
+  // gỡ lại, báo cáo vẫn đóng là đã xử lý.
+  private async takeDownProduct(
+    context: ReportActionContext,
+  ): Promise<ReportActionOutcome> {
+    const { tx, adminId, auditContext, note, targetId } = context;
+    const product = await tx.product.findUnique({
+      where: { id: targetId },
+      select: { status: true },
+    });
+    if (!product) throw targetGone();
+    if (product.status === 'TAKEN_DOWN') return { alreadyApplied: true };
+
+    await this.productModeration.takeDownInTx(tx, {
+      adminId,
+      productId: targetId,
+      reason: note,
+      context: auditContext,
+    });
+    return {
+      alreadyApplied: false,
+      afterCommit: () =>
+        this.productModeration.announceTakenDown(targetId, note),
     };
   }
 

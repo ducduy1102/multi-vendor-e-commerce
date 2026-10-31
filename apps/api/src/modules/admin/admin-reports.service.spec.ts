@@ -7,6 +7,7 @@ import {
   createFakeNotificationService,
   type FakeNotificationService,
 } from '../../shared/testing/fake-notification-service';
+import type { ProductModerationService } from '../product/product-moderation.service';
 import type { ReviewService } from '../review/review.service';
 import type { AdminUserStatusService } from './admin-user-status.service';
 import type { AdminService } from './admin.service';
@@ -55,6 +56,7 @@ function setup() {
     },
     shop: { findUnique: jest.fn() },
     review: { findUnique: jest.fn() },
+    product: { findUnique: jest.fn() },
     conversation: { findUnique: jest.fn() },
     user: { findUnique: jest.fn(), findMany: jest.fn() },
     $executeRaw: jest.fn(),
@@ -129,6 +131,14 @@ function setup() {
     announceHidden: jest.fn().mockResolvedValue(undefined),
   };
   prisma.review.findUnique.mockResolvedValue({ hiddenAt: null });
+  const productModeration = {
+    takeDownInTx: jest.fn().mockImplementation(() => {
+      calls.push('take-down-product');
+      return Promise.resolve({ takenDownAt: CREATED });
+    }),
+    announceTakenDown: jest.fn().mockResolvedValue(undefined),
+  };
+  prisma.product.findUnique.mockResolvedValue({ status: 'PUBLISHED' });
   const audit = {
     record: jest.fn().mockImplementation(() => {
       calls.push('audit');
@@ -142,6 +152,7 @@ function setup() {
     adminService as unknown as AdminService,
     userStatusService as unknown as AdminUserStatusService,
     reviewService as unknown as ReviewService,
+    productModeration as unknown as ProductModerationService,
     audit,
     notifications,
   );
@@ -151,6 +162,7 @@ function setup() {
     adminService,
     userStatusService,
     reviewService,
+    productModeration,
     audit,
     notifications,
     calls,
@@ -482,6 +494,114 @@ describe('resolve — ẩn đánh giá (5.5)', () => {
   });
 });
 
+describe('resolve — gỡ sản phẩm (5.7)', () => {
+  function productSetup() {
+    const ctx = setup();
+    ctx.prisma.report.findUnique.mockResolvedValue({
+      targetType: 'PRODUCT',
+      targetId: SHOP,
+    });
+    ctx.prisma.$queryRaw.mockResolvedValue([
+      {
+        status: 'OPEN',
+        snapshot: { name: 'Dao bấm tự động', shopName: 'Tạp hoá A' },
+      },
+    ]);
+    return ctx;
+  }
+
+  it('gọi đúng luật gỡ của ProductModerationService TRONG giao dịch đóng báo cáo, lý do là ghi chú, rồi báo chủ shop SAU commit', async () => {
+    const { service, productModeration, calls, prisma } = productSetup();
+
+    await service.resolve(
+      ADMIN,
+      REPORT,
+      { action: 'TAKE_DOWN_PRODUCT', note: NOTE },
+      { ip: '203.0.113.7' },
+    );
+
+    expect(productModeration.takeDownInTx).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        adminId: ADMIN,
+        productId: SHOP,
+        reason: NOTE,
+        context: { ip: '203.0.113.7' },
+      },
+    );
+    expect(calls.indexOf('take-down-product')).toBeLessThan(
+      calls.indexOf('close'),
+    );
+    expect(productModeration.announceTakenDown).toHaveBeenCalledWith(
+      SHOP,
+      NOTE,
+    );
+    expect(prisma.report.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      productModeration.announceTakenDown.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('sản phẩm đã bị gỡ từ trước ⇒ không gỡ lại, không báo chủ shop lần nữa, báo cáo vẫn đóng', async () => {
+    const { service, prisma, productModeration } = productSetup();
+    prisma.product.findUnique.mockResolvedValue({ status: 'TAKEN_DOWN' });
+
+    await service.resolve(ADMIN, REPORT, {
+      action: 'TAKE_DOWN_PRODUCT',
+      note: NOTE,
+    });
+
+    expect(productModeration.takeDownInTx).not.toHaveBeenCalled();
+    expect(productModeration.announceTakenDown).not.toHaveBeenCalled();
+    expect(prisma.report.updateMany).toHaveBeenCalled();
+  });
+
+  it('sản phẩm không còn tồn tại ⇒ 409 REPORT_ACTION_NOT_ALLOWED, báo cáo vẫn mở', async () => {
+    const { service, prisma } = productSetup();
+    prisma.product.findUnique.mockResolvedValue(null);
+
+    await expectAppException(
+      service.resolve(ADMIN, REPORT, {
+        action: 'TAKE_DOWN_PRODUCT',
+        note: NOTE,
+      }),
+      { status: 409, code: 'REPORT_ACTION_NOT_ALLOWED' },
+    );
+
+    expect(prisma.report.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('luật gỡ ném lỗi (vd Admin khác vừa gỡ qua route trực tiếp) ⇒ lỗi đó được trả nguyên, báo cáo không đóng, không báo ai', async () => {
+    const { service, prisma, productModeration, notifications } =
+      productSetup();
+    productModeration.takeDownInTx.mockRejectedValue(
+      new AppException(409, 'PRODUCT_ALREADY_TAKEN_DOWN', 'already'),
+    );
+
+    await expectAppException(
+      service.resolve(ADMIN, REPORT, {
+        action: 'TAKE_DOWN_PRODUCT',
+        note: NOTE,
+      }),
+      { status: 409, code: 'PRODUCT_ALREADY_TAKEN_DOWN' },
+    );
+
+    expect(prisma.report.updateMany).not.toHaveBeenCalled();
+    expect(productModeration.announceTakenDown).not.toHaveBeenCalled();
+    expect(notifications.notify).not.toHaveBeenCalled();
+  });
+
+  it('hành động chỉ hợp lệ cho loại khác (HIDE_REVIEW trên báo cáo sản phẩm) ⇒ 409 và không gỡ gì', async () => {
+    const { service, productModeration } = productSetup();
+
+    await expectAppException(
+      service.resolve(ADMIN, REPORT, { action: 'HIDE_REVIEW', note: NOTE }),
+      { status: 409, code: 'REPORT_ACTION_NOT_ALLOWED' },
+    );
+
+    expect(productModeration.takeDownInTx).not.toHaveBeenCalled();
+  });
+});
+
 describe('resolve — đã áp dụng', () => {
   it('shop đã bị khoá từ trước: không khoá lại, vẫn đóng báo cáo là ĐÃ XỬ LÝ, nhật ký ghi alreadyApplied', async () => {
     const { service, prisma, adminService, audit } = setup();
@@ -659,14 +779,25 @@ describe('resolve — từ chối', () => {
     },
   );
 
-  it.each([['PRODUCT', 'TAKE_DOWN_PRODUCT']] as const)(
-    'hành động %2$s hợp lệ với loại %1$s nhưng CHƯA có bộ xử lý (5.7) ⇒ 409, báo cáo vẫn mở',
+  it.each([['CONVERSATION', 'BLOCK_BUYER']] as const)(
+    'hành động %2$s hợp lệ với loại %1$s nhưng CHƯA có bộ xử lý (6.2) ⇒ 409, báo cáo vẫn mở',
     async (targetType, action) => {
       const { service, prisma } = setup();
       prisma.report.findUnique.mockResolvedValue({
         targetType,
         targetId: SHOP,
       });
+      // BLOCK_BUYER chỉ hợp lệ khi người báo là SHOP (bên bị báo là người mua).
+      prisma.$queryRaw.mockResolvedValue([
+        {
+          status: 'OPEN',
+          snapshot: {
+            shopName: 'Shop A',
+            buyerName: 'Người mua',
+            reporterRole: 'SHOP',
+          },
+        },
+      ]);
 
       await expectAppException(
         service.resolve(ADMIN, REPORT, { action, note: NOTE }),
