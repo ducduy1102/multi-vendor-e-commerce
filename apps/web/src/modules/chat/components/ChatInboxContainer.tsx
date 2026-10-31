@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 
 import { useRouter } from '@/i18n/navigation';
 
@@ -21,6 +21,9 @@ interface ChatInboxContainerProps {
   selectedId: string | null;
   // Đường dẫn trang chứa hộp thư (`/chat` hoặc `/seller/chat`): chọn/quay lại đổi `?c=` trên chính trang này.
   basePath: string;
+  // Nút "Báo cáo hội thoại" cho hội thoại ĐANG CHỌN (Week11.md 5.6): ReactNode tĩnh do page dựng từ `selectedId` (page đã đọc `?c=`) —
+  // slot đi qua ranh giới Server → Client nên không thể là hàm render.
+  reportSlot?: ReactNode;
 }
 
 // Hộp thư chat hoàn chỉnh cho MỘT phạm vi (người mua, hoặc một shop). Container: nối danh sách + khung hội thoại với
@@ -28,7 +31,12 @@ interface ChatInboxContainerProps {
 // về danh sách). Dữ liệu được giữ tươi bằng sự kiện real-time ở `ChatRealtimeSync` (shared/components, mount MỘT lần ở
 // layout cho cả hai phạm vi) — container KHÔNG tự mount `useChatRealtimeSync`, hai bản cùng chạy chỉ nhân đôi việc;
 // không unit test (rules/frontend.md mục 8), kiểm bằng Playwright.
-export function ChatInboxContainer({ scope, selectedId, basePath }: ChatInboxContainerProps) {
+export function ChatInboxContainer({
+  scope,
+  selectedId,
+  basePath,
+  reportSlot,
+}: ChatInboxContainerProps) {
   const t = useTranslations('chat');
   const router = useRouter();
   const stableScope = useStableChatScope(scope);
@@ -77,6 +85,7 @@ export function ChatInboxContainer({ scope, selectedId, basePath }: ChatInboxCon
             summary={selected}
             fallbackName={t('conversationFallbackName')}
             onBack={() => router.push(basePath)}
+            reportSlot={reportSlot}
           />
         ) : (
           <ChatEmptyState title={t('selectPrompt')} />

@@ -2,6 +2,7 @@
 
 import { ArrowLeft } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 
 import { Badge } from '@/shared/components/ui/badge';
 import { Button } from '@/shared/components/ui/button';
@@ -15,12 +16,20 @@ interface ConversationHeaderProps {
   isReadOnly: boolean;
   // Quay lại danh sách — chỉ hiện ở màn hình hẹp, nơi danh sách và hội thoại là hai màn riêng.
   onBack: () => void;
+  // Chỗ nút "Báo cáo" (Week11.md 5.6): page.tsx truyền ReactNode tĩnh — chat là module LÁ, không import `report`.
+  reportSlot?: ReactNode;
 }
 
 // Thanh tiêu đề của khung hội thoại. Tên đối phương là chữ người dùng/chủ shop nhập: `min-w-0 flex-1 truncate` để
 // một tên dài bị cắt thay vì đẩy rộng khung. Dùng flex (không lưới): nút quay lại bị `display:none` từ `md` sẽ làm
 // lưới xếp lại cột.
-export function ConversationHeader({ name, logoUrl, isReadOnly, onBack }: ConversationHeaderProps) {
+export function ConversationHeader({
+  name,
+  logoUrl,
+  isReadOnly,
+  onBack,
+  reportSlot,
+}: ConversationHeaderProps) {
   const t = useTranslations('chat');
 
   return (
@@ -38,6 +47,7 @@ export function ConversationHeader({ name, logoUrl, isReadOnly, onBack }: Conver
       <ChatAvatar name={name} logoUrl={logoUrl} />
       <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{name}</h2>
       {isReadOnly ? <Badge variant="outline">{t('readOnlyBadge')}</Badge> : null}
+      {reportSlot ? <div className="shrink-0">{reportSlot}</div> : null}
     </div>
   );
 }

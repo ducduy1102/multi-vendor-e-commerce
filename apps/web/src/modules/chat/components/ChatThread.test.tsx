@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { withIntl } from '@/shared/lib/test-i18n';
@@ -20,6 +21,7 @@ interface Props {
   isCounterpartTyping: boolean;
   isConnectionLost: boolean;
   hasOlder: boolean;
+  reportSlot: ReactNode;
 }
 
 function setup(props: Partial<Props> = {}) {
@@ -48,6 +50,7 @@ function setup(props: Partial<Props> = {}) {
         isCounterpartTyping={props.isCounterpartTyping ?? false}
         isConnectionLost={props.isConnectionLost ?? false}
         now={NOW}
+        reportSlot={props.reportSlot}
         describeFailure={() => 'lỗi'}
         {...handlers}
       />,
@@ -174,6 +177,17 @@ describe('ChatThread', () => {
     const { container } = setup({ isCounterpartTyping: false });
     expect(screen.queryByText(/đang nhập/)).not.toBeInTheDocument();
     expect(container.querySelector('p.min-h-5')).not.toBeNull();
+  });
+
+  it('nút báo cáo (reportSlot) chỉ hiện khi hội thoại ĐÃ có tin — hội thoại rỗng không báo được (BE trả 404)', () => {
+    const report = <button type="button">Báo cáo hội thoại</button>;
+
+    const empty = setup({ items: [], reportSlot: report });
+    expect(screen.queryByRole('button', { name: 'Báo cáo hội thoại' })).toBeNull();
+    empty.unmount();
+
+    setup({ items: [message()], reportSlot: report });
+    expect(screen.getByRole('button', { name: 'Báo cáo hội thoại' })).toBeInTheDocument();
   });
 
   it('còn tin cũ: hiện nút "Tải tin cũ hơn" và gọi onFetchOlder', async () => {
