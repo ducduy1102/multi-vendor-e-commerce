@@ -24,7 +24,15 @@ const ITEM: ReviewTargetItem = {
 };
 const REVIEWED: ReviewTargetItem = {
   ...ITEM,
-  review: { id: 'review-1', rating: 3, comment: 'Tạm ổn', editedAt: null, canEdit: true },
+  review: {
+    id: 'review-1',
+    rating: 3,
+    comment: 'Tạm ổn',
+    editedAt: null,
+    canEdit: true,
+    isHidden: false,
+    hiddenReason: null,
+  },
 };
 
 function setup() {
