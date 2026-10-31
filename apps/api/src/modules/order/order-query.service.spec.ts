@@ -718,6 +718,8 @@ describe('OrderQueryService (buyer)', () => {
         rating: 4,
         comment: 'Tốt',
         editedAt: null,
+        hiddenAt: null as Date | null,
+        hiddenReason: null as string | null,
         ...overrides,
       });
 
@@ -745,6 +747,8 @@ describe('OrderQueryService (buyer)', () => {
           rating: true,
           comment: true,
           editedAt: true,
+          hiddenAt: true,
+          hiddenReason: true,
         });
 
         await service.listForBuyer('user-1', { page: 1, limit: 10 });
@@ -811,9 +815,60 @@ describe('OrderQueryService (buyer)', () => {
             comment: 'Tốt',
             editedAt: null,
             canEdit: true,
+            isHidden: false,
+            hiddenReason: null,
           },
         });
         expect(order.items[1]).toMatchObject({ canReview: true, review: null });
+      });
+
+      it('đánh giá đã bị Admin ẩn ⇒ tác giả vẫn thấy bản của mình với isHidden true, canEdit false, không còn được đánh giá lại, kèm lý do Admin đã nhập; KHÔNG lộ Admin nào quyết định', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          loadedDetail({
+            status: 'COMPLETED',
+            statusHistory: completedHistory(3),
+            reviews: [
+              loadedReview({
+                hiddenAt: new Date('2026-10-31T01:00:00.000Z'),
+                hiddenReason: 'LY-DO-RIENG-CUA-ADMIN',
+                hiddenById: 'admin-1',
+              }),
+            ],
+          }),
+        );
+
+        const order = await service.getForBuyer('user-1', 'o1');
+
+        expect(order.items[0]).toMatchObject({
+          canReview: false,
+          review: {
+            id: 'rv-1',
+            canEdit: false,
+            isHidden: true,
+            hiddenReason: 'LY-DO-RIENG-CUA-ADMIN',
+          },
+        });
+        expect(JSON.stringify(order)).not.toMatch(/admin-1|hiddenById/);
+      });
+
+      it('đánh giá đang hiển thị mà cột lý do còn sót (dữ liệu lệch) ⇒ KHÔNG trả lý do ra ngoài', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          loadedDetail({
+            status: 'COMPLETED',
+            statusHistory: completedHistory(3),
+            reviews: [
+              loadedReview({ hiddenAt: null, hiddenReason: 'CON-SOT' }),
+            ],
+          }),
+        );
+
+        const order = await service.getForBuyer('user-1', 'o1');
+
+        expect(order.items[0].review).toMatchObject({
+          isHidden: false,
+          hiddenReason: null,
+        });
+        expect(JSON.stringify(order)).not.toContain('CON-SOT');
       });
 
       it('đã sửa một lần (editedAt có giá trị) ⇒ canEdit false, editedAt dạng ISO', async () => {
@@ -838,6 +893,8 @@ describe('OrderQueryService (buyer)', () => {
           comment: null,
           editedAt: '2026-10-05T08:00:00.000Z',
           canEdit: false,
+          isHidden: false,
+          hiddenReason: null,
         });
       });
 

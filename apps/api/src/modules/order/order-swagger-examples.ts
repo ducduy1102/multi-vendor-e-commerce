@@ -19,7 +19,7 @@ export const ORDER_ITEM_EXAMPLE = {
 
 // Dòng hàng ở CHI TIẾT đơn: thêm định danh sản phẩm (dựng link) và trạng thái đánh giá của chính người mua
 // (Week9.md 1.8). `review` là null khi chưa đánh giá; đã đánh giá thì
-// { id, rating, comment, editedAt, canEdit }.
+// { id, rating, comment, editedAt, canEdit, isHidden, hiddenReason }.
 export const ORDER_DETAIL_ITEM_EXAMPLE = {
   ...ORDER_ITEM_EXAMPLE,
   productId: 'e1b2c3d4-1234-4a5b-8c9d-abcdef000005',

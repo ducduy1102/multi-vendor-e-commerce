@@ -269,6 +269,8 @@ describe('response schema', () => {
         comment: 'Tốt',
         editedAt: null,
         canEdit: true,
+        isHidden: false,
+        hiddenReason: null,
       };
 
       expect(
