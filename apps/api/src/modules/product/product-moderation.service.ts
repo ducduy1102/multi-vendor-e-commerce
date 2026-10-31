@@ -16,6 +16,13 @@ export interface ProductModerationInput {
   context: AuditRequestContext;
 }
 
+// Khôi phục có lý do TUỲ CHỌN: Admin khôi phục thủ công luôn nhập lý do (route `restore`), còn chấp nhận kháng nghị (Week11.md 5.8) thì ghi chú
+// là tuỳ chọn — lý do/ghi chú nằm ở dòng nhật ký `DECIDE_APPEAL` đi kèm trong cùng transaction, nên dòng `RESTORE_PRODUCT` không bịa ra
+// một lý do giả.
+export type ProductRestoreInput = Omit<ProductModerationInput, 'reason'> & {
+  reason?: string;
+};
+
 const productNotFound = () =>
   new AppException(404, 'PRODUCT_NOT_FOUND', 'Product not found');
 
@@ -89,10 +96,7 @@ export class ProductModerationService {
 
   // Khôi phục: chỉ từ TAKEN_DOWN, về NHÁP (chủ shop tự sửa rồi xuất bản lại — không tự bán lại nội dung từng vi phạm). Xoá cả ba cột gỡ;
   // lịch sử gỡ / khôi phục nằm ở nhật ký quản trị.
-  async restoreInTx(
-    tx: TxClient,
-    input: ProductModerationInput,
-  ): Promise<void> {
+  async restoreInTx(tx: TxClient, input: ProductRestoreInput): Promise<void> {
     const { adminId, productId, reason, context } = input;
     const product = await tx.product.findUnique({
       where: { id: productId },
@@ -116,7 +120,7 @@ export class ProductModerationService {
       action: 'RESTORE_PRODUCT',
       targetType: 'PRODUCT',
       targetId: productId,
-      reason,
+      ...(reason ? { reason } : {}),
       meta: { shopId: product.shopId },
       ...context,
     });

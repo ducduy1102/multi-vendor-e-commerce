@@ -226,3 +226,66 @@ describe('ProductModerationService.restore', () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 });
+
+// Chấp nhận kháng nghị (Week11.md 5.8) gọi `restoreInTx` TRONG transaction của quyết định và ghi chú là tuỳ chọn.
+describe('ProductModerationService.restoreInTx', () => {
+  it('không có lý do ⇒ dòng nhật ký RESTORE_PRODUCT không có `reason` (không bịa lý do), vẫn khôi phục về NHÁP', async () => {
+    const { service, tx, audit } = setup();
+
+    await service.restoreInTx(tx as never, {
+      adminId: ADMIN,
+      productId: PRODUCT,
+      context: { ip: '203.0.113.7' },
+    });
+
+    expect(tx.product.updateMany).toHaveBeenCalledWith({
+      where: { id: PRODUCT, status: 'TAKEN_DOWN' },
+      data: {
+        status: 'DRAFT',
+        takenDownAt: null,
+        takenDownById: null,
+        takenDownReason: null,
+      },
+    });
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    const [[, entry]] = audit.record.mock.calls as [
+      unknown,
+      Record<string, unknown>,
+    ][];
+    expect(entry).not.toHaveProperty('reason');
+    expect(entry).toMatchObject({
+      action: 'RESTORE_PRODUCT',
+      targetId: PRODUCT,
+      meta: { shopId: SHOP },
+    });
+  });
+
+  it('có lý do ⇒ ghi lý do đó vào nhật ký', async () => {
+    const { service, tx, audit } = setup();
+
+    await service.restoreInTx(tx as never, {
+      adminId: ADMIN,
+      productId: PRODUCT,
+      reason: REASON,
+      context: {},
+    });
+
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ reason: REASON }),
+    );
+  });
+
+  it('không tự mở giao dịch và không báo ai: nơi gọi giữ giao dịch của mình', async () => {
+    const { service, tx, prisma, notifications } = setup();
+
+    await service.restoreInTx(tx as never, {
+      adminId: ADMIN,
+      productId: PRODUCT,
+      context: {},
+    });
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(notifications.notify).not.toHaveBeenCalled();
+  });
+});
