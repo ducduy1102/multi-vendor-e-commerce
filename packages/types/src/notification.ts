@@ -57,6 +57,8 @@ export const NOTIFICATION_TYPES = [
   'REPORT_RESOLVED',
   'REVIEW_HIDDEN',
   'PRODUCT_TAKEN_DOWN',
+  'ADMIN_PRODUCT_APPEAL_PENDING',
+  'PRODUCT_APPEAL_DECIDED',
 ] as const;
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
@@ -208,6 +210,20 @@ export const notificationContentSchema = z.discriminatedUnion('type', [
     productId: idSchema,
     productName: labelSchema,
     reason: reasonSchema,
+  }),
+  // Tất cả Admin: chủ shop vừa gửi kháng nghị lần gỡ một sản phẩm (Week11.md 5.8). Chủ shop: Admin đã quyết định kháng nghị đó (chấp nhận ⇒
+  // sản phẩm về nháp, từ chối ⇒ giữ nguyên gỡ). Cùng nguyên tắc với kháng nghị shop: chỉ id + tên sản phẩm đã cắt gọn, KHÔNG lời kháng
+  // nghị hay ghi chú của Admin (FE dẫn tới trang đọc).
+  content('ADMIN_PRODUCT_APPEAL_PENDING', {
+    appealId: idSchema,
+    productId: idSchema,
+    productName: labelSchema,
+  }),
+  content('PRODUCT_APPEAL_DECIDED', {
+    appealId: idSchema,
+    productId: idSchema,
+    productName: labelSchema,
+    decision: z.enum(['ACCEPTED', 'REJECTED']),
   }),
 ]);
 export type NotificationContent = z.infer<typeof notificationContentSchema>;

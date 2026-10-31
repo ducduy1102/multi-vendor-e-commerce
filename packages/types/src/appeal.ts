@@ -3,10 +3,10 @@ import { LIST_MAX_PAGE } from './pagination';
 import { shopStatusSchema } from './shop';
 import { isSafeMessageText } from './text-safety';
 
-// Kháng nghị của chủ shop (Week11.md 4.6, D15): shop bị Admin KHOÁ (SUSPENDED) gửi MỘT lời giải trình cho mỗi lần bị khoá, Admin
-// chấp nhận (mở khoá shop) hoặc từ chối (giữ nguyên, không kháng nghị lại được). File này là HỢP ĐỒNG dùng chung của BE và FE
-// (schema body/query, hình dạng response và hai hàm thuần quyết định "kháng nghị còn hiệu lực không"); thực thi nằm ở
-// `AppealService` (người dùng) và `AdminAppealService` (Admin).
+// Kháng nghị của chủ shop (Week11.md 4.6 và 5.8, D15): shop bị Admin KHOÁ (SUSPENDED) hoặc một sản phẩm bị Admin GỠ (TAKEN_DOWN) gửi
+// MỘT lời giải trình cho mỗi lần bị xử lý, Admin chấp nhận (mở khoá shop / khôi phục sản phẩm về nháp) hoặc từ chối (giữ nguyên,
+// không kháng nghị lại được). File này là HỢP ĐỒNG dùng chung của BE và FE (schema body/query, hình dạng response và các hàm thuần
+// quyết định "kháng nghị còn hiệu lực không"); thực thi nằm ở `AppealService` (người dùng) và `AdminAppealsService` (Admin).
 
 // --- Hằng số ----------------------------------------------------------------------------------------
 
@@ -24,10 +24,14 @@ export const APPEAL_OWNER_HISTORY_LIMIT = 20;
 // tài khoản bị khoá không đăng nhập được — đường duy nhất là `SUPPORT_EMAIL`).
 export const APPEALABLE_SHOP_STATUS = 'SUSPENDED' as const;
 
+// Trạng thái sản phẩm DUY NHẤT được kháng nghị (Week11.md 5.8). Sản phẩm chỉ vào TAKEN_DOWN do một Admin gỡ (CHECK ở DB bắt buộc có
+// người gỡ), nên khác shop không có nhánh "do hệ thống" cần loại trừ.
+export const APPEALABLE_PRODUCT_STATUS = 'TAKEN_DOWN' as const;
+
 // --- Đối tượng và trạng thái ------------------------------------------------------------------------
 
-// Loại đối tượng được kháng nghị. Khớp enum Prisma `AppealTargetType` (test parity ở BE). `PRODUCT` đã có sẵn để bước kháng nghị
-// sản phẩm bị gỡ (Week11.md 5.8) không cần migration thêm; đến lúc đó API vẫn chỉ nhận `SHOP`.
+// Loại đối tượng được kháng nghị. Khớp enum Prisma `AppealTargetType` (test parity ở BE). `SHOP` từ 4.6, `PRODUCT` từ 5.8 (enum đã có
+// sẵn từ migration `add_appeals_table` nên không cần migration thêm).
 export const APPEAL_TARGET_TYPES = ['SHOP', 'PRODUCT'] as const;
 export const appealTargetTypeSchema = z.enum(APPEAL_TARGET_TYPES);
 export type AppealTargetType = z.infer<typeof appealTargetTypeSchema>;
@@ -54,6 +58,20 @@ export function isAppealEpisodeCurrent(
   return (
     shop.status === APPEALABLE_SHOP_STATUS &&
     new Date(shop.statusChangedAt).getTime() === new Date(moderationEventAt).getTime()
+  );
+}
+
+// Như `isAppealEpisodeCurrent` cho sản phẩm: vẫn TAKEN_DOWN và mốc gỡ vẫn đúng mốc lúc kháng nghị được gửi (`moderationEventAt` =
+// `Product.takenDownAt` của lần gỡ đó). Admin khôi phục rồi gỡ lại ⇒ mốc đổi ⇒ lần gỡ KHÁC, có quyền kháng nghị riêng. `takenDownAt`
+// null (chỉ khi sản phẩm không ở TAKEN_DOWN — CHECK ở DB) không bao giờ khớp.
+export function isProductAppealEpisodeCurrent(
+  product: { status: string; takenDownAt: Date | string | null },
+  moderationEventAt: Date | string,
+): boolean {
+  return (
+    product.status === APPEALABLE_PRODUCT_STATUS &&
+    product.takenDownAt !== null &&
+    new Date(product.takenDownAt).getTime() === new Date(moderationEventAt).getTime()
   );
 }
 
@@ -95,8 +113,9 @@ export const appealDecisionNoteSchema = plainText(APPEAL_DECISION_NOTE_MAX_LENGT
   unsafe: 'admin.validationAppealNoteUnsafe',
 });
 
-// POST /shops/:shopId/appeals — người gửi, đối tượng và mốc bị xử lý KHÔNG nằm trong body: người gửi lấy từ phiên, shop từ đường
-// dẫn (đã qua ShopOwnerGuard), mốc từ `Shop.statusChangedAt` ở server. Client không đặt được.
+// POST /shops/:shopId/appeals và POST /shops/:shopId/products/:productId/appeals — người gửi, đối tượng và mốc bị xử lý KHÔNG nằm
+// trong body: người gửi lấy từ phiên, shop (và sản phẩm) từ đường dẫn (shop đã qua ShopOwnerGuard), mốc từ `Shop.statusChangedAt` /
+// `Product.takenDownAt` ở server. Client không đặt được.
 export const createAppealSchema = z.object({
   message: appealMessageSchema,
 });
@@ -168,10 +187,18 @@ export const shopAppealsResponseSchema = z.object({
 });
 export type ShopAppealsResponse = z.infer<typeof shopAppealsResponseSchema>;
 
+// GET /shops/:shopId/products/:productId/appeals (Week11.md 5.8): CÙNG hình dạng với kháng nghị shop — lịch sử kháng nghị của MỘT sản phẩm
+// và `canAppeal` do SERVER tính (sản phẩm đang TAKEN_DOWN và lần gỡ này chưa có kháng nghị nào).
+export const productAppealsResponseSchema = shopAppealsResponseSchema;
+export type ProductAppealsResponse = ShopAppealsResponse;
+
 // Một kháng nghị như ADMIN thấy ở hàng đợi: kèm shop và chủ shop để quyết định mà không phải mở trang khác. Có email chủ shop
-// (Admin được thấy, như danh sách shop), không có SĐT hay địa chỉ.
+// (Admin được thấy, như danh sách shop), không có SĐT hay địa chỉ. `targetType` cho biết kháng nghị về shop hay về sản phẩm; `shop` luôn
+// là shop liên quan (với kháng nghị sản phẩm là shop sở hữu sản phẩm), còn `product` chỉ có ở kháng nghị sản phẩm (lý do gỡ nằm ở
+// `product.takenDownReason`, lý do khoá shop ở `shop.statusReason`).
 export const adminAppealSchema = z.object({
   id: z.string(),
+  targetType: appealTargetTypeSchema,
   state: appealStateSchema,
   message: z.string(),
   decisionNote: z.string().nullable(),
@@ -187,6 +214,14 @@ export const adminAppealSchema = z.object({
     status: shopStatusSchema,
     statusReason: z.string().nullable(),
   }),
+  product: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      slug: z.string(),
+      takenDownReason: z.string().nullable(),
+    })
+    .nullable(),
   owner: z.object({ name: z.string(), email: z.string() }),
 });
 export type AdminAppeal = z.infer<typeof adminAppealSchema>;
