@@ -1,9 +1,10 @@
 import { getTranslations } from 'next-intl/server';
+import type { ReactNode } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { buildReviewHref, type ReviewPageQuery } from '../review-page-query';
 import * as reviewService from '../services/review.service';
-import type { ProductReviewsResponse } from '../types';
+import type { ProductReviewsResponse, Review } from '../types';
 import { REVIEW_SECTION_CLASS } from './ProductReviewList.constants';
 import { ReviewItem } from './ReviewItem';
 import { ReviewPagination } from './ReviewPagination';
@@ -13,6 +14,9 @@ interface ProductReviewListProps {
   // Slug của sản phẩm (route /products/[slug]) — dùng cả để gọi API lẫn dựng link lọc/phân trang.
   productSlug: string;
   query: ReviewPageQuery;
+  // Hành động dưới từng đánh giá (nút "Báo cáo", Week11.md 5.6). page.tsx là composition root dựng nút từ `modules/report` — module
+  // review không được import nó. Đây là hàm render vì cả hai đầu đều là Server Component (không qua ranh giới Server → Client).
+  renderReviewAction?: (review: Review) => ReactNode;
 }
 
 // Khối đánh giá ở trang chi tiết sản phẩm (đặt SAU mô tả). Server Component async, bọc <Suspense> ở
@@ -22,7 +26,11 @@ interface ProductReviewListProps {
 //
 // Lỗi tải đánh giá chỉ hiện thông báo ngay trong khối này (không ném lên error.tsx): đánh giá là phần phụ, không
 // nên làm sập cả trang sản phẩm khi API đánh giá lỗi; không hiện `error.message` (rules/frontend.md mục 10).
-export async function ProductReviewList({ productSlug, query }: ProductReviewListProps) {
+export async function ProductReviewList({
+  productSlug,
+  query,
+  renderReviewAction,
+}: ProductReviewListProps) {
   const t = await getTranslations('review');
 
   let data: ProductReviewsResponse;
@@ -81,7 +89,15 @@ export async function ProductReviewList({ productSlug, query }: ProductReviewLis
           ) : (
             <ul className="flex flex-col border-t border-border">
               {items.map((review) => (
-                <ReviewItem key={review.id} review={review} />
+                <ReviewItem
+                  key={review.id}
+                  review={review}
+                  footer={
+                    renderReviewAction ? (
+                      <div className="flex justify-end">{renderReviewAction(review)}</div>
+                    ) : null
+                  }
+                />
               ))}
             </ul>
           )}
