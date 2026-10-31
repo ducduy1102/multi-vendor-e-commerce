@@ -502,6 +502,37 @@ describe('Gửi báo cáo vi phạm (HTTP thật)', () => {
       expect([res.status, code(res)]).toEqual([404, 'REPORT_TARGET_NOT_FOUND']);
     });
 
+    it('REVIEW: đánh giá đã bị Admin ẩn thì không còn báo được nữa — với người ngoài lẫn chủ shop ⇒ 404 (Week11.md 5.5)', async () => {
+      const store = await newStore();
+      const author = await newAccount();
+      const stranger = await newAccount();
+      const reviewId = await newReview(store, author);
+      await prisma.review.update({
+        where: { id: reviewId },
+        data: {
+          hiddenAt: new Date(),
+          hiddenById: randomUUID(),
+          hiddenReason: 'Vi phạm',
+        },
+      });
+
+      const byStranger = await report(
+        stranger.agent,
+        payload('REVIEW', reviewId, 'SPAM'),
+      );
+      const byOwner = await report(
+        store.owner.agent,
+        payload('REVIEW', reviewId, 'SPAM'),
+      );
+
+      expect([byStranger.status, code(byStranger)]).toEqual([
+        404,
+        'REPORT_TARGET_NOT_FOUND',
+      ]);
+      expect(byOwner.body).toEqual(byStranger.body);
+      expect(await rowsFor(reviewId)).toHaveLength(0);
+    });
+
     it('CONVERSATION: người mua báo ⇒ vai BUYER; chủ shop báo ⇒ vai SHOP; ảnh chụp KHÔNG có nội dung tin nhắn', async () => {
       const store = await newStore();
       const buyer = await newAccount();

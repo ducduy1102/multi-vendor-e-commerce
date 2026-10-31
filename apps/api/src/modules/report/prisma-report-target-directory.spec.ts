@@ -32,6 +32,7 @@ const reviewRow = (overrides: Record<string, unknown> = {}) => ({
   userId: STRANGER,
   rating: 1,
   comment: 'Hàng giả',
+  hiddenAt: null as Date | null,
   user: { name: 'Nguyễn Văn A' },
   product: {
     id: PRODUCT_ID,
@@ -128,6 +129,17 @@ describe('REVIEW', () => {
 
     expect(result).not.toBeNull();
     expect(result?.ownedByReporter).toBe(false);
+  });
+
+  it('đánh giá đã bị Admin ẩn (5.5) không còn "thấy được" với ai — kể cả chủ shop và tác giả ⇒ null', async () => {
+    const { directory, prisma } = setup();
+    prisma.review.findUnique.mockResolvedValue(
+      reviewRow({ hiddenAt: new Date('2026-10-31T01:00:00.000Z') }),
+    );
+
+    await expect(directory.resolve(REPORTER, 'REVIEW', ID)).resolves.toBeNull();
+    await expect(directory.resolve(OWNER, 'REVIEW', ID)).resolves.toBeNull();
+    await expect(directory.resolve(STRANGER, 'REVIEW', ID)).resolves.toBeNull();
   });
 
   it('tác giả đánh giá ⇒ ownedByReporter (không tự báo đánh giá của mình)', async () => {

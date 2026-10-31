@@ -85,6 +85,8 @@ export class PrismaReportTargetDirectory implements ReportTargetDirectory {
         userId: true,
         rating: true,
         comment: true,
+        // Đánh giá đã bị Admin ẩn (Week11.md 5.5) không còn hiển thị với ai nên không báo được nữa.
+        hiddenAt: true,
         user: { select: { name: true } },
         product: {
           select: {
@@ -96,7 +98,7 @@ export class PrismaReportTargetDirectory implements ReportTargetDirectory {
         },
       },
     });
-    if (!row) return null;
+    if (!row || row.hiddenAt !== null) return null;
 
     const isPublic =
       row.product.status === 'PUBLISHED' &&
