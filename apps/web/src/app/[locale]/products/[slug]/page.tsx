@@ -58,6 +58,13 @@ export default async function ProductDetailPage({ params, searchParams }: Produc
               renderReviewAction={(review) => (
                 <ReportEntry targetType="REVIEW" targetId={review.id} />
               )}
+              renderProductAction={(product) => (
+                <ReportEntry
+                  targetType="PRODUCT"
+                  targetId={product.id}
+                  className="-ml-2 text-muted-foreground"
+                />
+              )}
             />
           </Suspense>
         </Container>

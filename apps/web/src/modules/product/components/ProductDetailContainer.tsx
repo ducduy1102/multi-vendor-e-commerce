@@ -24,6 +24,9 @@ interface ProductDetailContainerProps {
   reviewQuery: ReviewPageQuery;
   // Nút hành động dưới từng đánh giá ("Báo cáo", Week11.md 5.6) do page.tsx ghép — product không import `modules/report`.
   renderReviewAction?: (review: Review) => ReactNode;
+  // Nút hành động của CHÍNH sản phẩm ("Báo cáo sản phẩm", Week11.md 5.7) do page.tsx ghép — product không import `modules/report`. Là hàm
+  // (Server → Server) vì page.tsx chưa biết id sản phẩm trước khi container tải xong; chỉ nhận đúng thứ nút cần.
+  renderProductAction?: (product: { id: string }) => ReactNode;
 }
 
 // Server Component async (Suspense-wrapped ở page.tsx) — SSR fetch qua slug,
@@ -42,6 +45,7 @@ export async function ProductDetailContainer({
   slug,
   reviewQuery,
   renderReviewAction,
+  renderProductAction,
 }: ProductDetailContainerProps) {
   let product;
   try {
@@ -105,6 +109,10 @@ export async function ProductDetailContainer({
             <p className="whitespace-pre-line text-sm text-foreground">
               {product.description || t('detailNoDescription')}
             </p>
+
+            {renderProductAction ? (
+              <div className="flex">{renderProductAction({ id: product.id })}</div>
+            ) : null}
           </div>
         </div>
       </VariantSelectionProvider>
