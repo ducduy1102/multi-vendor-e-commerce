@@ -339,6 +339,29 @@ describe('ProductForm', () => {
 
   // Week7.md 3.3b — mô hình kho vật lý/giữ chỗ (1.3): ô "Tồn kho" Seller thấy/sửa PHẢI là kho
   // vật lý (stock + reservedStock), không phải `available` mà BE trả cho buyer.
+  describe('productToFormValues — sản phẩm bị sàn gỡ (Week11.md 5.7)', () => {
+    it('status TAKEN_DOWN không đi vào giá trị form (form không đặt được trạng thái đó)', () => {
+      const product: Product = {
+        id: 'p1',
+        shopId: 'shop-1',
+        categoryId: 'cat-1',
+        name: 'Dao bấm',
+        slug: 'dao-bam',
+        description: null,
+        status: 'TAKEN_DOWN',
+        takenDownReason: 'Hàng cấm',
+        minPrice: '1',
+        maxPrice: '1',
+        createdAt: '2026-10-31T00:00:00.000Z',
+        updatedAt: '2026-10-31T00:00:00.000Z',
+        attributes: [],
+        variants: [],
+      };
+
+      expect(productToFormValues(product).status).toBeUndefined();
+    });
+  });
+
   describe('productToFormValues — kho vật lý (Week7.md 1.3)', () => {
     function productFixture(overrides: Partial<Product['variants'][number]> = {}): Product {
       return {
@@ -349,6 +372,7 @@ describe('ProductForm', () => {
         slug: 'ao-thun-nam',
         description: null,
         status: 'PUBLISHED',
+        takenDownReason: null,
         minPrice: '150000',
         maxPrice: '150000',
         createdAt: '2026-09-27T00:00:00.000Z',

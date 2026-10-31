@@ -230,7 +230,8 @@ export function productToFormValues(product: Product): ProductFormValues {
     name: product.name,
     categoryId: product.categoryId,
     description: product.description ?? '',
-    status: product.status,
+    // Sản phẩm bị sàn gỡ không bao giờ vào form (EditProductFormContainer dựng thông báo thay thế) và form không đặt được TAKEN_DOWN.
+    status: product.status === 'TAKEN_DOWN' ? undefined : product.status,
     attributes: product.attributes.map((attribute) => ({
       attributeId: attribute.id,
       name: attribute.name,

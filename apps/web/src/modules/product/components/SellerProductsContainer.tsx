@@ -34,6 +34,7 @@ const STATUS_LABEL_KEY = {
   DRAFT: 'statusDraft',
   PUBLISHED: 'statusPublished',
   ARCHIVED: 'statusArchived',
+  TAKEN_DOWN: 'statusTakenDown',
 } as const satisfies Record<ProductListItem['status'], string>;
 
 // PUBLISHED dùng --success (đang lên sàn, thấy được ngay giữa danh sách);
@@ -46,6 +47,7 @@ const STATUS_BADGE_VARIANT = {
   DRAFT: 'outline',
   PUBLISHED: 'outline',
   ARCHIVED: 'secondary',
+  TAKEN_DOWN: 'outline',
 } as const satisfies Record<ProductListItem['status'], 'outline' | 'secondary'>;
 
 // ARCHIVED: --secondary/--muted mặc định của variant="secondary" gần như
@@ -60,6 +62,9 @@ const STATUS_BADGE_CLASS = {
   DRAFT: 'border-border text-muted-foreground',
   PUBLISHED: 'border-success/30 bg-success/10 text-success',
   ARCHIVED: 'border-border bg-muted-foreground/15 text-foreground',
+  // TAKEN_DOWN (Week11.md 5.7): sàn gỡ vì vi phạm — nghiêm trọng hơn "ngừng bán" nên dùng tông đỏ giống badge đỏ của khu quản trị
+  // (nền `background` + viền `destructive/30`, chữ `destructive` ≥ 4,5:1 ở cả sáng lẫn tối; nền `destructive/10` chỉ đạt ~3,97:1).
+  TAKEN_DOWN: 'border-destructive/30 bg-background text-destructive',
 } as const satisfies Record<ProductListItem['status'], string>;
 
 // Badge mặc định (badge.tsx) cỡ text-xs/h-5/rounded-4xl (pill) — nhỏ và bo
@@ -212,6 +217,14 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                     {product.name}
                   </span>
                   <span className="text-xs text-muted-foreground">{priceLabel}</span>
+                  {product.status === 'TAKEN_DOWN' && product.takenDownReason ? (
+                    <span
+                      className="line-clamp-2 text-xs text-foreground/75 [overflow-wrap:anywhere]"
+                      title={product.takenDownReason}
+                    >
+                      {t('takenDownReason', { reason: product.takenDownReason })}
+                    </span>
+                  ) : null}
                 </div>
 
                 <div className="flex shrink-0 items-center gap-3">
@@ -227,9 +240,11 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                     nativeButton={false}
                     render={<Link href={`/seller/products/${product.id}/edit`} />}
                   >
-                    {t('sellerEditAction')}
+                    {product.status === 'TAKEN_DOWN'
+                      ? t('sellerViewReasonAction')
+                      : t('sellerEditAction')}
                   </Button>
-                  {product.status === 'ARCHIVED' ? (
+                  {product.status === 'TAKEN_DOWN' ? null : product.status === 'ARCHIVED' ? (
                     <Button
                       type="button"
                       variant="outline"

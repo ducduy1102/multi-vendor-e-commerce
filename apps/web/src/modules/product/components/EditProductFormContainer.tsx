@@ -10,6 +10,7 @@ import { useProduct } from '../hooks/useProduct';
 import { useUpdateProduct } from '../hooks/useUpdateProduct';
 import { ProductForm, productToFormValues, type ProductFormSubmitValues } from './ProductForm';
 import { ProductFormSkeleton } from './ProductFormSkeleton';
+import { ProductTakenDownNotice } from './ProductTakenDownNotice';
 
 interface EditProductFormContainerProps {
   productId: string;
@@ -48,6 +49,16 @@ export function EditProductFormContainer({ productId }: EditProductFormContainer
   }
   if (categoriesQuery.isError || productQuery.isError || !productQuery.data) {
     return <p className="text-sm text-destructive">{t('loadProductError')}</p>;
+  }
+
+  // Sàn đã gỡ sản phẩm (Week11.md 5.7): chủ shop không sửa/xuất bản/lưu trữ được nên không dựng form, chỉ hiện lý do.
+  if (productQuery.data.status === 'TAKEN_DOWN') {
+    return (
+      <ProductTakenDownNotice
+        productName={productQuery.data.name}
+        reason={productQuery.data.takenDownReason}
+      />
+    );
   }
 
   return (
