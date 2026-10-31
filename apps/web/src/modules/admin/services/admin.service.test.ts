@@ -1,25 +1,30 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { makeAppeal } from '../admin-appeal.fixtures';
+import { makeResolvedReport, makeReportPage, makeReviewReport } from '../admin-report.fixtures';
 import {
   cancelShopOpenOrders,
   createAdminNote,
   decideAppeal,
   decideRefundRequest,
   getOverview,
+  getReport,
   getUser,
   listAdminNotes,
   listAppeals,
   listRefundablePayments,
   listRefundRequests,
   listRefunds,
+  listReports,
   listShops,
   listUsers,
   markRefundCompleted,
   refundPayment,
   reactivateUser,
+  resolveReport,
   retryRefund,
   suspendUser,
+  unhideReview,
   updateShopStatus,
 } from './admin.service';
 
@@ -589,9 +594,10 @@ describe('admin.service — getOverview', () => {
     escalatedRefundRequests: 1,
     refundsNeedingAction: 0,
     refundablePayments: 12,
+    openReports: 4,
   };
 
-  it('GET /admin/overview (không query, không body), trả đúng 4 số', async () => {
+  it('GET /admin/overview (không query, không body), trả đúng 5 số', async () => {
     mockFetchOnce({ success: true, data: OVERVIEW });
 
     const result = await getOverview();
@@ -1037,6 +1043,106 @@ describe('admin.service — decideAppeal', () => {
     await expect(decideAppeal('appeal-1', { decision: 'ACCEPT' })).rejects.toMatchObject({
       status,
       code,
+    });
+  });
+});
+
+// --- Báo cáo vi phạm (Week11.md 5.6) ---------------------------------------------------------------------
+
+describe('admin.service — báo cáo vi phạm', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const REPORT = makeReviewReport({ sameTargetOpenCount: 2 });
+
+  it('listReports: GET /admin/reports; tham số trống KHÔNG gửi lên URL (BE tự áp mặc định)', async () => {
+    mockFetchOnce({ success: true, data: makeReportPage([REPORT]) });
+
+    const result = await listReports();
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].sameTargetOpenCount).toBe(2);
+    const [url, init] = lastCall();
+    expect(url).toMatch(/\/admin\/reports$/);
+    expect(init.method).toBe('GET');
+    expect(init.credentials).toBe('include');
+  });
+
+  it('listReports: gửi status, targetType, page, limit lên query string', async () => {
+    mockFetchOnce({ success: true, data: makeReportPage([]) });
+
+    await listReports({ status: 'CLOSED', targetType: 'SHOP', page: 2, limit: 10 });
+
+    expect(lastCall()[0]).toMatch(
+      /\/admin\/reports\?status=CLOSED&targetType=SHOP&page=2&limit=10$/,
+    );
+  });
+
+  it('listReports: field thừa của BE bị bỏ khi parse; phản hồi sai hình dạng ⇒ ném lỗi', async () => {
+    mockFetchOnce({
+      success: true,
+      data: makeReportPage([{ ...REPORT, internalNote: 'RIENG-TU' } as never]),
+    });
+    const result = await listReports();
+    expect(JSON.stringify(result)).not.toContain('RIENG-TU');
+
+    mockFetchOnce({ success: true, data: { items: [{ id: 1 }], total: 1, page: 1, limit: 20 } });
+    await expect(listReports()).rejects.toThrow();
+  });
+
+  it('getReport: GET /admin/reports/:id, bóc `{ report }`, id được mã hoá trong đường dẫn', async () => {
+    mockFetchOnce({ success: true, data: { report: REPORT } });
+
+    const report = await getReport('a/b?x=1');
+
+    expect(report.id).toBe(REPORT.id);
+    expect(lastCall()[0]).toMatch(/\/admin\/reports\/a%2Fb%3Fx%3D1$/);
+  });
+
+  it('resolveReport: POST /admin/reports/:id/resolve với body { action, note }, trả báo cáo SAU khi xử lý', async () => {
+    const resolved = makeResolvedReport();
+    mockFetchOnce({ success: true, data: { report: resolved } });
+
+    const report = await resolveReport(REPORT.id, {
+      action: 'HIDE_REVIEW',
+      note: 'Ngôn từ xúc phạm',
+    });
+
+    expect(report.status).toBe('RESOLVED');
+    const [url, init] = lastCall();
+    expect(url).toMatch(new RegExp(`/admin/reports/${REPORT.id}/resolve$`));
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({
+      action: 'HIDE_REVIEW',
+      note: 'Ngôn từ xúc phạm',
+    });
+  });
+
+  it('unhideReview: POST /admin/reviews/:id/unhide với body { reason }, trả { review }', async () => {
+    mockFetchOnce({
+      success: true,
+      data: { review: { id: 'rv-1', isHidden: false, hiddenAt: null } },
+    });
+
+    const result = await unhideReview('rv-1', { reason: 'Đã xét lại, không vi phạm' });
+
+    expect(result.review).toEqual({ id: 'rv-1', isHidden: false, hiddenAt: null });
+    const [url, init] = lastCall();
+    expect(url).toMatch(/\/admin\/reviews\/rv-1\/unhide$/);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ reason: 'Đã xét lại, không vi phạm' });
+  });
+
+  it('lỗi nghiệp vụ giữ nguyên mã để hook dịch (409 REPORT_ALREADY_CLOSED)', async () => {
+    mockFetchOnce(
+      { success: false, message: 'Report already closed', code: 'REPORT_ALREADY_CLOSED' },
+      409,
+    );
+
+    await expect(resolveReport(REPORT.id, { action: 'DISMISS' })).rejects.toMatchObject({
+      status: 409,
+      code: 'REPORT_ALREADY_CLOSED',
     });
   });
 });

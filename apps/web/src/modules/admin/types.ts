@@ -2,6 +2,16 @@
 // không định nghĩa lại (rules/general.md mục 4).
 export type {
   AbnormalPaymentKind,
+  AdminReport,
+  AdminReportDetailResponse,
+  AdminReportListFilter,
+  AdminReportListQuery,
+  AdminReportListResponse,
+  ReportResolutionAction,
+  ReportTargetType,
+  ResolveReportInput,
+  ReviewModerationResponse,
+  UnhideReviewInput,
   AccountStatus,
   AdminAppeal,
   AdminAppealListFilter,

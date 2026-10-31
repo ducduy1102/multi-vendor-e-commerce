@@ -74,3 +74,12 @@ export function createCancelShopOrdersFormSchema(shopName: string) {
 export type CancelShopOrdersFormInput = z.infer<
   ReturnType<typeof createCancelShopOrdersFormSchema>
 >;
+
+// Báo cáo vi phạm (Week11.md 5.6): form xử lý dùng THẲNG schema BE — ghi chú bắt buộc trừ "Bỏ qua" (superRefine đặt sau object nên input/output
+// vẫn là { action, note? }), `""` / chỉ khoảng trắng từ ô nhập bỏ trống được coi là chưa nhập; form mở lại đánh giá dùng schema ẩn/hiện (lý do bắt
+// buộc). Message lỗi là key i18n `admin.validationReportNote*` / `admin.validationReason*`.
+export {
+  REPORT_RESOLUTION_NOTE_MAX_LENGTH,
+  resolveReportSchema,
+  unhideReviewSchema,
+} from '@ecommerce/types';

@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   adminAppealListQueryKey,
   adminAppealListsQueryKey,
+  adminReportDetailQueryKey,
+  adminReportDetailsQueryKey,
+  adminReportListQueryKey,
+  adminReportListsQueryKey,
   adminRefundListQueryKey,
   adminRefundListsQueryKey,
   adminRefundRequestListQueryKey,
@@ -113,5 +117,36 @@ describe('admin query keys — kháng nghị (Week11.md 4.6)', () => {
   it('nhánh "appeals" riêng — làm mới kháng nghị không kéo theo cache danh sách shop hay người dùng', () => {
     expect(adminAppealListsQueryKey().slice(0, 2)).toEqual(['admin', 'appeals']);
     expect(adminAppealListsQueryKey()).not.toEqual(adminShopListsQueryKey());
+  });
+});
+
+describe('admin query keys — báo cáo vi phạm (Week11.md 5.6)', () => {
+  it('key danh sách bắt đầu bằng tiền tố dùng để làm mới mọi tab / loại / trang', () => {
+    expect(adminReportListQueryKey({ status: 'OPEN', page: 2 }).slice(0, 3)).toEqual(
+      adminReportListsQueryKey(),
+    );
+  });
+
+  it('mỗi tab, loại và trang là một key riêng (không dùng chung cache)', () => {
+    const keys = [
+      adminReportListQueryKey({ status: 'OPEN', page: 1 }),
+      adminReportListQueryKey({ status: 'CLOSED', page: 1 }),
+      adminReportListQueryKey({ status: 'OPEN', targetType: 'SHOP', page: 1 }),
+      adminReportListQueryKey({ status: 'OPEN', page: 2 }),
+    ].map((key) => JSON.stringify(key));
+
+    expect(new Set(keys).size).toBe(4);
+  });
+
+  it('chi tiết theo id báo cáo, có tiền tố riêng và KHÔNG nằm trong tiền tố danh sách (làm mới danh sách không xoá chi tiết đang xem)', () => {
+    expect(adminReportDetailQueryKey('r1').slice(0, 3)).toEqual(adminReportDetailsQueryKey());
+    expect(adminReportDetailQueryKey('r1')).not.toEqual(adminReportDetailQueryKey('r2'));
+    expect(adminReportDetailQueryKey('r1').slice(0, 3)).not.toEqual(adminReportListsQueryKey());
+  });
+
+  it('nằm trong nhánh "admin" nhưng khác nhánh kháng nghị và shop', () => {
+    expect(adminReportListsQueryKey()[0]).toBe('admin');
+    expect(adminReportListsQueryKey()[1]).toBe('reports');
+    expect(adminReportListsQueryKey()).not.toEqual(adminAppealListsQueryKey());
   });
 });
