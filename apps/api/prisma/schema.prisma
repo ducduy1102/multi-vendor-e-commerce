@@ -71,6 +71,9 @@ enum ProductStatus {
   DRAFT
   PUBLISHED
   ARCHIVED
+  // Sàn gỡ vì vi phạm (Week11.md 5.7, D5): chỉ Admin đặt và gỡ được; chủ shop không đổi trạng thái hay sửa nội dung. Ba cột `taken_down_*`
+  // có giá trị khi và chỉ khi trạng thái này.
+  TAKEN_DOWN
 }
 
 enum OrderStatus {
@@ -343,6 +346,15 @@ model Product {
   reviewCount Int           @default(0) @map("review_count")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  // Gỡ sản phẩm vi phạm (Week11.md 5.7, D5): ba cột cùng có giá trị khi và chỉ khi `status = TAKEN_DOWN` (CHECK
+  // `products_takedown_columns_consistent` ở DB giữ quan hệ này; lý do 1..500 ký tự). Lý do là văn bản của Admin và HIỆN cho chủ shop
+  // (trang sửa, danh sách sản phẩm của shop) — như lý do khoá shop; không bao giờ ra trang công khai (sản phẩm bị gỡ trả 404 cho người
+  // ngoài). Khôi phục đặt cả ba về NULL (lịch sử gỡ/khôi phục nằm ở nhật ký quản trị). `takenDownById` KHÔNG khoá ngoại (cùng nhật ký
+  // quản trị: dấu vết sống lâu hơn tài khoản). `takenDownAt` là mốc "lần vi phạm" mà kháng nghị sản phẩm dùng (Week11.md 5.8).
+  takenDownAt     DateTime? @map("taken_down_at")
+  takenDownById   String?   @map("taken_down_by_id")
+  takenDownReason String?   @map("taken_down_reason")
 
   // Week5.md Bước 1.6/2.4b — search full-text. Prisma không có type gốc cho
   // `tsvector`, khai qua `Unsupported` (field này bị loại khỏi Prisma Client
@@ -875,13 +887,25 @@ model Review {
   sellerRepliedAt DateTime? @map("seller_replied_at")
   createdAt       DateTime  @default(now()) @map("created_at")
 
+  // Ẩn MỀM bởi Admin (Week11.md 5.5, D6): đánh giá ẩn biến khỏi danh sách công khai, trang seller và khỏi avgRating/reviewCount của
+  // sản phẩm (ProductRatingService lọc `hidden_at IS NULL`); tác giả vẫn thấy bản của mình kèm nhãn "đã bị ẩn" và không sửa được; câu
+  // trả lời của shop ẩn theo. Mở lại = đặt cả ba cột về NULL (lịch sử ẩn/hiện nằm ở nhật ký quản trị). `hiddenById` KHÔNG khoá ngoại
+  // (cùng nhật ký quản trị: dấu vết sống lâu hơn tài khoản). Lý do là văn bản của Admin và HIỆN cho tác giả (chi tiết đơn) lẫn chủ shop
+  // (danh sách đánh giá của shop) — minh bạch với người bị ảnh hưởng — nên không nêu người báo cáo; không bao giờ ra trang công khai. Quan
+  // hệ giữa ba cột do CHECK `reviews_hidden_columns_consistent` giữ (cả ba cùng NULL hoặc cùng có giá trị, lý do 1..500 ký tự).
+  hiddenAt     DateTime? @map("hidden_at")
+  hiddenById   String?   @map("hidden_by_id")
+  hiddenReason String?   @map("hidden_reason")
+
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   order   Order   @relation(fields: [orderId], references: [id])
 
   @@unique([userId, productId, orderId])
-  // Danh sách đánh giá của 1 sản phẩm, mới nhất trước; lọc theo số sao là bộ lọc trên tập nhỏ đó.
-  @@index([productId, createdAt])
+  // Danh sách đánh giá CÔNG KHAI của 1 sản phẩm, mới nhất trước: WHERE product_id = ? AND hidden_at IS NULL ORDER BY created_at DESC;
+  // lọc theo số sao là bộ lọc trên tập nhỏ đó. Thay hẳn chỉ mục [productId, createdAt] cũ — cột đứng đầu đã phục vụ mọi truy vấn cũ và
+  // `hidden_at IS NULL` nằm giữa nên chỉ mục vẫn trả đúng thứ tự created_at mà không cần sắp xếp lại.
+  @@index([productId, hiddenAt, createdAt])
   @@index([orderId])
   @@map("reviews")
 }
@@ -1131,4 +1155,67 @@ model Appeal {
   // Hàng đợi của Admin: WHERE status = 'PENDING' ORDER BY created_at.
   @@index([status, createdAt])
   @@map("appeals")
+}
+
+// Báo cáo vi phạm (Week11.md 5.2, D5): người dùng báo một đánh giá, hội thoại, shop hoặc sản phẩm; Admin xử lý ở hàng đợi. Khớp
+// `REPORT_TARGET_TYPES` / `REPORT_STATUSES` ở packages/types/src/report.ts (test parity ở BE).
+enum ReportTargetType {
+  REVIEW
+  CONVERSATION
+  SHOP
+  PRODUCT
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+model Report {
+  id String @id @default(uuid())
+
+  // Người báo (lấy từ phiên, không bao giờ từ client). KHÔNG khoá ngoại và KHÔNG có quan hệ ngược ở User có chủ đích (cùng Appeal): không
+  // có đường `include` nào đưa danh tính người báo vào response của route khác — đặc biệt route phía người bị báo (chủ shop, tác giả
+  // đánh giá). Đường đọc duy nhất là module `report` (biên nhận của chính người báo) và AdminReportsService.
+  reporterId String @map("reporter_id")
+
+  // Đối tượng bị báo (đa hình theo targetType nên không có khoá ngoại; luôn là UUID, DB chỉ chặn độ dài). Báo cáo về một đối tượng đã bị
+  // xoá vẫn là dấu vết của việc đã xảy ra, và ảnh chụp (snapshot) giữ đủ thứ Admin cần để quyết định.
+  targetType ReportTargetType @map("target_type")
+  targetId   String           @map("target_id")
+
+  // Mã lý do và ghi chú của người báo. `reasonCode` là chuỗi dạng enum (CHECK ở DB chỉ chặn dạng/độ dài; bảng lý do hợp lệ theo loại do
+  // Zod ép) để thêm mã không cần migration. `note` null hoặc 1..500 ký tự.
+  reasonCode String  @map("reason_code")
+  note       String?
+
+  status ReportStatus @default(OPEN)
+
+  // Vài trường cần để Admin quyết định, CHỤP LẠI lúc báo (nội dung đánh giá, tên shop...) vì đối tượng có thể bị sửa sau đó. Hình dạng theo
+  // loại do `parseReportSnapshot` ở packages/types ép (strict, ≤ 4096 byte); CHECK ở DB: là object và ≤ 8192 byte văn bản jsonb.
+  // KHÔNG BAO GIỜ chứa nội dung tin nhắn của hội thoại.
+  snapshot Json
+
+  // Kết quả xử lý của Admin; cả bốn đều null khi còn OPEN (CHECK ở DB giữ quan hệ với `status`). `resolutionAction` là chuỗi dạng enum
+  // (HIDE_REVIEW, DISMISS...); `resolutionNote` bắt buộc khi RESOLVED, tuỳ chọn khi DISMISSED.
+  resolvedById     String?   @map("resolved_by_id")
+  resolutionAction String?   @map("resolution_action")
+  resolutionNote   String?   @map("resolution_note")
+  resolvedAt       DateTime? @map("resolved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  // Chỉ mục duy nhất TỪNG PHẦN `(reporter_id, target_type, target_id) WHERE status = 'OPEN'` (mỗi người chỉ có một báo cáo ĐANG MỞ về
+  // một đối tượng) viết tay trong migration vì Prisma không khai được chỉ mục có WHERE — không có dòng nào cho nó ở đây.
+
+  // Hàng đợi chờ xử lý của Admin: WHERE status = 'OPEN' [AND target_type = ?] ORDER BY created_at, id (cũ nhất trước). `id` ở cuối để thứ tự
+  // phân trang xác định khi nhiều hàng cùng mili-giây và để chỉ mục tự phục vụ ORDER BY, không cần sắp xếp lại.
+  @@index([status, createdAt, id])
+  // Tab "đã xử lý": WHERE resolved_at IS NOT NULL ORDER BY resolved_at DESC, id DESC (xử lý gần nhất trước) — quét ngược chỉ mục này.
+  @@index([resolvedAt, id])
+  // Trần báo cáo mỗi 24 giờ của một người: WHERE reporter_id = ? AND created_at > ? (đếm bằng DB, không giữ trạng thái trong bộ nhớ).
+  @@index([reporterId, createdAt])
+  // Báo cáo cùng đối tượng: đóng hàng loạt các báo cáo OPEN khi xử lý một báo cáo, và đếm/liệt kê "báo cáo khác về đối tượng này".
+  @@index([targetType, targetId, status])
+  @@map("reports")
 }

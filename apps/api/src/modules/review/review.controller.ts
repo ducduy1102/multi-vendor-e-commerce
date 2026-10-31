@@ -57,6 +57,8 @@ const SELLER_REVIEW_EXAMPLE = {
   ...REVIEW_EXAMPLE,
   sellerReply: 'Cảm ơn bạn đã ủng hộ shop!',
   sellerRepliedAt: '2026-10-08T12:00:00.000Z',
+  isHidden: false,
+  hiddenReason: null,
   product: {
     id: 'b3f1c2e0-1234-4a5b-8c9d-abcdef123456',
     name: 'Áo thun cotton',
@@ -274,7 +276,7 @@ export class ReviewController {
   @ApiParam(SHOP_ID_PARAM)
   @ApiOperation({
     summary:
-      'Đánh giá của mọi sản phẩm của shop mình (kể cả đã lưu trữ), mới nhất trước — lọc theo đã/chưa trả lời, số sao, phân trang',
+      'Đánh giá của mọi sản phẩm của shop mình (kể cả đã lưu trữ), mới nhất trước — lọc theo đã/chưa trả lời, số sao, phân trang. Đánh giá bị Admin ẩn vẫn hiện như dòng trạng thái (isHidden + hiddenReason, không có nội dung) trừ tab chưa trả lời',
   })
   @ApiQuery({
     name: 'replied',
@@ -368,6 +370,16 @@ export class ReviewController {
     description:
       'Shop không tồn tại; hoặc đánh giá không tồn tại / thuộc sản phẩm của shop khác — không phân biệt',
     schema: { example: REVIEW_NOT_FOUND },
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'REVIEW_HIDDEN — đánh giá đã bị Admin ẩn (shop vẫn thấy dòng trạng thái của nó nhưng không trả lời được)',
+    schema: {
+      example: errorExample('This review has been hidden', {
+        code: 'REVIEW_HIDDEN',
+      }),
+    },
   })
   reply(
     @ShopOwnerContext() { shopId }: { shopId: string },

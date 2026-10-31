@@ -81,7 +81,15 @@ export class NotificationFactsLoader {
 
       case 'REVIEW_CREATED':
       case 'REVIEW_REPLIED':
+      case 'REVIEW_HIDDEN':
         return this.review(event.reviewId);
+
+      case 'PRODUCT_TAKEN_DOWN':
+      case 'PRODUCT_APPEAL_DECIDED':
+        return this.product(event.productId, false);
+
+      case 'PRODUCT_APPEAL_SUBMITTED':
+        return this.product(event.productId, true);
 
       case 'SHOP_STATUS_CHANGED':
         return this.shop(event.shopId, false);
@@ -92,6 +100,13 @@ export class NotificationFactsLoader {
 
       case 'APPEAL_DECIDED':
         return this.shop(event.shopId, false);
+
+      case 'REPORTS_RESOLVED':
+        return this.reports(event.reportIds);
+
+      case 'REPORT_SUBMITTED':
+        // Người nhận là mọi Admin ACTIVE; báo cáo vừa được tạo nên không cần tải lại hàng nào (và không đọc nội dung báo cáo).
+        return { kind: 'ADMINS', adminIds: await this.activeAdminIds() };
 
       default: {
         const unhandled: never = event;
@@ -152,6 +167,7 @@ export class NotificationFactsLoader {
       where: { id: reviewId },
       select: {
         userId: true,
+        orderId: true,
         rating: true,
         product: {
           select: {
@@ -166,6 +182,7 @@ export class NotificationFactsLoader {
     return {
       kind: 'REVIEW',
       review: {
+        orderId: row.orderId,
         productId: row.product.id,
         productName: row.product.name,
         rating: row.rating,
@@ -173,6 +190,28 @@ export class NotificationFactsLoader {
         shopOwnerId: row.product.shop.ownerId,
         shopName: row.product.shop.name,
       },
+    };
+  }
+
+  // Chủ shop của sản phẩm (người nhận) + tên sản phẩm. Chỉ hai cột; không đọc lý do hay mô tả. `withAdmins`: sự kiện báo cho mọi Admin
+  // (kháng nghị mới) cần danh sách Admin đang hoạt động; các sự kiện báo chủ shop thì không tải.
+  private async product(
+    productId: string,
+    withAdmins: boolean,
+  ): Promise<NotificationFacts | null> {
+    const row = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, name: true, shop: { select: { ownerId: true } } },
+    });
+    if (!row) return null;
+    return {
+      kind: 'PRODUCT',
+      product: {
+        productId: row.id,
+        productName: row.name,
+        shopOwnerId: row.shop.ownerId,
+      },
+      adminIds: withAdmins ? await this.activeAdminIds() : [],
     };
   }
 
@@ -189,6 +228,35 @@ export class NotificationFactsLoader {
       kind: 'SHOP',
       shop: { shopId: row.id, shopName: row.name, ownerId: row.ownerId },
       adminIds: withAdmins ? await this.activeAdminIds() : [],
+    };
+  }
+
+  // Báo cáo ĐÃ ĐÓNG của danh sách id: người nhận là người báo (cột của chính báo cáo), kết quả là trạng thái đã ghi. Báo cáo còn OPEN
+  // (nơi gọi truyền nhầm) hoặc không tồn tại bị bỏ qua — không bao giờ báo "đã xử lý" cho việc chưa xử lý.
+  private async reports(reportIds: string[]): Promise<NotificationFacts> {
+    if (reportIds.length === 0) return { kind: 'REPORTS', reports: [] };
+    const rows = await this.prisma.report.findMany({
+      where: {
+        id: { in: reportIds },
+        status: { in: ['RESOLVED', 'DISMISSED'] },
+      },
+      select: { id: true, reporterId: true, targetType: true, status: true },
+      orderBy: { id: 'asc' },
+    });
+    return {
+      kind: 'REPORTS',
+      reports: rows.flatMap((row) =>
+        row.status === 'OPEN'
+          ? []
+          : [
+              {
+                reportId: row.id,
+                reporterId: row.reporterId,
+                targetType: row.targetType,
+                outcome: row.status,
+              },
+            ],
+      ),
     };
   }
 

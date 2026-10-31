@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { placeOrderSchema } from '@ecommerce/types';
 import {
   addCartItem,
@@ -912,6 +913,152 @@ describe('CheckoutService.placeOrder (DB thật)', () => {
   // Người bán không được mua sản phẩm của chính shop mình (Week9.md 2.10). Giỏ hàng đã chặn việc THÊM; ở đây là
   // dòng đã nằm sẵn trong giỏ từ trước khi có luật (dựng thẳng bằng prisma): checkout phải loại nó như dòng không
   // khả dụng — không giữ chỗ kho, không tạo đơn, dòng ở lại giỏ.
+  describe('sản phẩm bị sàn gỡ vì vi phạm (Week11.md 5.7)', () => {
+    // Đặt trạng thái TAKEN_DOWN thẳng ở DB đúng như ProductModerationService (ba cột gỡ cùng có giá trị — CHECK ở DB bắt buộc).
+    const takeDown = (productId: string) =>
+      prisma.product.update({
+        where: { id: productId },
+        data: {
+          status: 'TAKEN_DOWN',
+          takenDownAt: new Date(),
+          takenDownById: randomUUID(),
+          takenDownReason: 'Bán hàng cấm theo quy định của sàn.',
+        },
+      });
+
+    it('giỏ chỉ có sản phẩm bị gỡ ⇒ 400 NO_PURCHASABLE_ITEMS, không tạo nhóm / đơn / giữ chỗ, giỏ nguyên vẹn', async () => {
+      const { user, address, shop, variant, expectedTotal } =
+        await setupSingleShopCart(1, 10);
+      await takeDown(shop.productId);
+
+      await expect(
+        place(user.id, {
+          addressId: address.id,
+          paymentMethod: 'COD',
+          expectedTotal,
+        }),
+      ).rejects.toMatchObject({ code: 'NO_PURCHASABLE_ITEMS' });
+
+      expect(
+        await prisma.checkoutGroup.count({ where: { userId: user.id } }),
+      ).toBe(0);
+      expect(await prisma.order.count({ where: { userId: user.id } })).toBe(0);
+      expect(await stockOf(variant.id)).toEqual({
+        stock: 10,
+        reservedStock: 0,
+      });
+      expect(await cartItemCountOf(user.id)).toBe(1);
+    });
+
+    it('giỏ lẫn hàng bị gỡ và hàng bình thường: chỉ đơn của shop còn bán được tạo; dòng bị gỡ ở lại giỏ và KHÔNG bị giữ chỗ kho', async () => {
+      const user = await createUser(prisma, TAG);
+      const address = await createAddress(prisma, user.id);
+      const removed = await createShopWithProduct(prisma, TAG);
+      const removedVariant = await createVariant(prisma, removed, {
+        stock: 10,
+        price: 100_000,
+      });
+      const normal = await createShopWithProduct(prisma, TAG);
+      const normalVariant = await createVariant(prisma, normal, {
+        stock: 10,
+        price: 100_000,
+      });
+      await addCartItem(prisma, user.id, removedVariant.id, 2);
+      await addCartItem(prisma, user.id, normalVariant.id, 1);
+      await takeDown(removed.productId);
+
+      const result = await place(user.id, {
+        addressId: address.id,
+        paymentMethod: 'VNPAY',
+        expectedTotal: 100_000 + shippingFeeFor(500, 1),
+      });
+
+      expect(result.orders.map((order) => order.shopId)).toEqual([
+        normal.shopId,
+      ]);
+      expect(await stockOf(removedVariant.id)).toEqual({
+        stock: 10,
+        reservedStock: 0,
+      });
+      const remaining = await prisma.cartItem.findMany({
+        where: { cart: { userId: user.id } },
+        select: { productVariantId: true },
+      });
+      expect(remaining.map((row) => row.productVariantId)).toEqual([
+        removedVariant.id,
+      ]);
+    });
+
+    it('preview: dòng bị gỡ vào excludedItems với lý do chung UNAVAILABLE, không nằm trong đơn', async () => {
+      const user = await createUser(prisma, TAG);
+      const removed = await createShopWithProduct(prisma, TAG);
+      const removedVariant = await createVariant(prisma, removed, {
+        stock: 10,
+        price: 100_000,
+      });
+      const normal = await createShopWithProduct(prisma, TAG);
+      const normalVariant = await createVariant(prisma, normal, {
+        stock: 10,
+        price: 100_000,
+      });
+      await addCartItem(prisma, user.id, removedVariant.id, 1);
+      await addCartItem(prisma, user.id, normalVariant.id, 1);
+      await takeDown(removed.productId);
+      const cartItem = await prisma.cartItem.findFirstOrThrow({
+        where: {
+          cart: { userId: user.id },
+          productVariantId: removedVariant.id,
+        },
+        select: { id: true },
+      });
+
+      const preview = await checkoutService.preview(user.id, {});
+
+      expect(preview.excludedItems).toEqual([
+        {
+          cartItemId: cartItem.id,
+          name: expect.any(String) as string,
+          reason: 'UNAVAILABLE',
+        },
+      ]);
+      expect(preview.orders.map((order) => order.shopId)).toEqual([
+        normal.shopId,
+      ]);
+    });
+
+    it('đơn ĐÃ đặt trước khi gỡ không bị ảnh hưởng: vẫn còn nguyên dòng hàng (ảnh chụp) và trạng thái', async () => {
+      const { user, address, shop, expectedTotal } = await setupSingleShopCart(
+        1,
+        10,
+      );
+      const placed = await place(user.id, {
+        addressId: address.id,
+        paymentMethod: 'COD',
+        expectedTotal,
+      });
+      const orderId = placed.orders[0].id;
+      const before = await prisma.order.findUniqueOrThrow({
+        where: { id: orderId },
+        select: {
+          status: true,
+          items: { select: { id: true, productName: true } },
+        },
+      });
+
+      await takeDown(shop.productId);
+
+      const after = await prisma.order.findUniqueOrThrow({
+        where: { id: orderId },
+        select: {
+          status: true,
+          items: { select: { id: true, productName: true } },
+        },
+      });
+      expect(after).toEqual(before);
+      expect(after.items).toHaveLength(1);
+    });
+  });
+
   describe('người bán không được tự mua (Week9.md 2.10)', () => {
     // Người mua đồng thời là chủ của một shop (shopOwn); shopOther là shop của người khác.
     async function setupSellerCart() {

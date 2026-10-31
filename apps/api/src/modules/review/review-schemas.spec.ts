@@ -6,8 +6,14 @@ import {
   productCardSchema,
   productDetailSchema,
   productReviewsResponseSchema,
+  ADMIN_USER_REASON_MAX_LENGTH,
+  hideReviewSchema,
   REVIEW_COMMENT_MAX_LENGTH,
+  REVIEW_HIDDEN_REASON_MAX_LENGTH,
   REVIEW_REPLY_MAX_LENGTH,
+  reviewModerationResponseSchema,
+  SERVER_ERROR_CODES,
+  unhideReviewSchema,
   reviewDistributionSchema,
   reviewFormSchema,
   reviewRatingSchema,
@@ -19,6 +25,9 @@ import {
   sellerReviewSchema,
   updateReviewSchema,
 } from '@ecommerce/types';
+
+import { readdirSync, readFileSync } from 'fs';
+import { join } from 'path';
 
 // Schema Zod dùng chung cho đánh giá (packages/types/src/review.ts) và phần điểm đánh giá của card/chi
 // tiết sản phẩm (Week9.md 2.2). Cùng precedent order-schemas.spec.ts: packages/types không có test
@@ -346,8 +355,36 @@ describe('sellerReviewSchema / sellerReviewListResponseSchema', () => {
     reviewerName: 'N***',
     sellerReply: null,
     sellerRepliedAt: null,
+    isHidden: false,
+    hiddenReason: null,
     product: { id: 'p1', name: 'Áo thun', slug: 'ao-thun' },
   };
+
+  it('dòng trạng thái của đánh giá bị ẩn: giữ cờ và lý do Admin, KHÔNG giữ người ẩn / mốc ẩn lọt từ BE', () => {
+    const parsed = sellerReviewSchema.parse({
+      ...review,
+      isHidden: true,
+      hiddenReason: 'Ngôn từ xúc phạm',
+      hiddenById: 'admin-1',
+      hiddenAt: '2026-10-31T01:00:00.000Z',
+    });
+
+    expect(parsed).toMatchObject({
+      isHidden: true,
+      hiddenReason: 'Ngôn từ xúc phạm',
+    });
+    expect(JSON.stringify(parsed)).not.toMatch(/admin-1|hiddenById|hiddenAt/);
+  });
+
+  it('thiếu isHidden hoặc hiddenReason ⇒ lỗi (FE không phải đoán trạng thái)', () => {
+    const { isHidden, ...withoutFlag } = review;
+    const { hiddenReason, ...withoutReason } = review;
+    void isHidden;
+    void hiddenReason;
+
+    expect(sellerReviewSchema.safeParse(withoutFlag).success).toBe(false);
+    expect(sellerReviewSchema.safeParse(withoutReason).success).toBe(false);
+  });
 
   it('giữ sản phẩm được đánh giá và KHÔNG giữ field thừa (userId/email) lọt từ BE', () => {
     const parsed = sellerReviewSchema.parse({
@@ -387,9 +424,31 @@ describe('orderItemReviewSchema (đánh giá của chính mình trên dòng hàn
       comment: 'Tốt',
       editedAt: '2026-10-09T10:00:00.000Z',
       canEdit: false,
+      isHidden: false,
+      hiddenReason: null,
     };
 
     expect(orderItemReviewSchema.parse(review)).toEqual(review);
+  });
+
+  it('tác giả được biết lý do Admin đã ẩn (hiddenReason), nhưng người quyết định và mốc ẩn vẫn bị bỏ khi parse', () => {
+    const parsed = orderItemReviewSchema.parse({
+      id: 'rv-1',
+      rating: 1,
+      comment: 'Tệ',
+      editedAt: null,
+      canEdit: false,
+      isHidden: true,
+      hiddenReason: 'Ngôn từ xúc phạm',
+      hiddenById: 'admin-1',
+      hiddenAt: '2026-10-31T01:00:00.000Z',
+    });
+
+    expect(parsed).toMatchObject({
+      isHidden: true,
+      hiddenReason: 'Ngôn từ xúc phạm',
+    });
+    expect(JSON.stringify(parsed)).not.toMatch(/admin-1|hiddenById|hiddenAt/);
   });
 
   it('nhận xét / mốc sửa có thể null', () => {
@@ -400,7 +459,116 @@ describe('orderItemReviewSchema (đánh giá của chính mình trên dòng hàn
         comment: null,
         editedAt: null,
         canEdit: true,
+        isHidden: false,
+        hiddenReason: null,
       }),
     ).toMatchObject({ comment: null, editedAt: null });
   });
+});
+
+describe('ẩn / hiện đánh giá (Week11.md 5.5)', () => {
+  it('lý do bắt buộc, được cắt khoảng trắng và chuẩn hoá xuống dòng', () => {
+    expect(
+      hideReviewSchema.parse({ reason: '  Ngôn từ\r\nxúc phạm  ' }),
+    ).toEqual({
+      reason: 'Ngôn từ\nxúc phạm',
+    });
+    expect(unhideReviewSchema).toBe(hideReviewSchema);
+  });
+
+  it.each([undefined, '', '   ', 5, null])(
+    'thiếu / rỗng / sai kiểu (%j) bị từ chối với key "bắt buộc" của khu Admin',
+    (reason) => {
+      const result = hideReviewSchema.safeParse({ reason });
+
+      expect(result.success).toBe(false);
+      expect(messagesOf(result)).toEqual(['admin.validationReasonRequired']);
+    },
+  );
+
+  it('đúng cận 500 ký tự thì qua, 501 thì bị từ chối', () => {
+    expect(
+      hideReviewSchema.safeParse({
+        reason: 'a'.repeat(REVIEW_HIDDEN_REASON_MAX_LENGTH),
+      }).success,
+    ).toBe(true);
+    expect(
+      messagesOf(
+        hideReviewSchema.safeParse({
+          reason: 'a'.repeat(REVIEW_HIDDEN_REASON_MAX_LENGTH + 1),
+        }),
+      ),
+    ).toEqual(['admin.validationReasonTooLong']);
+  });
+
+  it('ký tự điều khiển bị từ chối', () => {
+    expect(
+      messagesOf(
+        hideReviewSchema.safeParse({ reason: `a${String.fromCharCode(0)}b` }),
+      ),
+    ).toEqual(['admin.validationReasonUnsafe']);
+  });
+
+  it('người ẩn, thời điểm và trạng thái KHÔNG đặt được từ client: field lạ bị bỏ khi parse', () => {
+    const parsed = hideReviewSchema.parse({
+      reason: 'Vi phạm',
+      hiddenById: 'someone-else',
+      hiddenAt: '2020-01-01T00:00:00.000Z',
+      isHidden: false,
+    });
+
+    expect(Object.keys(parsed)).toEqual(['reason']);
+  });
+
+  it('cận lý do bằng cận của lý do khoá tài khoản (schema dùng chung) và bằng CHECK ở DB', () => {
+    expect(REVIEW_HIDDEN_REASON_MAX_LENGTH).toBe(ADMIN_USER_REASON_MAX_LENGTH);
+    const folder = readdirSync(
+      join(__dirname, '..', '..', '..', 'prisma', 'migrations'),
+    ).find((name) => name.endsWith('_add_review_hidden_columns'));
+    expect(folder).toBeDefined();
+    const sql = readFileSync(
+      join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'prisma',
+        'migrations',
+        folder as string,
+        'migration.sql',
+      ),
+      'utf8',
+    );
+    const match =
+      /char_length\("hidden_reason"\)\s+BETWEEN\s+1\s+AND\s+(\d+)/.exec(sql);
+
+    expect(Number(match?.[1])).toBe(REVIEW_HIDDEN_REASON_MAX_LENGTH);
+    expect(sql).toContain('"reviews_hidden_columns_consistent"');
+  });
+
+  it('kết quả ẩn / hiện chỉ có id, cờ và mốc — không nội dung đánh giá, tên tác giả hay lý do', () => {
+    const parsed = reviewModerationResponseSchema.parse({
+      review: {
+        id: 'rv-1',
+        isHidden: true,
+        hiddenAt: '2026-10-31T01:00:00.000Z',
+        comment: 'Tệ',
+        reason: 'LY-DO-RIENG',
+        authorName: 'Nguyễn Văn A',
+      },
+    });
+
+    expect(Object.keys(parsed.review).sort()).toEqual([
+      'hiddenAt',
+      'id',
+      'isHidden',
+    ]);
+  });
+
+  it.each(['REVIEW_HIDDEN', 'REVIEW_ALREADY_HIDDEN', 'REVIEW_NOT_HIDDEN'])(
+    'mã lỗi %s nằm trong danh sách mã lỗi BE trả',
+    (errorCode) => {
+      expect(SERVER_ERROR_CODES).toContain(errorCode);
+    },
+  );
 });

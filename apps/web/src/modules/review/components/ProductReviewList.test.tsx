@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import { createTranslator } from 'next-intl';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/shared/lib/api-client';
@@ -51,10 +52,14 @@ function response(overrides: Partial<ProductReviewsResponse> = {}): ProductRevie
   };
 }
 
-async function renderList(query: { rating?: number; page?: number } = {}) {
+async function renderList(
+  query: { rating?: number; page?: number } = {},
+  renderReviewAction?: (review: Review) => ReactNode,
+) {
   const ui = await ProductReviewList({
     productSlug: 'ao-thun',
     query: { rating: query.rating, page: query.page ?? 1 },
+    renderReviewAction,
   });
   return render(withIntl(ui));
 }
@@ -62,6 +67,30 @@ async function renderList(query: { rating?: number; page?: number } = {}) {
 describe('ProductReviewList', () => {
   beforeEach(() => {
     vi.mocked(reviewService.listProductReviews).mockReset();
+  });
+
+  it('renderReviewAction (Week11.md 5.6): được gọi với TỪNG đánh giá và nút hiện dưới đúng đánh giá đó; không truyền thì không có gì', async () => {
+    vi.mocked(reviewService.listProductReviews).mockResolvedValue(response());
+    const render1 = vi.fn((r: Review) => <button type="button">Báo cáo {r.id}</button>);
+
+    await renderList({}, render1);
+
+    expect(render1).toHaveBeenCalledTimes(2);
+    expect(render1.mock.calls.map(([r]) => r.id)).toEqual(['r1', 'r2']);
+    const items = ['Nhận xét r1', 'Nhận xét r2'].map(
+      (text) => screen.getByText(text).closest('li') as HTMLElement,
+    );
+    expect(within(items[0]).getByRole('button', { name: 'Báo cáo r1' })).toBeInTheDocument();
+    expect(within(items[1]).getByRole('button', { name: 'Báo cáo r2' })).toBeInTheDocument();
+    expect(within(items[0]).queryByRole('button', { name: 'Báo cáo r2' })).toBeNull();
+  });
+
+  it('không truyền renderReviewAction: danh sách đánh giá không có nút nào', async () => {
+    vi.mocked(reviewService.listProductReviews).mockResolvedValue(response());
+
+    await renderList();
+
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
   it('gọi API theo slug với bộ lọc sao + trang đã parse', async () => {

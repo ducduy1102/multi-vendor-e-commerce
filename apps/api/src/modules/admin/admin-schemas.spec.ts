@@ -261,6 +261,7 @@ describe('adminOverviewSchema (GET /admin/overview, Week11.md 2.5)', () => {
     escalatedRefundRequests: 1,
     refundsNeedingAction: 0,
     refundablePayments: 12,
+    openReports: 4,
   };
 
   it('parse được số đếm hợp lệ (kể cả 0)', () => {

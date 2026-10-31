@@ -91,9 +91,10 @@ export class ProductRatingService {
   // description đổi nên cũng không bị đánh thức.
   async recompute(tx: TxClient, productId: string): Promise<RatingSummary> {
     await this.lockProduct(tx, productId);
+    // Đánh giá đã bị Admin ẩn (Week11.md 5.5) KHÔNG tính vào điểm: cùng điều kiện `hidden_at IS NULL` với mọi truy vấn công khai.
     const rows = await tx.review.groupBy({
       by: ['rating'],
-      where: { productId },
+      where: { productId, hiddenAt: null },
       _count: { _all: true },
     });
     const summary = summarizeRatings(toDistribution(rows));

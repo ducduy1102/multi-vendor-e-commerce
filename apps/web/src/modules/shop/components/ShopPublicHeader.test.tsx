@@ -173,6 +173,30 @@ describe('ShopPublicHeader', () => {
       expect(screen.getByRole('button', { name: 'Nút chat do page ghép' })).toBeInTheDocument();
     });
 
+    it('có reportSlot (Week11.md 5.6): hiện cạnh chatSlot, cả hai trong MỘT khối bọc; chỉ có reportSlot cũng hiện', () => {
+      const both = render(
+        withIntl(
+          <ShopPublicHeader
+            shop={shop}
+            chatSlot={<button type="button">Nút chat</button>}
+            reportSlot={<button type="button">Nút báo cáo</button>}
+          />,
+        ),
+      );
+      const chat = screen.getByRole('button', { name: 'Nút chat' });
+      const report = screen.getByRole('button', { name: 'Nút báo cáo' });
+      expect(chat.parentElement).toBe(report.parentElement);
+      both.unmount();
+
+      render(
+        withIntl(
+          <ShopPublicHeader shop={shop} reportSlot={<button type="button">Nút báo cáo</button>} />,
+        ),
+      );
+      expect(screen.getByRole('button', { name: 'Nút báo cáo' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Nút chat' })).toBeNull();
+    });
+
     it('không có chatSlot: không dựng nút nào và không còn dòng "sắp có" (không link tới trang chưa có)', () => {
       const { container } = renderHeader();
 

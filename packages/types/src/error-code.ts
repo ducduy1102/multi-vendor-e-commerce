@@ -77,6 +77,11 @@ export const SERVER_ERROR_CODES = [
   'REVIEW_NOT_ALLOWED',
   'REVIEW_NOT_FOUND',
   'REVIEW_EDIT_NOT_ALLOWED',
+  // Ẩn / hiện đánh giá (Week11.md 5.5). REVIEW_HIDDEN (409): tác giả sửa đánh giá đã bị Admin ẩn. REVIEW_ALREADY_HIDDEN (409) /
+  // REVIEW_NOT_HIDDEN (409): Admin ẩn đánh giá đã ẩn / mở lại đánh giá chưa bị ẩn (gộp "sai trạng thái lúc đọc" và "thua race").
+  'REVIEW_HIDDEN',
+  'REVIEW_ALREADY_HIDDEN',
+  'REVIEW_NOT_HIDDEN',
   // Chuyển trạng thái shop (Admin duyệt/từ chối/khoá/mở khoá, chủ shop gửi duyệt lại): shop không còn ở
   // trạng thái cho phép chuyển (đã có người khác xử lý, hoặc cạnh/actor không có trong
   // SHOP_STATUS_TRANSITIONS) — gộp "sai trạng thái lúc đọc" và "thua race" làm 1 vì với người dùng cả hai
@@ -88,6 +93,13 @@ export const SERVER_ERROR_CODES = [
   // Sản phẩm: một biến thể có nhiều ảnh hơn PRODUCT_VARIANT_MAX_IMAGES (Week10.md 2.4). Giao diện đã chặn từ
   // trước nên chỉ gặp khi gọi API thẳng; biến thể cũ ĐÃ vượt trần mà không thêm ảnh thì không bị lỗi này.
   'PRODUCT_IMAGES_LIMIT_EXCEEDED',
+  // Gỡ / khôi phục sản phẩm vi phạm (Week11.md 5.7, D5). PRODUCT_TAKEN_DOWN (409): chủ shop đổi trạng thái hoặc sửa một sản phẩm đang bị sàn
+  // gỡ — đường duy nhất để mở lại là Admin. PRODUCT_ALREADY_TAKEN_DOWN (409) / PRODUCT_NOT_TAKEN_DOWN (409): Admin gỡ sản phẩm đã gỡ /
+  // khôi phục sản phẩm chưa bị gỡ (gộp "sai trạng thái lúc đọc" và "thua race"). PRODUCT_NOT_FOUND (404): id không tồn tại hoặc sai dạng.
+  'PRODUCT_TAKEN_DOWN',
+  'PRODUCT_ALREADY_TAKEN_DOWN',
+  'PRODUCT_NOT_TAKEN_DOWN',
+  'PRODUCT_NOT_FOUND',
   // Chat người mua ↔ shop (Week10.md 4.2). OWN_SHOP: chủ shop không nhắn tin cho shop của chính mình (409);
   // SHOP_UNAVAILABLE: shop không còn APPROVED nên hội thoại chỉ đọc, không gửi thêm được (409); RATE_LIMITED:
   // gửi quá nhanh trong cửa sổ ngắn (429); AWAITING_REPLY: đã gửi quá nhiều tin liên tiếp khi shop chưa trả lời
@@ -125,6 +137,20 @@ export const SERVER_ERROR_CODES = [
   'APPEAL_NOT_FOUND',
   'APPEAL_ALREADY_DECIDED',
   'APPEAL_TARGET_CHANGED',
+  // Báo cáo vi phạm (Week11.md 5.1, D5). REPORT_TARGET_NOT_FOUND (404): đối tượng không tồn tại, không công khai với người báo, hoặc
+  // (hội thoại) người báo không phải thành viên — MỘT mã cho cả ba ca để không lộ đối tượng có thật hay không. REPORT_OWN_CONTENT (409):
+  // báo đánh giá của chính mình / shop hay sản phẩm của chính shop mình. REPORT_ALREADY_OPEN (409): người này đã có một báo cáo ĐANG MỞ
+  // về đối tượng đó. REPORT_LIMIT_REACHED (429): quá số báo cáo cho phép trong 24 giờ. Phía Admin: REPORT_NOT_FOUND (404): báo cáo không
+  // tồn tại / id sai dạng; REPORT_ALREADY_CLOSED (409): đã có Admin khác xử lý trước (gộp "sai trạng thái lúc đọc" và "thua race" như
+  // SHOP_INVALID_TRANSITION); REPORT_ACTION_NOT_ALLOWED (409): hành động không dùng được cho loại báo cáo này (vd ẩn đánh giá cho báo
+  // cáo shop, chặn người mua khi bên bị báo là chủ shop).
+  'REPORT_ALREADY_OPEN',
+  'REPORT_LIMIT_REACHED',
+  'REPORT_TARGET_NOT_FOUND',
+  'REPORT_OWN_CONTENT',
+  'REPORT_NOT_FOUND',
+  'REPORT_ALREADY_CLOSED',
+  'REPORT_ACTION_NOT_ALLOWED',
 ] as const;
 export type ServerErrorCode = (typeof SERVER_ERROR_CODES)[number];
 

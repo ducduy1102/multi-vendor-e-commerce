@@ -1,18 +1,23 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
   CreateReviewInput,
   ListReviewsQuery,
   ProductReviewsResponse,
   Review,
+  ReviewModerationResponse,
   SellerReview,
   SellerReviewListQuery,
   SellerReviewListResponse,
   UpdateReviewInput,
 } from '@ecommerce/types';
+import { AdminAuditService } from '../../shared/audit/admin-audit.service';
+import type { AuditRequestContext } from '../../shared/audit/audit-request-context';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { NotificationService } from '../../shared/notification/notification.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import type { TxClient } from '../../shared/prisma/tx-client';
+import { redactWriteError } from '../../shared/utils/redact-write-error';
 import {
   getReviewBlockReason,
   readReviewWindowDays,
@@ -39,6 +44,8 @@ const reviewSelect = {
 
 const sellerReviewSelect = {
   ...reviewSelect,
+  hiddenAt: true,
+  hiddenReason: true,
   product: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.ReviewSelect;
 
@@ -60,14 +67,22 @@ const toReview = (row: ReviewRow): Review => ({
   sellerRepliedAt: row.sellerRepliedAt?.toISOString() ?? null,
 });
 
-const toSellerReview = (row: SellerReviewRow): SellerReview => ({
-  ...toReview(row),
-  product: {
-    id: row.product.id,
-    name: row.product.name,
-    slug: row.product.slug,
-  },
-});
+// Đánh giá đã ẩn thành dòng trạng thái: giữ sao / ngày / tên che để shop nhận ra đánh giá nào, kèm lý do của Admin, nhưng KHÔNG trả lại
+// nội dung (đã ẩn vì vi phạm — vd lộ thông tin cá nhân — thì không đưa lại cho ai ngoài tác giả).
+const toSellerReview = (row: SellerReviewRow): SellerReview => {
+  const isHidden = row.hiddenAt !== null;
+  return {
+    ...toReview(row),
+    comment: isHidden ? null : row.comment,
+    isHidden,
+    hiddenReason: isHidden ? row.hiddenReason : null,
+    product: {
+      id: row.product.id,
+      name: row.product.name,
+      slug: row.product.slug,
+    },
+  };
+};
 
 const orderNotFound = () =>
   new AppException(404, 'ORDER_NOT_FOUND', 'Order not found');
@@ -90,6 +105,28 @@ const reviewEditNotAllowed = () =>
     'A review can only be edited once',
   );
 
+// Đánh giá đã bị Admin ẩn (Week11.md 5.5): tác giả không sửa được.
+const reviewHidden = () =>
+  new AppException(409, 'REVIEW_HIDDEN', 'This review has been hidden');
+
+const reviewAlreadyHidden = () =>
+  new AppException(
+    409,
+    'REVIEW_ALREADY_HIDDEN',
+    'This review is already hidden',
+  );
+
+const reviewNotHidden = () =>
+  new AppException(409, 'REVIEW_NOT_HIDDEN', 'This review is not hidden');
+
+// Ẩn / hiện đánh giá do MỘT Admin thực hiện lên MỘT đánh giá. `reason` là văn bản Admin nhập (đã qua schema dùng chung).
+export interface ReviewModerationInput {
+  adminId: string;
+  reviewId: string;
+  reason: string;
+  context?: AuditRequestContext;
+}
+
 const isUniqueViolation = (error: unknown): boolean =>
   error instanceof Prisma.PrismaClientKnownRequestError &&
   error.code === 'P2002';
@@ -104,6 +141,7 @@ export class ReviewService {
     private readonly prisma: PrismaService,
     private readonly productRating: ProductRatingService,
     private readonly notificationService: NotificationService,
+    private readonly auditService: AdminAuditService,
   ) {}
 
   // --- Người mua ------------------------------------------------------------------------------
@@ -191,15 +229,22 @@ export class ReviewService {
   ): Promise<Review> {
     const existing = await this.prisma.review.findUnique({
       where: { id: reviewId },
-      select: { userId: true, productId: true, editedAt: true },
+      select: {
+        userId: true,
+        productId: true,
+        editedAt: true,
+        hiddenAt: true,
+      },
     });
     if (!existing || existing.userId !== userId) throw reviewNotFound();
+    // Đánh giá đã bị Admin ẩn thì không sửa được (D6) — kiểm TRƯỚC "đã sửa một lần" vì đó là lý do đúng hơn để báo cho tác giả.
+    if (existing.hiddenAt) throw reviewHidden();
     if (existing.editedAt) throw reviewEditNotAllowed();
 
     await this.prisma.$transaction((tx) =>
       this.productRating.updateRating(tx, existing.productId, async () => {
         const { count } = await tx.review.updateMany({
-          where: { id: reviewId, userId, editedAt: null },
+          where: { id: reviewId, userId, editedAt: null, hiddenAt: null },
           data: {
             rating: input.rating,
             // Form gửi lại ĐỦ rating + comment: bỏ trống comment = xoá nội dung cũ.
@@ -207,7 +252,15 @@ export class ReviewService {
             editedAt: new Date(),
           },
         });
-        if (count === 0) throw reviewEditNotAllowed();
+        if (count === 0) {
+          // Không khớp hàng nào: hoặc đã sửa một lần, hoặc Admin vừa ẩn nó (Admin ẩn cũng khoá dòng product trước nên đọc lại ở đây
+          // thấy kết quả đã commit của họ).
+          const current = await tx.review.findUnique({
+            where: { id: reviewId },
+            select: { hiddenAt: true },
+          });
+          throw current?.hiddenAt ? reviewHidden() : reviewEditNotAllowed();
+        }
       }),
     );
 
@@ -242,12 +295,14 @@ export class ReviewService {
     const [groups, rows] = await Promise.all([
       this.prisma.review.groupBy({
         by: ['rating'],
-        where: { productId: product.id },
+        // Chỉ đánh giá hiển thị (chưa bị Admin ẩn) — cùng điều kiện với cột denormalized của Product.
+        where: { productId: product.id, hiddenAt: null },
         _count: { _all: true },
       }),
       this.prisma.review.findMany({
         where: {
           productId: product.id,
+          hiddenAt: null,
           ...(query.rating ? { rating: query.rating } : {}),
         },
         // `id` làm tie-break để phân trang ổn định khi nhiều đánh giá cùng mili-giây.
@@ -286,6 +341,9 @@ export class ReviewService {
       ...(query.replied === undefined
         ? {}
         : { sellerReply: query.replied === 'true' ? { not: null } : null }),
+      // Đánh giá bị Admin ẩn VẪN nằm trong danh sách (dòng trạng thái, Week11.md 5.5) trừ tab "Chưa trả lời": đó là hàng việc cần làm,
+      // mà đánh giá đã ẩn không trả lời được nên không xếp vào đó.
+      ...(query.replied === 'false' ? { hiddenAt: null } : {}),
     };
 
     const [total, rows] = await Promise.all([
@@ -318,15 +376,28 @@ export class ReviewService {
     // Thử đặt lời trả lời LẦN ĐẦU trước (`sellerRepliedAt IS NULL`): chỉ lần đầu mới báo người mua — sửa lại lời trả lời
     // (lỗi chính tả...) không gửi thêm thông báo. Không khớp thì ghi đè như trước; vẫn 0 dòng ⇒ không phải đánh giá của shop mình.
     const first = await this.prisma.review.updateMany({
-      where: { id: reviewId, product: { shopId }, sellerRepliedAt: null },
+      where: {
+        id: reviewId,
+        product: { shopId },
+        hiddenAt: null,
+        sellerRepliedAt: null,
+      },
       data: { sellerReply: reply, sellerRepliedAt: new Date() },
     });
     if (first.count === 0) {
       const { count } = await this.prisma.review.updateMany({
-        where: { id: reviewId, product: { shopId } },
+        where: { id: reviewId, product: { shopId }, hiddenAt: null },
         data: { sellerReply: reply, sellerRepliedAt: new Date() },
       });
-      if (count === 0) throw reviewNotFound();
+      if (count === 0) {
+        // Không khớp hàng nào: không phải đánh giá của shop mình (404) hoặc Admin đã ẩn nó (409 — shop THẤY dòng đó trong danh sách nên
+        // 404 sẽ gây hiểu nhầm). Truy vấn đọc lại cũng gắn `product.shopId`, nên không lộ đánh giá của shop khác.
+        const target = await this.prisma.review.findFirst({
+          where: { id: reviewId, product: { shopId } },
+          select: { hiddenAt: true },
+        });
+        throw target?.hiddenAt ? reviewHidden() : reviewNotFound();
+      }
     }
 
     const updated = await this.prisma.review.findFirstOrThrow({
@@ -340,5 +411,113 @@ export class ReviewService {
       });
     }
     return toSellerReview(updated);
+  }
+
+  // --- Admin: ẩn / hiện đánh giá (Week11.md 5.5, D6) ------------------------------------------
+
+  // Ẩn MỀM một đánh giá. Phần TRONG transaction (public để xử lý báo cáo gọi trong CÙNG transaction với việc đóng báo cáo): khoá dòng
+  // product TRƯỚC, đặt `hidden_*`, tính lại điểm, ghi nhật ký quản trị — mọi thứ hoặc cùng thành công hoặc cùng rollback. Người gọi PHẢI
+  // gọi `announceHidden` SAU khi transaction commit. Đã ẩn rồi ⇒ 409 REVIEW_ALREADY_HIDDEN (UPDATE có điều kiện `hidden_at IS NULL`
+  // là ổ khoá idempotent: hai Admin cùng ẩn thì đúng một bên thắng).
+  async hideInTx(
+    tx: TxClient,
+    input: ReviewModerationInput,
+  ): Promise<{ productId: string; hiddenAt: Date }> {
+    const { adminId, reviewId, reason, context } = input;
+    const review = await tx.review.findUnique({
+      where: { id: reviewId },
+      select: { productId: true },
+    });
+    if (!review) throw reviewNotFound();
+
+    const hiddenAt = new Date();
+    await this.productRating.updateRating(tx, review.productId, async () => {
+      const { count } = await tx.review.updateMany({
+        where: { id: reviewId, hiddenAt: null },
+        data: { hiddenAt, hiddenById: adminId, hiddenReason: reason },
+      });
+      if (count === 0) throw reviewAlreadyHidden();
+    });
+    await this.auditService.record(tx, {
+      actorId: adminId,
+      action: 'HIDE_REVIEW',
+      targetType: 'REVIEW',
+      targetId: reviewId,
+      reason,
+      meta: { productId: review.productId },
+      ...context,
+    });
+    return { productId: review.productId, hiddenAt };
+  }
+
+  // Mở lại một đánh giá đã ẩn: đặt cả ba cột về NULL (lịch sử ẩn/hiện nằm ở nhật ký quản trị), tính lại điểm, ghi nhật ký.
+  async unhideInTx(tx: TxClient, input: ReviewModerationInput): Promise<void> {
+    const { adminId, reviewId, reason, context } = input;
+    const review = await tx.review.findUnique({
+      where: { id: reviewId },
+      select: { productId: true },
+    });
+    if (!review) throw reviewNotFound();
+
+    await this.productRating.updateRating(tx, review.productId, async () => {
+      const { count } = await tx.review.updateMany({
+        where: { id: reviewId, hiddenAt: { not: null } },
+        data: { hiddenAt: null, hiddenById: null, hiddenReason: null },
+      });
+      if (count === 0) throw reviewNotHidden();
+    });
+    await this.auditService.record(tx, {
+      actorId: adminId,
+      action: 'UNHIDE_REVIEW',
+      targetType: 'REVIEW',
+      targetId: reviewId,
+      reason,
+      meta: { productId: review.productId },
+      ...context,
+    });
+  }
+
+  // Báo tác giả đánh giá của họ đã bị ẩn, SAU commit và không bao giờ ném (NotificationService.notify). Người nhận suy từ DB.
+  async announceHidden(reviewId: string): Promise<void> {
+    await this.notificationService.notify({
+      kind: 'REVIEW_HIDDEN',
+      reviewId,
+    });
+  }
+
+  // Ẩn MỘT đánh giá không qua báo cáo (POST /admin/reviews/:id/hide). Trả trạng thái mới để màn quản trị cập nhật tại chỗ. Lý do là
+  // văn bản Admin nhập: lỗi ghi của Prisma (mang nguyên giá trị đã ghi) được che bằng redactWriteError trước khi tới bộ lọc lỗi.
+  async hide(input: ReviewModerationInput): Promise<ReviewModerationResponse> {
+    let hiddenAt: Date;
+    try {
+      ({ hiddenAt } = await this.prisma.$transaction((tx) =>
+        this.hideInTx(tx, input),
+      ));
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw redactWriteError(error, 'review moderation');
+    }
+    await this.announceHidden(input.reviewId);
+    return {
+      review: {
+        id: input.reviewId,
+        isHidden: true,
+        hiddenAt: hiddenAt.toISOString(),
+      },
+    };
+  }
+
+  async unhide(
+    input: ReviewModerationInput,
+  ): Promise<ReviewModerationResponse> {
+    try {
+      await this.prisma.$transaction((tx) => this.unhideInTx(tx, input));
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw redactWriteError(error, 'review moderation');
+    }
+    return {
+      review: { id: input.reviewId, isHidden: false, hiddenAt: null },
+    };
   }
 }

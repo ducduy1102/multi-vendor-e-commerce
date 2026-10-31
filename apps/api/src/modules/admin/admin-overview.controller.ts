@@ -40,11 +40,11 @@ export class AdminOverviewController {
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
     summary:
-      'Số việc đang chờ Admin xử lý, đếm trực tiếp từ dữ liệu: shop chờ duyệt, khiếu nại đã lên sàn, khoản hoàn cần xử lý, thanh toán cần hoàn — chỉ ADMIN',
+      'Số việc đang chờ Admin xử lý, đếm trực tiếp từ dữ liệu: shop chờ duyệt, báo cáo vi phạm đang mở, khiếu nại đã lên sàn, khoản hoàn cần xử lý, thanh toán cần hoàn — chỉ ADMIN',
     description:
       'Mỗi số bằng đúng `total` của tab tương ứng: pendingShops = /admin/shops?status=PENDING; escalatedRefundRequests = ' +
       '/admin/refund-requests?status=ESCALATED; refundsNeedingAction = /admin/refunds (NEEDS_ACTION: FAILED + PENDING bị bỏ dở); ' +
-      'refundablePayments = /admin/refundable-payments. Không cache (Cache-Control: no-store).',
+      'refundablePayments = /admin/refundable-payments; openReports = /admin/reports?status=OPEN. Không cache (Cache-Control: no-store).',
   })
   @ApiResponse({
     status: 200,
@@ -56,6 +56,7 @@ export class AdminOverviewController {
           escalatedRefundRequests: 1,
           refundsNeedingAction: 2,
           refundablePayments: 0,
+          openReports: 5,
         },
       },
     },

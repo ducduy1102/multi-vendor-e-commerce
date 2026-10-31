@@ -166,6 +166,104 @@ describe('Hàng đợi và quyết định kháng nghị của Admin (HTTP thậ
 
   const isMine = (item: AdminAppeal) => item.shop.slug.startsWith(TAG);
 
+  // --- Kháng nghị sản phẩm bị gỡ (Week11.md 5.8) ---------------------------------------------------------------------------------
+  const REMOVAL_REASON = 'Hàng cấm theo quy định của sàn';
+  const productOf = (productId: string) =>
+    prisma.product.findUniqueOrThrow({ where: { id: productId } });
+  const restoreAuditRowsOf = (productId: string) =>
+    prisma.adminAuditLog.findMany({
+      where: { action: 'RESTORE_PRODUCT', targetId: productId },
+    });
+
+  async function takeDownVia(productId: string) {
+    const res = await admin
+      .post(`/api/v1/admin/products/${productId}/take-down`)
+      .send({ reason: REMOVAL_REASON });
+    expect([productId, res.status]).toEqual([productId, 200]);
+  }
+
+  async function restoreVia(agent: Agent, productId: string) {
+    return agent
+      .post(`/api/v1/admin/products/${productId}/restore`)
+      .send({ reason: 'Đã xem xét lại' });
+  }
+
+  // Sản phẩm bị Admin gỡ THẬT qua API (có ba cột gỡ và takenDownAt thật), kèm MỘT kháng nghị PENDING của lần gỡ đó.
+  async function newPendingProductAppeal(
+    message = 'Sản phẩm đã bổ sung giấy tờ nguồn gốc',
+  ) {
+    const base = await createShopWithProduct(prisma, TAG);
+    await takeDownVia(base.productId);
+    const product = await productOf(base.productId);
+    const takenDownAt = product.takenDownAt as Date;
+    const row = await prisma.appeal.create({
+      data: {
+        targetType: 'PRODUCT',
+        targetId: base.productId,
+        appellantId: base.ownerId,
+        message,
+        moderationEventAt: takenDownAt,
+      },
+      select: { id: true },
+    });
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: { id: base.ownerId },
+      select: { email: true },
+    });
+    return {
+      ...base,
+      appealId: row.id,
+      ownerEmail: owner.email,
+      takenDownAt,
+    };
+  }
+
+  // Như `seedRow` nhưng cho sản phẩm: dựng thẳng bằng prisma để kiểm soát thời điểm (ca thứ tự / phân trang / bộ lọc).
+  async function seedProductRow(options: {
+    state: 'PENDING' | 'CLOSED' | 'ACCEPTED' | 'REJECTED';
+    createdAt?: Date;
+    decidedAt?: Date;
+    message?: string;
+  }) {
+    const base = await createShopWithProduct(prisma, TAG);
+    const episodeAt = new Date('2026-10-20T10:00:00.000Z');
+    await prisma.product.update({
+      where: { id: base.productId },
+      data: {
+        status: 'TAKEN_DOWN',
+        takenDownAt: episodeAt,
+        takenDownById: adminId,
+        takenDownReason: REMOVAL_REASON,
+      },
+    });
+    const decided =
+      options.state === 'ACCEPTED' || options.state === 'REJECTED';
+    const row = await prisma.appeal.create({
+      data: {
+        targetType: 'PRODUCT',
+        targetId: base.productId,
+        appellantId: base.ownerId,
+        message: options.message ?? `lời kháng nghị sản phẩm ${options.state}`,
+        // CLOSED = còn PENDING nhưng mốc không còn khớp lần gỡ hiện tại của sản phẩm.
+        moderationEventAt:
+          options.state === 'CLOSED'
+            ? new Date('2026-10-10T10:00:00.000Z')
+            : episodeAt,
+        status: options.state === 'CLOSED' ? 'PENDING' : options.state,
+        ...(decided
+          ? {
+              decidedById: adminId,
+              decidedAt: options.decidedAt ?? new Date(),
+              decisionNote: options.state === 'REJECTED' ? 'Chưa đủ' : null,
+            }
+          : {}),
+        ...(options.createdAt ? { createdAt: options.createdAt } : {}),
+      },
+      select: { id: true },
+    });
+    return { ...base, appealId: row.id };
+  }
+
   // Duyệt hết các trang của một bộ lọc (giới hạn số trang để không chạy vô hạn) và trả mọi dòng.
   async function collect(status: AdminAppealListFilter, limit = 50) {
     const items: AdminAppeal[] = [];
@@ -329,7 +427,7 @@ describe('Hàng đợi và quyết định kháng nghị của Admin (HTTP thậ
       expect(missing.body).toEqual(malformed.body);
     });
 
-    it('kháng nghị loại SẢN PHẨM (chưa có luồng quyết định) ⇒ 404, không đụng gì', async () => {
+    it('kháng nghị SẢN PHẨM mà sản phẩm không còn tồn tại ⇒ 409 APPEAL_TARGET_CHANGED, không đụng gì, và không có trong hàng đợi', async () => {
       const row = await prisma.appeal.create({
         data: {
           targetType: 'PRODUCT',
@@ -343,10 +441,15 @@ describe('Hàng đợi và quyết định kháng nghị của Admin (HTTP thậ
 
       const res = await decide(admin, row.id, { decision: 'ACCEPT' });
 
-      expect([res.status, code(res)]).toEqual([404, 'APPEAL_NOT_FOUND']);
+      expect([res.status, code(res)]).toEqual([409, 'APPEAL_TARGET_CHANGED']);
       expect((await appealOf(row.id)).status).toBe('PENDING');
-      const queue = await collect('PENDING');
-      expect(queue.some((item) => item.id === row.id)).toBe(false);
+      for (const filter of ['PENDING', 'CLOSED'] as const) {
+        const queue = await collect(filter);
+        expect([filter, queue.some((item) => item.id === row.id)]).toEqual([
+          filter,
+          false,
+        ]);
+      }
     });
   });
 
@@ -913,6 +1016,603 @@ describe('Hàng đợi và quyết định kháng nghị của Admin (HTTP thậ
       expect(logs).toContain('details omitted');
       // ...nhưng không có ghi chú.
       expect(logs).not.toContain(canary);
+    });
+  });
+
+  // Kháng nghị sản phẩm bị gỡ (Week11.md 5.8, D15): chung hàng đợi và chung `decide` với kháng nghị shop; chấp nhận = khôi phục sản phẩm về NHÁP bằng
+  // đúng luật khôi phục của 5.7, trong CÙNG giao dịch với việc đóng kháng nghị và ghi nhật ký.
+  describe('kháng nghị sản phẩm bị gỡ (Week11.md 5.8)', () => {
+    describe('hàng đợi chung với kháng nghị shop', () => {
+      it('kháng nghị sản phẩm có loại PRODUCT kèm khối sản phẩm, shop và chủ shop; kháng nghị shop có product = null', async () => {
+        const productCase = await newPendingProductAppeal();
+        const shopCase = await newPendingAppeal();
+
+        const items = await collect('PENDING');
+        const product = items.find((i) => i.id === productCase.appealId);
+        const shop = items.find((i) => i.id === shopCase.appealId);
+
+        expect(product).toMatchObject({
+          targetType: 'PRODUCT',
+          state: 'PENDING',
+          product: {
+            id: productCase.productId,
+            takenDownReason: REMOVAL_REASON,
+          },
+          shop: { id: productCase.shopId, status: 'APPROVED' },
+          owner: { email: productCase.ownerEmail },
+        });
+        expect(product?.product?.name).toBe(`${TAG}product`);
+        expect(shop).toMatchObject({ targetType: 'SHOP', product: null });
+      });
+
+      it('mỗi bộ lọc chỉ chứa đúng loại của nó cho kháng nghị sản phẩm: PENDING / CLOSED / ACCEPTED / REJECTED', async () => {
+        const seeded = {
+          PENDING: await seedProductRow({ state: 'PENDING' }),
+          CLOSED: await seedProductRow({ state: 'CLOSED' }),
+          ACCEPTED: await seedProductRow({ state: 'ACCEPTED' }),
+          REJECTED: await seedProductRow({ state: 'REJECTED' }),
+        };
+
+        for (const filter of [
+          'PENDING',
+          'CLOSED',
+          'ACCEPTED',
+          'REJECTED',
+        ] as const) {
+          const mine = (await collect(filter)).filter(isMine);
+          const ids = mine.map((item) => item.id);
+          expect([filter, ids.includes(seeded[filter].appealId)]).toEqual([
+            filter,
+            true,
+          ]);
+          for (const other of Object.keys(seeded) as (keyof typeof seeded)[]) {
+            if (other !== filter) {
+              expect([
+                filter,
+                other,
+                ids.includes(seeded[other].appealId),
+              ]).toEqual([filter, other, false]);
+            }
+          }
+          expect(mine.every((item) => item.state === filter)).toBe(true);
+        }
+      });
+
+      it('trạng thái SHOP không quyết định kháng nghị sản phẩm: shop đang bị khoá mà sản phẩm vẫn bị gỡ cùng lần ⇒ vẫn PENDING', async () => {
+        const row = await seedProductRow({ state: 'PENDING' });
+        await prisma.shop.update({
+          where: { id: row.shopId },
+          data: { status: 'SUSPENDED', statusChangedAt: new Date() },
+        });
+
+        const item = (await collect('PENDING')).find(
+          (i) => i.id === row.appealId,
+        );
+
+        expect(item?.state).toBe('PENDING');
+      });
+
+      it('PENDING hỗn hợp hai loại cùng mili-giây: phân trang không trùng, không mất, đúng thứ tự (so với thứ tự do chính DB tính)', async () => {
+        const sameInstant = new Date('2026-09-02T08:00:00.000Z');
+        const ids: string[] = [];
+        for (let index = 0; index < 3; index++) {
+          ids.push(
+            (await seedRow({ state: 'PENDING', createdAt: sameInstant }))
+              .appealId,
+            (
+              await seedProductRow({
+                state: 'PENDING',
+                createdAt: sameInstant,
+              })
+            ).appealId,
+          );
+        }
+        const reference = (
+          await prisma.$queryRaw<{ id: string }[]>(
+            Prisma.sql`SELECT id FROM appeals WHERE id IN (${Prisma.join(ids)}) ORDER BY created_at ASC, id ASC`,
+          )
+        ).map((row) => row.id);
+
+        const walked = (await collect('PENDING', 2))
+          .map((item) => item.id)
+          .filter((id) => ids.includes(id));
+
+        expect(walked).toHaveLength(6);
+        expect(new Set(walked).size).toBe(6);
+        expect(walked).toEqual(reference);
+      });
+
+      it('total khớp ĐÚNG số dòng duyệt được qua mọi trang (không dòng ma, không dòng thiếu) khi hàng đợi có cả hai loại', async () => {
+        await seedProductRow({ state: 'PENDING' });
+        await seedRow({ state: 'PENDING' });
+
+        const first = adminAppealListResponseSchema.parse(
+          data(await list(admin, { status: 'PENDING', limit: 3 })),
+        );
+        const all = await collect('PENDING', 3);
+
+        expect(all).toHaveLength(first.total);
+        expect(new Set(all.map((i) => i.id)).size).toBe(first.total);
+      });
+
+      it('kháng nghị sản phẩm mà sản phẩm không còn tồn tại không làm lệch total và không làm hỏng hàng đợi', async () => {
+        const before = adminAppealListResponseSchema.parse(
+          data(await list(admin, { status: 'PENDING', limit: 1 })),
+        );
+        await prisma.appeal.create({
+          data: {
+            targetType: 'PRODUCT',
+            targetId: randomUUID(),
+            appellantId: adminId,
+            message: 'sản phẩm đã biến mất',
+            moderationEventAt: new Date(),
+          },
+        });
+
+        const res = await list(admin, { status: 'PENDING', limit: 1 });
+
+        expect(res.status).toBe(200);
+        expect(adminAppealListResponseSchema.parse(data(res)).total).toBe(
+          before.total,
+        );
+      });
+
+      it('response không lộ cột nội bộ: shopId/trạng thái/mốc gỡ/người gỡ của sản phẩm, người kháng nghị, id Admin', async () => {
+        const { appealId } = await newPendingProductAppeal();
+        await decide(admin, appealId, { decision: 'REJECT', note: 'Chưa đủ' });
+
+        const item = (await collect('REJECTED')).find((i) => i.id === appealId);
+
+        expect(Object.keys(item?.product ?? {}).sort()).toEqual([
+          'id',
+          'name',
+          'slug',
+          'takenDownReason',
+        ]);
+        const text = JSON.stringify(item);
+        expect(text).not.toContain(adminId);
+        expect(text).not.toMatch(
+          /passwordHash|refreshTokenHash|phone|appellantId|decidedById|ownerId|takenDownAt|takenDownById/i,
+        );
+      });
+    });
+
+    describe('chấp nhận', () => {
+      it('khôi phục sản phẩm về NHÁP (xoá cả ba cột gỡ), đóng kháng nghị, báo chủ shop bằng thông báo — KHÔNG đụng shop, KHÔNG email', async () => {
+        const { appealId, shopId, productId, ownerId, ownerEmail } =
+          await newPendingProductAppeal();
+        const shopBefore = await shopOf(shopId);
+        const historyBefore = await prisma.shopStatusHistory.count({
+          where: { shopId },
+        });
+        const notificationsBefore = (await notificationsOf(ownerId)).length;
+        fakeMail.reset();
+
+        const res = await decide(admin, appealId, {
+          decision: 'ACCEPT',
+          note: 'Đã đủ giấy tờ',
+        });
+
+        expect(res.status).toBe(200);
+        const { appeal } = decideAppealResponseSchema.parse(data(res));
+        expect(appeal).toMatchObject({
+          id: appealId,
+          targetType: 'PRODUCT',
+          state: 'ACCEPTED',
+          decisionNote: 'Đã đủ giấy tờ',
+          decidedByName: adminName,
+          // Sau khi khôi phục, khối sản phẩm không còn lý do gỡ.
+          product: { id: productId, takenDownReason: null },
+        });
+        expect(await productOf(productId)).toMatchObject({
+          status: 'DRAFT',
+          takenDownAt: null,
+          takenDownById: null,
+          takenDownReason: null,
+        });
+        expect(await appealOf(appealId)).toMatchObject({
+          status: 'ACCEPTED',
+          decidedById: adminId,
+          decisionNote: 'Đã đủ giấy tờ',
+        });
+        // Shop không bị đụng tới.
+        expect(await shopOf(shopId)).toEqual(shopBefore);
+        expect(
+          await prisma.shopStatusHistory.count({ where: { shopId } }),
+        ).toBe(historyBefore);
+        expect(
+          fakeMail.sent.filter((mail) => mail.to === ownerEmail),
+        ).toHaveLength(0);
+        const notifications = (await notificationsOf(ownerId)).slice(
+          notificationsBefore,
+        );
+        expect(notifications.map((n) => n.type)).toEqual([
+          'PRODUCT_APPEAL_DECIDED',
+        ]);
+        expect(notifications[0].data).toEqual({
+          appealId,
+          productId,
+          productName: `${TAG}product`,
+          decision: 'ACCEPTED',
+        });
+      });
+
+      it('sản phẩm khôi phục về NHÁP chứ không tự bán lại: không còn ở các nơi đọc công khai', async () => {
+        const { appealId, productId } = await newPendingProductAppeal();
+        await decide(admin, appealId, { decision: 'ACCEPT' });
+
+        const slug = (await productOf(productId)).slug;
+        const publicRead = await anonymous.get(`/api/v1/products/${slug}`);
+
+        expect(publicRead.status).toBe(404);
+      });
+
+      it('nhật ký: DECIDE_APPEAL (meta có quyết định + shop + sản phẩm) và RESTORE_PRODUCT, CÙNG Admin; ghi chú là lý do của cả hai', async () => {
+        const { appealId, shopId, productId } = await newPendingProductAppeal();
+
+        await decide(admin, appealId, {
+          decision: 'ACCEPT',
+          note: 'Đã đủ giấy tờ',
+        });
+
+        const decided = await auditRowsOf(appealId);
+        const restored = await restoreAuditRowsOf(productId);
+        expect(decided).toHaveLength(1);
+        expect(decided[0]).toMatchObject({
+          actorId: adminId,
+          action: 'DECIDE_APPEAL',
+          targetType: 'APPEAL',
+          targetId: appealId,
+          reason: 'Đã đủ giấy tờ',
+          meta: { decision: 'ACCEPT', shopId, productId },
+        });
+        expect(decided[0].ip).toMatch(/127\.0\.0\.1|::1/);
+        expect(restored).toHaveLength(1);
+        expect(restored[0]).toMatchObject({
+          actorId: adminId,
+          targetType: 'PRODUCT',
+          reason: 'Đã đủ giấy tờ',
+          meta: { shopId },
+        });
+      });
+
+      it('chấp nhận không ghi chú: decisionNote null, dòng RESTORE_PRODUCT không có lý do (không bịa lý do)', async () => {
+        const { appealId, productId } = await newPendingProductAppeal();
+
+        const res = await decide(admin, appealId, { decision: 'ACCEPT' });
+
+        expect(res.status).toBe(200);
+        expect((await appealOf(appealId)).decisionNote).toBeNull();
+        const [restored] = await restoreAuditRowsOf(productId);
+        expect(restored.reason).toBeNull();
+      });
+
+      it('chủ shop đang bị khoá tài khoản vẫn không cản việc khôi phục sản phẩm về NHÁP (sản phẩm chưa công khai), khác mở khoá shop', async () => {
+        const { appealId, ownerId, productId } =
+          await newPendingProductAppeal();
+        await prisma.user.update({
+          where: { id: ownerId },
+          data: { accountStatus: 'SUSPENDED' },
+        });
+
+        const res = await decide(admin, appealId, { decision: 'ACCEPT' });
+
+        expect(res.status).toBe(200);
+        expect((await productOf(productId)).status).toBe('DRAFT');
+      });
+    });
+
+    describe('từ chối', () => {
+      it('sản phẩm VẪN bị gỡ (cùng mốc, cùng lý do), kháng nghị REJECTED kèm ghi chú, báo chủ shop — không nhật ký khôi phục', async () => {
+        const { appealId, productId, ownerId, takenDownAt } =
+          await newPendingProductAppeal();
+        const notificationsBefore = (await notificationsOf(ownerId)).length;
+
+        const res = await decide(admin, appealId, {
+          decision: 'REJECT',
+          note: 'Giấy tờ nguồn gốc chưa hợp lệ',
+        });
+
+        expect(res.status).toBe(200);
+        const product = await productOf(productId);
+        expect(product).toMatchObject({
+          status: 'TAKEN_DOWN',
+          takenDownReason: REMOVAL_REASON,
+        });
+        expect(product.takenDownAt?.getTime()).toBe(takenDownAt.getTime());
+        expect(await appealOf(appealId)).toMatchObject({
+          status: 'REJECTED',
+          decidedById: adminId,
+          decisionNote: 'Giấy tờ nguồn gốc chưa hợp lệ',
+        });
+        expect(await restoreAuditRowsOf(productId)).toHaveLength(0);
+        expect(await auditRowsOf(appealId)).toHaveLength(1);
+        const notifications = (await notificationsOf(ownerId)).slice(
+          notificationsBefore,
+        );
+        expect(notifications.map((n) => n.type)).toEqual([
+          'PRODUCT_APPEAL_DECIDED',
+        ]);
+        expect(notifications[0].data).toMatchObject({ decision: 'REJECTED' });
+        expect(JSON.stringify(notifications[0].data)).not.toContain(
+          'Giấy tờ nguồn gốc',
+        );
+      });
+
+      it('từ chối phải có ghi chú (schema dùng chung): thiếu ⇒ 400 và không đổi gì', async () => {
+        const { appealId, productId } = await newPendingProductAppeal();
+
+        const res = await decide(admin, appealId, { decision: 'REJECT' });
+
+        expect(res.status).toBe(400);
+        expect((await appealOf(appealId)).status).toBe('PENDING');
+        expect((await productOf(productId)).status).toBe('TAKEN_DOWN');
+      });
+    });
+
+    describe('chỉ quyết định MỘT lần và chỉ MỘT lần khôi phục', () => {
+      it('quyết định lần hai ⇒ 409 APPEAL_ALREADY_DECIDED; kết quả đầu không đổi, chỉ một dòng nhật ký mỗi loại', async () => {
+        const { appealId, productId } = await newPendingProductAppeal();
+        await decide(admin, appealId, { decision: 'ACCEPT' });
+
+        for (const decision of [
+          { decision: 'ACCEPT' },
+          { decision: 'REJECT', note: 'Lại từ chối' },
+        ]) {
+          const again = await decide(secondAdmin, appealId, decision);
+          expect([again.status, code(again)]).toEqual([
+            409,
+            'APPEAL_ALREADY_DECIDED',
+          ]);
+        }
+
+        expect((await appealOf(appealId)).status).toBe('ACCEPTED');
+        expect((await productOf(productId)).status).toBe('DRAFT');
+        expect(await auditRowsOf(appealId)).toHaveLength(1);
+        expect(await restoreAuditRowsOf(productId)).toHaveLength(1);
+      });
+
+      it('hai Admin quyết định SONG SONG: đúng một người thắng; nhất quán giữa kháng nghị, sản phẩm và nhật ký', async () => {
+        for (let round = 0; round < 4; round++) {
+          const { appealId, productId } = await newPendingProductAppeal();
+
+          const [first, second] = await Promise.all([
+            decide(admin, appealId, { decision: 'ACCEPT' }),
+            decide(secondAdmin, appealId, {
+              decision: 'REJECT',
+              note: 'Từ chối song song',
+            }),
+          ]);
+
+          expect([round, [first.status, second.status].sort()]).toEqual([
+            round,
+            [200, 409],
+          ]);
+          const loser = first.status === 409 ? first : second;
+          expect(code(loser)).toBe('APPEAL_ALREADY_DECIDED');
+          const winnerIsAccept = first.status === 200;
+          expect((await appealOf(appealId)).status).toBe(
+            winnerIsAccept ? 'ACCEPTED' : 'REJECTED',
+          );
+          expect((await productOf(productId)).status).toBe(
+            winnerIsAccept ? 'DRAFT' : 'TAKEN_DOWN',
+          );
+          expect(await auditRowsOf(appealId)).toHaveLength(1);
+          expect(await restoreAuditRowsOf(productId)).toHaveLength(
+            winnerIsAccept ? 1 : 0,
+          );
+        }
+      });
+
+      it('chấp nhận kháng nghị ĐỒNG THỜI với Admin khôi phục thẳng sản phẩm: sản phẩm chỉ được khôi phục MỘT lần, kháng nghị chỉ ACCEPTED khi chính nó khôi phục', async () => {
+        for (let round = 0; round < 4; round++) {
+          const { appealId, productId } = await newPendingProductAppeal();
+
+          const [viaAppeal, viaRoute] = await Promise.all([
+            decide(admin, appealId, { decision: 'ACCEPT' }),
+            restoreVia(secondAdmin, productId),
+          ]);
+
+          expect([round, [viaAppeal.status, viaRoute.status].sort()]).toEqual([
+            round,
+            [200, 409],
+          ]);
+          expect((await productOf(productId)).status).toBe('DRAFT');
+          expect(await restoreAuditRowsOf(productId)).toHaveLength(1);
+          const accepted = viaAppeal.status === 200;
+          expect((await appealOf(appealId)).status).toBe(
+            accepted ? 'ACCEPTED' : 'PENDING',
+          );
+          expect(await auditRowsOf(appealId)).toHaveLength(accepted ? 1 : 0);
+          // Bên thua: kháng nghị gặp sản phẩm đã khôi phục (lần gỡ đã kết thúc) hoặc route khôi phục gặp sản phẩm không còn bị gỡ.
+          expect(code(accepted ? viaRoute : viaAppeal)).toBe(
+            accepted ? 'PRODUCT_NOT_TAKEN_DOWN' : 'APPEAL_TARGET_CHANGED',
+          );
+        }
+      });
+    });
+
+    describe('kháng nghị của lần gỡ đã kết thúc', () => {
+      it('sản phẩm được khôi phục bằng đường khác ⇒ kháng nghị thành CLOSED và quyết định bị 409 APPEAL_TARGET_CHANGED, không đổi gì', async () => {
+        const { appealId, productId } = await newPendingProductAppeal();
+        expect((await restoreVia(admin, productId)).status).toBe(200);
+        const productBefore = await productOf(productId);
+
+        const res = await decide(admin, appealId, { decision: 'ACCEPT' });
+
+        expect([res.status, code(res)]).toEqual([409, 'APPEAL_TARGET_CHANGED']);
+        expect((await appealOf(appealId)).status).toBe('PENDING');
+        expect(await productOf(productId)).toEqual(productBefore);
+        expect(await auditRowsOf(appealId)).toHaveLength(0);
+        const closed = (await collect('CLOSED')).map((item) => item.id);
+        const pending = (await collect('PENDING')).map((item) => item.id);
+        expect(closed).toContain(appealId);
+        expect(pending).not.toContain(appealId);
+      });
+
+      it('sản phẩm bị gỡ lại một lần khác: kháng nghị CŨ không khôi phục được lần gỡ MỚI (kể cả từ chối cũng 409)', async () => {
+        const { appealId, productId, takenDownAt } =
+          await newPendingProductAppeal();
+        await restoreVia(admin, productId);
+        await takeDownVia(productId);
+        const retaken = await productOf(productId);
+
+        const accept = await decide(admin, appealId, { decision: 'ACCEPT' });
+        const reject = await decide(admin, appealId, {
+          decision: 'REJECT',
+          note: 'x',
+        });
+
+        for (const res of [accept, reject]) {
+          expect([res.status, code(res)]).toEqual([
+            409,
+            'APPEAL_TARGET_CHANGED',
+          ]);
+        }
+        expect(retaken.takenDownAt?.getTime()).toBeGreaterThan(
+          takenDownAt.getTime(),
+        );
+        expect((await productOf(productId)).status).toBe('TAKEN_DOWN');
+        expect((await appealOf(appealId)).status).toBe('PENDING');
+      });
+    });
+
+    describe('tính nguyên tử và thất bại có kiểm soát', () => {
+      it('ghi nhật ký khôi phục lỗi (lần ghi ĐẦU) ⇒ 500 và ROLLBACK cả việc khôi phục lẫn đóng kháng nghị; không thông báo; thử lại thành công', async () => {
+        const { appealId, productId, ownerId } =
+          await newPendingProductAppeal();
+        const notificationsBefore = (await notificationsOf(ownerId)).length;
+        const productBefore = await productOf(productId);
+        jest
+          .spyOn(app.get(AdminAuditService, { strict: false }), 'record')
+          .mockRejectedValueOnce(new Error('audit down'));
+        jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
+        const failed = await decide(admin, appealId, { decision: 'ACCEPT' });
+
+        expect(failed.status).toBe(500);
+        expect(await productOf(productId)).toEqual(productBefore);
+        expect((await appealOf(appealId)).status).toBe('PENDING');
+        expect(await auditRowsOf(appealId)).toHaveLength(0);
+        expect(await restoreAuditRowsOf(productId)).toHaveLength(0);
+        expect((await notificationsOf(ownerId)).length).toBe(
+          notificationsBefore,
+        );
+
+        jest.restoreAllMocks();
+        const retry = await decide(admin, appealId, { decision: 'ACCEPT' });
+        expect(retry.status).toBe(200);
+        expect((await productOf(productId)).status).toBe('DRAFT');
+      });
+
+      it('ghi nhật ký quyết định lỗi (lần ghi THỨ HAI, sau khi đã khôi phục) ⇒ sản phẩm cũng được hoàn lại TAKEN_DOWN', async () => {
+        const { appealId, productId } = await newPendingProductAppeal();
+        const productBefore = await productOf(productId);
+        const audit = app.get(AdminAuditService, { strict: false });
+        // apps/api tắt `strictBindCallApply` (mặc định của Nest) nên `bind` trả `any`: ép về kiểu của chính phương thức.
+        const original = audit.record.bind(
+          audit,
+        ) as AdminAuditService['record'];
+        let calls = 0;
+        jest
+          .spyOn(audit, 'record')
+          .mockImplementation((...args: Parameters<typeof original>) =>
+            ++calls === 2
+              ? Promise.reject(new Error('audit down'))
+              : original(...args),
+          );
+        jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
+        const failed = await decide(admin, appealId, { decision: 'ACCEPT' });
+
+        expect(calls).toBe(2);
+        expect(failed.status).toBe(500);
+        expect(await productOf(productId)).toEqual(productBefore);
+        expect((await appealOf(appealId)).status).toBe('PENDING');
+        expect(await restoreAuditRowsOf(productId)).toHaveLength(0);
+        expect(await auditRowsOf(appealId)).toHaveLength(0);
+      });
+    });
+
+    describe('log không bao giờ chứa ghi chú quyết định', () => {
+      it('quét MỌI đường ghi log (Logger + stdout/stderr) khi quyết định kháng nghị sản phẩm, kể cả khi ghi lỗi', async () => {
+        const canary = `CANARY-${randomUUID()}`;
+        const normal = await newPendingProductAppeal();
+        const leakyCase = await newPendingProductAppeal();
+        const downCase = await newPendingProductAppeal();
+        const captured: string[] = [];
+        const restores: (() => void)[] = [];
+        const capture = (chunk: unknown) => {
+          captured.push(
+            typeof chunk === 'string' ? chunk : JSON.stringify(chunk),
+          );
+        };
+        for (const stream of [process.stdout, process.stderr]) {
+          const spy = jest
+            .spyOn(stream, 'write')
+            .mockImplementation((chunk: unknown) => {
+              capture(chunk);
+              return true;
+            });
+          restores.push(() => spy.mockRestore());
+        }
+        for (const level of [
+          'log',
+          'error',
+          'warn',
+          'debug',
+          'verbose',
+          'fatal',
+        ] as const) {
+          const spy = jest
+            .spyOn(Logger.prototype, level)
+            .mockImplementation((...args: unknown[]) => {
+              capture(args);
+            });
+          restores.push(() => spy.mockRestore());
+        }
+        const prismaService = app.get(PrismaService);
+
+        let leaky: request.Response;
+        let down: request.Response;
+        try {
+          await admin
+            .post(`${URL}/${normal.appealId}/decide`)
+            .send({ decision: 'ACCEPT', note: `${canary} ghi chú thường` });
+          jest
+            .spyOn(prismaService, '$transaction')
+            .mockRejectedValueOnce(
+              new Prisma.PrismaClientValidationError(
+                `Invalid invocation: data: { decisionNote: "${canary}" }`,
+                { clientVersion: 'test' },
+              ),
+            );
+          leaky = await admin
+            .post(`${URL}/${leakyCase.appealId}/decide`)
+            .send({ decision: 'REJECT', note: `${canary} lỗi Prisma` });
+          jest
+            .spyOn(prismaService, '$transaction')
+            .mockRejectedValueOnce(new Error('db down'));
+          down = await admin
+            .post(`${URL}/${downCase.appealId}/decide`)
+            .send({ decision: 'REJECT', note: `${canary} DB sập` });
+        } finally {
+          jest.restoreAllMocks();
+          restores.forEach((restore) => restore());
+        }
+
+        expect(leaky.status).toBe(500);
+        expect(down.status).toBe(500);
+        expect(JSON.stringify([leaky.body, down.body])).not.toContain(canary);
+        const logs = captured.join('\n');
+        // Không phải test rỗng: các lỗi cố ý PHẢI đã để lại dấu vết trong log...
+        expect(logs).toContain('db down');
+        expect(logs).toContain('details omitted');
+        // ...và log thường có id kháng nghị + sản phẩm nhưng không có ghi chú.
+        expect(logs).toContain(normal.appealId);
+        expect(logs).toContain(normal.productId);
+        expect(logs).not.toContain(canary);
+      });
     });
   });
 

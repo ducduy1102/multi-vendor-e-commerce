@@ -1,14 +1,16 @@
 import { useState } from 'react';
 
-import type { AdminAppeal } from '../types';
+import type { AdminAppeal, AppealTargetType } from '../types';
 import { useDecideAppeal } from './useDecideAppeal';
 import { useDescribeAdminError } from './useDescribeAdminError';
 
-// Chỉ cần những gì hộp thoại hiển thị: id để quyết định, tên shop, lý do khoá và lời kháng nghị (Admin đọc ĐỦ trước khi bấm).
+// Chỉ cần những gì hộp thoại hiển thị: id để quyết định, loại đối tượng, tên đối tượng (shop hoặc sản phẩm), lý do đã xử lý (lý do khoá shop
+// hoặc lý do gỡ sản phẩm) và lời kháng nghị (Admin đọc ĐỦ trước khi bấm).
 export interface AdminAppealActionTarget {
   id: string;
-  shopName: string;
-  suspensionReason: string | null;
+  targetType: AppealTargetType;
+  targetName: string;
+  moderationReason: string | null;
   message: string;
 }
 
@@ -26,10 +28,13 @@ export interface AdminAppealDialogState {
 }
 
 export function toAdminAppealActionTarget(appeal: AdminAppeal): AdminAppealActionTarget {
+  // Kháng nghị sản phẩm luôn có khối `product` (BE bỏ kháng nghị mà sản phẩm không còn); phòng thủ khi thiếu thì rơi về tên shop.
+  const product = appeal.targetType === 'PRODUCT' ? appeal.product : null;
   return {
     id: appeal.id,
-    shopName: appeal.shop.name,
-    suspensionReason: appeal.shop.statusReason,
+    targetType: appeal.targetType,
+    targetName: product ? product.name : appeal.shop.name,
+    moderationReason: product ? product.takenDownReason : appeal.shop.statusReason,
     message: appeal.message,
   };
 }

@@ -22,7 +22,8 @@ interface SellerReviewItemProps {
 // Một đánh giá trong danh sách của shop: dựng trên ReviewItem (cùng cách hiển thị sao/tên che/ngày/nội dung/khối
 // phản hồi như trang sản phẩm) + dòng sản phẩm được đánh giá ở trên (link tới trang sửa sản phẩm của shop — luôn mở
 // được, kể cả sản phẩm đã lưu trữ mà trang công khai trả 404) + khu trả lời ở dưới. Chưa trả lời: nút "Trả lời";
-// đã trả lời: nút "Sửa câu trả lời" (BE ghi đè, không xoá được). Form mở tại chỗ, không hộp thoại — nhìn được
+// đã trả lời: nút "Sửa câu trả lời" (BE ghi đè, không xoá được). Đánh giá bị Admin ẩn (Week11.md 5.5) là DÒNG TRẠNG THÁI: nhãn
+// "Đã bị ẩn" + lý do của Admin thay cho khu trả lời (BE không trả nội dung và chặn trả lời bằng 409). Form mở tại chỗ, không hộp thoại — nhìn được
 // đánh giá ngay phía trên khi viết. Dùng `mutateAsync` chứ không callback của `mutate`: hook làm mới danh sách khi
 // xong, ở tab "Chưa trả lời" đánh giá vừa trả lời biến khỏi danh sách (component unmount) nên callback của `mutate`
 // sẽ không chạy và toast thành công không hiện.
@@ -62,7 +63,20 @@ export function SellerReviewItem({ review, shopId }: SellerReviewItemProps) {
         </Link>
       }
       footer={
-        isFormOpen ? (
+        review.isHidden ? (
+          <div
+            role="note"
+            className="grid grid-cols-1 gap-1 rounded-lg border border-border bg-muted p-3 text-sm"
+          >
+            <p className="font-medium text-foreground">{t('sellerHiddenTitle')}</p>
+            {review.hiddenReason ? (
+              <p className="[overflow-wrap:anywhere] whitespace-pre-line text-foreground">
+                {t('hiddenReasonLine', { reason: review.hiddenReason })}
+              </p>
+            ) : null}
+            <p className="text-foreground">{t('sellerHiddenHint')}</p>
+          </div>
+        ) : isFormOpen ? (
           <ReviewReplyForm
             initialReply={review.sellerReply ?? ''}
             isPending={replyMutation.isPending}

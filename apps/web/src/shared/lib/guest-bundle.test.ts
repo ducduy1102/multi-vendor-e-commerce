@@ -98,6 +98,35 @@ describe('khách vãng lai không tải mã chat và thông báo', () => {
     expect(source).toMatch(/lazy\(/);
   });
 
+  // Báo cáo vi phạm (Week11.md 5.6): nút "Báo cáo" nằm ở các trang công khai (sản phẩm, shop) mà khách vãng lai vào, nhưng khách không
+  // báo cáo được (BE đòi đăng nhập). Mã hộp thoại / form / hook báo cáo vì vậy chỉ được nạp bằng import() động trong ReportEntry và
+  // chỉ khi `user !== null`; mọi nơi khác đi qua ReportEntry, không import `@/modules/report` trực tiếp.
+  it('ReportEntry chỉ nạp mã báo cáo bằng import() động và chỉ cho người đã đăng nhập; khách thấy link đăng nhập', () => {
+    const source = read('app/[locale]/_components/ReportEntry.tsx');
+
+    expect(source).not.toMatch(/from\s+['"]@\/modules\/report['"]/);
+    expect(source).toMatch(/lazy\(\s*\(\)\s*=>\s*import\('@\/modules\/report'\)/);
+    // Khách (user === null) rẽ sang link đăng nhập TRƯỚC khi chạm tới nút lazy.
+    const guestBranch = source.indexOf('user === null');
+    const lazyUse = source.indexOf('<ReportButtonImpl');
+    expect(guestBranch).toBeGreaterThan(-1);
+    expect(lazyUse).toBeGreaterThan(guestBranch);
+    expect(source).toMatch(/pathname: '\/login'/);
+  });
+
+  it('không tệp nào ngoài ReportEntry import tĩnh modules/report (đường vào duy nhất là ReportEntry)', () => {
+    const offenders = [
+      'app/[locale]/_components/ShopReportEntry.tsx',
+      'app/[locale]/products/[slug]/page.tsx',
+      'app/[locale]/shops/[slug]/page.tsx',
+      'app/[locale]/chat/page.tsx',
+      'app/[locale]/seller/chat/page.tsx',
+      ...GUEST_CRITICAL_FILES,
+    ].filter((file) => /from\s+['"]@\/modules\/report['"]/.test(read(file)));
+
+    expect(offenders).toEqual([]);
+  });
+
   it('cổng đăng nhập: mọi wrapper lazy trả null khi chưa có người dùng (khách không yêu cầu chunk)', () => {
     for (const file of [
       'shared/components/lazy-chat.tsx',

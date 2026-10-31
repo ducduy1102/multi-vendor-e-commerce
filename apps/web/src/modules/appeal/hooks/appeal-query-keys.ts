@@ -3,3 +3,8 @@
 export function shopAppealsQueryKey(shopId: string) {
   return ['appeal', 'shop', shopId] as const;
 }
+
+// Kháng nghị sản phẩm bị gỡ (Week11.md 5.8): khoá theo sản phẩm (id sản phẩm là duy nhất toàn sàn nên không cần thêm shopId).
+export function productAppealsQueryKey(productId: string) {
+  return ['appeal', 'product', productId] as const;
+}

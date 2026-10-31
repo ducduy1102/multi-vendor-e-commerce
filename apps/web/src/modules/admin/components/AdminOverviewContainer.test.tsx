@@ -22,6 +22,7 @@ const WORK: AdminOverview = {
   escalatedRefundRequests: 2,
   refundsNeedingAction: 14,
   refundablePayments: 0,
+  openReports: 3,
 };
 
 function setQuery(partial: Partial<typeof query.current>) {
@@ -76,7 +77,7 @@ describe('AdminOverviewContainer', () => {
     expect(screen.getByRole('heading', { name: 'Khiếu nại đã lên sàn' })).toBeInTheDocument();
   });
 
-  it('có việc -> bốn thẻ theo thứ tự độ gấp với đúng số; thẻ 0 việc không là link; có khối lối tắt', () => {
+  it('có việc -> năm thẻ theo thứ tự độ gấp với đúng số; thẻ 0 việc không là link; có khối lối tắt', () => {
     setQuery({ data: WORK });
     renderContainer();
 
@@ -88,11 +89,17 @@ describe('AdminOverviewContainer', () => {
       'Hoàn tiền lỗi',
       'Thanh toán cần hoàn',
       'Shop chờ duyệt',
+      'Báo cáo vi phạm',
       'Khu quản trị',
     ]);
     expect(screen.getByRole('link', { name: /Khiếu nại đã lên sàn/ })).toHaveTextContent('2');
     expect(screen.getByRole('link', { name: /Hoàn tiền lỗi/ })).toHaveTextContent('14');
     expect(screen.getByRole('link', { name: /Shop chờ duyệt/ })).toHaveTextContent('128');
+    expect(screen.getByRole('link', { name: /Báo cáo vi phạm/ })).toHaveAttribute(
+      'href',
+      '/admin/reports',
+    );
+    expect(screen.getByRole('link', { name: /Báo cáo vi phạm/ })).toHaveTextContent('3');
     expect(screen.queryByRole('link', { name: /Thanh toán cần hoàn/ })).not.toBeInTheDocument();
     expect(screen.getByText('Không có việc chờ')).toBeInTheDocument();
   });
@@ -104,6 +111,7 @@ describe('AdminOverviewContainer', () => {
         escalatedRefundRequests: 0,
         refundsNeedingAction: 0,
         refundablePayments: 0,
+        openReports: 0,
       },
     });
     renderContainer();

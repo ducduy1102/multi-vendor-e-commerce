@@ -4,6 +4,7 @@ import { SHOP_CASCADE_SUSPEND_REASON } from '@ecommerce/types';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 
+import { Badge } from '@/shared/components/ui/badge';
 import { cn } from '@/shared/lib/utils';
 
 import { ADMIN_APPEAL_STATE_DISPLAY } from '../admin-appeal-display';
@@ -25,7 +26,8 @@ interface AdminAppealRowProps {
   actions?: ReactNode;
 }
 
-// MỘT dòng kháng nghị trong bảng: shop (logo + tên + chủ shop để Admin biết liên hệ ai), lời kháng nghị (kèm lý do đã khoá shop),
+// MỘT dòng kháng nghị trong bảng (cả kháng nghị shop bị khoá lẫn kháng nghị sản phẩm bị gỡ, Week11.md 5.8): đối tượng (logo shop + tên +
+// chủ shop để Admin biết liên hệ ai; với sản phẩm là tên sản phẩm kèm tên shop), lời kháng nghị (kèm lý do đã khoá shop / gỡ sản phẩm),
 // ngày gửi, trạng thái (kèm ghi chú / người quyết định khi đã có kết quả), thao tác. MỘT markup CSS Grid duy nhất: từ `lg` là hàng
 // của bảng (cùng template cột với AdminAppealListHeader), dưới `lg` là thẻ xếp dọc với nhãn từng trường. Render <li>: nơi dùng
 // phải bọc trong <ul>. Component THUẦN trình bày; mọi chuỗi do chủ shop / Admin nhập (tên, lời kháng nghị, lý do, ghi chú) hiện dạng
@@ -36,13 +38,20 @@ export function AdminAppealRow({ appeal, actions }: AdminAppealRowProps) {
   const formatDate = useFormatAdminDate();
   const formatDateTime = useFormatAdminDateTime();
   const { shop, owner } = appeal;
+  // Kháng nghị sản phẩm luôn có khối `product` (BE bỏ kháng nghị mà sản phẩm không còn); thiếu thì rơi về dạng shop.
+  const product = appeal.targetType === 'PRODUCT' ? appeal.product : null;
+  const targetName = product ? product.name : shop.name;
   const stateDisplay = ADMIN_APPEAL_STATE_DISPLAY[appeal.state];
   // Lần khoá do Admin thực hiện nên lý do là văn bản; nhưng shop có thể bị khoá lại theo cascade SAU khi kháng nghị đã đóng — khi đó BE
   // lưu MÃ (SHOP_CASCADE_SUSPEND_REASON), FE dịch ra câu theo ngôn ngữ, mã thô không bao giờ hiện cho người xem.
-  const suspensionReason = shop.statusReason
-    ? shop.statusReason === SHOP_CASCADE_SUSPEND_REASON
-      ? t('rowReasonOwnerAccountSuspended')
-      : t('appealsRowSuspensionReason', { reason: shop.statusReason })
+  // Với kháng nghị sản phẩm thì lý do hiện ra là lý do GỠ SẢN PHẨM (trạng thái shop không liên quan tới kháng nghị này).
+  const moderationReasonText = product ? product.takenDownReason : shop.statusReason;
+  const moderationReason = moderationReasonText
+    ? product
+      ? t('appealsRowRemovalReason', { reason: moderationReasonText })
+      : moderationReasonText === SHOP_CASCADE_SUSPEND_REASON
+        ? t('rowReasonOwnerAccountSuspended')
+        : t('appealsRowSuspensionReason', { reason: moderationReasonText })
     : null;
 
   return (
@@ -50,12 +59,22 @@ export function AdminAppealRow({ appeal, actions }: AdminAppealRowProps) {
       <div className={cn('flex min-w-0 items-center gap-3', ADMIN_APPEAL_FULL_ROW_CELL_CLASS)}>
         <ShopLogo src={shop.logoUrl} />
         <div className="flex min-w-0 flex-col">
-          <h2 title={shop.name} className="truncate text-sm font-semibold text-foreground">
-            {shop.name}
+          {/* Nhãn loại đứng RIÊNG một dòng phía trên tên: đặt cạnh tên thì ở cột hẹp (2fr) tên sản phẩm chỉ còn vài ký tự. */}
+          <Badge variant="outline" className="mb-0.5 self-start text-muted-foreground">
+            {product ? t('appealsRowTypeProduct') : t('appealsRowTypeShop')}
+          </Badge>
+          <h2 title={targetName} className="truncate text-sm font-semibold text-foreground">
+            {targetName}
           </h2>
-          <p title={owner.name} className="truncate text-xs text-foreground">
-            {owner.name}
-          </p>
+          {product ? (
+            <p title={shop.name} className="truncate text-xs text-foreground">
+              {t('appealsRowOfShop', { name: shop.name })}
+            </p>
+          ) : (
+            <p title={owner.name} className="truncate text-xs text-foreground">
+              {owner.name}
+            </p>
+          )}
           <p title={owner.email} className="truncate text-xs text-muted-foreground">
             {owner.email}
           </p>
@@ -71,12 +90,12 @@ export function AdminAppealRow({ appeal, actions }: AdminAppealRowProps) {
         >
           {appeal.message}
         </p>
-        {suspensionReason ? (
+        {moderationReason ? (
           <p
-            title={shop.statusReason ?? undefined}
+            title={moderationReasonText ?? undefined}
             className="line-clamp-2 text-xs text-muted-foreground [overflow-wrap:anywhere]"
           >
-            {suspensionReason}
+            {moderationReason}
           </p>
         ) : null}
       </div>
@@ -115,7 +134,9 @@ export function AdminAppealRow({ appeal, actions }: AdminAppealRowProps) {
           </time>
         ) : null}
         {appeal.state === 'CLOSED' ? (
-          <p className="text-xs text-muted-foreground">{t('appealsRowClosedHint')}</p>
+          <p className="text-xs text-muted-foreground">
+            {product ? t('appealsRowClosedHintProduct') : t('appealsRowClosedHint')}
+          </p>
         ) : null}
       </div>
 

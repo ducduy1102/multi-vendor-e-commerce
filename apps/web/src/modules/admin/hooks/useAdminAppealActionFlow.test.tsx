@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/shared/lib/api-client';
 import { withIntl } from '@/shared/lib/test-i18n';
 
-import { makeAppeal } from '../admin-appeal.fixtures';
+import { makeAppeal, makeProductAppeal } from '../admin-appeal.fixtures';
 import * as adminService from '../services/admin.service';
 import {
   toAdminAppealActionTarget,
@@ -20,8 +20,9 @@ vi.mock('../services/admin.service', () => ({
 
 const APPEAL: AdminAppealActionTarget = {
   id: 'appeal-1',
-  shopName: 'Shop A',
-  suspensionReason: 'Bán hàng giả',
+  targetType: 'SHOP',
+  targetName: 'Shop A',
+  moderationReason: 'Bán hàng giả',
   message: 'Xin xem xét lại',
 };
 
@@ -35,12 +36,43 @@ function setup() {
 const apiError = (status: number, code?: string) => new ApiError('x', status, code);
 
 describe('toAdminAppealActionTarget', () => {
-  it('chỉ lấy những gì hộp thoại cần: id, tên shop, lý do khoá, lời kháng nghị — không email chủ shop', () => {
+  it('kháng nghị shop: chỉ lấy những gì hộp thoại cần — id, loại, tên shop, lý do khoá, lời kháng nghị — không email chủ shop', () => {
     expect(toAdminAppealActionTarget(makeAppeal())).toEqual({
       id: 'a1b2c3d4-1234-4a5b-8c9d-abcdef000001',
-      shopName: 'Shop Thời Trang ABC',
-      suspensionReason: 'Bán hàng giả',
+      targetType: 'SHOP',
+      targetName: 'Shop Thời Trang ABC',
+      moderationReason: 'Bán hàng giả',
       message: 'Shop đã gỡ các sản phẩm bị báo cáo và bổ sung giấy tờ nguồn gốc.',
+    });
+  });
+
+  it('kháng nghị sản phẩm: tên là tên SẢN PHẨM và lý do là lý do GỠ (không phải trạng thái shop)', () => {
+    expect(toAdminAppealActionTarget(makeProductAppeal())).toEqual({
+      id: 'a1b2c3d4-1234-4a5b-8c9d-abcdef000002',
+      targetType: 'PRODUCT',
+      targetName: 'Dao bấm tự động',
+      moderationReason: 'Hàng cấm theo quy định của sàn.',
+      message: 'Sản phẩm đã bổ sung giấy tờ nguồn gốc và chỉnh lại mô tả.',
+    });
+  });
+
+  it('shop của kháng nghị sản phẩm đang bị khoá cũng không làm lẫn lý do: vẫn là lý do gỡ sản phẩm', () => {
+    const appeal = makeProductAppeal({
+      shop: { ...makeProductAppeal().shop, status: 'SUSPENDED', statusReason: 'Bán hàng giả' },
+    });
+
+    expect(toAdminAppealActionTarget(appeal).moderationReason).toBe(
+      'Hàng cấm theo quy định của sàn.',
+    );
+  });
+
+  it('phòng thủ: loại PRODUCT mà thiếu khối product thì rơi về tên và lý do của shop thay vì ném lỗi', () => {
+    const appeal = makeProductAppeal({ product: null });
+
+    expect(toAdminAppealActionTarget(appeal)).toMatchObject({
+      targetType: 'PRODUCT',
+      targetName: 'Shop Thời Trang ABC',
+      moderationReason: null,
     });
   });
 });

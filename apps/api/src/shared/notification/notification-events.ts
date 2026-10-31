@@ -8,6 +8,7 @@ import {
   type NotificationType,
   type OrderActorType,
   type RefundRequestKind,
+  type ReportTargetType,
   type ShopStatus,
 } from '@ecommerce/types';
 
@@ -57,6 +58,12 @@ export type NotificationEvent =
   | { kind: 'REFUND_COMPLETED'; orderId: string }
   | { kind: 'REVIEW_CREATED'; reviewId: string }
   | { kind: 'REVIEW_REPLIED'; reviewId: string }
+  // Admin đã ẩn đánh giá (Week11.md 5.5, D6): báo TÁC GIẢ. Chỉ id đánh giá — người nhận, id đơn và tên sản phẩm đọc lại từ DB; lý do của
+  // Admin và người báo không có đường nào vào thông báo.
+  | { kind: 'REVIEW_HIDDEN'; reviewId: string }
+  // Admin đã gỡ một sản phẩm vi phạm (Week11.md 5.7, D5): báo CHỦ SHOP (suy từ sản phẩm, không từ sự kiện). `reason` là lý do Admin đã
+  // nhập khi gỡ (chủ shop được biết để sửa; được cắt gọn); người báo cáo và tên Admin không có đường nào vào thông báo.
+  | { kind: 'PRODUCT_TAKEN_DOWN'; productId: string; reason: string }
   | {
       kind: 'SHOP_STATUS_CHANGED';
       shopId: string;
@@ -73,7 +80,27 @@ export type NotificationEvent =
       appealId: string;
       shopId: string;
       decision: 'ACCEPTED' | 'REJECTED';
-    };
+    }
+  // Chủ shop vừa gửi kháng nghị lần gỡ một sản phẩm (Week11.md 5.8): báo mọi Admin ACTIVE. Chỉ id — không kèm lời kháng nghị; tên sản phẩm
+  // đọc lại từ DB.
+  | { kind: 'PRODUCT_APPEAL_SUBMITTED'; appealId: string; productId: string }
+  // Admin đã quyết định kháng nghị sản phẩm: báo chủ shop (suy từ sản phẩm, không từ sự kiện). `decision` là kết quả đã ghi.
+  | {
+      kind: 'PRODUCT_APPEAL_DECIDED';
+      appealId: string;
+      productId: string;
+      decision: 'ACCEPTED' | 'REJECTED';
+    }
+  // Có báo cáo vi phạm mới (Week11.md 5.3): báo mọi Admin ACTIVE. Chỉ id báo cáo và loại đối tượng — không người báo, lý do hay ghi
+  // chú (nơi gọi cũng không có cách nào đưa chúng vào).
+  | {
+      kind: 'REPORT_SUBMITTED';
+      reportId: string;
+      targetType: ReportTargetType;
+    }
+  // Admin đã đóng một hoặc nhiều báo cáo (Week11.md 5.4): báo MỖI người báo một lần. Sự kiện chỉ mang id báo cáo — người nhận (người báo),
+  // loại đối tượng và kết quả (RESOLVED/DISMISSED) đều đọc lại từ DB, không bao giờ từ nơi gọi; báo cáo còn OPEN bị bỏ qua.
+  | { kind: 'REPORTS_RESOLVED'; reportIds: string[] };
 
 export type NotificationEventKind = NotificationEvent['kind'];
 
@@ -97,12 +124,27 @@ export interface RefundRequestFacts {
 }
 
 export interface ReviewFacts {
+  // Đơn chứa đánh giá: đích dẫn của thông báo "đánh giá bị ẩn" (chi tiết đơn, nơi tác giả vẫn thấy bản của mình).
+  orderId: string;
   productId: string;
   productName: string;
   rating: number;
   reviewerId: string;
   shopOwnerId: string;
   shopName: string;
+}
+
+export interface ProductFacts {
+  productId: string;
+  productName: string;
+  shopOwnerId: string;
+}
+
+export interface ReportFacts {
+  reportId: string;
+  reporterId: string;
+  targetType: ReportTargetType;
+  outcome: 'RESOLVED' | 'DISMISSED';
 }
 
 export interface ShopFacts {
@@ -115,7 +157,11 @@ export type NotificationFacts =
   | { kind: 'ORDERS'; orders: OrderFacts[] }
   | { kind: 'REFUND_REQUEST'; request: RefundRequestFacts; adminIds: string[] }
   | { kind: 'REVIEW'; review: ReviewFacts }
-  | { kind: 'SHOP'; shop: ShopFacts; adminIds: string[] };
+  | { kind: 'PRODUCT'; product: ProductFacts; adminIds: string[] }
+  | { kind: 'SHOP'; shop: ShopFacts; adminIds: string[] }
+  // Sự kiện chỉ cần biết Admin nào đang hoạt động (không gắn với bản ghi nào để tải).
+  | { kind: 'ADMINS'; adminIds: string[] }
+  | { kind: 'REPORTS'; reports: ReportFacts[] };
 
 // Một thông báo sắp ghi: người nhận + nội dung `{ type, data }` đúng hình dạng đã chốt ở packages/types.
 export type NotificationDraft = { userId: string } & NotificationContent;
@@ -326,6 +372,30 @@ function buildRaw(
       ];
     }
 
+    case 'REVIEW_HIDDEN': {
+      const { review } = expectFacts(event, facts, 'REVIEW');
+      return [
+        draft(review.reviewerId, 'REVIEW_HIDDEN', {
+          orderId: review.orderId,
+          productName: label(review.productName),
+        }),
+      ];
+    }
+
+    case 'PRODUCT_TAKEN_DOWN': {
+      const { product } = expectFacts(event, facts, 'PRODUCT');
+      const reason = reasonOf(event.reason);
+      // Gỡ luôn có lý do (CHECK ở DB); lý do rỗng sau khi cắt gọn không xảy ra qua đường hợp lệ nên bỏ qua thay vì ghi hàng sai hợp đồng.
+      if (!reason) return [];
+      return [
+        draft(product.shopOwnerId, 'PRODUCT_TAKEN_DOWN', {
+          productId: product.productId,
+          productName: label(product.productName),
+          reason,
+        }),
+      ];
+    }
+
     case 'SHOP_STATUS_CHANGED': {
       const { shop } = expectFacts(event, facts, 'SHOP');
       const reason = reasonOf(event.reason);
@@ -369,6 +439,48 @@ function buildRaw(
         }),
       ];
     }
+
+    case 'PRODUCT_APPEAL_SUBMITTED': {
+      const { product, adminIds } = expectFacts(event, facts, 'PRODUCT');
+      return adminIds.map((adminId) =>
+        draft(adminId, 'ADMIN_PRODUCT_APPEAL_PENDING', {
+          appealId: event.appealId,
+          productId: product.productId,
+          productName: label(product.productName),
+        }),
+      );
+    }
+
+    case 'PRODUCT_APPEAL_DECIDED': {
+      const { product } = expectFacts(event, facts, 'PRODUCT');
+      return [
+        draft(product.shopOwnerId, 'PRODUCT_APPEAL_DECIDED', {
+          appealId: event.appealId,
+          productId: product.productId,
+          productName: label(product.productName),
+          decision: event.decision,
+        }),
+      ];
+    }
+
+    case 'REPORT_SUBMITTED': {
+      const { adminIds } = expectFacts(event, facts, 'ADMINS');
+      return adminIds.map((adminId) =>
+        draft(adminId, 'REPORT_NEW', {
+          reportId: event.reportId,
+          targetType: event.targetType,
+        }),
+      );
+    }
+
+    case 'REPORTS_RESOLVED':
+      return expectFacts(event, facts, 'REPORTS').reports.map((report) =>
+        draft(report.reporterId, 'REPORT_RESOLVED', {
+          reportId: report.reportId,
+          targetType: report.targetType,
+          outcome: report.outcome,
+        }),
+      );
 
     default: {
       // Thêm một loại sự kiện mà quên xử lý ở đây là LỖI BIÊN DỊCH (never).

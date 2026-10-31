@@ -33,6 +33,8 @@ const PRODUCT_REVIEWS = {
 
 const SELLER_REVIEW = {
   ...REVIEW,
+  isHidden: false,
+  hiddenReason: null,
   product: { id: 'product-1', name: 'Áo thun', slug: 'ao-thun' },
 };
 
@@ -204,6 +206,7 @@ describe('review.service — seller', () => {
     const result = await listShopReviews('shop-1');
 
     expect(result.items[0].product.slug).toBe('ao-thun');
+    expect(result.items[0]).toMatchObject({ isHidden: false, hiddenReason: null });
     const [url, init] = lastCall();
     expect(url).toMatch(/\/shops\/shop-1\/reviews$/);
     expect(init.method).toBe('GET');

@@ -70,11 +70,20 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   REVIEW_NOT_ALLOWED: 'review.errorNotAllowed',
   REVIEW_NOT_FOUND: 'review.errorNotFound',
   REVIEW_EDIT_NOT_ALLOWED: 'review.errorEditNotAllowed',
+  // Ẩn / hiện đánh giá (Week11.md 5.5)
+  REVIEW_HIDDEN: 'review.errorHidden',
+  REVIEW_ALREADY_HIDDEN: 'admin.errorReviewAlreadyHidden',
+  REVIEW_NOT_HIDDEN: 'admin.errorReviewNotHidden',
   // Shop: chuyển trạng thái (Admin duyệt/từ chối/khoá, chủ shop gửi duyệt lại) và sửa thông tin
   SHOP_INVALID_TRANSITION: 'shop.errorInvalidTransition',
   SHOP_EDIT_NOT_ALLOWED: 'shop.errorEditNotAllowed',
   // Sản phẩm: biến thể có nhiều ảnh hơn trần (Week10.md 2.4) — giao diện đã chặn nên chỉ gặp khi gọi API thẳng.
   PRODUCT_IMAGES_LIMIT_EXCEEDED: 'product.errorImagesLimitExceeded',
+  // Gỡ / khôi phục sản phẩm vi phạm (Week11.md 5.7)
+  PRODUCT_TAKEN_DOWN: 'product.errorTakenDown',
+  PRODUCT_ALREADY_TAKEN_DOWN: 'admin.errorProductAlreadyTakenDown',
+  PRODUCT_NOT_TAKEN_DOWN: 'admin.errorProductNotTakenDown',
+  PRODUCT_NOT_FOUND: 'admin.errorProductNotFound',
   // Chat người mua ↔ shop (Week10.md 4.2)
   CHAT_OWN_SHOP: 'chat.errorOwnShop',
   CHAT_SHOP_UNAVAILABLE: 'chat.errorShopUnavailable',
@@ -97,6 +106,14 @@ export const ERROR_CODE_MESSAGE_KEYS: Record<ErrorCode, string> = {
   APPEAL_NOT_FOUND: 'admin.errorAppealNotFound',
   APPEAL_ALREADY_DECIDED: 'admin.errorAppealAlreadyDecided',
   APPEAL_TARGET_CHANGED: 'admin.errorAppealTargetChanged',
+  // Báo cáo vi phạm (Week11.md 5.1) — phía người báo ở namespace `report`, phía Admin ở `admin`
+  REPORT_ALREADY_OPEN: 'report.errorAlreadyOpen',
+  REPORT_LIMIT_REACHED: 'report.errorLimitReached',
+  REPORT_TARGET_NOT_FOUND: 'report.errorTargetNotFound',
+  REPORT_OWN_CONTENT: 'report.errorOwnContent',
+  REPORT_NOT_FOUND: 'admin.errorReportNotFound',
+  REPORT_ALREADY_CLOSED: 'admin.errorReportAlreadyClosed',
+  REPORT_ACTION_NOT_ALLOWED: 'admin.errorReportActionNotAllowed',
   // Lỗi CLIENT tự sinh (mất mạng / phản hồi hỏng) — Week7.md 1.11/1.16: nghĩa là
   // "chưa rõ kết quả", khác các mã nghiệp vụ ở trên (luôn là kết quả chắc chắn).
   NETWORK_ERROR: 'common.errorNetwork',

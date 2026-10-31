@@ -26,6 +26,7 @@ const OVERVIEW = {
   escalatedRefundRequests: 1,
   refundsNeedingAction: 0,
   refundablePayments: 12,
+  openReports: 4,
 };
 
 describe('useAdminOverview', () => {

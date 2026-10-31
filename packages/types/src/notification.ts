@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { orderActorTypeSchema } from './order-status';
 import { refundRequestKindSchema } from './refund';
+import { reportTargetTypeSchema } from './report';
 import { shopStatusSchema } from './shop';
 import { isSafeMessageText, utf8ByteLength } from './text-safety';
 
@@ -52,6 +53,12 @@ export const NOTIFICATION_TYPES = [
   'ADMIN_SHOP_PENDING',
   'ADMIN_APPEAL_PENDING',
   'APPEAL_DECIDED',
+  'REPORT_NEW',
+  'REPORT_RESOLVED',
+  'REVIEW_HIDDEN',
+  'PRODUCT_TAKEN_DOWN',
+  'ADMIN_PRODUCT_APPEAL_PENDING',
+  'PRODUCT_APPEAL_DECIDED',
 ] as const;
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
@@ -182,6 +189,40 @@ export const notificationContentSchema = z.discriminatedUnion('type', [
   content('APPEAL_DECIDED', {
     appealId: idSchema,
     shopId: idSchema,
+    decision: z.enum(['ACCEPTED', 'REJECTED']),
+  }),
+  // Tất cả Admin: có báo cáo vi phạm mới (Week11.md 5.3). CHỈ id báo cáo và LOẠI đối tượng — không người báo, không lý do, không ghi
+  // chú, không tên đối tượng: nội dung báo cáo là dữ liệu riêng tư, Admin đọc ở hàng đợi (FE dẫn tới `/admin/reports`).
+  content('REPORT_NEW', { reportId: idSchema, targetType: reportTargetTypeSchema }),
+  // Người báo: Admin đã xử lý báo cáo của mình (Week11.md 5.4). Kết quả CHUNG CHUNG: `RESOLVED` = đã xử lý, `DISMISSED` = chưa thấy vi
+  // phạm — không lộ hành động cụ thể (ẩn/khoá/gỡ...), ghi chú của Admin hay đối tượng đã chịu hình thức nào (D5).
+  content('REPORT_RESOLVED', {
+    reportId: idSchema,
+    targetType: reportTargetTypeSchema,
+    outcome: z.enum(['RESOLVED', 'DISMISSED']),
+  }),
+  // Tác giả đánh giá: Admin đã ẩn đánh giá của mình (Week11.md 5.5, D6). Chỉ id đơn (để dẫn tới chi tiết đơn, nơi bản của mình vẫn hiện kèm
+  // nhãn "đã bị ẩn") và tên sản phẩm đã cắt gọn — KHÔNG lý do của Admin, KHÔNG người báo, KHÔNG nội dung đánh giá.
+  content('REVIEW_HIDDEN', { orderId: idSchema, productName: labelSchema }),
+  // Chủ shop: Admin đã gỡ một sản phẩm vi phạm (Week11.md 5.7, D5). Có lý do (cắt gọn) như thông báo khoá shop: người bán cần biết sửa gì;
+  // chỉ id sản phẩm (để dẫn tới trang sửa) và tên đã cắt gọn — KHÔNG người báo cáo, KHÔNG tên Admin.
+  content('PRODUCT_TAKEN_DOWN', {
+    productId: idSchema,
+    productName: labelSchema,
+    reason: reasonSchema,
+  }),
+  // Tất cả Admin: chủ shop vừa gửi kháng nghị lần gỡ một sản phẩm (Week11.md 5.8). Chủ shop: Admin đã quyết định kháng nghị đó (chấp nhận ⇒
+  // sản phẩm về nháp, từ chối ⇒ giữ nguyên gỡ). Cùng nguyên tắc với kháng nghị shop: chỉ id + tên sản phẩm đã cắt gọn, KHÔNG lời kháng
+  // nghị hay ghi chú của Admin (FE dẫn tới trang đọc).
+  content('ADMIN_PRODUCT_APPEAL_PENDING', {
+    appealId: idSchema,
+    productId: idSchema,
+    productName: labelSchema,
+  }),
+  content('PRODUCT_APPEAL_DECIDED', {
+    appealId: idSchema,
+    productId: idSchema,
+    productName: labelSchema,
     decision: z.enum(['ACCEPTED', 'REJECTED']),
   }),
 ]);

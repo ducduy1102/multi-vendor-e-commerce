@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { useRealtimeStatus } from '@/shared/realtime/useRealtimeStatus';
 import { useNow } from '@/shared/hooks/useNow';
@@ -23,6 +23,7 @@ interface ChatThreadContainerProps {
   summary: ConversationSummary | undefined;
   fallbackName: string;
   onBack: () => void;
+  reportSlot?: ReactNode;
 }
 
 // Nối các hook của MỘT hội thoại vào ChatThread (Container: nối UI thuần với hook, không viết logic riêng, không cần
@@ -34,6 +35,7 @@ export function ChatThreadContainer({
   summary,
   fallbackName,
   onBack,
+  reportSlot,
 }: ChatThreadContainerProps) {
   const stableScope = useStableChatScope(scope);
   const messages = useMessages(stableScope, conversationId);
@@ -74,6 +76,7 @@ export function ChatThreadContainer({
       onTyping={sendTyping}
       onRetrySend={retry}
       onDiscard={discard}
+      reportSlot={reportSlot}
     />
   );
 }

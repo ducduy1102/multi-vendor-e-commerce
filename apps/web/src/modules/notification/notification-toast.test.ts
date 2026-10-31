@@ -182,6 +182,60 @@ const CASES: { name: string; notification: Notification; toast: boolean }[] = [
     },
     toast: true,
   },
+  {
+    name: 'REPORT_NEW',
+    notification: {
+      ...BASE,
+      type: 'REPORT_NEW',
+      data: { reportId: SHOP_ID, targetType: 'SHOP' },
+    },
+    toast: true,
+  },
+  {
+    name: 'REPORT_RESOLVED',
+    notification: {
+      ...BASE,
+      type: 'REPORT_RESOLVED',
+      data: { reportId: SHOP_ID, targetType: 'SHOP', outcome: 'RESOLVED' },
+    },
+    toast: true,
+  },
+  {
+    name: 'REVIEW_HIDDEN',
+    notification: {
+      ...BASE,
+      type: 'REVIEW_HIDDEN',
+      data: { orderId: SHOP_ID, productName: 'Áo thun' },
+    },
+    toast: true,
+  },
+  {
+    name: 'PRODUCT_TAKEN_DOWN',
+    notification: {
+      ...BASE,
+      type: 'PRODUCT_TAKEN_DOWN',
+      data: { productId: SHOP_ID, productName: 'Dao bấm', reason: 'Hàng cấm' },
+    },
+    toast: true,
+  },
+  {
+    name: 'ADMIN_PRODUCT_APPEAL_PENDING',
+    notification: {
+      ...BASE,
+      type: 'ADMIN_PRODUCT_APPEAL_PENDING',
+      data: { appealId: SHOP_ID, productId: SHOP_ID, productName: 'Dao bấm' },
+    },
+    toast: true,
+  },
+  {
+    name: 'PRODUCT_APPEAL_DECIDED',
+    notification: {
+      ...BASE,
+      type: 'PRODUCT_APPEAL_DECIDED',
+      data: { appealId: SHOP_ID, productId: SHOP_ID, productName: 'Dao bấm', decision: 'REJECTED' },
+    },
+    toast: true,
+  },
   { name: 'UNKNOWN', notification: makeUnknownNotification(), toast: false },
 ];
 

@@ -19,6 +19,15 @@ import { ProductImageCleanupService } from './product-image-cleanup.service';
 // nhập (khác Shop) nên không cần nhánh "explicit slug", chỉ có 1 chiến lược.
 const MAX_GENERATED_SLUG_ATTEMPTS = 20;
 
+// Chủ shop thao tác lên sản phẩm đang bị sàn gỡ (Week11.md 5.7). Thông điệp chung: lý do cụ thể nằm ở `takenDownReason` của chính sản
+// phẩm (chủ shop đọc được) nên giao diện hiện nó cạnh câu lỗi đã dịch, không nhét văn bản Admin vào thông điệp lỗi.
+const productTakenDown = () =>
+  new AppException(
+    409,
+    'PRODUCT_TAKEN_DOWN',
+    'This product was taken down by the platform',
+  );
+
 // Week5.md Bước 1.3/2.12 — dùng chung ở mọi nơi select ảnh/variant (đủ
 // dùng cho cả chi tiết lẫn danh sách, tránh lặp lại đúng shape 3 lần trong
 // file này). Sắp theo position để FE không cần tự sort lại.
@@ -35,6 +44,8 @@ const productWithRelationsSelect = {
   slug: true,
   description: true,
   status: true,
+  // Lý do Admin đã nhập khi gỡ (Week11.md 5.7): NULL trừ khi status = TAKEN_DOWN (CHECK ở DB), mà sản phẩm đó chỉ chủ shop đọc được.
+  takenDownReason: true,
   minPrice: true,
   maxPrice: true,
   createdAt: true,
@@ -120,6 +131,7 @@ const productListItemSelect = {
   name: true,
   slug: true,
   status: true,
+  takenDownReason: true,
   minPrice: true,
   maxPrice: true,
   createdAt: true,
@@ -411,15 +423,21 @@ export class ProductService {
     let summary: ProductSummary;
     try {
       summary = await this.prisma.$transaction(async (tx) => {
-        await tx.product.update({
-          where: { id: productId },
+        // Sản phẩm đang bị sàn gỡ (Week11.md 5.7): chủ shop không đổi trạng thái và không sửa nội dung — đường duy nhất để mở lại là
+        // Admin. UPDATE có điều kiện (không đọc-rồi-ghi) khoá hàng cho tới hết giao dịch nên Admin gỡ đúng lúc này cũng không lọt
+        // được phần sửa phía sau: bên đến sau thấy điều kiện đã đổi. `updatedAt` đặt tường minh để câu UPDATE luôn chạy (và luôn khoá
+        // hàng) kể cả khi lần sửa này chỉ gửi attributes/variants.
+        const { count } = await tx.product.updateMany({
+          where: { id: productId, status: { not: 'TAKEN_DOWN' } },
           data: {
             name: dto.name,
             categoryId: dto.categoryId,
             description: dto.description,
             status: dto.status,
+            updatedAt: new Date(),
           },
         });
+        if (count === 0) throw productTakenDown();
 
         if (dto.attributes && dto.variants) {
           removedImageUrls = await this.reconcileAttributesAndVariants(
@@ -454,10 +472,12 @@ export class ProductService {
   // phải hợp lệ). productId đã qua ShopOwnerGuard xác nhận đúng chủ trước
   // khi vào đây, không phải load lại product chỉ để check tồn tại.
   async archiveProduct(productId: string): Promise<ProductSummary> {
-    await this.prisma.product.update({
-      where: { id: productId },
+    // Sản phẩm đang bị sàn gỡ thì chủ shop không đổi được trạng thái (kể cả "xoá"/lưu trữ) — xem updateProduct.
+    const { count } = await this.prisma.product.updateMany({
+      where: { id: productId, status: { not: 'TAKEN_DOWN' } },
       data: { status: 'ARCHIVED' },
     });
+    if (count === 0) throw productTakenDown();
     return this.loadProductSummary(this.prisma, productId);
   }
 

@@ -64,6 +64,24 @@ export const NOTIFICATION_MESSAGE_KEYS = [
   'bodyAppealAccepted',
   'titleAppealRejected',
   'bodyAppealRejected',
+  'titleReportNew',
+  'bodyReportNewReview',
+  'bodyReportNewConversation',
+  'bodyReportNewShop',
+  'bodyReportNewProduct',
+  'titleReportResolved',
+  'bodyReportResolved',
+  'bodyReportDismissed',
+  'titleReviewHidden',
+  'bodyReviewHidden',
+  'titleProductTakenDown',
+  'bodyProductTakenDown',
+  'titleAdminProductAppealPending',
+  'bodyAdminProductAppealPending',
+  'titleProductAppealAccepted',
+  'bodyProductAppealAccepted',
+  'titleProductAppealRejected',
+  'bodyProductAppealRejected',
   'titleUnknown',
   'bodyUnknown',
 ] as const;
@@ -99,6 +117,14 @@ function pathWithId(prefix: string, id: string): string | null {
 function reasonParams(reason: string | undefined): NotificationParams {
   return reason ? { hasReason: 'yes', reason } : { hasReason: 'no', reason: '' };
 }
+
+// Câu của thông báo báo cáo mới theo loại đối tượng.
+const REPORT_NEW_BODY_KEYS = {
+  REVIEW: 'bodyReportNewReview',
+  CONVERSATION: 'bodyReportNewConversation',
+  SHOP: 'bodyReportNewShop',
+  PRODUCT: 'bodyReportNewProduct',
+} as const satisfies Record<'REVIEW' | 'CONVERSATION' | 'SHOP' | 'PRODUCT', NotificationMessageKey>;
 
 type Known = KnownNotification;
 type Of<T extends Known['type']> = Extract<Known, { type: T }>;
@@ -317,6 +343,76 @@ export function describeNotification(notification: Notification): NotificationDi
         params: {},
         href: '/seller/shop',
       };
+
+    case 'REPORT_NEW':
+      return {
+        icon: 'info',
+        titleKey: 'titleReportNew',
+        // Mỗi loại đối tượng một câu trọn vẹn (không `select`): Admin thấy ngay báo cáo nói về cái gì. Thông báo không mang lý do,
+        // ghi chú hay tên đối tượng — chúng nằm ở hàng đợi.
+        bodyKey: REPORT_NEW_BODY_KEYS[notification.data.targetType],
+        params: {},
+        // Hàng đợi báo cáo của sàn, tab mặc định là "Chờ xử lý".
+        href: '/admin/reports',
+      };
+
+    case 'REPORT_RESOLVED':
+      return {
+        icon: 'info',
+        titleKey: 'titleReportResolved',
+        // Kết quả CHUNG CHUNG (D5): đã xử lý hoặc chưa thấy vi phạm — thông báo không nêu hành động cụ thể, đối tượng hay ghi chú.
+        bodyKey:
+          notification.data.outcome === 'RESOLVED' ? 'bodyReportResolved' : 'bodyReportDismissed',
+        params: {},
+        // Người báo không có trang nào để xem lại báo cáo của mình.
+        href: null,
+      };
+
+    case 'REVIEW_HIDDEN':
+      return {
+        icon: 'review',
+        titleKey: 'titleReviewHidden',
+        bodyKey: 'bodyReviewHidden',
+        params: { productName: notification.data.productName },
+        // Chi tiết đơn: nơi bản đánh giá của chính mình vẫn hiện, kèm nhãn "đã bị ẩn".
+        href: pathWithId('/orders', notification.data.orderId),
+      };
+
+    case 'PRODUCT_TAKEN_DOWN': {
+      const productPath = pathWithId('/seller/products', notification.data.productId);
+      return {
+        icon: 'shop',
+        titleKey: 'titleProductTakenDown',
+        bodyKey: 'bodyProductTakenDown',
+        params: { productName: notification.data.productName, reason: notification.data.reason },
+        // Trang sửa của chính sản phẩm: nơi chủ shop thấy nhãn "Bị gỡ" kèm lý do (id sai dạng ⇒ không dẫn đi đâu).
+        href: productPath ? `${productPath}/edit` : null,
+      };
+    }
+
+    case 'ADMIN_PRODUCT_APPEAL_PENDING':
+      return {
+        icon: 'shop',
+        titleKey: 'titleAdminProductAppealPending',
+        bodyKey: 'bodyAdminProductAppealPending',
+        params: { productName: notification.data.productName },
+        // Cùng hàng đợi với kháng nghị shop (hàng đợi hiển thị cả hai loại), tab mặc định là "Chờ xử lý".
+        href: '/admin/appeals',
+      };
+
+    case 'PRODUCT_APPEAL_DECIDED': {
+      const productPath = pathWithId('/seller/products', notification.data.productId);
+      const accepted = notification.data.decision === 'ACCEPTED';
+      return {
+        icon: 'shop',
+        // Mỗi kết quả một cặp tiêu đề/nội dung trọn vẹn (không `select`); ghi chú của Admin nằm ở trang sản phẩm chứ không trong thông báo.
+        titleKey: accepted ? 'titleProductAppealAccepted' : 'titleProductAppealRejected',
+        bodyKey: accepted ? 'bodyProductAppealAccepted' : 'bodyProductAppealRejected',
+        params: { productName: notification.data.productName },
+        // Trang sửa của chính sản phẩm: được chấp nhận ⇒ sản phẩm đã về nháp (sửa và xuất bản lại được); bị từ chối ⇒ thấy lý do gỡ và phản hồi.
+        href: productPath ? `${productPath}/edit` : null,
+      };
+    }
 
     case 'UNKNOWN':
       return UNKNOWN_DISPLAY;

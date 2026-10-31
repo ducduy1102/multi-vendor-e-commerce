@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { Alert } from '@/shared/components/ui/alert';
@@ -28,12 +28,16 @@ import { SellerProductsListSkeleton } from './SellerProductsListSkeleton';
 
 interface SellerProductsContainerProps {
   shopId: string;
+  // Điều khiển kháng nghị của sản phẩm BỊ GỠ, đặt cạnh nhãn "Bị gỡ" (Week11.md 5.8). Do page.tsx truyền vào vì modules/product không được
+  // import modules/appeal (rules/general.md mục 1): chỉ gọi cho sản phẩm TAKEN_DOWN; không truyền thì không có nút.
+  renderProductAppeal?: (product: { id: string; name: string }) => ReactNode;
 }
 
 const STATUS_LABEL_KEY = {
   DRAFT: 'statusDraft',
   PUBLISHED: 'statusPublished',
   ARCHIVED: 'statusArchived',
+  TAKEN_DOWN: 'statusTakenDown',
 } as const satisfies Record<ProductListItem['status'], string>;
 
 // PUBLISHED dùng --success (đang lên sàn, thấy được ngay giữa danh sách);
@@ -46,6 +50,7 @@ const STATUS_BADGE_VARIANT = {
   DRAFT: 'outline',
   PUBLISHED: 'outline',
   ARCHIVED: 'secondary',
+  TAKEN_DOWN: 'outline',
 } as const satisfies Record<ProductListItem['status'], 'outline' | 'secondary'>;
 
 // ARCHIVED: --secondary/--muted mặc định của variant="secondary" gần như
@@ -60,6 +65,9 @@ const STATUS_BADGE_CLASS = {
   DRAFT: 'border-border text-muted-foreground',
   PUBLISHED: 'border-success/30 bg-success/10 text-success',
   ARCHIVED: 'border-border bg-muted-foreground/15 text-foreground',
+  // TAKEN_DOWN (Week11.md 5.7): sàn gỡ vì vi phạm — nghiêm trọng hơn "ngừng bán" nên dùng tông đỏ giống badge đỏ của khu quản trị
+  // (nền `background` + viền `destructive/30`, chữ `destructive` ≥ 4,5:1 ở cả sáng lẫn tối; nền `destructive/10` chỉ đạt ~3,97:1).
+  TAKEN_DOWN: 'border-destructive/30 bg-background text-destructive',
 } as const satisfies Record<ProductListItem['status'], string>;
 
 // Badge mặc định (badge.tsx) cỡ text-xs/h-5/rounded-4xl (pill) — nhỏ và bo
@@ -77,7 +85,10 @@ const STATUS_BADGE_SIZE_CLASS = 'h-7 rounded-[min(var(--radius-md),12px)] px-2.5
 // không tự gọi useMyShop() ở đây: modules/product không được cross-import
 // modules/shop (rules/general.md mục 1), "biết shop của mình" là việc của
 // page.tsx (composition root), không phải của module product.
-export function SellerProductsContainer({ shopId }: SellerProductsContainerProps) {
+export function SellerProductsContainer({
+  shopId,
+  renderProductAppeal,
+}: SellerProductsContainerProps) {
   const t = useTranslations('product');
   const tApi = useApiErrorMessage();
   const tShop = useTranslations('shop');
@@ -203,7 +214,10 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                 : `${formatPrice(product.minPrice)} - ${formatPrice(product.maxPrice)}`;
 
             return (
-              <li key={product.id} className="flex items-center justify-between gap-4 px-4 py-3">
+              <li
+                key={product.id}
+                className="flex items-center justify-between gap-4 px-4 py-3 max-sm:flex-wrap max-sm:gap-y-2"
+              >
                 <div className="flex min-w-0 flex-col gap-1">
                   <span
                     className="truncate text-sm font-medium text-foreground"
@@ -212,24 +226,37 @@ export function SellerProductsContainer({ shopId }: SellerProductsContainerProps
                     {product.name}
                   </span>
                   <span className="text-xs text-muted-foreground">{priceLabel}</span>
+                  {product.status === 'TAKEN_DOWN' && product.takenDownReason ? (
+                    <span
+                      className="line-clamp-2 text-xs text-foreground/75 [overflow-wrap:anywhere]"
+                      title={product.takenDownReason}
+                    >
+                      {t('takenDownReason', { reason: product.takenDownReason })}
+                    </span>
+                  ) : null}
                 </div>
 
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex items-center gap-3 sm:shrink-0 max-sm:max-w-full max-sm:flex-wrap">
                   <Badge
                     variant={STATUS_BADGE_VARIANT[product.status]}
                     className={cn(STATUS_BADGE_SIZE_CLASS, STATUS_BADGE_CLASS[product.status])}
                   >
                     {t(STATUS_LABEL_KEY[product.status])}
                   </Badge>
+                  {product.status === 'TAKEN_DOWN' && renderProductAppeal
+                    ? renderProductAppeal({ id: product.id, name: product.name })
+                    : null}
                   <Button
                     variant="outline"
                     size="sm"
                     nativeButton={false}
                     render={<Link href={`/seller/products/${product.id}/edit`} />}
                   >
-                    {t('sellerEditAction')}
+                    {product.status === 'TAKEN_DOWN'
+                      ? t('sellerViewReasonAction')
+                      : t('sellerEditAction')}
                   </Button>
-                  {product.status === 'ARCHIVED' ? (
+                  {product.status === 'TAKEN_DOWN' ? null : product.status === 'ARCHIVED' ? (
                     <Button
                       type="button"
                       variant="outline"

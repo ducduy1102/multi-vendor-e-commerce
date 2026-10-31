@@ -18,9 +18,10 @@ import {
 import { Button } from '@/shared/components/ui/button';
 import { Label } from '@/shared/components/ui/label';
 import { Textarea } from '@/shared/components/ui/textarea';
-import { useValidationMessage } from '@/shared/hooks/useValidationMessage';
+import { useValidationMessage, type LooseTranslator } from '@/shared/hooks/useValidationMessage';
 import { cn } from '@/shared/lib/utils';
 
+import { APPEAL_COPY_KEYS, type AppealKind } from '../appeal-copy';
 import {
   APPEAL_MESSAGE_MAX_LENGTH,
   createAppealSchema,
@@ -28,6 +29,8 @@ import {
 } from '../schemas/appeal.schema';
 
 interface AppealDialogProps {
+  // Loại đối tượng bị xử lý (shop bị khoá / sản phẩm bị gỡ): chỉ đổi lời văn của hộp thoại, luồng giống hệt nhau. Mặc định `shop`.
+  kind?: AppealKind;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isPending: boolean;
@@ -41,11 +44,14 @@ interface AppealDialogProps {
 // Form chỉ mount khi hộp thoại mở (mỗi lần mở là một form trống). Nút gửi KHÔNG phải AlertDialogAction — action đó tự đóng ngay
 // khi bấm, còn ở đây phải giữ hộp thoại mở (nút khoá) tới khi yêu cầu xong, và giữ lại chữ đã gõ khi gửi lỗi.
 function AppealForm({
+  kind = 'shop',
   isPending,
   error,
   onSubmit,
 }: Omit<AppealDialogProps, 'open' | 'onOpenChange'>) {
   const t = useTranslations('appeal');
+  const tCopy = t as unknown as LooseTranslator;
+  const copy = APPEAL_COPY_KEYS[kind];
   const translateValidation = useValidationMessage();
   const fieldId = useId();
   const {
@@ -70,8 +76,8 @@ function AppealForm({
       className="flex flex-col gap-4"
     >
       <AlertDialogHeader>
-        <AlertDialogTitle>{t('dialogTitle')}</AlertDialogTitle>
-        <AlertDialogDescription>{t('dialogDescription')}</AlertDialogDescription>
+        <AlertDialogTitle>{tCopy(copy.dialogTitle)}</AlertDialogTitle>
+        <AlertDialogDescription>{tCopy(copy.dialogDescription)}</AlertDialogDescription>
       </AlertDialogHeader>
 
       <div className="flex flex-col gap-1.5">
@@ -80,7 +86,7 @@ function AppealForm({
           id={fieldId}
           rows={6}
           disabled={isPending}
-          placeholder={t('messagePlaceholder')}
+          placeholder={tCopy(copy.messagePlaceholder)}
           aria-invalid={hasFieldError ? true : undefined}
           aria-describedby={hasFieldError ? `${fieldId}-error` : undefined}
           {...register('message')}
@@ -136,6 +142,7 @@ function AppealForm({
 // Kháng nghị là MỘT lần cho mỗi lần bị khoá (không sửa, không gửi lại) nên nằm sau hộp thoại có đếm ký tự thay vì một ô nhập trần
 // ngay trên trang. Component THUẦN: mutation và dịch lỗi do Container nối.
 export function AppealDialog({
+  kind,
   open,
   onOpenChange,
   isPending,
@@ -145,7 +152,7 @@ export function AppealDialog({
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto data-[size=default]:sm:max-w-md">
-        <AppealForm isPending={isPending} error={error} onSubmit={onSubmit} />
+        <AppealForm kind={kind} isPending={isPending} error={error} onSubmit={onSubmit} />
       </AlertDialogContent>
     </AlertDialog>
   );

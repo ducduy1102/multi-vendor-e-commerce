@@ -27,6 +27,7 @@ const NAMESPACES = [
   'shop',
   'chat',
   'notification',
+  'report',
 ] as const;
 
 const viMessages = vi as unknown as Messages;

@@ -19,7 +19,9 @@ import {
   decideAppealSchema,
   deriveAppealState,
   isAppealEpisodeCurrent,
+  isProductAppealEpisodeCurrent,
   ownerAppealSchema,
+  productAppealsResponseSchema,
   shopAppealsResponseSchema,
 } from '@ecommerce/types';
 import { AppealStatus, AppealTargetType } from '@prisma/client';
@@ -370,6 +372,60 @@ describe('kháng nghị còn hiệu lực không (hàm thuần dùng chung BE/FE
   });
 });
 
+// Lần gỡ sản phẩm còn hiệu lực không (Week11.md 5.8) — cùng hình với luật của shop nhưng đọc `takenDownAt` thay vì `statusChangedAt`.
+describe('kháng nghị sản phẩm còn hiệu lực không (hàm thuần dùng chung BE/FE)', () => {
+  const at = new Date('2026-10-28T10:00:00.000Z');
+
+  it.each([
+    ['cùng lần gỡ, sản phẩm vẫn TAKEN_DOWN', 'TAKEN_DOWN', at, true],
+    [
+      'sản phẩm bị gỡ lại một lần khác (mốc đổi)',
+      'TAKEN_DOWN',
+      new Date('2026-10-29T10:00:00.000Z'),
+      false,
+    ],
+    ['sản phẩm đã khôi phục về nháp', 'DRAFT', null, false],
+    // Một sản phẩm không ở TAKEN_DOWN thì không thể "cùng lần gỡ" dù mốc còn sót lại trùng khớp.
+    ['không còn TAKEN_DOWN dù mốc trùng', 'DRAFT', at, false],
+    ['đã xuất bản lại', 'PUBLISHED', at, false],
+    ['đã lưu trữ', 'ARCHIVED', at, false],
+  ])('%s', (_name, status, takenDownAt, expected) => {
+    expect(isProductAppealEpisodeCurrent({ status, takenDownAt }, at)).toBe(
+      expected,
+    );
+  });
+
+  it('TAKEN_DOWN nhưng thiếu mốc gỡ (CHECK ở DB không cho xảy ra) ⇒ không bao giờ khớp', () => {
+    expect(
+      isProductAppealEpisodeCurrent(
+        { status: 'TAKEN_DOWN', takenDownAt: null },
+        at,
+      ),
+    ).toBe(false);
+  });
+
+  it('so theo THỜI ĐIỂM, không theo kiểu dữ liệu (Date lẫn chuỗi ISO), chênh một mili-giây là lần gỡ KHÁC', () => {
+    expect(
+      isProductAppealEpisodeCurrent(
+        { status: 'TAKEN_DOWN', takenDownAt: at.toISOString() },
+        at,
+      ),
+    ).toBe(true);
+    expect(
+      isProductAppealEpisodeCurrent(
+        { status: 'TAKEN_DOWN', takenDownAt: at },
+        at.toISOString(),
+      ),
+    ).toBe(true);
+    expect(
+      isProductAppealEpisodeCurrent(
+        { status: 'TAKEN_DOWN', takenDownAt: new Date(at.getTime() + 1) },
+        at,
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('response (allowlist)', () => {
   const owner = {
     id: 'a1',
@@ -382,6 +438,7 @@ describe('response (allowlist)', () => {
   };
   const admin = {
     ...owner,
+    targetType: 'SHOP',
     decidedByName: null,
     shop: {
       id: 's1',
@@ -391,6 +448,7 @@ describe('response (allowlist)', () => {
       status: 'SUSPENDED',
       statusReason: 'Bán hàng giả',
     },
+    product: null,
     owner: { name: 'Chủ shop', email: 'owner@example.com' },
   };
 
@@ -441,6 +499,71 @@ describe('response (allowlist)', () => {
       /0901234567|Hà Nội|appellantId|decidedById|ownerId/,
     );
     expect(Object.keys(parsed.owner).sort()).toEqual(['email', 'name']);
+  });
+
+  describe('kháng nghị sản phẩm (Week11.md 5.8)', () => {
+    const productAppeal = {
+      ...admin,
+      targetType: 'PRODUCT',
+      product: {
+        id: 'p1',
+        name: 'Dao bấm tự động',
+        slug: 'dao-bam-tu-dong',
+        takenDownReason: 'Hàng cấm theo quy định của sàn.',
+      },
+    };
+
+    it('Admin thấy loại đối tượng và khối sản phẩm (id, tên, slug, lý do gỡ) kèm shop và chủ shop', () => {
+      const parsed = adminAppealSchema.parse(productAppeal);
+
+      expect(parsed.targetType).toBe('PRODUCT');
+      expect(parsed.product).toEqual(productAppeal.product);
+    });
+
+    it('khối sản phẩm là allowlist: cột nội bộ (shopId, trạng thái, mốc gỡ, người gỡ) bị bỏ khi parse', () => {
+      const parsed = adminAppealSchema.parse({
+        ...productAppeal,
+        product: {
+          ...productAppeal.product,
+          shopId: 's1',
+          status: 'TAKEN_DOWN',
+          takenDownAt: '2026-10-28T10:00:00.000Z',
+          takenDownById: 'admin-1',
+        },
+      });
+
+      expect(Object.keys(parsed.product ?? {}).sort()).toEqual([
+        'id',
+        'name',
+        'slug',
+        'takenDownReason',
+      ]);
+    });
+
+    it('kháng nghị shop có `product` là null; thiếu `targetType` hoặc `product` là sai hợp đồng', () => {
+      expect(adminAppealSchema.safeParse(admin).success).toBe(true);
+      const { product, ...withoutProduct } = admin;
+      expect(product).toBeNull();
+      expect(adminAppealSchema.safeParse(withoutProduct).success).toBe(false);
+      const { targetType, ...withoutType } = admin;
+      expect(targetType).toBe('SHOP');
+      expect(adminAppealSchema.safeParse(withoutType).success).toBe(false);
+      expect(
+        adminAppealSchema.safeParse({ ...admin, targetType: 'USER' }).success,
+      ).toBe(false);
+    });
+
+    it('phản hồi của chủ shop cho một sản phẩm cùng hình dạng với của shop (có `canAppeal`)', () => {
+      expect(
+        productAppealsResponseSchema.safeParse({
+          appeals: [owner],
+          canAppeal: true,
+        }).success,
+      ).toBe(true);
+      expect(
+        productAppealsResponseSchema.safeParse({ appeals: [] }).success,
+      ).toBe(false);
+    });
   });
 });
 

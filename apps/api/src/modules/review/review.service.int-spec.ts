@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { AdminAuditService } from '../../shared/audit/admin-audit.service';
 import { createFakeNotificationService } from '../../shared/testing/fake-notification-service';
 import type { PrismaService } from '../../shared/prisma/prisma.service';
 import {
@@ -26,6 +27,7 @@ describe('ReviewService / ProductRatingService (DB thật)', () => {
     prisma as unknown as PrismaService,
     rating,
     createFakeNotificationService(),
+    new AdminAuditService(),
   );
 
   beforeAll(async () => {

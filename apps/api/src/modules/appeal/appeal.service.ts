@@ -2,16 +2,20 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   APPEAL_OWNER_HISTORY_LIMIT,
+  APPEALABLE_PRODUCT_STATUS,
   APPEALABLE_SHOP_STATUS,
   deriveAppealState,
   isAppealEpisodeCurrent,
+  isProductAppealEpisodeCurrent,
   type OwnerAppeal,
+  type ProductAppealsResponse,
   type ShopAppealsResponse,
 } from '@ecommerce/types';
 import { AppException } from '../../shared/exceptions/app.exception';
 import { NotificationService } from '../../shared/notification/notification.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { TxClient } from '../../shared/prisma/tx-client';
+import { isUuid } from '../../shared/utils/is-uuid';
 import { redactWriteError } from '../../shared/utils/redact-write-error';
 import type { CreateAppealDto } from './dto/create-appeal.dto';
 
@@ -37,22 +41,45 @@ interface ShopEpisode {
   statusChangedAt: Date;
 }
 
-export function toOwnerAppeal(
+interface ProductEpisode {
+  status: string;
+  takenDownAt: Date | null;
+}
+
+// Dựng response bằng object literal tường minh (không spread) cho cả hai loại đối tượng; chỉ khác cách xác định "lần xử lý còn hiệu lực".
+function buildOwnerAppeal(
   row: OwnerAppealRow,
-  shop: ShopEpisode,
+  isEpisodeCurrent: boolean,
 ): OwnerAppeal {
   return {
     id: row.id,
-    state: deriveAppealState(
-      row.status,
-      isAppealEpisodeCurrent(shop, row.moderationEventAt),
-    ),
+    state: deriveAppealState(row.status, isEpisodeCurrent),
     message: row.message,
     decisionNote: row.decisionNote,
     createdAt: row.createdAt.toISOString(),
     decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
     moderationEventAt: row.moderationEventAt.toISOString(),
   };
+}
+
+export function toOwnerAppeal(
+  row: OwnerAppealRow,
+  shop: ShopEpisode,
+): OwnerAppeal {
+  return buildOwnerAppeal(
+    row,
+    isAppealEpisodeCurrent(shop, row.moderationEventAt),
+  );
+}
+
+export function toOwnerProductAppeal(
+  row: OwnerAppealRow,
+  product: ProductEpisode,
+): OwnerAppeal {
+  return buildOwnerAppeal(
+    row,
+    isProductAppealEpisodeCurrent(product, row.moderationEventAt),
+  );
 }
 
 const notAllowed = () =>
@@ -62,12 +89,29 @@ const notAllowed = () =>
     'This shop cannot be appealed right now',
   );
 
+const productNotAllowed = () =>
+  new AppException(
+    409,
+    'APPEAL_NOT_ALLOWED',
+    'This product cannot be appealed right now',
+  );
+
 const alreadySent = () =>
   new AppException(
     409,
     'APPEAL_ALREADY_SENT',
     'An appeal was already sent for this suspension',
   );
+
+const productAlreadySent = () =>
+  new AppException(
+    409,
+    'APPEAL_ALREADY_SENT',
+    'An appeal was already sent for this take-down',
+  );
+
+// Sản phẩm không tồn tại, sai dạng id HOẶC thuộc shop khác ra CÙNG một 404: chủ shop không dò được sản phẩm của người khác.
+const productNotFound = () => new NotFoundException('Product not found');
 
 // Lỗi vi phạm unique của CHÍNH bảng `Appeal`: soi `meta.modelName` (rules/backend.md mục 4), không so câu chữ lỗi.
 function isAppealUniqueViolation(error: unknown): boolean {
@@ -78,8 +122,9 @@ function isAppealUniqueViolation(error: unknown): boolean {
   );
 }
 
-// Kháng nghị của chủ shop (Week11.md 4.6, D15). Chỉ shop ĐANG BỊ KHOÁ (SUSPENDED) bởi một Admin được kháng nghị, và mỗi lần bị khoá
-// chỉ MỘT lần. Quyền sở hữu shop do ShopOwnerGuard kiểm TRƯỚC khi tới đây (shop không tồn tại ⇒ 404, không phải chủ ⇒ 403); người
+// Kháng nghị của chủ shop (Week11.md 4.6 và 5.8, D15). Chỉ shop ĐANG BỊ KHOÁ (SUSPENDED) bởi một Admin — hoặc một sản phẩm ĐANG BỊ GỠ
+// (TAKEN_DOWN, `listForProduct` / `createForProduct`) — được kháng nghị, và mỗi lần bị xử lý chỉ MỘT lần.
+// Quyền sở hữu shop do ShopOwnerGuard kiểm TRƯỚC khi tới đây (shop không tồn tại ⇒ 404, không phải chủ ⇒ 403); người
 // gửi luôn là người dùng của phiên, shop luôn từ đường dẫn, mốc bị xử lý (`moderationEventAt`) luôn đọc từ `Shop.statusChangedAt` ở
 // server — client chỉ gửi lời kháng nghị. Lời kháng nghị là văn bản riêng tư: không có trong log (chỉ id), và lỗi ghi của Prisma
 // (mang nguyên giá trị đã ghi) được che bằng redactWriteError.
@@ -194,6 +239,121 @@ export class AppealService {
     });
 
     return toOwnerAppeal(created.row, created.shop);
+  }
+
+  // Lịch sử kháng nghị của MỘT sản phẩm (mới nhất trước) và `canAppeal` — đúng luật của `createForProduct`, do server tính để FE không tự
+  // suy lại (Week11.md 5.8). Sản phẩm của shop khác / không tồn tại / id sai dạng ra cùng một 404.
+  async listForProduct(
+    shopId: string,
+    productId: string,
+  ): Promise<ProductAppealsResponse> {
+    const product = await this.findShopProduct(shopId, productId);
+    const rows = await this.prisma.appeal.findMany({
+      where: { targetType: 'PRODUCT', targetId: productId },
+      select: ownerAppealSelect,
+      orderBy: { moderationEventAt: 'desc' },
+      take: APPEAL_OWNER_HISTORY_LIMIT,
+    });
+
+    const appealed = rows.some((row) =>
+      isProductAppealEpisodeCurrent(product, row.moderationEventAt),
+    );
+    return {
+      appeals: rows.map((row) => toOwnerProductAppeal(row, product)),
+      canAppeal: !appealed && product.status === APPEALABLE_PRODUCT_STATUS,
+    };
+  }
+
+  // Kháng nghị lần gỡ sản phẩm hiện tại (Week11.md 5.8): chỉ sản phẩm ĐANG bị gỡ (TAKEN_DOWN) của CHÍNH shop trên đường dẫn, mỗi lần bị gỡ
+  // một lần. Mốc bị xử lý (`moderationEventAt`) luôn đọc từ `Product.takenDownAt` ở server. Cùng cách chống đua với `create`: `FOR SHARE` hàng sản
+  // phẩm để Admin khôi phục cùng lúc (UPDATE cần khoá độc quyền) phải chờ — kháng nghị không bao giờ gắn vào lần gỡ vừa kết thúc.
+  async createForProduct(
+    userId: string,
+    shopId: string,
+    productId: string,
+    dto: CreateAppealDto,
+  ): Promise<OwnerAppeal> {
+    if (!isUuid(productId)) throw productNotFound();
+
+    let created: { row: OwnerAppealRow; product: ProductEpisode };
+    try {
+      created = await this.prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<
+          { shop_id: string; status: string; taken_down_at: Date | null }[]
+        >(
+          Prisma.sql`SELECT shop_id, status, taken_down_at FROM products WHERE id = ${productId} FOR SHARE`,
+        );
+        const locked = rows[0];
+        if (!locked || locked.shop_id !== shopId) throw productNotFound();
+        if (
+          locked.status !== APPEALABLE_PRODUCT_STATUS ||
+          locked.taken_down_at === null
+        ) {
+          throw productNotAllowed();
+        }
+
+        const moderationEventAt = locked.taken_down_at;
+        const existing = await tx.appeal.findUnique({
+          where: {
+            targetType_targetId_moderationEventAt: {
+              targetType: 'PRODUCT',
+              targetId: productId,
+              moderationEventAt,
+            },
+          },
+          select: { id: true },
+        });
+        if (existing) throw productAlreadySent();
+
+        const row = await tx.appeal.create({
+          data: {
+            targetType: 'PRODUCT',
+            targetId: productId,
+            appellantId: userId,
+            message: dto.message,
+            moderationEventAt,
+          },
+          select: ownerAppealSelect,
+        });
+        return {
+          row,
+          product: { status: locked.status, takenDownAt: moderationEventAt },
+        };
+      });
+    } catch (error) {
+      if (error instanceof AppException || error instanceof NotFoundException) {
+        throw error;
+      }
+      // Hai request đồng thời cùng lần gỡ: `@@unique` là trọng tài, bên thua nhận P2002 của chính bảng Appeal.
+      if (isAppealUniqueViolation(error)) throw productAlreadySent();
+      throw redactWriteError(error, 'appeal');
+    }
+
+    // Chỉ id: lời kháng nghị là văn bản riêng tư, không vào log.
+    this.logger.log(
+      `Owner ${userId} appealed the take-down of product ${productId} in shop ${shopId} (appeal ${created.row.id})`,
+    );
+    // Báo mọi Admin, SAU commit và không bao giờ ném.
+    await this.notificationService.notify({
+      kind: 'PRODUCT_APPEAL_SUBMITTED',
+      appealId: created.row.id,
+      productId,
+    });
+
+    return toOwnerProductAppeal(created.row, created.product);
+  }
+
+  private async findShopProduct(
+    shopId: string,
+    productId: string,
+  ): Promise<ProductEpisode> {
+    if (!isUuid(productId)) throw productNotFound();
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { shopId: true, status: true, takenDownAt: true },
+    });
+    if (!product || product.shopId !== shopId) throw productNotFound();
+    return { status: product.status, takenDownAt: product.takenDownAt };
   }
 
   // Lần khoá hiện tại do một ADMIN thực hiện (không phải khoá theo cascade tài khoản): dòng lịch sử mới nhất không do hệ thống ghi.

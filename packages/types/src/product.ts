@@ -1,4 +1,5 @@
 import { z, type RefinementCtx } from 'zod';
+import { adminUserReasonSchema } from './admin-user';
 import { SHOP_SLUG_MAX_LENGTH } from './shop';
 import { validationMessage } from './validation-message';
 
@@ -29,8 +30,15 @@ export const PRODUCT_IMAGE_MAX_SOURCE_BYTES = 10 * 1024 * 1024;
 // sửa/lưu được bình thường miễn không tăng thêm — Zod không biết trạng thái cũ nên không diễn tả được luật đó.
 export const PRODUCT_VARIANT_MAX_IMAGES = 9;
 
-export const productStatusSchema = z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']);
+// TAKEN_DOWN (Week11.md 5.7, D5): sàn gỡ vì vi phạm — chỉ Admin đặt và gỡ được (POST /admin/products/:id/take-down|restore), chủ shop
+// không tự đặt hay đổi trạng thái được. Mọi nơi đọc công khai chỉ lấy đúng PUBLISHED nên sản phẩm này tự biến khỏi trang công khai.
+export const productStatusSchema = z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED', 'TAKEN_DOWN']);
 export type ProductStatus = z.infer<typeof productStatusSchema>;
+
+// Trạng thái CHỦ SHOP được đặt (đăng bán / nháp / lưu trữ). Cố ý KHÔNG có TAKEN_DOWN: đường duy nhất vào trạng thái đó là Admin, và
+// đường duy nhất ra khỏi nó cũng là Admin (khôi phục về DRAFT).
+export const sellerProductStatusSchema = z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']);
+export type SellerProductStatus = z.infer<typeof sellerProductStatusSchema>;
 
 // Input HTML bỏ trống gửi lên chuỗi rỗng "" (React Hook Form), không phải
 // undefined — coi "" như chưa nhập, cùng lý do đã áp dụng ở shop.ts.
@@ -194,7 +202,7 @@ export const updateProductSchema = z
     name: z.string().trim().min(1, 'product.validationNameRequired').optional(),
     categoryId: z.string().trim().min(1, 'product.validationCategoryRequired').optional(),
     description: optionalTrimmedString(),
-    status: productStatusSchema.optional(),
+    status: sellerProductStatusSchema.optional(),
     attributes: z.array(productAttributeInputSchema).optional(),
     variants: z.array(productVariantInputSchema).min(1, 'product.validationVariantsMin').optional(),
   })
@@ -274,6 +282,9 @@ export const productSchema = z.object({
   slug: z.string(),
   description: z.string().nullable(),
   status: productStatusSchema,
+  // Lý do Admin đã nhập khi gỡ (Week11.md 5.7): có giá trị khi và chỉ khi status = TAKEN_DOWN (CHECK ở DB). Chỉ chủ shop đọc được sản
+  // phẩm đó (người khác nhận 404) nên lý do không ra ngoài người bị ảnh hưởng.
+  takenDownReason: z.string().nullable(),
   // Denormalized từ variants active (Decimal -> string qua JSON, giống
   // variant.price) — FE hiển thị "từ {minPrice}đ" khi có nhiều variant giá
   // khác nhau, không tự tính lại từ variants[].
@@ -328,6 +339,7 @@ export const productListItemSchema = z.object({
   name: z.string(),
   slug: z.string(),
   status: productStatusSchema,
+  takenDownReason: z.string().nullable(),
   minPrice: z.string(),
   maxPrice: z.string(),
   createdAt: z.string(),
@@ -435,3 +447,31 @@ export const uploadSignatureSchema = z.object({
   cloudName: z.string(),
 });
 export type UploadSignature = z.infer<typeof uploadSignatureSchema>;
+
+// --- Phía Admin: gỡ / khôi phục sản phẩm vi phạm (Week11.md 5.7, D5) ------------------------------------
+
+// Lý do tối đa (ký tự UTF-16). PHẢI khớp CHECK `products_takedown_columns_consistent` ở DB (migration `add_product_takedown_columns`):
+// `product-schemas.spec.ts` đọc file migration và so cận trên.
+export const PRODUCT_TAKEDOWN_REASON_MAX_LENGTH = 500;
+
+// Lý do gỡ / khôi phục do Admin nhập: văn bản thuần nhiều dòng, BẮT BUỘC, cùng luật chuẩn hoá và ký tự với lý do khoá tài khoản / ẩn đánh
+// giá (cùng cận 500 và cùng key i18n `admin.validationReason*`), nên dùng lại thay vì thêm một bản sao nữa của cùng đoạn schema.
+export const productModerationReasonSchema = adminUserReasonSchema;
+
+// POST /admin/products/:id/take-down và /restore. Người thực hiện lấy từ phiên, sản phẩm từ đường dẫn: body chỉ có lý do. Lý do gỡ HIỆN cho
+// chủ shop (trang sửa + danh sách sản phẩm của shop + thông báo) nên phải viết như lời giải thích cho họ, không nêu người báo cáo. Lý do
+// của lần KHÔI PHỤC chỉ ở nhật ký quản trị.
+export const takeDownProductSchema = z.object({ reason: productModerationReasonSchema });
+export type TakeDownProductInput = z.infer<typeof takeDownProductSchema>;
+export const restoreProductSchema = takeDownProductSchema;
+export type RestoreProductInput = TakeDownProductInput;
+
+// Kết quả gỡ / khôi phục: đủ để màn quản trị cập nhật tại chỗ. Cố ý KHÔNG có tên sản phẩm, shop hay lý do.
+export const productModerationResponseSchema = z.object({
+  product: z.object({
+    id: z.string(),
+    status: productStatusSchema,
+    takenDownAt: z.string().nullable(),
+  }),
+});
+export type ProductModerationResponse = z.infer<typeof productModerationResponseSchema>;

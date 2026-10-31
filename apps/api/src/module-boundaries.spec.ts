@@ -27,6 +27,7 @@ export const FORBIDDEN_DEPENDENCIES: Record<string, string[]> = {
     'order',
     'review',
     'admin',
+    'report',
   ],
   // `notification` (Week10.md 7.6) là phía ĐỌC hộp thông báo: chỉ đọc bảng `notifications` của người đang đăng nhập nên
   // không phụ thuộc module nghiệp vụ nào (phía GHI nằm ở shared/notification, được các module nghiệp vụ gọi).
@@ -41,6 +42,7 @@ export const FORBIDDEN_DEPENDENCIES: Record<string, string[]> = {
     'review',
     'admin',
     'chat',
+    'report',
   ],
   // `appeal` (Week11.md 4.6) là phía CHỦ SHOP của kháng nghị: module LÁ như chat/notification — shop và lịch sử trạng thái đọc bằng
   // PrismaService, nên không phụ thuộc module nghiệp vụ nào. Phía Admin điều phối ở modules/admin và đọc bảng `appeals` trực tiếp,
@@ -56,8 +58,26 @@ export const FORBIDDEN_DEPENDENCIES: Record<string, string[]> = {
     'review',
     'admin',
     'chat',
+    'report',
   ],
-  admin: ['appeal'],
+  // `report` (Week11.md 5.3) là phía NGƯỜI BÁO của báo cáo vi phạm: module LÁ như appeal/chat/notification — đối tượng bị báo (đánh
+  // giá, hội thoại, shop, sản phẩm) đọc qua cổng ReportTargetDirectory bằng PrismaService, nên không phụ thuộc module nghiệp vụ nào.
+  // Phía Admin điều phối ở modules/admin (ẩn đánh giá, khoá shop, gỡ sản phẩm...) và đọc bảng `reports` trực tiếp, không import
+  // `report` (chiều ngược cũng cấm để đồ thị không có vòng).
+  report: [
+    'auth',
+    'shop',
+    'product',
+    'cart',
+    'checkout',
+    'voucher',
+    'order',
+    'review',
+    'admin',
+    'chat',
+    'appeal',
+  ],
+  admin: ['appeal', 'report'],
   voucher: ['cart', 'checkout', 'order'],
   product: ['cart', 'checkout', 'order', 'review'],
   order: ['checkout', 'cart', 'review'],
@@ -221,6 +241,49 @@ describe('module boundaries', () => {
       expect(v[0]).toContain("'review' không được phụ thuộc module 'order'");
       expect(v[1]).toContain("'product' không được phụ thuộc module 'review'");
       expect(v[2]).toContain("'order' không được phụ thuộc module 'review'");
+    });
+
+    it('report là module LÁ cả hai chiều (report → order/review/chat/shop/product, admin/chat/notification/appeal → report)', () => {
+      const v = findViolations([
+        file(
+          'modules/report/a.ts',
+          "import { X } from '../review/review.service';",
+        ),
+        file(
+          'modules/report/b.ts',
+          "import { Y } from '../chat/chat.service';",
+        ),
+        file(
+          'modules/report/c.ts',
+          "import { Z } from '../shop/shop.service';",
+        ),
+        file(
+          'modules/admin/d.ts',
+          "import { R } from '../report/report.service';",
+        ),
+        file(
+          'modules/chat/e.ts',
+          "import { R } from '../report/report.service';",
+        ),
+        file(
+          'modules/notification/f.ts',
+          "import { R } from '../report/report.service';",
+        ),
+        file(
+          'modules/appeal/g.ts',
+          "import { R } from '../report/report.service';",
+        ),
+      ]);
+      expect(v).toHaveLength(7);
+      expect(v[0]).toContain("'report' không được phụ thuộc module 'review'");
+      expect(v[1]).toContain("'report' không được phụ thuộc module 'chat'");
+      expect(v[2]).toContain("'report' không được phụ thuộc module 'shop'");
+      expect(v[3]).toContain("'admin' không được phụ thuộc module 'report'");
+      expect(v[4]).toContain("'chat' không được phụ thuộc module 'report'");
+      expect(v[5]).toContain(
+        "'notification' không được phụ thuộc module 'report'",
+      );
+      expect(v[6]).toContain("'appeal' không được phụ thuộc module 'report'");
     });
 
     it('cho phép review → product qua *.service nhưng chặn file nội bộ', () => {

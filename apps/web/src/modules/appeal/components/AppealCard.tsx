@@ -6,19 +6,22 @@ import { Badge } from '@/shared/components/ui/badge';
 import type { LooseTranslator } from '@/shared/hooks/useValidationMessage';
 import { cn } from '@/shared/lib/utils';
 
+import { APPEAL_COPY_KEYS, type AppealKind } from '../appeal-copy';
 import { APPEAL_BADGE_CLASS, APPEAL_STATE_DISPLAY } from '../appeal-display';
 import { useFormatAppealDateTime } from '../hooks/useFormatAppealDateTime';
 import type { OwnerAppeal } from '../types';
 
 interface AppealCardProps {
   appeal: OwnerAppeal;
+  // Loại đối tượng (chỉ đổi câu "lần ... này đã kết thúc"). Mặc định `shop`.
+  kind?: AppealKind;
 }
 
 // MỘT kháng nghị trong lịch sử của shop: trạng thái, lời đã gửi, và (khi Admin đã quyết định) phản hồi từ sàn. Cả lời kháng
 // nghị lẫn phản hồi là văn bản tự do nên hiện dạng text (React tự escape), xuống dòng được giữ, chuỗi dài không dấu cách bị bẻ
 // (`[overflow-wrap:anywhere]` — `break-words` không thu nhỏ min-content, xem rules/frontend.md mục 5). Chủ shop KHÔNG thấy Admin
 // nào quyết định — chỉ thấy "sàn" phản hồi. Component THUẦN trình bày.
-export function AppealCard({ appeal }: AppealCardProps) {
+export function AppealCard({ appeal, kind = 'shop' }: AppealCardProps) {
   const t = useTranslations('appeal');
   const tDynamic = t as unknown as LooseTranslator;
   const formatDateTime = useFormatAppealDateTime();
@@ -58,7 +61,9 @@ export function AppealCard({ appeal }: AppealCardProps) {
       ) : null}
 
       {appeal.state === 'CLOSED' ? (
-        <p className="text-xs text-muted-foreground">{t('closedHint')}</p>
+        <p className="text-xs text-muted-foreground">
+          {tDynamic(APPEAL_COPY_KEYS[kind].closedHint)}
+        </p>
       ) : null}
     </li>
   );

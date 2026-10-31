@@ -4,5 +4,6 @@ export type {
   AppealState,
   CreateAppealInput,
   OwnerAppeal,
+  ProductAppealsResponse,
   ShopAppealsResponse,
 } from '@ecommerce/types';

@@ -7,6 +7,8 @@ import { parseReviewPageQuery } from '@/modules/review';
 import { Container } from '@/shared/components/Container';
 import { ApiError } from '@/shared/lib/api-client';
 
+import { ReportEntry } from '../../_components/ReportEntry';
+
 interface ProductDetailPageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -50,7 +52,20 @@ export default async function ProductDetailPage({ params, searchParams }: Produc
       <main className="flex flex-1 flex-col">
         <Container className="flex flex-1 flex-col py-6">
           <Suspense key={slug} fallback={<ProductDetailSkeleton />}>
-            <ProductDetailContainer slug={slug} reviewQuery={reviewQuery} />
+            <ProductDetailContainer
+              slug={slug}
+              reviewQuery={reviewQuery}
+              renderReviewAction={(review) => (
+                <ReportEntry targetType="REVIEW" targetId={review.id} />
+              )}
+              renderProductAction={(product) => (
+                <ReportEntry
+                  targetType="PRODUCT"
+                  targetId={product.id}
+                  className="-ml-2 text-muted-foreground"
+                />
+              )}
+            />
           </Suspense>
         </Container>
       </main>

@@ -1,5 +1,9 @@
 import {
   adminAppealListResponseSchema,
+  adminReportDetailResponseSchema,
+  adminReportListResponseSchema,
+  productModerationResponseSchema,
+  reviewModerationResponseSchema,
   adminCancelShopOrdersResultSchema,
   adminNoteCreatedResponseSchema,
   adminNoteListResponseSchema,
@@ -37,6 +41,9 @@ import {
   type AdminRefundablePaymentListResponse,
   type AdminShop,
   type AdminShopListQuery,
+  type AdminReport,
+  type AdminReportListQuery,
+  type AdminReportListResponse,
   type AdminShopListResponse,
   type AdminUpdateShopStatusInput,
   type AdminUser,
@@ -45,8 +52,13 @@ import {
   type AdminUserListResponse,
   type CreateAdminNoteInput,
   type DecideAppealInput,
+  type ProductModerationResponse,
   type ReactivateUserInput,
+  type ResolveReportInput,
+  type RestoreProductInput,
+  type ReviewModerationResponse,
   type SuspendUserInput,
+  type UnhideReviewInput,
 } from '@ecommerce/types';
 
 import { apiFetch } from '@/shared/lib/api-client';
@@ -221,6 +233,72 @@ export async function decideAppeal(
     body: JSON.stringify(input),
   });
   return decideAppealResponseSchema.parse(data).appeal;
+}
+
+// --- Báo cáo vi phạm (Week11.md 5.4/5.6) -------------------------------------------------------------
+
+// Hàng đợi báo cáo: tab `OPEN` (chờ xử lý, cũ nhất trước) hoặc `CLOSED` (đã xử lý, mới xử lý trước), lọc thêm theo loại đối tượng. Mỗi
+// dòng mang sẵn ảnh chụp đối tượng lúc báo và số báo cáo mở khác về CÙNG đối tượng. Chỉ ADMIN gọi được.
+export async function listReports(
+  params: Partial<AdminReportListQuery> = {},
+): Promise<AdminReportListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.status !== undefined) searchParams.set('status', params.status);
+  if (params.targetType !== undefined) searchParams.set('targetType', params.targetType);
+  if (params.page !== undefined) searchParams.set('page', String(params.page));
+  if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+  const query = searchParams.toString();
+  const data = await apiFetch<unknown>(`/admin/reports${query ? `?${query}` : ''}`, {
+    method: 'GET',
+  });
+  return adminReportListResponseSchema.parse(data);
+}
+
+// Một báo cáo (id không tồn tại hoặc sai dạng ⇒ 404 `REPORT_NOT_FOUND`). BE bọc kết quả trong `{ report }`.
+export async function getReport(reportId: string): Promise<AdminReport> {
+  const data = await apiFetch<unknown>(`/admin/reports/${encodeURIComponent(reportId)}`, {
+    method: 'GET',
+  });
+  return adminReportDetailResponseSchema.parse(data).report;
+}
+
+// Xử lý báo cáo THEO ĐỐI TƯỢNG: một hành động đóng luôn mọi báo cáo mở còn lại của đối tượng đó. Ghi chú bắt buộc trừ `DISMISS` (BE trả 400
+// theo field `note`). Admin khác đã xử lý trước ⇒ 409 `REPORT_ALREADY_CLOSED`; hành động không dùng được cho loại này (hoặc chưa có bộ xử lý)
+// ⇒ 409 `REPORT_ACTION_NOT_ALLOWED`; bên bị báo là Admin ⇒ 409 `CANNOT_MODIFY_ADMIN`. Trả báo cáo SAU khi xử lý.
+export async function resolveReport(
+  reportId: string,
+  input: ResolveReportInput,
+): Promise<AdminReport> {
+  const data = await apiFetch<unknown>(`/admin/reports/${encodeURIComponent(reportId)}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return adminReportDetailResponseSchema.parse(data).report;
+}
+
+// Mở lại một đánh giá đã ẩn (sửa nhầm). Lý do bắt buộc, chỉ ghi vào nhật ký quản trị. Đánh giá đang hiển thị ⇒ 409 `REVIEW_NOT_HIDDEN`.
+export async function unhideReview(
+  reviewId: string,
+  input: UnhideReviewInput,
+): Promise<ReviewModerationResponse> {
+  const data = await apiFetch<unknown>(`/admin/reviews/${encodeURIComponent(reviewId)}/unhide`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return reviewModerationResponseSchema.parse(data);
+}
+
+// Khôi phục một sản phẩm đã bị sàn gỡ (sửa nhầm, Week11.md 5.7): về NHÁP để chủ shop tự sửa và xuất bản lại. Lý do bắt buộc, chỉ ghi vào
+// nhật ký quản trị. Sản phẩm không ở trạng thái bị gỡ ⇒ 409 `PRODUCT_NOT_TAKEN_DOWN`.
+export async function restoreProduct(
+  productId: string,
+  input: RestoreProductInput,
+): Promise<ProductModerationResponse> {
+  const data = await apiFetch<unknown>(`/admin/products/${encodeURIComponent(productId)}/restore`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return productModerationResponseSchema.parse(data);
 }
 
 // --- Hoàn tiền (Week9.md 2.9) ---------------------------------------------------------------------

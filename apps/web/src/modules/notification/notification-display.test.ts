@@ -240,6 +240,90 @@ const CASES: Case[] = [
     bodyKey: decision === 'ACCEPTED' ? 'bodyAppealAccepted' : 'bodyAppealRejected',
     href: '/seller/shop',
   })),
+  ...(
+    [
+      ['REVIEW', 'bodyReportNewReview'],
+      ['CONVERSATION', 'bodyReportNewConversation'],
+      ['SHOP', 'bodyReportNewShop'],
+      ['PRODUCT', 'bodyReportNewProduct'],
+    ] as const
+  ).map(([targetType, bodyKey]): Case => ({
+    name: `REPORT_NEW ${targetType}`,
+    notification: {
+      ...BASE,
+      type: 'REPORT_NEW',
+      data: { reportId: ORDER, targetType },
+    },
+    icon: 'info',
+    titleKey: 'titleReportNew',
+    bodyKey,
+    href: '/admin/reports',
+  })),
+  ...(['RESOLVED', 'DISMISSED'] as const).map((outcome): Case => ({
+    name: `REPORT_RESOLVED ${outcome}`,
+    notification: {
+      ...BASE,
+      type: 'REPORT_RESOLVED',
+      data: { reportId: ORDER, targetType: 'REVIEW', outcome },
+    },
+    icon: 'info',
+    titleKey: 'titleReportResolved',
+    bodyKey: outcome === 'RESOLVED' ? 'bodyReportResolved' : 'bodyReportDismissed',
+    href: null,
+  })),
+  {
+    name: 'REVIEW_HIDDEN',
+    notification: {
+      ...BASE,
+      type: 'REVIEW_HIDDEN',
+      data: { orderId: ORDER, productName: 'Áo thun cotton' },
+    },
+    icon: 'review',
+    titleKey: 'titleReviewHidden',
+    bodyKey: 'bodyReviewHidden',
+    href: `/orders/${ORDER}`,
+  },
+  {
+    name: 'PRODUCT_TAKEN_DOWN',
+    notification: {
+      ...BASE,
+      type: 'PRODUCT_TAKEN_DOWN',
+      data: {
+        productId: ORDER,
+        productName: 'Dao bấm tự động',
+        reason: 'Hàng cấm theo quy định của sàn.',
+      },
+    },
+    icon: 'shop',
+    titleKey: 'titleProductTakenDown',
+    bodyKey: 'bodyProductTakenDown',
+    href: `/seller/products/${ORDER}/edit`,
+  },
+  {
+    name: 'ADMIN_PRODUCT_APPEAL_PENDING',
+    notification: {
+      ...BASE,
+      type: 'ADMIN_PRODUCT_APPEAL_PENDING',
+      data: { appealId: SHOP, productId: ORDER, productName: 'Dao bấm tự động' },
+    },
+    icon: 'shop',
+    titleKey: 'titleAdminProductAppealPending',
+    bodyKey: 'bodyAdminProductAppealPending',
+    // Cùng hàng đợi với kháng nghị shop.
+    href: '/admin/appeals',
+  },
+  ...(['ACCEPTED', 'REJECTED'] as const).map((decision): Case => ({
+    name: `PRODUCT_APPEAL_DECIDED ${decision}`,
+    notification: {
+      ...BASE,
+      type: 'PRODUCT_APPEAL_DECIDED',
+      data: { appealId: SHOP, productId: ORDER, productName: 'Dao bấm tự động', decision },
+    },
+    icon: 'shop',
+    titleKey: decision === 'ACCEPTED' ? 'titleProductAppealAccepted' : 'titleProductAppealRejected',
+    bodyKey: decision === 'ACCEPTED' ? 'bodyProductAppealAccepted' : 'bodyProductAppealRejected',
+    href: `/seller/products/${ORDER}/edit`,
+  })),
   {
     name: 'UNKNOWN',
     notification: { ...BASE, type: 'UNKNOWN', data: {} },
@@ -357,7 +441,7 @@ describe.each(['vi', 'en'] as const)('chữ hiển thị (%s)', (locale) => {
       // Dữ liệu mẫu có tên shop/lý do tiếng Việt: thay bằng ASCII để chỉ còn mẫu dịch.
       const n = JSON.parse(
         JSON.stringify(c.notification).replace(
-          /Shop Áo|Áo thun|Hết hàng|Đổi ý|Không đủ điều kiện|Thiếu giấy phép|Shop Mới|Shop Bị Khóa/g,
+          /Shop Áo|Áo thun|Hết hàng|Đổi ý|Không đủ điều kiện|Thiếu giấy phép|Shop Mới|Shop Bị Khóa|Dao bấm tự động|Hàng cấm theo quy định của sàn\./g,
           'x',
         ),
       ) as Notification;
@@ -457,6 +541,132 @@ describe('nội dung theo ngữ cảnh', () => {
     expect(display.href).toBe('/admin/appeals');
     expect(render(display, 'vi').body).toContain('Shop Bị Khóa');
     expect(render(display, 'en').body).toContain('Shop Bị Khóa');
+  });
+
+  it('kháng nghị sản phẩm (chủ shop): kết quả chấp nhận ≠ từ chối, nêu tên sản phẩm bằng cả hai ngôn ngữ, dẫn tới trang sửa; id sai dạng ⇒ không dẫn đi đâu', () => {
+    const accepted = describeNotification(find('PRODUCT_APPEAL_DECIDED ACCEPTED'));
+    const rejected = describeNotification(find('PRODUCT_APPEAL_DECIDED REJECTED'));
+
+    expect(accepted.href).toBe(`/seller/products/${ORDER}/edit`);
+    expect(render(accepted, 'vi').title).toBe('Kháng nghị được chấp nhận');
+    expect(render(rejected, 'vi').title).toBe('Kháng nghị bị từ chối');
+    expect(render(accepted, 'vi').body).not.toBe(render(rejected, 'vi').body);
+    expect(render(accepted, 'en').title).toBe('Appeal accepted');
+    expect(render(rejected, 'en').title).toBe('Appeal rejected');
+    for (const locale of ['vi', 'en'] as const) {
+      expect(render(accepted, locale).body).toContain('Dao bấm tự động');
+      expect(render(rejected, locale).body).toContain('Dao bấm tự động');
+    }
+    expect(
+      describeNotification({
+        ...BASE,
+        type: 'PRODUCT_APPEAL_DECIDED',
+        data: {
+          appealId: SHOP,
+          productId: '../../etc/passwd',
+          productName: 'x',
+          decision: 'ACCEPTED',
+        },
+      }).href,
+    ).toBeNull();
+  });
+
+  it('kháng nghị sản phẩm mới (Admin): nêu tên sản phẩm và dẫn tới hàng đợi kháng nghị', () => {
+    const display = describeNotification(find('ADMIN_PRODUCT_APPEAL_PENDING'));
+
+    expect(display.href).toBe('/admin/appeals');
+    for (const locale of ['vi', 'en'] as const) {
+      expect(render(display, locale).body).toContain('Dao bấm tự động');
+    }
+  });
+
+  it('báo cáo mới (Admin): mỗi loại đối tượng một câu riêng, chỉ nói loại gì bị báo — không có tên, lý do hay người báo', () => {
+    const bodies = (['REVIEW', 'CONVERSATION', 'SHOP', 'PRODUCT'] as const).map((targetType) => {
+      const display = describeNotification({
+        ...BASE,
+        type: 'REPORT_NEW',
+        data: { reportId: ORDER, targetType },
+      });
+      return {
+        vi: render(display, 'vi').body,
+        en: render(display, 'en').body,
+      };
+    });
+
+    expect(new Set(bodies.map((b) => b.vi)).size).toBe(4);
+    expect(new Set(bodies.map((b) => b.en)).size).toBe(4);
+    expect(bodies[0].vi).toContain('đánh giá');
+    expect(bodies[1].vi).toContain('trò chuyện');
+    expect(bodies[2].vi).toContain('shop');
+    expect(bodies[3].vi).toContain('sản phẩm');
+  });
+
+  it('kết quả báo cáo (người báo): chữ chung chung, hai kết quả hai câu khác nhau, không nêu hành động cụ thể và không có đường dẫn', () => {
+    const [resolved, dismissed] = (['RESOLVED', 'DISMISSED'] as const).map((outcome) =>
+      describeNotification({
+        ...BASE,
+        type: 'REPORT_RESOLVED',
+        data: { reportId: ORDER, targetType: 'SHOP', outcome },
+      }),
+    );
+
+    expect(resolved.href).toBeNull();
+    expect(dismissed.href).toBeNull();
+    expect(render(resolved, 'vi').body).not.toBe(render(dismissed, 'vi').body);
+    expect(render(resolved, 'en').body).not.toBe(render(dismissed, 'en').body);
+    for (const locale of ['vi', 'en'] as const) {
+      expect(render(resolved, locale).body).not.toMatch(/ẩn|khoá|khóa|gỡ|hide|suspend|remove|ban/i);
+    }
+  });
+
+  it('đánh giá bị ẩn (tác giả): nêu tên sản phẩm, dẫn tới chi tiết đơn, không nêu lý do hay người báo; id đơn sai dạng ⇒ không dẫn đi đâu', () => {
+    const display = describeNotification(find('REVIEW_HIDDEN'));
+
+    expect(display.href).toBe(`/orders/${ORDER}`);
+    for (const locale of ['vi', 'en'] as const) {
+      expect(render(display, locale).body).toContain('Áo thun cotton');
+    }
+    expect(
+      describeNotification({
+        ...BASE,
+        type: 'REVIEW_HIDDEN',
+        data: { orderId: '../../etc/passwd', productName: 'x' },
+      }).href,
+    ).toBeNull();
+  });
+
+  it('sản phẩm bị gỡ (chủ shop): nêu tên sản phẩm và LÝ DO bằng cả hai ngôn ngữ, dẫn tới trang sửa; id sai dạng ⇒ không dẫn đi đâu', () => {
+    const display = describeNotification(find('PRODUCT_TAKEN_DOWN'));
+
+    expect(display.href).toBe(`/seller/products/${ORDER}/edit`);
+    for (const locale of ['vi', 'en'] as const) {
+      const { body } = render(display, locale);
+      expect(body).toContain('Dao bấm tự động');
+      expect(body).toContain('Hàng cấm theo quy định của sàn.');
+    }
+    expect(
+      describeNotification({
+        ...BASE,
+        type: 'PRODUCT_TAKEN_DOWN',
+        data: { productId: '../../etc/passwd', productName: 'x', reason: 'y' },
+      }).href,
+    ).toBeNull();
+  });
+
+  it('lý do của sản phẩm bị gỡ là văn bản người khác nhập: cú pháp ICU / thẻ HTML được in nguyên văn, không bị diễn giải', () => {
+    const display = describeNotification({
+      ...BASE,
+      type: 'PRODUCT_TAKEN_DOWN',
+      data: {
+        productId: ORDER,
+        productName: 'x',
+        reason: '{count, plural, other {#}} <img src=x onerror=alert(1)>',
+      },
+    });
+
+    expect(render(display, 'vi').body).toContain(
+      '{count, plural, other {#}} <img src=x onerror=alert(1)>',
+    );
   });
 
   it('phía nhận khác nhau ⇒ chữ khác nhau (hủy đơn: người mua vs chủ shop; khiếu nại: Admin vs chủ shop)', () => {

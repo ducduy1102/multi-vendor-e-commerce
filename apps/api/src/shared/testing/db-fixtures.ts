@@ -303,6 +303,19 @@ export async function cleanupByTag(prisma: PrismaClient, tag: string) {
       ],
     },
   });
+  // Báo cáo vi phạm (Tuần 11, 5.2) cũng không có khoá ngoại tới users/shops/sản phẩm/đánh giá/hội thoại (đối tượng bị báo có thể mất đi mà
+  // dấu vết vẫn phải còn) nên xoá người dùng không kéo theo dòng nào. Bảng có UPDATE khi xử lý nên xoá thẳng được. Dọn theo người báo,
+  // người xử lý hoặc đối tượng là chính người dùng/shop có tiền tố; báo cáo về đánh giá/sản phẩm/hội thoại của test luôn có người báo
+  // có tiền tố nên đã nằm trong nhánh đầu.
+  await prisma.report.deleteMany({
+    where: {
+      OR: [
+        { reporterId: { in: userIds } },
+        { resolvedById: { in: userIds } },
+        { targetId: { in: [...userIds, ...shops.map((s) => s.id)] } },
+      ],
+    },
+  });
   // Thứ tự xoá theo chiều FK RESTRICT (Payment/Order/VoucherUsage → CheckoutGroup → User;
   // Order/OrderItem → Shop/ProductVariant): xoá "lá" trước "gốc". Cart/CartItem/Address cascade
   // tự động theo User (onDelete: Cascade) nên không cần dọn riêng.

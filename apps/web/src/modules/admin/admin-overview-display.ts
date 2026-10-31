@@ -1,4 +1,5 @@
 import {
+  Flag,
   HandCoins,
   LayoutDashboard,
   MessageSquareWarning,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import { buildAdminRefundsHref } from './admin-refunds-href';
+import { buildAdminReportsHref } from './admin-reports-href';
 import { buildAdminShopsHref } from './admin-shops-href';
 import type { AdminOverview } from './types';
 
@@ -70,6 +72,13 @@ export const ADMIN_OVERVIEW_QUEUES: readonly AdminQueueDefinition[] = [
     captionKey: 'overviewQueueShopsCaption',
     href: buildAdminShopsHref(),
   },
+  {
+    key: 'openReports',
+    icon: Flag,
+    titleKey: 'overviewQueueReports',
+    captionKey: 'overviewQueueReportsCaption',
+    href: buildAdminReportsHref(),
+  },
 ];
 
 export function hasAnyAdminWork(overview: AdminOverview): boolean {
@@ -122,6 +131,13 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
       overview.escalatedRefundRequests +
       overview.refundsNeedingAction +
       overview.refundablePayments,
+  },
+  {
+    href: '/admin/reports',
+    labelKey: 'navReports',
+    icon: Flag,
+    exact: false,
+    count: (overview) => overview.openReports,
   },
   {
     href: '/admin/appeals',

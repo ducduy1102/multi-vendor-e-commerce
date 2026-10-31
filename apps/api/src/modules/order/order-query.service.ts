@@ -181,6 +181,10 @@ const detailSelect = {
       rating: true,
       comment: true,
       editedAt: true,
+      // Đánh giá đã bị Admin ẩn (Week11.md 5.5): tác giả vẫn thấy bản của mình kèm cờ `isHidden` và lý do Admin đã nhập (minh bạch với
+      // tác giả). Chỉ có `hiddenReason`, không có `hiddenById` — tác giả không biết Admin nào quyết định.
+      hiddenAt: true,
+      hiddenReason: true,
     },
   },
   recipientName: true,
@@ -681,8 +685,11 @@ export class OrderQueryService {
               rating: review.rating,
               comment: review.comment,
               editedAt: review.editedAt?.toISOString() ?? null,
-              // Sửa được đúng một lần.
-              canEdit: review.editedAt === null,
+              // Sửa được đúng một lần, và không sửa được khi đã bị ẩn.
+              canEdit: review.editedAt === null && review.hiddenAt === null,
+              isHidden: review.hiddenAt !== null,
+              hiddenReason:
+                review.hiddenAt !== null ? review.hiddenReason : null,
             }
           : null,
       };

@@ -6,6 +6,7 @@ import { use } from 'react';
 import { ChatInboxContainer, parseChatPageQuery } from '@/modules/chat';
 import { Skeleton } from '@/shared/components/ui/skeleton';
 
+import { ReportEntry } from '../../_components/ReportEntry';
 import { SellerShopGate } from '../_components/SellerShopGate';
 
 interface SellerChatPageProps {
@@ -43,6 +44,11 @@ export default function SellerChatPage({ searchParams }: SellerChatPageProps) {
             scope={{ role: 'SHOP', shopId }}
             selectedId={conversationId}
             basePath="/seller/chat"
+            reportSlot={
+              conversationId ? (
+                <ReportEntry targetType="CONVERSATION" targetId={conversationId} />
+              ) : null
+            }
           />
         </div>
       )}

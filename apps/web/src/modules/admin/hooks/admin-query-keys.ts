@@ -1,5 +1,6 @@
 import type {
   AdminAppealListQuery,
+  AdminReportListQuery,
   AdminRefundListQuery,
   AdminRefundRequestListQuery,
   AdminRefundablePaymentListQuery,
@@ -74,6 +75,23 @@ export function adminNotesQueryKey(targetType: AdminNoteTargetType, targetId: st
 // --- Hoàn tiền (Week9.md 3.1) --------------------------------------------------------------------
 // Ba màn tách ba nhánh riêng để làm mới màn này không kéo theo màn kia khi không cần; hook mutation tự
 // chọn nhánh nào đổi (duyệt yêu cầu tạo khoản hoàn mới ⇒ cả hàng chờ lẫn sổ cái cũ).
+
+// Hàng đợi báo cáo vi phạm (Week11.md 5.6) và chi tiết từng báo cáo.
+export function adminReportListsQueryKey() {
+  return ['admin', 'reports', 'list'] as const;
+}
+
+export function adminReportListQueryKey(query: Partial<AdminReportListQuery>) {
+  return [...adminReportListsQueryKey(), query] as const;
+}
+
+export function adminReportDetailsQueryKey() {
+  return ['admin', 'reports', 'detail'] as const;
+}
+
+export function adminReportDetailQueryKey(reportId: string) {
+  return [...adminReportDetailsQueryKey(), reportId] as const;
+}
 
 // Hàng chờ yêu cầu hủy/trả hàng (tab "Khiếu nại").
 export function adminRefundRequestListsQueryKey() {

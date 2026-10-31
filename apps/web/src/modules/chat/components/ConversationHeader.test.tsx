@@ -1,12 +1,20 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { withIntl } from '@/shared/lib/test-i18n';
 
 import { ConversationHeader } from './ConversationHeader';
 
-function setup(props: Partial<{ name: string; logoUrl: string | null; isReadOnly: boolean }> = {}) {
+function setup(
+  props: Partial<{
+    name: string;
+    logoUrl: string | null;
+    isReadOnly: boolean;
+    reportSlot: ReactNode;
+  }> = {},
+) {
   const onBack = vi.fn();
   const utils = render(
     withIntl(
@@ -15,6 +23,7 @@ function setup(props: Partial<{ name: string; logoUrl: string | null; isReadOnly
         logoUrl={props.logoUrl ?? null}
         isReadOnly={props.isReadOnly ?? false}
         onBack={onBack}
+        reportSlot={props.reportSlot}
       />,
     ),
   );
@@ -53,6 +62,19 @@ describe('ConversationHeader', () => {
 
     const heading = screen.getByRole('heading', { level: 2 });
     expect(heading).toHaveClass('min-w-0', 'flex-1', 'truncate');
+  });
+
+  it('có reportSlot: hiện đúng nội dung page truyền vào, KHÔNG co lại khi tên dài (shrink-0); không có thì không dựng khối bọc', () => {
+    const withSlot = setup({
+      name: 'W'.repeat(300),
+      reportSlot: <button type="button">Nút báo cáo do page ghép</button>,
+    });
+    const button = screen.getByRole('button', { name: 'Nút báo cáo do page ghép' });
+    expect(button.parentElement).toHaveClass('shrink-0');
+    withSlot.unmount();
+
+    setup();
+    expect(screen.queryByRole('button', { name: 'Nút báo cáo do page ghép' })).toBeNull();
   });
 
   it('dùng flex (không lưới): nút quay lại bị display:none từ md không làm xếp lại cột', () => {

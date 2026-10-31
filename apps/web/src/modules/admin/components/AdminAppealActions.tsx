@@ -12,9 +12,9 @@ import {
 } from './admin-appeal-row.constants';
 
 interface AdminAppealActionsProps {
-  // Tên shop — chỉ để gắn vào `aria-label` ("Chấp nhận: Shop A"): trên một trang có nhiều nút giống hệt nhau, trình đọc màn hình
-  // cần biết nút nào của shop nào.
-  shopName: string;
+  // Tên đối tượng (shop hoặc sản phẩm) — chỉ để gắn vào `aria-label` ("Chấp nhận: Shop A"): trên một trang có nhiều nút giống hệt nhau,
+  // trình đọc màn hình cần biết nút nào của đối tượng nào.
+  targetName: string;
   // Khoá mọi nút khi một hành động đang chạy (tránh gửi trùng / hai hành động chồng nhau).
   isDisabled: boolean;
   onAccept: () => void;
@@ -22,10 +22,10 @@ interface AdminAppealActionsProps {
 }
 
 // Component THUẦN: hai quyết định của một kháng nghị ĐANG CHỜ (dòng đã quyết định / đã đóng không render component này). "Chấp
-// nhận" (mở khoá shop) là hành động chính — nút đặc, đứng trên; "Từ chối" là nút viền + chữ đỏ (ADMIN_CAUTION_BUTTON_CLASS) như
+// nhận" (mở khoá shop / khôi phục sản phẩm) là hành động chính — nút đặc, đứng trên; "Từ chối" là nút viền + chữ đỏ (ADMIN_CAUTION_BUTTON_CLASS) như
 // "Từ chối" của hàng chờ duyệt shop. Cả hai đều mở hộp thoại ở Container. Bố cục cột ở admin-appeal-row.constants.ts.
 export function AdminAppealActions({
-  shopName,
+  targetName,
   isDisabled,
   onAccept,
   onReject,
@@ -40,7 +40,7 @@ export function AdminAppealActions({
         type="button"
         className={ADMIN_APPEAL_ACTION_BUTTON_CLASS}
         disabled={isDisabled}
-        aria-label={t('actionLabelWithShop', { action: acceptLabel, name: shopName })}
+        aria-label={t('actionLabelWithShop', { action: acceptLabel, name: targetName })}
         onClick={onAccept}
       >
         {acceptLabel}
@@ -50,7 +50,7 @@ export function AdminAppealActions({
         variant="outline"
         className={cn(ADMIN_APPEAL_ACTION_BUTTON_CLASS, ADMIN_CAUTION_BUTTON_CLASS)}
         disabled={isDisabled}
-        aria-label={t('actionLabelWithShop', { action: rejectLabel, name: shopName })}
+        aria-label={t('actionLabelWithShop', { action: rejectLabel, name: targetName })}
         onClick={onReject}
       >
         {rejectLabel}

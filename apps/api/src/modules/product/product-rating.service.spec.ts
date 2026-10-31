@@ -232,7 +232,8 @@ describe('ProductRatingService', () => {
       expect(calls).toEqual(['lock', 'aggregate', 'write']);
       expect(tx.review.groupBy).toHaveBeenCalledWith({
         by: ['rating'],
-        where: { productId: 'p1' },
+        // Đánh giá đã bị Admin ẩn (Week11.md 5.5) không tính vào điểm.
+        where: { productId: 'p1', hiddenAt: null },
         _count: { _all: true },
       });
     });

@@ -1,5 +1,6 @@
 import {
   NOTIFICATION_LABEL_MAX_LENGTH,
+  REPORT_TARGET_TYPES,
   NOTIFICATION_REASON_MAX_LENGTH,
   notificationWriteSchema,
   type NotificationType,
@@ -12,6 +13,7 @@ import {
   type NotificationEventKind,
   type NotificationFacts,
   type OrderFacts,
+  type ProductFacts,
   type RefundRequestFacts,
   type ReviewFacts,
   type ShopFacts,
@@ -30,6 +32,7 @@ const ORDER_2 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2';
 const PRODUCT = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const SHOP = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const APPEAL = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1';
+const REPORT = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1';
 const REQUEST = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const REVIEW = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 
@@ -65,6 +68,7 @@ const refundRequest = (
 const review = (overrides: Partial<ReviewFacts> = {}): NotificationFacts => ({
   kind: 'REVIEW',
   review: {
+    orderId: ORDER_2,
     productId: PRODUCT,
     productName: 'Áo thun cotton',
     rating: 4,
@@ -73,6 +77,19 @@ const review = (overrides: Partial<ReviewFacts> = {}): NotificationFacts => ({
     shopName: 'Cửa hàng Ánh Dương',
     ...overrides,
   },
+});
+const product = (
+  overrides: Partial<ProductFacts> = {},
+  adminIds: string[] = [],
+): NotificationFacts => ({
+  kind: 'PRODUCT',
+  product: {
+    productId: PRODUCT,
+    productName: 'Dao bấm tự động',
+    shopOwnerId: OWNER,
+    ...overrides,
+  },
+  adminIds,
 });
 const shop = (
   overrides: Partial<ShopFacts> = {},
@@ -606,6 +623,383 @@ describe('sự kiện shop', () => {
   );
 });
 
+describe('ẩn đánh giá (Week11.md 5.5)', () => {
+  it('REVIEW_HIDDEN ⇒ chỉ TÁC GIẢ nhận REVIEW_HIDDEN, kèm id đơn và tên sản phẩm; chủ shop và Admin không nhận', () => {
+    expect(
+      buildNotifications(
+        { kind: 'REVIEW_HIDDEN', reviewId: REVIEW },
+        review({ reviewerId: BUYER, shopOwnerId: OWNER }),
+      ),
+    ).toEqual([
+      {
+        userId: BUYER,
+        type: 'REVIEW_HIDDEN',
+        data: { orderId: ORDER_2, productName: 'Áo thun cotton' },
+      },
+    ]);
+  });
+
+  it('thông báo chỉ mang id đơn và tên sản phẩm — không lý do của Admin, không nội dung đánh giá, không người báo', () => {
+    const [draft] = buildNotifications(
+      { kind: 'REVIEW_HIDDEN', reviewId: REVIEW },
+      review(),
+    );
+
+    expect(Object.keys(draft.data).sort()).toEqual(['orderId', 'productName']);
+  });
+
+  it('tên sản phẩm quá dài được cắt gọn để thông báo vẫn qua schema ghi', () => {
+    const [draft] = buildNotifications(
+      { kind: 'REVIEW_HIDDEN', reviewId: REVIEW },
+      review({ productName: 'x'.repeat(500) }),
+    );
+
+    expect(
+      notificationWriteSchema.safeParse({
+        type: draft.type,
+        data: draft.data,
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe('gỡ sản phẩm vi phạm (Week11.md 5.7)', () => {
+  const takenDown = (reason = 'Hàng cấm theo quy định của sàn.') =>
+    ({ kind: 'PRODUCT_TAKEN_DOWN', productId: PRODUCT, reason }) as const;
+
+  it('PRODUCT_TAKEN_DOWN ⇒ chỉ CHỦ SHOP của sản phẩm nhận, kèm id sản phẩm, tên và lý do', () => {
+    expect(buildNotifications(takenDown(), product())).toEqual([
+      {
+        userId: OWNER,
+        type: 'PRODUCT_TAKEN_DOWN',
+        data: {
+          productId: PRODUCT,
+          productName: 'Dao bấm tự động',
+          reason: 'Hàng cấm theo quy định của sàn.',
+        },
+      },
+    ]);
+  });
+
+  it('người nhận lấy từ DỮ KIỆN của sản phẩm, không từ sự kiện: đổi chủ shop thì người nhận đổi theo', () => {
+    const [draft] = buildNotifications(
+      takenDown(),
+      product({ shopOwnerId: OTHER_OWNER }),
+    );
+
+    expect(draft.userId).toBe(OTHER_OWNER);
+  });
+
+  it('thông báo chỉ mang id sản phẩm, tên và lý do — không người báo cáo, không tên Admin', () => {
+    const [draft] = buildNotifications(takenDown(), product());
+
+    expect(Object.keys(draft.data).sort()).toEqual([
+      'productId',
+      'productName',
+      'reason',
+    ]);
+  });
+
+  it('tên và lý do quá dài được cắt gọn để thông báo vẫn qua schema ghi', () => {
+    const [draft] = buildNotifications(
+      takenDown('lý do dài '.repeat(100)),
+      product({ productName: 'x'.repeat(500) }),
+    );
+
+    expect(
+      notificationWriteSchema.safeParse({
+        type: draft.type,
+        data: draft.data,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('lý do nhiều dòng được gộp thành một dòng (nhãn hợp lệ)', () => {
+    const [draft] = buildNotifications(
+      takenDown('Dòng một\n\nDòng hai'),
+      product(),
+    );
+
+    expect(draft.data).toMatchObject({ reason: 'Dòng một Dòng hai' });
+  });
+
+  it('lý do chỉ gồm khoảng trắng sau khi cắt gọn ⇒ không tạo thông báo sai hợp đồng', () => {
+    expect(buildNotifications(takenDown('   '), product())).toEqual([]);
+  });
+
+  it('dữ kiện sai loại (SHOP thay vì PRODUCT) ⇒ ném lỗi rõ ràng, không đoán người nhận', () => {
+    expect(() => buildNotifications(takenDown(), shop())).toThrow(
+      /needs PRODUCT facts/,
+    );
+  });
+});
+
+// Kháng nghị sản phẩm bị gỡ (Week11.md 5.8): cùng nguyên tắc với kháng nghị shop — chỉ id + tên sản phẩm đã cắt gọn / kết quả, không bao giờ
+// lời kháng nghị hay ghi chú của Admin; người nhận luôn suy từ dữ kiện đã tải.
+describe('kháng nghị sản phẩm bị gỡ (Week11.md 5.8)', () => {
+  const submitted = {
+    kind: 'PRODUCT_APPEAL_SUBMITTED',
+    appealId: APPEAL,
+    productId: PRODUCT,
+  } as const;
+
+  it('PRODUCT_APPEAL_SUBMITTED ⇒ mọi Admin nhận ADMIN_PRODUCT_APPEAL_PENDING (chủ shop thì không), kèm id kháng nghị, id và tên sản phẩm', () => {
+    expect(
+      buildNotifications(submitted, product({}, [ADMIN_1, ADMIN_2])),
+    ).toEqual([
+      {
+        userId: ADMIN_1,
+        type: 'ADMIN_PRODUCT_APPEAL_PENDING',
+        data: {
+          appealId: APPEAL,
+          productId: PRODUCT,
+          productName: 'Dao bấm tự động',
+        },
+      },
+      {
+        userId: ADMIN_2,
+        type: 'ADMIN_PRODUCT_APPEAL_PENDING',
+        data: {
+          appealId: APPEAL,
+          productId: PRODUCT,
+          productName: 'Dao bấm tự động',
+        },
+      },
+    ]);
+  });
+
+  it('PRODUCT_APPEAL_SUBMITTED khi không có Admin nào ⇒ không có thông báo', () => {
+    expect(buildNotifications(submitted, product({}, []))).toEqual([]);
+  });
+
+  it.each(['ACCEPTED', 'REJECTED'] as const)(
+    'PRODUCT_APPEAL_DECIDED (%s) ⇒ chỉ chủ shop nhận PRODUCT_APPEAL_DECIDED, người nhận suy từ sản phẩm chứ không từ sự kiện, Admin không nhận',
+    (decision) => {
+      expect(
+        buildNotifications(
+          {
+            kind: 'PRODUCT_APPEAL_DECIDED',
+            appealId: APPEAL,
+            productId: PRODUCT,
+            decision,
+          },
+          product({}, [ADMIN_1]),
+        ),
+      ).toEqual([
+        {
+          userId: OWNER,
+          type: 'PRODUCT_APPEAL_DECIDED',
+          data: {
+            appealId: APPEAL,
+            productId: PRODUCT,
+            productName: 'Dao bấm tự động',
+            decision,
+          },
+        },
+      ]);
+    },
+  );
+
+  it('đổi chủ shop của sản phẩm thì người nhận kết quả đổi theo', () => {
+    const [draft] = buildNotifications(
+      {
+        kind: 'PRODUCT_APPEAL_DECIDED',
+        appealId: APPEAL,
+        productId: PRODUCT,
+        decision: 'ACCEPTED',
+      },
+      product({ shopOwnerId: OTHER_OWNER }),
+    );
+
+    expect(draft.userId).toBe(OTHER_OWNER);
+  });
+
+  it('thông báo không mang lời kháng nghị, ghi chú hay tên Admin — chỉ id, tên sản phẩm và kết quả', () => {
+    const [pending] = buildNotifications(submitted, product({}, [ADMIN_1]));
+    const [decided] = buildNotifications(
+      {
+        kind: 'PRODUCT_APPEAL_DECIDED',
+        appealId: APPEAL,
+        productId: PRODUCT,
+        decision: 'REJECTED',
+      },
+      product(),
+    );
+
+    expect(Object.keys(pending.data).sort()).toEqual([
+      'appealId',
+      'productId',
+      'productName',
+    ]);
+    expect(Object.keys(decided.data).sort()).toEqual([
+      'appealId',
+      'decision',
+      'productId',
+      'productName',
+    ]);
+  });
+
+  it('tên sản phẩm quá dài được cắt gọn để thông báo vẫn qua schema ghi', () => {
+    const [draft] = buildNotifications(
+      submitted,
+      product({ productName: 'x'.repeat(500) }, [ADMIN_1]),
+    );
+
+    expect(
+      notificationWriteSchema.safeParse({
+        type: draft.type,
+        data: draft.data,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('dữ kiện sai loại (SHOP thay vì PRODUCT) ⇒ ném lỗi rõ ràng, không đoán người nhận', () => {
+    expect(() => buildNotifications(submitted, shop({}, [ADMIN_1]))).toThrow(
+      /needs PRODUCT facts/,
+    );
+  });
+});
+
+describe('báo cáo vi phạm (Week11.md 5.3)', () => {
+  const admins = (...adminIds: string[]): NotificationFacts => ({
+    kind: 'ADMINS',
+    adminIds,
+  });
+
+  it.each(REPORT_TARGET_TYPES)(
+    'REPORT_SUBMITTED (%s) ⇒ mọi Admin nhận REPORT_NEW, chỉ mang id báo cáo và loại đối tượng',
+    (targetType) => {
+      expect(
+        buildNotifications(
+          { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType },
+          admins(ADMIN_1, ADMIN_2),
+        ),
+      ).toEqual([
+        {
+          userId: ADMIN_1,
+          type: 'REPORT_NEW',
+          data: { reportId: REPORT, targetType },
+        },
+        {
+          userId: ADMIN_2,
+          type: 'REPORT_NEW',
+          data: { reportId: REPORT, targetType },
+        },
+      ]);
+    },
+  );
+
+  it('REPORT_SUBMITTED khi không có Admin nào ⇒ không có thông báo', () => {
+    expect(
+      buildNotifications(
+        { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType: 'SHOP' },
+        admins(),
+      ),
+    ).toEqual([]);
+  });
+
+  it('một Admin xuất hiện hai lần trong danh sách vẫn chỉ nhận một thông báo', () => {
+    expect(
+      buildNotifications(
+        { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType: 'REVIEW' },
+        admins(ADMIN_1, ADMIN_1),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('dữ kiện sai loại (dữ kiện shop thay vì danh sách Admin) bị từ chối thay vì gửi nhầm', () => {
+    expect(() =>
+      buildNotifications(
+        { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType: 'SHOP' },
+        shop({}, [ADMIN_1]),
+      ),
+    ).toThrow(/needs ADMINS facts/);
+  });
+});
+
+describe('đóng báo cáo (Week11.md 5.4)', () => {
+  const REPORT_2 = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd2';
+  const reports = (
+    ...items: Array<{
+      id: string;
+      reporterId: string;
+      targetType?: 'REVIEW' | 'CONVERSATION' | 'SHOP' | 'PRODUCT';
+      outcome?: 'RESOLVED' | 'DISMISSED';
+    }>
+  ): NotificationFacts => ({
+    kind: 'REPORTS',
+    reports: items.map((item) => ({
+      reportId: item.id,
+      reporterId: item.reporterId,
+      targetType: item.targetType ?? 'SHOP',
+      outcome: item.outcome ?? 'RESOLVED',
+    })),
+  });
+
+  it('REPORTS_RESOLVED ⇒ MỖI người báo nhận đúng một REPORT_RESOLVED, kèm kết quả chung chung; chủ shop/Admin không nhận', () => {
+    expect(
+      buildNotifications(
+        { kind: 'REPORTS_RESOLVED', reportIds: [REPORT, REPORT_2] },
+        reports(
+          { id: REPORT, reporterId: BUYER, targetType: 'REVIEW' },
+          {
+            id: REPORT_2,
+            reporterId: OTHER_OWNER,
+            targetType: 'REVIEW',
+            outcome: 'DISMISSED',
+          },
+        ),
+      ),
+    ).toEqual([
+      {
+        userId: BUYER,
+        type: 'REPORT_RESOLVED',
+        data: { reportId: REPORT, targetType: 'REVIEW', outcome: 'RESOLVED' },
+      },
+      {
+        userId: OTHER_OWNER,
+        type: 'REPORT_RESOLVED',
+        data: {
+          reportId: REPORT_2,
+          targetType: 'REVIEW',
+          outcome: 'DISMISSED',
+        },
+      },
+    ]);
+  });
+
+  it('thông báo không mang hành động cụ thể, ghi chú hay tên đối tượng — chỉ id, loại đối tượng và RESOLVED/DISMISSED', () => {
+    const [draft] = buildNotifications(
+      { kind: 'REPORTS_RESOLVED', reportIds: [REPORT] },
+      reports({ id: REPORT, reporterId: BUYER }),
+    );
+
+    expect(Object.keys(draft.data).sort()).toEqual([
+      'outcome',
+      'reportId',
+      'targetType',
+    ]);
+  });
+
+  it('không có báo cáo nào đã đóng (rỗng) ⇒ không có thông báo', () => {
+    expect(
+      buildNotifications(
+        { kind: 'REPORTS_RESOLVED', reportIds: [REPORT] },
+        reports(),
+      ),
+    ).toEqual([]);
+  });
+
+  it('dữ kiện sai loại bị từ chối thay vì gửi nhầm', () => {
+    expect(() =>
+      buildNotifications(
+        { kind: 'REPORTS_RESOLVED', reportIds: [REPORT] },
+        { kind: 'ADMINS', adminIds: [ADMIN_1] },
+      ),
+    ).toThrow(/needs REPORTS facts/);
+  });
+});
+
 describe('tính đúng đắn chung', () => {
   // Một ví dụ cho MỖI loại sự kiện: kiểu Record<NotificationEventKind, ...> khiến thêm loại mà quên ví dụ là lỗi biên dịch.
   const SAMPLES: Record<
@@ -703,6 +1097,53 @@ describe('tính đúng đắn chung', () => {
       },
       facts: shop(),
     },
+    REPORT_SUBMITTED: {
+      event: { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType: 'SHOP' },
+      facts: { kind: 'ADMINS', adminIds: [ADMIN_1] },
+    },
+    REVIEW_HIDDEN: {
+      event: { kind: 'REVIEW_HIDDEN', reviewId: REVIEW },
+      facts: review(),
+    },
+    PRODUCT_TAKEN_DOWN: {
+      event: {
+        kind: 'PRODUCT_TAKEN_DOWN',
+        productId: PRODUCT,
+        reason: 'Hàng cấm theo quy định của sàn.',
+      },
+      facts: product(),
+    },
+    PRODUCT_APPEAL_SUBMITTED: {
+      event: {
+        kind: 'PRODUCT_APPEAL_SUBMITTED',
+        appealId: APPEAL,
+        productId: PRODUCT,
+      },
+      facts: product({}, [ADMIN_1]),
+    },
+    PRODUCT_APPEAL_DECIDED: {
+      event: {
+        kind: 'PRODUCT_APPEAL_DECIDED',
+        appealId: APPEAL,
+        productId: PRODUCT,
+        decision: 'ACCEPTED',
+      },
+      facts: product(),
+    },
+    REPORTS_RESOLVED: {
+      event: { kind: 'REPORTS_RESOLVED', reportIds: [REPORT] },
+      facts: {
+        kind: 'REPORTS',
+        reports: [
+          {
+            reportId: REPORT,
+            reporterId: BUYER,
+            targetType: 'SHOP',
+            outcome: 'RESOLVED',
+          },
+        ],
+      },
+    },
   };
 
   const KINDS = Object.keys(SAMPLES) as NotificationEventKind[];
@@ -745,9 +1186,19 @@ describe('tính đúng đắn chung', () => {
         known.add(facts.review.reviewerId);
         known.add(facts.review.shopOwnerId);
       }
+      if (facts.kind === 'PRODUCT') {
+        known.add(facts.product.shopOwnerId);
+        facts.adminIds.forEach((id) => known.add(id));
+      }
       if (facts.kind === 'SHOP') {
         known.add(facts.shop.ownerId);
         facts.adminIds.forEach((id) => known.add(id));
+      }
+      if (facts.kind === 'ADMINS') {
+        facts.adminIds.forEach((id) => known.add(id));
+      }
+      if (facts.kind === 'REPORTS') {
+        facts.reports.forEach((r) => known.add(r.reporterId));
       }
 
       for (const draft of buildNotifications(event, facts)) {
@@ -776,7 +1227,9 @@ describe('tính đúng đắn chung', () => {
             ? review({ productName: nasty, shopName: nasty })
             : facts.kind === 'SHOP'
               ? shop({ shopName: nasty }, facts.adminIds)
-              : facts;
+              : facts.kind === 'PRODUCT'
+                ? product({ productName: nasty }, facts.adminIds)
+                : facts;
 
       for (const draft of buildNotifications(nastyEvent, nastyFacts)) {
         expect(

@@ -12,6 +12,9 @@ interface ShopPublicHeaderProps {
   // Nút "Chat với shop" do page.tsx ghép vào (module shop không được import module chat — rules/general.md mục 1);
   // không truyền thì không có chỗ chat.
   chatSlot?: ReactNode;
+  // Chỗ nút "Báo cáo shop" (Week11.md 5.6): page.tsx truyền ReactNode tĩnh — nút cần biết người xem đã đăng nhập chưa và có phải chủ
+  // shop này không, thứ module shop không được biết (không import report/auth).
+  reportSlot?: ReactNode;
 }
 
 // Đầu trang shop công khai (/shops/[slug], Week9.md 1.10/6.3): banner, logo, tên, điểm đánh giá gộp của các
@@ -21,7 +24,7 @@ interface ShopPublicHeaderProps {
 // Chữ do chủ shop nhập (tên ≤ 100, mô tả ≤ 2000 ký tự, có thể là chuỗi dài không dấu cách): cột chữ khai
 // tường minh `grid-cols-1` / `minmax(0,1fr)` thay vì `grid` trần có cột ngầm `auto` lấy min-content
 // (rules/frontend.md mục 5), cột con `min-w-0` + `break-words`.
-export function ShopPublicHeader({ shop, chatSlot }: ShopPublicHeaderProps) {
+export function ShopPublicHeader({ shop, chatSlot, reportSlot }: ShopPublicHeaderProps) {
   const t = useTranslations('shop');
   const format = useFormatter();
 
@@ -73,7 +76,12 @@ export function ShopPublicHeader({ shop, chatSlot }: ShopPublicHeaderProps) {
 
         {/* Chỗ nút "Chat với shop" (Week10.md 5.4): page.tsx truyền `chatSlot` — nút cần biết người xem đã đăng
             nhập chưa và có phải chủ shop này không, là thứ module shop không được biết (không import chat/auth). */}
-        {chatSlot ? <div className="flex flex-col items-start lg:items-end">{chatSlot}</div> : null}
+        {chatSlot || reportSlot ? (
+          <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+            {chatSlot}
+            {reportSlot}
+          </div>
+        ) : null}
       </div>
 
       {shop.description ? (

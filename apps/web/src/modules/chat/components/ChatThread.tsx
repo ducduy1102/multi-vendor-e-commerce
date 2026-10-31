@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 
 import type { ChatMessageView } from '../hooks/chat-messages';
 import type { ChatRole, ChatSendFailure } from '../types';
@@ -39,6 +40,9 @@ interface ChatThreadProps {
   onTyping: () => void;
   onRetrySend: (clientMessageId: string) => void;
   onDiscard: (clientMessageId: string) => void;
+  // Nút "Báo cáo hội thoại" (ReactNode tĩnh do page ghép). Chỉ hiện khi hội thoại ĐÃ có tin: hội thoại rỗng không báo được (BE trả 404
+  // vì đối phương chưa hề thấy nó tồn tại).
+  reportSlot?: ReactNode;
 }
 
 // Khung hội thoại hoàn chỉnh (component THUẦN, mọi dữ liệu/hành động qua props): tiêu đề, khung tin, dòng trạng thái
@@ -67,6 +71,7 @@ export function ChatThread({
   onTyping,
   onRetrySend,
   onDiscard,
+  reportSlot,
 }: ChatThreadProps) {
   const t = useTranslations('chat');
   const hasMessages = items.length > 0;
@@ -78,6 +83,7 @@ export function ChatThread({
         logoUrl={counterpartLogoUrl}
         isReadOnly={isReadOnly}
         onBack={onBack}
+        reportSlot={hasMessages ? reportSlot : null}
       />
 
       {isConnectionLost ? (
