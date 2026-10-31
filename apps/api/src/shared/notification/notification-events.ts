@@ -58,6 +58,9 @@ export type NotificationEvent =
   | { kind: 'REFUND_COMPLETED'; orderId: string }
   | { kind: 'REVIEW_CREATED'; reviewId: string }
   | { kind: 'REVIEW_REPLIED'; reviewId: string }
+  // Admin đã ẩn đánh giá (Week11.md 5.5, D6): báo TÁC GIẢ. Chỉ id đánh giá — người nhận, id đơn và tên sản phẩm đọc lại từ DB; lý do của
+  // Admin và người báo không có đường nào vào thông báo.
+  | { kind: 'REVIEW_HIDDEN'; reviewId: string }
   | {
       kind: 'SHOP_STATUS_CHANGED';
       shopId: string;
@@ -108,6 +111,8 @@ export interface RefundRequestFacts {
 }
 
 export interface ReviewFacts {
+  // Đơn chứa đánh giá: đích dẫn của thông báo "đánh giá bị ẩn" (chi tiết đơn, nơi tác giả vẫn thấy bản của mình).
+  orderId: string;
   productId: string;
   productName: string;
   rating: number;
@@ -343,6 +348,16 @@ function buildRaw(
           productId: review.productId,
           productName: label(review.productName),
           shopName: label(review.shopName),
+        }),
+      ];
+    }
+
+    case 'REVIEW_HIDDEN': {
+      const { review } = expectFacts(event, facts, 'REVIEW');
+      return [
+        draft(review.reviewerId, 'REVIEW_HIDDEN', {
+          orderId: review.orderId,
+          productName: label(review.productName),
         }),
       ];
     }

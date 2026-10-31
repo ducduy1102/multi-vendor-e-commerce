@@ -81,6 +81,7 @@ export class NotificationFactsLoader {
 
       case 'REVIEW_CREATED':
       case 'REVIEW_REPLIED':
+      case 'REVIEW_HIDDEN':
         return this.review(event.reviewId);
 
       case 'SHOP_STATUS_CHANGED':
@@ -159,6 +160,7 @@ export class NotificationFactsLoader {
       where: { id: reviewId },
       select: {
         userId: true,
+        orderId: true,
         rating: true,
         product: {
           select: {
@@ -173,6 +175,7 @@ export class NotificationFactsLoader {
     return {
       kind: 'REVIEW',
       review: {
+        orderId: row.orderId,
         productId: row.product.id,
         productName: row.product.name,
         rating: row.rating,

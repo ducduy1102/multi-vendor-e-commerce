@@ -67,6 +67,7 @@ const refundRequest = (
 const review = (overrides: Partial<ReviewFacts> = {}): NotificationFacts => ({
   kind: 'REVIEW',
   review: {
+    orderId: ORDER_2,
     productId: PRODUCT,
     productName: 'Áo thun cotton',
     rating: 4,
@@ -608,6 +609,46 @@ describe('sự kiện shop', () => {
   );
 });
 
+describe('ẩn đánh giá (Week11.md 5.5)', () => {
+  it('REVIEW_HIDDEN ⇒ chỉ TÁC GIẢ nhận REVIEW_HIDDEN, kèm id đơn và tên sản phẩm; chủ shop và Admin không nhận', () => {
+    expect(
+      buildNotifications(
+        { kind: 'REVIEW_HIDDEN', reviewId: REVIEW },
+        review({ reviewerId: BUYER, shopOwnerId: OWNER }),
+      ),
+    ).toEqual([
+      {
+        userId: BUYER,
+        type: 'REVIEW_HIDDEN',
+        data: { orderId: ORDER_2, productName: 'Áo thun cotton' },
+      },
+    ]);
+  });
+
+  it('thông báo chỉ mang id đơn và tên sản phẩm — không lý do của Admin, không nội dung đánh giá, không người báo', () => {
+    const [draft] = buildNotifications(
+      { kind: 'REVIEW_HIDDEN', reviewId: REVIEW },
+      review(),
+    );
+
+    expect(Object.keys(draft.data).sort()).toEqual(['orderId', 'productName']);
+  });
+
+  it('tên sản phẩm quá dài được cắt gọn để thông báo vẫn qua schema ghi', () => {
+    const [draft] = buildNotifications(
+      { kind: 'REVIEW_HIDDEN', reviewId: REVIEW },
+      review({ productName: 'x'.repeat(500) }),
+    );
+
+    expect(
+      notificationWriteSchema.safeParse({
+        type: draft.type,
+        data: draft.data,
+      }).success,
+    ).toBe(true);
+  });
+});
+
 describe('báo cáo vi phạm (Week11.md 5.3)', () => {
   const admins = (...adminIds: string[]): NotificationFacts => ({
     kind: 'ADMINS',
@@ -848,6 +889,10 @@ describe('tính đúng đắn chung', () => {
     REPORT_SUBMITTED: {
       event: { kind: 'REPORT_SUBMITTED', reportId: REPORT, targetType: 'SHOP' },
       facts: { kind: 'ADMINS', adminIds: [ADMIN_1] },
+    },
+    REVIEW_HIDDEN: {
+      event: { kind: 'REVIEW_HIDDEN', reviewId: REVIEW },
+      facts: review(),
     },
     REPORTS_RESOLVED: {
       event: { kind: 'REPORTS_RESOLVED', reportIds: [REPORT] },

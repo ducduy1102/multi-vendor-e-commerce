@@ -107,6 +107,7 @@ const VALID: Record<NotificationType, Record<string, unknown>> = {
     targetType: 'SHOP',
     outcome: 'DISMISSED',
   },
+  REVIEW_HIDDEN: { orderId: ORDER_ID, productName: 'Áo thun cotton' },
 };
 
 const write = (type: unknown, data: unknown) =>
@@ -136,8 +137,8 @@ function worstCaseData(type: NotificationType): Record<string, unknown> {
 }
 
 describe('danh sách loại thông báo', () => {
-  it('có đủ 19 loại, không trùng, đúng dạng IN_HOA_GẠCH_DƯỚI và vừa cột type', () => {
-    expect(NOTIFICATION_TYPES).toHaveLength(19);
+  it('có đủ 20 loại, không trùng, đúng dạng IN_HOA_GẠCH_DƯỚI và vừa cột type', () => {
+    expect(NOTIFICATION_TYPES).toHaveLength(20);
     expect(new Set(NOTIFICATION_TYPES).size).toBe(NOTIFICATION_TYPES.length);
     for (const type of NOTIFICATION_TYPES) {
       expect(type).toMatch(/^[A-Z][A-Z_]*$/);
