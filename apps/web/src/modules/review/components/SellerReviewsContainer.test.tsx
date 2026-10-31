@@ -31,6 +31,8 @@ function review(id: string, overrides: Partial<SellerReview> = {}): SellerReview
     reviewerName: 'N***',
     sellerReply: null,
     sellerRepliedAt: null,
+    isHidden: false,
+    hiddenReason: null,
     product: { id: 'product-9', name: 'Áo thun cổ tròn', slug: 'ao-thun-co-tron' },
     ...overrides,
   };

@@ -29,6 +29,8 @@ function review(overrides: Partial<SellerReview> = {}): SellerReview {
     reviewerName: 'N***',
     sellerReply: null,
     sellerRepliedAt: null,
+    isHidden: false,
+    hiddenReason: null,
     product: { id: 'product-9', name: 'Áo thun cổ tròn', slug: 'ao-thun-co-tron' },
     ...overrides,
   };
@@ -96,6 +98,79 @@ describe('SellerReviewItem — hiển thị', () => {
 
     expect(screen.getByRole('link', { name: 'P'.repeat(300) })).toHaveClass('break-words');
     expect(screen.getByText('a'.repeat(500))).toHaveClass('break-words');
+  });
+});
+
+describe('SellerReviewItem — đánh giá bị Admin ẩn (dòng trạng thái)', () => {
+  const HIDDEN: Partial<SellerReview> = {
+    comment: null,
+    isHidden: true,
+    hiddenReason: 'Ngôn từ xúc phạm người bán',
+  };
+
+  beforeEach(() => {
+    vi.mocked(reviewService.replyToReview).mockReset();
+  });
+
+  it('hiện nhãn "Đã bị ẩn" kèm lý do của Admin bằng chữ và lời giải thích vì sao không trả lời được', () => {
+    setup(HIDDEN);
+
+    expect(screen.getByText('Đánh giá này đã bị ẩn')).toBeVisible();
+    expect(screen.getByText('Lý do từ sàn: Ngôn từ xúc phạm người bán')).toBeVisible();
+    expect(screen.getByText(/bạn không thể trả lời/)).toBeVisible();
+  });
+
+  it('KHÔNG có nút "Trả lời" / "Sửa câu trả lời" (kể cả khi trước đó đã trả lời), nhưng vẫn nhận ra đánh giá nào: sao, tên che, sản phẩm', () => {
+    setup({ ...HIDDEN, sellerReply: 'Xin lỗi bạn', sellerRepliedAt: '2026-10-02T05:00:00.000Z' });
+
+    expect(screen.queryByRole('button', { name: 'Trả lời' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sửa câu trả lời' })).not.toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '4 trên 5 sao' })).toBeInTheDocument();
+    expect(screen.getByText('N***')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Áo thun cổ tròn' })).toBeInTheDocument();
+  });
+
+  it('đánh giá còn hiển thị -> KHÔNG có dòng trạng thái, vẫn có nút "Trả lời"', () => {
+    setup();
+
+    expect(screen.queryByText('Đánh giá này đã bị ẩn')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Lý do từ sàn/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Trả lời' })).toBeInTheDocument();
+  });
+
+  it('lý do là văn bản người dùng nhập: ngắt được chuỗi 500 ký tự liền, và chữ HTML hiện nguyên chữ', () => {
+    const longReason = 'b'.repeat(500);
+    setup({ ...HIDDEN, hiddenReason: longReason });
+
+    expect(screen.getByText(`Lý do từ sàn: ${longReason}`).className).toContain(
+      '[overflow-wrap:anywhere]',
+    );
+  });
+
+  it('không có lý do (dữ liệu lệch) -> không vẽ dòng "Lý do từ sàn:" trống, vẫn có nhãn trạng thái', () => {
+    setup({ ...HIDDEN, hiddenReason: null });
+
+    expect(screen.getByText('Đánh giá này đã bị ẩn')).toBeVisible();
+    expect(screen.queryByText(/Lý do từ sàn/)).not.toBeInTheDocument();
+  });
+
+  it('tiếng Anh: "This review has been hidden" + "Reason from the marketplace: …"', () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    render(
+      withIntl(
+        <QueryClientProvider client={queryClient}>
+          <ul>
+            <SellerReviewItem review={review(HIDDEN)} shopId={SHOP} />
+          </ul>
+        </QueryClientProvider>,
+        'en',
+      ),
+    );
+
+    expect(screen.getByText('This review has been hidden')).toBeVisible();
+    expect(
+      screen.getByText('Reason from the marketplace: Ngôn từ xúc phạm người bán'),
+    ).toBeVisible();
   });
 });
 
