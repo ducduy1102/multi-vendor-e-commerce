@@ -73,7 +73,7 @@ describe('AdminNav', () => {
     overview.current = undefined;
   });
 
-  it('một landmark điều hướng có tên, đủ 5 mục trỏ đúng route (chỉ trang đã có), Người dùng ngay sau Shop', () => {
+  it('một landmark điều hướng có tên, đủ 6 mục trỏ đúng route (chỉ trang đã có), Người dùng ngay sau Shop', () => {
     renderNav();
 
     expect(screen.getAllByRole('navigation')).toHaveLength(1);
@@ -88,6 +88,10 @@ describe('AdminNav', () => {
       'href',
       '/admin/refunds',
     );
+    expect(screen.getByRole('link', { name: /^Báo cáo/ })).toHaveAttribute(
+      'href',
+      '/admin/reports',
+    );
     expect(screen.getByRole('link', { name: 'Kháng nghị' })).toHaveAttribute(
       'href',
       '/admin/appeals',
@@ -97,6 +101,7 @@ describe('AdminNav', () => {
       '/admin/shops',
       '/admin/users',
       '/admin/refunds',
+      '/admin/reports',
       '/admin/appeals',
     ]);
   });
@@ -106,6 +111,7 @@ describe('AdminNav', () => {
     ['/admin/shops', /^Shop/],
     ['/admin/users', 'Người dùng'],
     ['/admin/refunds', /^Hoàn tiền/],
+    ['/admin/reports', /^Báo cáo/],
     ['/admin/appeals', 'Kháng nghị'],
   ] as const)('ở %s chỉ MỘT mục có aria-current="page"', (path, name) => {
     renderNav(path);
@@ -137,11 +143,13 @@ describe('AdminNav', () => {
       escalatedRefundRequests: 2,
       refundsNeedingAction: 3,
       refundablePayments: 4,
+      openReports: 6,
     };
     renderNav();
 
     expect(screen.getByRole('link', { name: 'Shop 5' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Hoàn tiền 9' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Báo cáo 6' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Tổng quan' })).toBeInTheDocument();
   });
 
@@ -151,10 +159,12 @@ describe('AdminNav', () => {
       escalatedRefundRequests: 0,
       refundsNeedingAction: 0,
       refundablePayments: 0,
+      openReports: 0,
     };
     renderNav();
 
     expect(screen.getByRole('link', { name: 'Shop 99+' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Báo cáo' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Hoàn tiền' })).toBeInTheDocument();
   });
 });
